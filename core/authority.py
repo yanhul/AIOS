@@ -32,21 +32,13 @@ def _load(path):
 
 
 def persist_contract(aios_dir, contract):
-    """Atomically persist one immutable contract per task; replay is allowed."""
+    """Atomically persist an immutable contract; replay is allowed."""
     validate_contract(contract)
     cid = contract_identity(contract)
     record = dict(contract)
     record["record_type"] = "EXECUTION_CONTRACT"
     record["contract_id"] = cid
     recover_pending(aios_dir)
-    contracts_dir = os.path.join(aios_dir, AUTHORITY_DIR, CONTRACTS_DIR)
-    if os.path.isdir(contracts_dir):
-        for filename in os.listdir(contracts_dir):
-            if not filename.endswith(".json"):
-                continue
-            existing = _load(os.path.join(contracts_dir, filename))
-            if existing.get("task_id") == contract["task_id"] and existing.get("contract_id") != cid:
-                raise TransitionError("task already has an immutable contract with different content")
     path = _path(aios_dir, CONTRACTS_DIR, cid)
     if os.path.exists(path):
         existing = _load(path)
@@ -61,14 +53,18 @@ def persist_permit(aios_dir, contract, issuer):
     """Issue and atomically persist a permit bound to the canonical contract."""
     validate_contract(contract)
     stored = persist_contract(aios_dir, contract)
-    permit = issue_permit(contract, issuer)
+    canonical_contract = {k: stored[k] for k in (
+        "contract_type", "task_id", "scope", "actor", "capabilities",
+        "input_digest", "allowed_effects", "evidence_required", "max_attempts",
+        "terminal_states", "policy_digest")}
+    permit = issue_permit(canonical_contract, issuer)
     recover_pending(aios_dir)
     path = _path(aios_dir, PERMITS_DIR, permit["permit_id"])
     if os.path.exists(path):
         existing = _load(path)
         if canonical_json(existing) != canonical_json(permit):
             raise TransitionError("existing permit identity has different content")
-        verify_permit(stored, existing)
+        verify_permit(canonical_contract, existing)
         return existing
     commit_batch(aios_dir, [(os.path.join(AUTHORITY_DIR, PERMITS_DIR, permit["permit_id"] + ".json"), permit)])
     return permit
