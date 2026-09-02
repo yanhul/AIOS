@@ -51,3 +51,32 @@ def test_subprocess_malformed_output_becomes_unknown(tmp_path):
     result = execute(str(tmp_path), cid, pid, "op-1", "agent:test", adapter)
     assert result["state"] == "UNKNOWN"
     assert "JSON" in result["unknown_reason"]
+
+
+def test_subprocess_timeout_becomes_unknown(tmp_path):
+    cid, pid = setup(tmp_path)
+    code = "import time; time.sleep(1)"
+    adapter = SubprocessAdapter("process-provider", [sys.executable, "-c", code], timeout_seconds=0.05)
+    result = execute(str(tmp_path), cid, pid, "op-1", "agent:test", adapter)
+    assert result["state"] == "UNKNOWN"
+    assert "timed out" in result["unknown_reason"]
+
+
+def test_subprocess_output_limit_becomes_unknown(tmp_path):
+    cid, pid = setup(tmp_path)
+    code = "print('x' * 10000)"
+    adapter = SubprocessAdapter("process-provider", [sys.executable, "-c", code], max_output_bytes=128)
+    result = execute(str(tmp_path), cid, pid, "op-1", "agent:test", adapter)
+    assert result["state"] == "UNKNOWN"
+    assert "output limit" in result["unknown_reason"]
+
+
+def test_subprocess_command_is_not_shell_interpolated(tmp_path):
+    cid, pid = setup(tmp_path)
+    code = "import json,sys; r=json.load(sys.stdin); print(json.dumps({'provider':'process-provider','effect_id':r['effect']['effect_id'],'attempt_id':r['attempt_id'],'provider_operation_id':'proc-safe','outcome':'OBSERVED_SUCCESS','observation':{'safe':True}}))"
+    adapter = SubprocessAdapter(
+        "process-provider",
+        [sys.executable, "-c", code, "literal;not;a;shell;command"],
+    )
+    result = execute(str(tmp_path), cid, pid, "op-1", "agent:test", adapter)
+    assert result["state"] == "OBSERVED_SUCCESS"
