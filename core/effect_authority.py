@@ -3,6 +3,9 @@
 This is the write boundary for provider-facing state. Each transition commits
 both the effect record and an audit event in one ``commit_batch``. Provider
 success is never inferred: terminal observed states require explicit evidence.
+
+Retry is deliberately a separate semantic operation: callers cannot widen the
+generic transition graph by treating UNKNOWN as an ordinary dispatch source.
 """
 
 import hashlib
@@ -89,6 +92,42 @@ def transition(aios_dir, effect_id, target, actor, **fields):
 def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
     _validate_strings(("attempt_id", attempt_id), ("provider", provider))
     return transition(aios_dir, effect_id, "DISPATCHED", actor, attempt=1, attempt_id=attempt_id, provider=provider)
+
+
+def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
+    """Explicitly dispatch the next attempt for an UNKNOWN effect.
+
+    The generic transition graph intentionally does not allow UNKNOWN ->
+    DISPATCHED. This narrow entrypoint enforces monotonic attempt sequencing
+    and preserves the logical effect identity across retries.
+    """
+    _validate_strings(("effect_id", effect_id), ("actor", actor),
+                      ("attempt_id", attempt_id), ("provider", provider))
+    if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 2:
+        raise ValueError("retry attempt must be an integer >= 2")
+    recover_pending(aios_dir)
+    path = _path(aios_dir, effect_id)
+    if not os.path.exists(path):
+        raise KeyError(f"unknown effect: {effect_id}")
+    current = _load(path)
+    if current.get("state") != "UNKNOWN":
+        raise TransitionError(f"retry requires UNKNOWN effect, got {current.get('state')}")
+    expected = int(current.get("attempt", 0)) + 1
+    if attempt != expected:
+        raise TransitionError(f"retry attempt must be {expected}, got {attempt}")
+    if attempt_id != f"{effect_id}:attempt:{attempt}":
+        raise ValueError("attempt_id does not match retry attempt")
+    updated = dict(current)
+    updated.update({"state": "DISPATCHED", "attempt": attempt,
+                    "attempt_id": attempt_id, "provider": provider})
+    event = {
+        "kind": "external_effect", "action": "retry_dispatch", "effect_id": effect_id,
+        "from_state": "UNKNOWN", "to_state": "DISPATCHED", "actor": actor,
+        "attempt": attempt, "attempt_id": attempt_id, "provider": provider,
+    }
+    commit_batch(aios_dir, [(os.path.join("effects", effect_id + ".json"), updated),
+                            (os.path.join("events", "effect-" + effect_id + "-DISPATCHED-attempt-" + str(attempt) + ".json"), event)])
+    return updated
 
 
 def unknown(aios_dir, effect_id, actor, reason):
