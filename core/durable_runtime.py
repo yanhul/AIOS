@@ -36,16 +36,22 @@ def validate_submission(
     effect: Mapping[str, Any],
     submission: RuntimeSubmission,
     attempt_id: str,
-    provider_name: str,
+    provider_name: str | None = None,
 ) -> None:
-    """Fail closed unless runtime acknowledgement binds to this effect/attempt/provider."""
+    """Fail closed unless runtime acknowledgement binds to this effect/attempt/provider.
+
+    ``provider_name`` is optional for compatibility with the original adapter
+    contract; the AIOS runtime bridge always supplies it.
+    """
     if not isinstance(submission, RuntimeSubmission):
         raise ValueError("runtime must return RuntimeSubmission")
     if submission.effect_id != effect.get("effect_id"):
         raise ValueError("runtime submission effect mismatch")
     if submission.attempt_id != attempt_id:
         raise ValueError("runtime submission attempt mismatch")
-    if submission.provider != provider_name:
+    if not submission.provider:
+        raise ValueError("runtime submission provider missing")
+    if provider_name is not None and submission.provider != provider_name:
         raise ValueError("runtime submission provider mismatch")
 
 
