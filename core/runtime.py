@@ -55,33 +55,33 @@ def validate_receipt(receipt, effect, attempt_id, provider_name):
         raise ValueError("receipt observation must be a non-empty dict")
 
 
-def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapter):
-    """Execute one bounded attempt; orchestration remains outside AIOS."""
-    _text(logical_operation_id, "logical_operation_id")
+def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
+    """Execute exactly one dispatched attempt and record its observation.
+
+    This is intentionally independent from authorization, effect creation and
+    scheduling. An external durable runtime can resume/retry a logical effect,
+    establish a new attempt, and then call this boundary for that attempt.
+    """
     _text(actor, "actor")
+    _text(attempt_id, "attempt_id")
+    if not isinstance(contract, dict) or not contract:
+        raise ValueError("contract must be a non-empty dict")
+    if not isinstance(effect, dict) or not effect:
+        raise ValueError("effect must be a non-empty dict")
+    if effect.get("state") != "DISPATCHED":
+        raise RuntimeError("effect must be DISPATCHED before execute_attempt")
+    if effect.get("actor") != actor:
+        raise PermissionError("effect actor does not match execution actor")
+    if effect.get("attempt_id") != attempt_id:
+        raise RuntimeError("attempt_id does not match dispatched effect")
     if not hasattr(adapter, "name"):
         raise ValueError("adapter must expose a provider name")
     provider_name = _text(adapter.name, "adapter.name")
-
-    # No provider call is possible before these checks complete.
-    authorize(aios_dir, contract_id, permit_id)
-    contract = load_contract(aios_dir, contract_id)
-    permit = load_permit(aios_dir, permit_id)
-    if permit["actor"] != actor or contract["actor"] != actor:
-        raise PermissionError("actor does not match authorized contract")
-    if provider_name not in contract["capabilities"]:
+    if provider_name not in contract.get("capabilities", []):
         raise PermissionError("provider capability is not authorized by contract")
-    if "external_effect" not in contract["allowed_effects"]:
+    if "external_effect" not in contract.get("allowed_effects", []):
         raise PermissionError("external effect is not authorized by contract")
 
-    effect = create_effect(aios_dir, contract_id, logical_operation_id, actor)
-    if effect["state"] != "PLANNED":
-        raise RuntimeError("logical operation already has a non-planned effect")
-
-    # Attempt sequencing/retry policy belongs to the durable substrate. This
-    # boundary executes one attempt and never invents a second one locally.
-    attempt_id = f"{effect['effect_id']}:attempt:1"
-    dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name)
     try:
         receipt = adapter.execute(
             contract=dict(contract), effect=dict(effect), attempt_id=attempt_id
@@ -110,4 +110,43 @@ def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapt
     )
 
 
-__all__ = ["ProviderReceipt", "ProviderAdapter", "validate_receipt", "execute"]
+def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapter):
+    """Authorize/create/dispatch the first attempt, then delegate execution.
+
+    Retries, resume and scheduling are outside AIOS. The reusable primitive is
+    :func:`execute_attempt`, which operates on an already-dispatched attempt.
+    """
+    _text(logical_operation_id, "logical_operation_id")
+    _text(actor, "actor")
+    if not hasattr(adapter, "name"):
+        raise ValueError("adapter must expose a provider name")
+    provider_name = _text(adapter.name, "adapter.name")
+
+    # No provider call is possible before these checks complete.
+    authorize(aios_dir, contract_id, permit_id)
+    contract = load_contract(aios_dir, contract_id)
+    permit = load_permit(aios_dir, permit_id)
+    if permit["actor"] != actor or contract["actor"] != actor:
+        raise PermissionError("actor does not match authorized contract")
+    if provider_name not in contract["capabilities"]:
+        raise PermissionError("provider capability is not authorized by contract")
+    if "external_effect" not in contract["allowed_effects"]:
+        raise PermissionError("external effect is not authorized by contract")
+
+    effect = create_effect(aios_dir, contract_id, logical_operation_id, actor)
+    if effect["state"] != "PLANNED":
+        raise RuntimeError("logical operation already has a non-planned effect")
+
+    # Attempt sequencing/retry policy belongs to the durable substrate.
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    effect = dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name)
+    return execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id)
+
+
+__all__ = [
+    "ProviderReceipt",
+    "ProviderAdapter",
+    "validate_receipt",
+    "execute_attempt",
+    "execute",
+]
