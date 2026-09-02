@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from .authority import authorize, load_contract, load_permit
-from .effect_authority import create_effect, dispatch, observe, unknown
+from .effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
 
 
 @dataclass(frozen=True)
@@ -56,12 +56,7 @@ def validate_receipt(receipt, effect, attempt_id, provider_name):
 
 
 def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
-    """Execute exactly one dispatched attempt and record its observation.
-
-    This is intentionally independent from authorization, effect creation and
-    scheduling. An external durable runtime can resume/retry a logical effect,
-    establish a new attempt, and then call this boundary for that attempt.
-    """
+    """Execute exactly one dispatched attempt and record its observation."""
     _text(actor, "actor")
     _text(attempt_id, "attempt_id")
     if not isinstance(contract, dict) or not contract:
@@ -83,46 +78,68 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
         raise PermissionError("external effect is not authorized by contract")
 
     try:
-        receipt = adapter.execute(
-            contract=dict(contract), effect=dict(effect), attempt_id=attempt_id
-        )
+        receipt = adapter.execute(contract=dict(contract), effect=dict(effect), attempt_id=attempt_id)
         validate_receipt(receipt, effect, attempt_id, provider_name)
     except Exception as exc:
-        return unknown(
-            aios_dir,
-            effect["effect_id"],
-            actor,
-            f"provider ambiguity: {type(exc).__name__}: {exc}",
-        )
+        return unknown(aios_dir, effect["effect_id"], actor,
+                       f"provider ambiguity: {type(exc).__name__}: {exc}")
 
-    return observe(
-        aios_dir,
-        effect["effect_id"],
-        actor,
-        receipt.outcome,
-        {
-            "provider": receipt.provider,
-            "provider_operation_id": receipt.provider_operation_id,
-            "effect_id": receipt.effect_id,
-            "attempt_id": receipt.attempt_id,
-            "observation": receipt.observation,
-        },
-    )
+    return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, {
+        "provider": receipt.provider,
+        "provider_operation_id": receipt.provider_operation_id,
+        "effect_id": receipt.effect_id,
+        "attempt_id": receipt.attempt_id,
+        "observation": receipt.observation,
+    })
+
+
+def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapter, attempt_id, attempt):
+    """Authorize, dispatch and execute one explicit retry of an UNKNOWN effect.
+
+    Scheduling the retry remains external; this function is the AIOS authority
+    boundary that validates the retry against the immutable contract and permit.
+    """
+    _text(actor, "actor")
+    _text(attempt_id, "attempt_id")
+    if not isinstance(effect, dict) or not effect:
+        raise ValueError("effect must be a non-empty dict")
+    if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 2:
+        raise ValueError("retry attempt must be an integer >= 2")
+    if effect.get("contract_id") != contract_id:
+        raise PermissionError("effect contract binding mismatch")
+    if effect.get("actor") != actor:
+        raise PermissionError("effect actor does not match execution actor")
+    if effect.get("state") != "UNKNOWN":
+        raise RuntimeError("effect must be UNKNOWN before retry")
+
+    authorize(aios_dir, contract_id, permit_id)
+    contract = load_contract(aios_dir, contract_id)
+    permit = load_permit(aios_dir, permit_id)
+    if permit["actor"] != actor or contract["actor"] != actor:
+        raise PermissionError("actor does not match authorized contract")
+    max_attempts = contract.get("max_attempts")
+    if not isinstance(max_attempts, int) or isinstance(max_attempts, bool) or max_attempts < 1:
+        raise ValueError("contract max_attempts must be a positive integer")
+    if attempt > max_attempts:
+        raise PermissionError("retry exceeds contract max_attempts")
+    provider_name = _text(getattr(adapter, "name", None), "adapter.name")
+    if provider_name not in contract["capabilities"]:
+        raise PermissionError("provider capability is not authorized by contract")
+    if "external_effect" not in contract["allowed_effects"]:
+        raise PermissionError("external effect is not authorized by contract")
+
+    dispatched = retry_dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name, attempt)
+    return execute_attempt(aios_dir, contract, dispatched, actor, adapter, attempt_id)
 
 
 def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapter):
-    """Authorize/create/dispatch the first attempt, then delegate execution.
-
-    Retries, resume and scheduling are outside AIOS. The reusable primitive is
-    :func:`execute_attempt`, which operates on an already-dispatched attempt.
-    """
+    """Authorize/create/dispatch the first attempt, then delegate execution."""
     _text(logical_operation_id, "logical_operation_id")
     _text(actor, "actor")
     if not hasattr(adapter, "name"):
         raise ValueError("adapter must expose a provider name")
     provider_name = _text(adapter.name, "adapter.name")
 
-    # No provider call is possible before these checks complete.
     authorize(aios_dir, contract_id, permit_id)
     contract = load_contract(aios_dir, contract_id)
     permit = load_permit(aios_dir, permit_id)
@@ -136,17 +153,12 @@ def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapt
     effect = create_effect(aios_dir, contract_id, logical_operation_id, actor)
     if effect["state"] != "PLANNED":
         raise RuntimeError("logical operation already has a non-planned effect")
-
-    # Attempt sequencing/retry policy belongs to the durable substrate.
     attempt_id = f"{effect['effect_id']}:attempt:1"
     effect = dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name)
     return execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id)
 
 
 __all__ = [
-    "ProviderReceipt",
-    "ProviderAdapter",
-    "validate_receipt",
-    "execute_attempt",
-    "execute",
+    "ProviderReceipt", "ProviderAdapter", "validate_receipt",
+    "execute_attempt", "execute_retry_attempt", "execute",
 ]
