@@ -1,8 +1,8 @@
+import os
 import pytest
 
 from core.authority import persist_contract, persist_permit
 from core.contract import contract_identity
-from core.effect_authority import load_effects
 from core.runtime import ProviderReceipt, execute
 
 
@@ -26,14 +26,9 @@ class GoodAdapter:
     name = "fake-provider"
 
     def execute(self, *, contract, effect, attempt_id):
-        return ProviderReceipt(
-            provider=self.name,
-            effect_id=effect["effect_id"],
-            attempt_id=attempt_id,
-            provider_operation_id="provider-op-1",
-            outcome="OBSERVED_SUCCESS",
-            observation={"status": "ok"},
-        )
+        return ProviderReceipt(provider=self.name, effect_id=effect["effect_id"], attempt_id=attempt_id,
+                               provider_operation_id="provider-op-1", outcome="OBSERVED_SUCCESS",
+                               observation={"status": "ok"})
 
 
 class BrokenAdapter:
@@ -75,7 +70,7 @@ def test_unauthorized_provider_is_rejected_before_call(tmp_path):
 
     with pytest.raises(PermissionError):
         execute(str(tmp_path), cid, pid, "op-1", "agent:test", Unauthorized())
-    assert load_effects(str(tmp_path)) == []
+    assert not os.path.exists(os.path.join(str(tmp_path), "effects"))
 
 
 def test_mismatched_receipt_becomes_unknown(tmp_path):
@@ -84,14 +79,9 @@ def test_mismatched_receipt_becomes_unknown(tmp_path):
     class BadReceipt:
         name = "fake-provider"
         def execute(self, *, contract, effect, attempt_id):
-            return ProviderReceipt(
-                provider=self.name,
-                effect_id=effect["effect_id"] + "-wrong",
-                attempt_id=attempt_id,
-                provider_operation_id="provider-op-2",
-                outcome="OBSERVED_SUCCESS",
-                observation={"status": "ok"},
-            )
+            return ProviderReceipt(provider=self.name, effect_id=effect["effect_id"] + "-wrong",
+                                   attempt_id=attempt_id, provider_operation_id="provider-op-2",
+                                   outcome="OBSERVED_SUCCESS", observation={"status": "ok"})
 
     result = execute(str(tmp_path), cid, pid, "op-1", "agent:test", BadReceipt())
     assert result["state"] == "UNKNOWN"
