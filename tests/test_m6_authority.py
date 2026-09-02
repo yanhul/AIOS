@@ -7,8 +7,7 @@ from core.authority import (
     persist_contract,
     persist_permit,
 )
-from core.contract import contract_identity, issue_permit
-from core.mutation import TransitionError
+from core.contract import contract_identity
 
 
 def _contract(policy="policy-v1"):
@@ -37,13 +36,15 @@ def test_contract_and_permit_are_durable(tmp_path):
     assert load_permit(str(tmp_path), p["permit_id"])["contract_id"] == stored["contract_id"]
 
 
-def test_contract_is_immutable(tmp_path):
+def test_contract_is_immutable_and_content_addressed(tmp_path):
     c = _contract()
-    persist_contract(str(tmp_path), c)
+    first = persist_contract(str(tmp_path), c)
     changed = dict(c)
     changed["max_attempts"] = 4
-    with pytest.raises(TransitionError):
-        persist_contract(str(tmp_path), changed)
+    second = persist_contract(str(tmp_path), changed)
+    assert first["contract_id"] != second["contract_id"]
+    assert load_contract(str(tmp_path), first["contract_id"])["max_attempts"] == 3
+    assert load_contract(str(tmp_path), second["contract_id"])["max_attempts"] == 4
 
 
 def test_permit_cannot_be_rebound(tmp_path):
@@ -51,8 +52,8 @@ def test_permit_cannot_be_rebound(tmp_path):
     p = persist_permit(str(tmp_path), c, "governing-authority")
     other = _contract(policy="policy-v2")
     persist_contract(str(tmp_path), other)
+    from core.contract import verify_permit
     with pytest.raises(ValueError):
-        from core.contract import verify_permit
         verify_permit(other, p)
 
 
