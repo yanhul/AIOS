@@ -1,0 +1,23 @@
+# RX50 Project Reference — AIOS
+
+# AIOS-side project metadata. The RX50 source repository is NOT contained here.
+
+## Reference
+
+- project_id: RX50
+- name: RX50
+- source:
+    type: existing_repository
+    path: E:\Projects\RX50
+
+## State
+
+- aios_state: E:\Projects\AIOS\projects\RX50\.aios
+- state_loaded: false
+- import_in_progress: false
+
+## Contract
+
+# - AIOS references RX50 externally and never modifies, copies, moves, renames, or deletes RX50 files.
+# - RX50 remains the authoritative engineering repository; AIOS state is separate.
+# - No RX50 data has been imported at M0. Import happens in M1.
