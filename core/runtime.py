@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from .authority import authorize, load_contract, load_permit
+from .durable_runtime import DurableRuntime, validate_submission
 from .effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
 
 
@@ -33,6 +34,17 @@ def _text(value, name):
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be a non-empty string")
     return value
+
+
+def _submit_runtime(runtime, method, effect, attempt_id, provider_name, **kwargs):
+    """Bridge an already-authorized attempt into an external durable runtime."""
+    if runtime is None:
+        return None
+    if not hasattr(runtime, method):
+        raise ValueError(f"durable runtime must implement {method}")
+    submission = getattr(runtime, method)(effect=dict(effect), attempt_id=attempt_id, **kwargs)
+    validate_submission(effect, submission, attempt_id, provider_name)
+    return submission
 
 
 def validate_receipt(receipt, effect, attempt_id, provider_name):
@@ -93,11 +105,12 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
     })
 
 
-def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapter, attempt_id, attempt):
+def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapter, attempt_id, attempt,
+                          durable_runtime: DurableRuntime | None = None):
     """Authorize, dispatch and execute one explicit retry of an UNKNOWN effect.
 
-    Scheduling the retry remains external; this function is the AIOS authority
-    boundary that validates the retry against the immutable contract and permit.
+    The external runtime may schedule/persist the attempt, but AIOS remains the
+    authority boundary for authorization, attempt bounds and evidence acceptance.
     """
     _text(actor, "actor")
     _text(attempt_id, "attempt_id")
@@ -129,10 +142,12 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
         raise PermissionError("external effect is not authorized by contract")
 
     dispatched = retry_dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name, attempt)
+    _submit_runtime(durable_runtime, "retry", dispatched, attempt_id, provider_name, attempt=attempt)
     return execute_attempt(aios_dir, contract, dispatched, actor, adapter, attempt_id)
 
 
-def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapter):
+def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapter,
+            durable_runtime: DurableRuntime | None = None):
     """Authorize/create/dispatch the first attempt, then delegate execution."""
     _text(logical_operation_id, "logical_operation_id")
     _text(actor, "actor")
@@ -155,6 +170,7 @@ def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapt
         raise RuntimeError("logical operation already has a non-planned effect")
     attempt_id = f"{effect['effect_id']}:attempt:1"
     effect = dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name)
+    _submit_runtime(durable_runtime, "submit", effect, attempt_id, provider_name)
     return execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id)
 
 
