@@ -1,12 +1,7 @@
-"""Fail-closed provider runtime boundary for M6.
+"""Thin AIOS provider boundary.
 
-The runtime owns orchestration around an already-issued contract/permit. A
-provider adapter is capability-only: it cannot write AIOS state or alter the
-contract, policy, evidence requirements, or terminal conditions.
-
-Provider ambiguity is preserved as UNKNOWN. A terminal observation is accepted
-only when it is explicitly bound to the logical operation, execution attempt,
-and provider.
+AIOS owns authority and evidence semantics. Durable scheduling, retries,
+resume, planning and agent loops belong to an external execution substrate.
 """
 
 from dataclasses import dataclass
@@ -30,7 +25,7 @@ class ProviderAdapter(Protocol):
     name: str
 
     def execute(self, *, contract: dict, effect: dict, attempt_id: str) -> ProviderReceipt:
-        """Execute exactly one authorized provider operation."""
+        """Execute exactly one already-authorized provider operation."""
         ...
 
 
@@ -40,7 +35,8 @@ def _text(value, name):
     return value
 
 
-def _validate_receipt(receipt, effect, attempt_id, provider_name):
+def validate_receipt(receipt, effect, attempt_id, provider_name):
+    """Fail closed unless the provider explicitly observed a bound outcome."""
     if not isinstance(receipt, ProviderReceipt):
         raise ValueError("provider must return ProviderReceipt")
     _text(receipt.provider, "receipt.provider")
@@ -60,17 +56,14 @@ def _validate_receipt(receipt, effect, attempt_id, provider_name):
 
 
 def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapter):
-    """Execute one bounded operation through an authorized provider adapter.
-
-    Authorization happens before any provider call. A provider exception or
-    malformed receipt after dispatch is represented as UNKNOWN, never guessed.
-    """
+    """Execute one bounded attempt; orchestration remains outside AIOS."""
     _text(logical_operation_id, "logical_operation_id")
     _text(actor, "actor")
     if not hasattr(adapter, "name"):
         raise ValueError("adapter must expose a provider name")
     provider_name = _text(adapter.name, "adapter.name")
 
+    # No provider call is possible before these checks complete.
     authorize(aios_dir, contract_id, permit_id)
     contract = load_contract(aios_dir, contract_id)
     permit = load_permit(aios_dir, permit_id)
@@ -85,13 +78,22 @@ def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapt
     if effect["state"] != "PLANNED":
         raise RuntimeError("logical operation already has a non-planned effect")
 
+    # Attempt sequencing/retry policy belongs to the durable substrate. This
+    # boundary executes one attempt and never invents a second one locally.
     attempt_id = f"{effect['effect_id']}:attempt:1"
     dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name)
     try:
-        receipt = adapter.execute(contract=dict(contract), effect=dict(effect), attempt_id=attempt_id)
-        _validate_receipt(receipt, effect, attempt_id, provider_name)
+        receipt = adapter.execute(
+            contract=dict(contract), effect=dict(effect), attempt_id=attempt_id
+        )
+        validate_receipt(receipt, effect, attempt_id, provider_name)
     except Exception as exc:
-        return unknown(aios_dir, effect["effect_id"], actor, f"provider ambiguity: {type(exc).__name__}: {exc}")
+        return unknown(
+            aios_dir,
+            effect["effect_id"],
+            actor,
+            f"provider ambiguity: {type(exc).__name__}: {exc}",
+        )
 
     return observe(
         aios_dir,
@@ -108,4 +110,4 @@ def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapt
     )
 
 
-__all__ = ["ProviderReceipt", "ProviderAdapter", "execute"]
+__all__ = ["ProviderReceipt", "ProviderAdapter", "validate_receipt", "execute"]
