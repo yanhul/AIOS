@@ -7,6 +7,7 @@ contract/permit values and verifies their binding.
 """
 
 import os
+import json
 
 from .contract import contract_identity, issue_permit, validate_contract, verify_permit
 from .mutation import TransitionError, canonical_json, commit_batch, recover_pending
@@ -26,19 +27,26 @@ def _path(aios_dir, kind, ident):
 
 
 def _load(path):
-    import json
     with open(path, "r", encoding="utf-8") as fh:
         return json.load(fh)
 
 
 def persist_contract(aios_dir, contract):
-    """Atomically persist an immutable execution contract; replay is allowed."""
+    """Atomically persist one immutable contract per task; replay is allowed."""
     validate_contract(contract)
     cid = contract_identity(contract)
     record = dict(contract)
     record["record_type"] = "EXECUTION_CONTRACT"
     record["contract_id"] = cid
     recover_pending(aios_dir)
+    contracts_dir = os.path.join(aios_dir, AUTHORITY_DIR, CONTRACTS_DIR)
+    if os.path.isdir(contracts_dir):
+        for filename in os.listdir(contracts_dir):
+            if not filename.endswith(".json"):
+                continue
+            existing = _load(os.path.join(contracts_dir, filename))
+            if existing.get("task_id") == contract["task_id"] and existing.get("contract_id") != cid:
+                raise TransitionError("task already has an immutable contract with different content")
     path = _path(aios_dir, CONTRACTS_DIR, cid)
     if os.path.exists(path):
         existing = _load(path)
@@ -50,9 +58,10 @@ def persist_contract(aios_dir, contract):
 
 
 def persist_permit(aios_dir, contract, issuer):
-    """Issue and atomically persist a permit bound to an already persisted contract."""
+    """Issue and atomically persist a permit bound to the canonical contract."""
+    validate_contract(contract)
     stored = persist_contract(aios_dir, contract)
-    permit = issue_permit(stored, issuer)
+    permit = issue_permit(contract, issuer)
     recover_pending(aios_dir)
     path = _path(aios_dir, PERMITS_DIR, permit["permit_id"])
     if os.path.exists(path):
@@ -77,6 +86,7 @@ def load_contract(aios_dir, contract_id):
         "terminal_states", "policy_digest")}
     if contract_identity(contract) != contract_id:
         raise TransitionError("stored contract identity mismatch")
+    validate_contract(contract)
     return contract
 
 
