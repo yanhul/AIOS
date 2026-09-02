@@ -3,7 +3,8 @@ import pytest
 
 from core.authority import persist_contract, persist_permit
 from core.contract import contract_identity
-from core.runtime import ProviderReceipt, execute
+from core.effect_authority import create_effect, dispatch
+from core.runtime import ProviderReceipt, execute, execute_attempt
 
 
 def contract():
@@ -86,3 +87,40 @@ def test_mismatched_receipt_becomes_unknown(tmp_path):
     result = execute(str(tmp_path), cid, pid, "op-1", "agent:test", BadReceipt())
     assert result["state"] == "UNKNOWN"
     assert "binding mismatch" in result["unknown_reason"]
+
+
+def test_execute_attempt_runs_only_a_dispatched_attempt(tmp_path):
+    cid, pid = setup_authority(tmp_path)
+    c = contract()
+    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test")
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")
+    result = execute_attempt(str(tmp_path), c, effect, "agent:test", GoodAdapter(), attempt_id)
+    assert result["state"] == "OBSERVED_SUCCESS"
+
+
+def test_execute_attempt_rejects_non_dispatched_effect(tmp_path):
+    cid, _ = setup_authority(tmp_path)
+    c = contract()
+    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test")
+    with pytest.raises(RuntimeError, match="DISPATCHED"):
+        execute_attempt(str(tmp_path), c, effect, "agent:test", GoodAdapter(),
+                        f"{effect['effect_id']}:attempt:1")
+
+
+def test_execute_attempt_does_not_authorize_or_create_effect(tmp_path):
+    c = contract()
+    effect = create_effect(str(tmp_path), "CT-unrelated", "op-1", "agent:test")
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")
+
+    class CountingAdapter(GoodAdapter):
+        calls = 0
+        def execute(self, **kwargs):
+            self.calls += 1
+            return super().execute(**kwargs)
+
+    adapter = CountingAdapter()
+    result = execute_attempt(str(tmp_path), c, effect, "agent:test", adapter, attempt_id)
+    assert result["state"] == "OBSERVED_SUCCESS"
+    assert adapter.calls == 1
