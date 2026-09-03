@@ -2,6 +2,7 @@ import os
 import pytest
 
 from core.authority import persist_contract, persist_permit
+from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.effect_authority import create_effect, dispatch, retry_dispatch, transition
 from core.runtime import ProviderReceipt, execute, execute_attempt, execute_retry_attempt
@@ -40,6 +41,9 @@ class BrokenAdapter:
 
 
 def setup_authority(tmp_path, max_attempts=1):
+    registry = CapabilityRegistry()
+    registry.register(Capability("fake-provider", "1", "test-fixture", "test", status="ACTIVE"))
+    registry.persist(str(tmp_path), "test-fixture")
     c = contract(max_attempts)
     cid = contract_identity(c)
     persist_contract(str(tmp_path), c)
