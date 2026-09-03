@@ -13,7 +13,7 @@ def make_contract():
         "task_id": "task-process",
         "scope": "process-test",
         "actor": "agent:test",
-        "capabilities": ["process-provider"],
+        "capabilities": ["process-provider@1"],
         "input_digest": "input-1",
         "allowed_effects": ["external_effect"],
         "evidence_required": ["provider_receipt"],
