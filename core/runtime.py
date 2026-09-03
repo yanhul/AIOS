@@ -1,9 +1,15 @@
-"""Runtime bridge: keep provider execution behind AIOS authority."""
-import json
+"""Thin AIOS provider boundary.
+
+AIOS owns authority and evidence semantics. Durable scheduling, retries,
+resume, planning and agent loops belong to an external execution substrate.
+"""
+
 from dataclasses import dataclass
+from typing import Protocol
+
 from .authority import authorize, load_contract, load_permit
-from .effect_authority import create_effect, dispatch, retry_dispatch, observe, unknown
-from .durable_runtime import DurableRuntime, RuntimeSubmission
+from .durable_runtime import DurableRuntime, validate_submission
+from .effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
 
 
 @dataclass(frozen=True)
@@ -16,26 +22,18 @@ class ProviderReceipt:
     observation: dict
 
 
+class ProviderAdapter(Protocol):
+    name: str
+
+    def execute(self, *, contract: dict, effect: dict, attempt_id: str) -> ProviderReceipt:
+        """Execute exactly one already-authorized provider operation."""
+        ...
+
+
 def _text(value, name):
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be a non-empty string")
     return value
-
-
-def validate_receipt(receipt, effect, attempt_id, provider_name):
-    if not isinstance(receipt, ProviderReceipt):
-        raise ValueError("adapter must return ProviderReceipt")
-    if receipt.provider != provider_name:
-        raise ValueError("provider binding mismatch")
-    if receipt.effect_id != effect["effect_id"]:
-        raise ValueError("effect binding mismatch")
-    if receipt.attempt_id != attempt_id:
-        raise ValueError("attempt binding mismatch")
-    if not isinstance(receipt.provider_operation_id, str) or not receipt.provider_operation_id.strip():
-        raise ValueError("provider_operation_id must be non-empty")
-    if not isinstance(receipt.observation, dict):
-        raise ValueError("observation must be a dict")
-    return receipt
 
 
 def _provider_authorized(contract, provider_name):
@@ -43,6 +41,37 @@ def _provider_authorized(contract, provider_name):
         isinstance(ref, str) and ref.split("@", 1)[0] == provider_name
         for ref in contract.get("capabilities", [])
     )
+
+
+def _submit_runtime(runtime, method, effect, attempt_id, provider_name, **kwargs):
+    """Bridge an already-authorized attempt into an external durable runtime."""
+    if runtime is None:
+        return None
+    if not hasattr(runtime, method):
+        raise ValueError(f"durable runtime must implement {method}")
+    submission = getattr(runtime, method)(effect=dict(effect), attempt_id=attempt_id, **kwargs)
+    validate_submission(effect, submission, attempt_id, provider_name)
+    return submission
+
+
+def validate_receipt(receipt, effect, attempt_id, provider_name):
+    """Fail closed unless the provider explicitly observed a bound outcome."""
+    if not isinstance(receipt, ProviderReceipt):
+        raise ValueError("provider must return ProviderReceipt")
+    _text(receipt.provider, "receipt.provider")
+    _text(receipt.effect_id, "receipt.effect_id")
+    _text(receipt.attempt_id, "receipt.attempt_id")
+    _text(receipt.provider_operation_id, "receipt.provider_operation_id")
+    if receipt.effect_id != effect["effect_id"]:
+        raise ValueError("receipt effect binding mismatch")
+    if receipt.attempt_id != attempt_id:
+        raise ValueError("receipt attempt binding mismatch")
+    if receipt.provider != provider_name:
+        raise ValueError("receipt provider binding mismatch")
+    if receipt.outcome not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
+        raise ValueError("receipt outcome must be an observed terminal outcome")
+    if not isinstance(receipt.observation, dict) or not receipt.observation:
+        raise ValueError("receipt observation must be a non-empty dict")
 
 
 def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
@@ -85,7 +114,11 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
 
 def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapter, attempt_id, attempt,
                           durable_runtime: DurableRuntime | None = None):
-    """Authorize, dispatch and execute one explicit retry of an UNKNOWN effect."""
+    """Authorize, dispatch and execute one explicit retry of an UNKNOWN effect.
+
+    The external runtime may schedule/persist the attempt, but AIOS remains the
+    authority boundary for authorization, attempt bounds and evidence acceptance.
+    """
     _text(actor, "actor")
     _text(attempt_id, "attempt_id")
     if not isinstance(effect, dict) or not effect:
@@ -148,9 +181,7 @@ def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapt
     return execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id)
 
 
-def _submit_runtime(durable_runtime, operation, effect, attempt_id, provider_name, attempt=None):
-    if durable_runtime is None:
-        return None
-    if operation == "submit":
-        return durable_runtime.submit(effect=effect, attempt_id=attempt_id)
-    return durable_runtime.retry(effect=effect, attempt_id=attempt_id, attempt=attempt)
+__all__ = [
+    "ProviderReceipt", "ProviderAdapter", "validate_receipt",
+    "execute_attempt", "execute_retry_attempt", "execute",
+]
