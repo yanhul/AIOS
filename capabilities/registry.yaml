@@ -1,0 +1,40 @@
+schema_version: 1
+status: normative
+
+# Registration is descriptive. Activation/promotion is governed by AIOS policy
+# and evidence; a workload repository remains independently owned.
+capabilities:
+  - capability_id: try.research
+    version: "1"
+    kind: research_workload
+    owner: yanhul/try
+    source: https://github.com/yanhul/try
+    inputs: [natural_language_problem, research_contract]
+    outputs: [experiment_ledger, research_report, terminal_state]
+    verification: [regression_tests, locked_validation, locked_oos, provenance]
+    context: [data_version, strategy_version, compute_environment]
+
+  - capability_id: android.assistant
+    version: "1"
+    kind: software_device_workload
+    owner: yanhul/android-ai-assistant
+    source: https://github.com/yanhul/android-ai-assistant
+    inputs: [natural_language_command, execution_contract]
+    outputs: [software_artifact, execution_result, verification_report]
+    verification: [android_ci, adversarial_conformance, authority_boundary]
+    context: [android_device, permissions, runtime, model_provider]
+
+  - capability_id: rx50.engineering
+    version: "1"
+    kind: hardware_engineering_workload
+    owner: yanhul/RX50
+    source: https://github.com/yanhul/RX50
+    inputs: [engineering_problem, requirements, evidence]
+    outputs: [engineering_artifacts, evidence_report, terminal_state]
+    verification: [requirements_coverage, contradiction_check, electrical_verification, physical_evidence]
+    context: [component_revisions, measurements, hardware_state, toolchain]
+
+relationships:
+  - [try.research@1, validated_by, try.research@1]
+  - [android.assistant@1, validated_by, android.assistant@1]
+  - [rx50.engineering@1, validated_by, rx50.engineering@1]
