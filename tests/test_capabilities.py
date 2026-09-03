@@ -68,8 +68,9 @@ def test_registry_persists_and_reloads_through_aios_state(tmp_path):
 
 
 def test_registry_load_fails_closed_on_corrupt_state(tmp_path):
-    path = tmp_path / "capabilities" / "capability_registry.json"
-    path.write_text("{broken", encoding="utf-8")
+    path = tmp_path / "capabilities"
+    path.mkdir()
+    (path / "capability_registry.json").write_text("{broken", encoding="utf-8")
     try:
         CapabilityRegistry.load(tmp_path)
         assert False
