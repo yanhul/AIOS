@@ -24,17 +24,15 @@ def load_catalog(path: str | Path) -> CapabilityRegistry:
     registry = CapabilityRegistry()
     for raw in data.get("capabilities", []):
         registry.register(Capability(
-            capability_id=str(raw["id"]), version=str(raw["version"]),
+            capability_id=str(raw["capability_id"]), version=str(raw["version"]),
             owner=str(raw["owner"]), kind=str(raw["kind"]),
             inputs=_tuple(raw.get("inputs")), outputs=_tuple(raw.get("outputs")),
-            permissions=_tuple(raw.get("permissions")), environments=_tuple(raw.get("environments")),
-            verification_methods=_tuple(raw.get("verification_methods")),
-            evidence_requirements=_tuple(raw.get("evidence_requirements")),
-            provenance=_tuple(raw.get("provenance")), dependencies=_tuple(raw.get("dependencies")),
-            status=str(raw.get("status", "CANDIDATE")),
-            metadata=tuple(sorted((str(k), str(v)) for k, v in (raw.get("metadata") or {}).items())),
+            verification_methods=_tuple(raw.get("verification")),
+            environments=_tuple(raw.get("context")),
+            provenance=(str(raw.get("source", "")),),
+            status="ACTIVE" if str(data.get("status")) == "normative" else "CANDIDATE",
         ))
-    for raw in data.get("edges", []):
+    for raw in data.get("relationships", []):
         registry.add_edge(CapabilityEdge(
             source=str(raw["source"]), relation=str(raw["relation"]), target=str(raw["target"]),
             evidence_refs=_tuple(raw.get("evidence_refs")),
