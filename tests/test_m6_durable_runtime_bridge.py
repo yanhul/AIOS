@@ -13,7 +13,7 @@ def make_contract(max_attempts=1):
         "task_id": "task-durable-runtime",
         "scope": "runtime-test",
         "actor": "agent:test",
-        "capabilities": ["fake-provider"],
+        "capabilities": ["fake-provider@1"],
         "input_digest": "input-1",
         "allowed_effects": ["external_effect"],
         "evidence_required": ["provider_receipt"],
