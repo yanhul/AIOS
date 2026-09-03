@@ -2,7 +2,8 @@
 
 This module owns the on-disk LAYOUT of ``.aios/<type>/`` only. It performs
 no entity or event writes: since M1.5 every state mutation MUST go through
-the authoritative boundary in :mod:`core.mutation` (``apply_mutations``).
+the authoritative boundary in :mod:`core.mutation` (``apply_mutations`` or
+its shared atomic commit primitive).
 """
 
 import os
@@ -13,9 +14,10 @@ STATE_DIRS = [
     "evidence",
     "issues",
     "tasks",
-    "verifications",   # AIOS-native verification attempt records (M2)
+    "verifications",
     "snapshots",
     "events",
+    "capabilities",
 ]
 
 ENTITY_TO_DIR = {
@@ -23,7 +25,7 @@ ENTITY_TO_DIR = {
     "DECISION": "decisions",
     "EVIDENCE": "evidence",
     "ISSUE": "issues",
-    "GATE": "issues",      # gates recorded alongside issues for visibility
+    "GATE": "issues",
     "CONTRADICTION": "issues",
 }
 
