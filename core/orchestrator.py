@@ -23,7 +23,6 @@ class GovernedRuntimeExecutor(Executor):
     permit_id: str
     actor: str
     adapter: ProviderAdapter
-    logical_operation_id: str
     observer: Callable[[Mapping[str, Any]], Any]
     decider: Callable[[Any, Mapping[str, Any]], Any]
     verifier: Callable[[Any, Mapping[str, Any]], Any]
@@ -37,14 +36,14 @@ class GovernedRuntimeExecutor(Executor):
     def act(self, decision: Any, state: Mapping[str, Any]) -> Any:
         if not isinstance(decision, Mapping):
             raise ValueError("runtime decision must be a mapping")
-        requested_operation = decision.get("logical_operation_id", self.logical_operation_id)
-        if requested_operation != self.logical_operation_id:
-            raise PermissionError("logical operation is outside the governed task")
+        operation_id = decision.get("logical_operation_id")
+        if not isinstance(operation_id, str) or not operation_id.strip():
+            raise ValueError("runtime decision must contain logical_operation_id")
         return execute(
             self.aios_dir,
             self.contract_id,
             self.permit_id,
-            self.logical_operation_id,
+            operation_id,
             self.actor,
             self.adapter,
         )
