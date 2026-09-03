@@ -76,3 +76,20 @@ def test_registry_load_fails_closed_on_corrupt_state(tmp_path):
         assert False
     except CapabilityError as exc:
         assert "invalid capability registry JSON" in str(exc)
+
+
+def test_contract_capabilities_must_resolve_to_registered_version(tmp_path):
+    registry = CapabilityRegistry()
+    registry.register(cap("try.research", status="ACTIVE"))
+    contract = {"capabilities": ["try.research@1"]}
+    assert registry.resolve_contract(contract)[0].key == "try.research@1"
+    try:
+        registry.resolve_contract({"capabilities": ["try.research"]})
+        assert False
+    except CapabilityError:
+        pass
+    try:
+        registry.resolve_contract({"capabilities": ["missing@1"]})
+        assert False
+    except CapabilityError:
+        pass
