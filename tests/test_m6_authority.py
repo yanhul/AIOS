@@ -29,7 +29,7 @@ def _contract(policy="policy-v1"):
 
 def _seed_registry(tmp_path):
     registry = CapabilityRegistry()
-    registry.register(Capability("read", "1", "test", "test" , status="ACTIVE"))
+    registry.register(Capability("read", "1", "test", "test", status="ACTIVE"))
     registry.register(Capability("write", "1", "test", "test", status="ACTIVE"))
     registry.persist(str(tmp_path), "test-fixture")
 
@@ -85,6 +85,8 @@ def test_unknown_capability_cannot_get_authority(tmp_path):
 
 
 def test_missing_registry_fails_closed(tmp_path):
+    registry_file = tmp_path / "capabilities" / "capability_registry.json"
+    registry_file.unlink()
     with pytest.raises(Exception, match="capability authority rejected contract"):
         persist_contract(str(tmp_path), _contract())
 
