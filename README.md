@@ -1,41 +1,48 @@
 # AIOS — AI Operating System
 
-AIOS is an external orchestration and state layer for engineering projects.
+AIOS is the governed control, state, evidence, capability, and orchestration layer around autonomous AI workloads.
 
-## Position
+## Mission
 
-1. **AIOS is an external orchestration/state layer.** It does not replace or own any project source.
-2. **RX50 remains an independent engineering repository.** RX50 continues to be managed under its own rules (`E:\Projects\RX50\AGENTS.md`).
-3. **AIOS does not own RX50 source files.** AIOS references RX50 by path only.
-4. **AIOS state and RX50 source are separate.** AIOS keeps AIOS-side state under `projects/RX50/.aios/`; RX50 files are never copied, moved, or rewritten by AIOS.
-5. **RX50 is the first AIOS integration project.**
-6. **M1 is implemented** (inspection, provenance-preserving import, cross-file contradiction detection, immutable snapshots) and **M1.5 writer enforcement** (single validated mutation boundary `core/mutation.py`: entity contracts, undefined-transition rejection, mandatory actor, deterministic SHA-256 event IDs, atomic entity+event commit with roll-forward recovery). Still absent: state-machine transitions (M2), gates, policy, verification, agents.
+AIOS turns a human problem into a durable, verifiable execution process and a reusable outcome:
 
-## Layout
+`Problem -> Contract -> Discover -> Plan -> Execute -> Observe -> Verify -> Reconcile -> Promote/Block -> Persist -> Reuse/Evolve`
 
-```
-AIOS/
-    core/
-        state/      # future state model + validation (docs only)
-        tasks/      # future task lifecycle
-        agents/     # future agent roles (specs only)
-        policy/     # future policy/permission rules
-        evidence/   # future evidence pipeline
-        gates/      # future gate evaluation
-    adapters/
-        openclaw/   # future runtime adapter boundary (docs only)
-    models/         # future model registry (docs only)
-    projects/
-        RX50/       # AIOS-side metadata + .aios state dirs (empty)
-    tests/          # future test suites (docs only)
-    cli/            # future CLI (empty)
-    docs/           # architecture, roadmap, state model, agent spec
-```
+AIOS is not a model and not a single agent. It governs agents, tools, software, devices, services, and physical-world workloads while keeping workload source independently owned.
 
-See `docs/ARCHITECTURE.md`, `docs/STATE_MODEL.md`, `core/agents/AGENTS_SPEC.md`, `docs/ROADMAP.md`.
+## Architecture
 
-## Rules
+- **Governance / Control Plane:** contract, authority, policy, durable state, evidence, provenance, contradiction handling, verification, gates, audit history, capability registration and promotion.
+- **Capability / Workload Plane:** registered agents, tools, research, software, hardware, devices and services.
+- **Capability Graph:** evidence-bound relationships between capabilities; relationships are never assumed merely because two capabilities exist.
+- **Experience / Evolution:** verified task-to-capability history, negative evidence, versioned candidate capabilities and governed promotion.
+- **Context:** task, identity, device/software, permissions, resources, time, location and physical state are first-class execution inputs.
 
-- Zero runtime dependencies. No packages installed, no virtual environments, no credentials.
-- AIOS never mutates `E:\Projects\RX50`.
-- All future state transitions must be validated and auditable.
+See `docs/TARGET_ARCHITECTURE.md` for the normative target and `docs/ROADMAP.md` for implementation status.
+
+## Proof-of-system workloads
+
+The four repositories are deliberately independent:
+
+- `AIOS` — control, governance and capability plane.
+- `try` — autonomous research and strategy-evaluation workload.
+- `android-ai-assistant` — software/device-agent workload.
+- `RX50` — hardware-engineering and physical-evidence workload.
+
+AIOS references and governs workloads; it does not copy, merge, or silently rewrite their source.
+
+Initial workload registrations live in `capabilities/registry.yaml`.
+
+## Safety / governance invariants
+
+- No fabricated evidence, measurements, tests, or specifications.
+- No silent promotion of assumptions or observations into facts or verification.
+- Agents cannot modify governing policy, evidence requirements, promotion criteria, budgets, or terminal conditions.
+- Autonomous retries are bounded by external policy.
+- Every material state mutation is auditable and recoverable.
+- Verification claims must resolve to evidence or deterministic checks appropriate to the claim.
+- Digital verification and physical verification remain distinct.
+
+## Current implementation
+
+The repository contains the M1/M1.5 state and mutation foundation plus implemented authority, verification, reconciliation, contract, runtime and durable-execution components. Capability identity/registry and first-class execution context are now established as the next control-plane foundation; capability-graph persistence, full task orchestration and end-to-end cross-repository execution remain governed implementation work.
