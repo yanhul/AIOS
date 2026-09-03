@@ -1,9 +1,9 @@
 """AIOS per-project state directory layout.
 
 This module owns the on-disk LAYOUT of ``.aios/<type>/`` only. It performs
-no entity or event writes: since M1.5 every state mutation MUST go through
-the authoritative boundary in :mod:`core.mutation` (``apply_mutations`` or
-its shared atomic commit primitive).
+no entity or event writes: every state mutation MUST go through the
+authoritative boundary in :mod:`core.mutation` (or its shared atomic commit
+primitive).
 """
 
 import os
@@ -17,7 +17,6 @@ STATE_DIRS = [
     "verifications",
     "snapshots",
     "events",
-    "capabilities",
 ]
 
 ENTITY_TO_DIR = {
