@@ -48,3 +48,31 @@ def test_invalid_relation_and_unregistered_endpoint_fail_closed():
         assert False
     except CapabilityError:
         pass
+
+
+def test_registry_persists_and_reloads_through_aios_state(tmp_path):
+    registry = CapabilityRegistry()
+    a = cap("try.research", status="ACTIVE", inputs=("problem",), outputs=("evidence",))
+    b = cap("try.verify", status="ACTIVE", inputs=("evidence",), outputs=("decision",))
+    registry.register(a)
+    registry.register(b)
+    registry.add_edge(CapabilityEdge(a.key, "validated_by", b.key, ("EV-1",), "VERIFIED_DIGITAL"))
+
+    committed = registry.persist(tmp_path, actor="test-suite")
+    assert committed.endswith("capability_registry.json")
+
+    restored = CapabilityRegistry.load(tmp_path)
+    assert restored.get("try.research", "1") == a
+    assert restored.relationships() == registry.relationships()
+    assert restored.discover(required_inputs=("problem",), environment=None) == [a]
+
+
+def test_registry_load_fails_closed_on_corrupt_state(tmp_path):
+    path = tmp_path / "capabilities"
+    path.mkdir()
+    (path / "capability_registry.json").write_text("{broken", encoding="utf-8")
+    try:
+        CapabilityRegistry.load(tmp_path)
+        assert False
+    except CapabilityError as exc:
+        assert "invalid capability registry JSON" in str(exc)
