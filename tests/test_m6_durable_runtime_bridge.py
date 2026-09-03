@@ -1,6 +1,7 @@
 import pytest
 
 from core.authority import persist_contract, persist_permit
+from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.durable_runtime import RuntimeSubmission
 from core.effect_authority import create_effect, dispatch, transition
@@ -45,6 +46,9 @@ class GoodRuntime:
 
 
 def setup(tmp_path, max_attempts=1):
+    registry = CapabilityRegistry()
+    registry.register(Capability("fake-provider", "1", "test-fixture", "test", status="ACTIVE"))
+    registry.persist(str(tmp_path), "test-fixture")
     contract = make_contract(max_attempts)
     cid = contract_identity(contract)
     persist_contract(str(tmp_path), contract)
