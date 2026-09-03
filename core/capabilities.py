@@ -119,7 +119,6 @@ class CapabilityRegistry:
         return sorted(active or matches, key=lambda c: c.version)[-1] if matches else None
 
     def require(self, key: str) -> Capability:
-        """Resolve an exact versioned capability or fail closed."""
         if not isinstance(key, str) or "@" not in key:
             raise CapabilityError(f"capability reference must be versioned: {key!r}")
         capability = self._capabilities.get(key)
@@ -130,32 +129,20 @@ class CapabilityRegistry:
         return capability
 
     def resolve_contract(self, contract: dict[str, Any]) -> tuple[Capability, ...]:
-        """Bind every contract capability reference to a registered capability.
-
-        This is intentionally separate from contract validation: the contract
-        module defines syntax/binding, while the registry defines whether the
-        named execution surfaces actually exist.
-        """
         if not isinstance(contract, dict) or not isinstance(contract.get("capabilities"), list):
             raise CapabilityError("contract capabilities must be a list")
-        resolved = tuple(self.require(key) for key in contract["capabilities"])
-        return resolved
+        return tuple(self.require(key) for key in contract["capabilities"])
 
     def discover(self, *, kind: str | None = None, required_inputs: Iterable[str] = (), required_outputs: Iterable[str] = (),
                  environment: str | None = None, permission: str | None = None) -> list[Capability]:
         req_in, req_out = set(required_inputs), set(required_outputs)
         result = []
         for capability in self._capabilities.values():
-            if capability.status == "DEPRECATED":
-                continue
-            if kind and capability.kind != kind:
-                continue
-            if req_in - set(capability.inputs) or req_out - set(capability.outputs):
-                continue
-            if environment and environment not in capability.environments:
-                continue
-            if permission and permission not in capability.permissions:
-                continue
+            if capability.status == "DEPRECATED": continue
+            if kind and capability.kind != kind: continue
+            if req_in - set(capability.inputs) or req_out - set(capability.outputs): continue
+            if environment and environment not in capability.environments: continue
+            if permission and permission not in capability.permissions: continue
             result.append(capability)
         return sorted(result, key=lambda c: c.key)
 
@@ -175,21 +162,17 @@ class CapabilityRegistry:
                       key=lambda e: (e.source, e.relation, e.target))
 
     def snapshot(self) -> dict[str, Any]:
-        return {"schema_version": 1,
-                "capabilities": [c.as_dict() for c in sorted(self._capabilities.values(), key=lambda x: x.key)],
+        return {"capabilities": [c.as_dict() for c in sorted(self._capabilities.values(), key=lambda x: x.key)],
                 "edges": [e.as_dict() for e in self.relationships()]}
 
     def persist(self, aios_dir: str | Path, actor: str) -> str:
-        """Atomically persist the registry through AIOS' shared commit boundary."""
         if not isinstance(actor, str) or not actor.strip():
             raise CapabilityError("actor must be a non-empty string")
-        payload = self.snapshot()
-        payload["persisted_by"] = actor
+        payload = {"schema_version": 1, **self.snapshot(), "persisted_by": actor}
         return commit_batch(str(aios_dir), [(CAPABILITY_STATE_FILE, payload)])[0]
 
     @classmethod
     def load(cls, aios_dir: str | Path) -> "CapabilityRegistry":
-        """Load durable state and validate every capability and graph edge."""
         filename = Path(aios_dir) / CAPABILITY_STATE_FILE
         if not filename.is_file():
             raise CapabilityError(f"capability registry not found: {filename}")
@@ -200,10 +183,8 @@ class CapabilityRegistry:
         if data.get("schema_version") != 1:
             raise CapabilityError("unsupported capability registry schema_version")
         registry = cls()
-        for raw in data.get("capabilities", []):
-            registry.register(Capability.from_dict(raw))
-        for raw in data.get("edges", []):
-            registry.add_edge(CapabilityEdge.from_dict(raw))
+        for raw in data.get("capabilities", []): registry.register(Capability.from_dict(raw))
+        for raw in data.get("edges", []): registry.add_edge(CapabilityEdge.from_dict(raw))
         return registry
 
 __all__ = ["Capability", "CapabilityEdge", "CapabilityError", "CapabilityRegistry", "ALLOWED_EDGE_TYPES", "VERIFICATION_LEVELS", "CAPABILITY_STATE_FILE"]
