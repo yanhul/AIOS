@@ -2,7 +2,7 @@ schema_version: 1
 status: normative
 
 # Registration is descriptive. Activation/promotion is governed by AIOS policy
-# and evidence; a workload repository remains independently owned.
+# and evidence; workload repositories remain independently owned.
 capabilities:
   - capability_id: try.research
     version: "1"
@@ -34,7 +34,6 @@ capabilities:
     verification: [requirements_coverage, contradiction_check, electrical_verification, physical_evidence]
     context: [component_revisions, measurements, hardware_state, toolchain]
 
-relationships:
-  - [try.research@1, validated_by, try.research@1]
-  - [android.assistant@1, validated_by, android.assistant@1]
-  - [rx50.engineering@1, validated_by, rx50.engineering@1]
+# Edges are created only when both endpoints are registered and the relation
+# has explicit provenance/evidence. No relationship is assumed by registration.
+relationships: []
