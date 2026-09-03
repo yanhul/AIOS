@@ -18,7 +18,7 @@ AIOS is not a model and not a single agent. It governs agents, tools, software, 
 - **Experience / Evolution:** verified task-to-capability history, negative evidence, versioned candidate capabilities and governed promotion.
 - **Context:** task, identity, device/software, permissions, resources, time, location and physical state are first-class execution inputs.
 
-See `docs/TARGET_ARCHITECTURE.md` for the normative target and `docs/ROADMAP.md` for implementation status.
+See `docs/TARGET_ARCHITECTURE.md` for the normative target and `docs/ROADMAP.md` for implementation status. See `docs/HARNESS_REFERENCE.md` for the Claude Code/Jarvis-style durable-harness boundary adopted by AIOS.
 
 ## Proof-of-system workloads
 
@@ -45,4 +45,4 @@ Initial workload registrations live in `capabilities/registry.yaml`.
 
 ## Current implementation
 
-The repository contains the M1/M1.5 state and mutation foundation plus implemented authority, verification, reconciliation, contract, runtime and durable-execution components. Capability identity/registry and first-class execution context are now established as the next control-plane foundation; capability-graph persistence, full task orchestration and end-to-end cross-repository execution remain governed implementation work.
+The repository contains the M1/M1.5 state and mutation foundation plus implemented authority, verification, reconciliation, contract, runtime and durable-execution components. A dependency-free governed durable loop is now implemented in `core/durable_loop.py` with coverage for bounded execution, persistence, terminal gating and resume. Capability identity/registry and first-class execution context are now established as the next control-plane foundation; capability-graph persistence, full task orchestration and end-to-end cross-repository execution remain governed implementation work.
