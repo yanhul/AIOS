@@ -78,8 +78,9 @@ def test_action_requires_control_plane_authorization():
         terminal_evaluator=lambda verification, state: "PASS",
         action_authorizer=deny,
     )
-    with pytest.raises(PermissionError):
-        run_durable_loop(FakeExecutor(), MemoryStateStore(), policy)
+    result = run_durable_loop(FakeExecutor(), MemoryStateStore(), policy)
+    assert result["status"] == "BLOCKED"
+    assert "authorization" in result["block_reason"]
     assert calls == [{"next": 1}]
 
 
@@ -90,11 +91,7 @@ def test_resume_with_stale_policy_is_blocked():
         "history": [],
         "policy_digest": "old",
     })
-    result = run_durable_loop(
-        FakeExecutor(),
-        store,
-        _policy(policy_digest="new"),
-    )
+    result = run_durable_loop(FakeExecutor(), store, _policy(policy_digest="new"))
     assert result["status"] == "BLOCKED"
     assert "policy digest" in result["block_reason"]
 
@@ -122,3 +119,19 @@ def test_agent_cannot_forge_terminal_state():
         _policy(max_steps=1, terminal_evaluator=lambda verification, state: None),
     )
     assert result["status"] == "INCONCLUSIVE"
+
+
+def test_agent_cannot_mutate_authoritative_history_through_snapshot():
+    class MutatingExecutor(FakeExecutor):
+        def observe(self, state):
+            state["history"].append({"forged": True})
+            return {"n": state["step"]}
+
+    store = MemoryStateStore()
+    result = run_durable_loop(
+        MutatingExecutor(),
+        store,
+        _policy(max_steps=1, terminal_evaluator=lambda verification, state: None),
+    )
+    assert result["status"] == "INCONCLUSIVE"
+    assert result["history"] == [{"step": 1, "observation": {"n": 0}, "decision": {"next": 1}, "action": 1, "verification": {"value": 1}}]
