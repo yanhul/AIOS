@@ -118,6 +118,29 @@ class CapabilityRegistry:
         active = [c for c in matches if c.status == "ACTIVE"]
         return sorted(active or matches, key=lambda c: c.version)[-1] if matches else None
 
+    def require(self, key: str) -> Capability:
+        """Resolve an exact versioned capability or fail closed."""
+        if not isinstance(key, str) or "@" not in key:
+            raise CapabilityError(f"capability reference must be versioned: {key!r}")
+        capability = self._capabilities.get(key)
+        if capability is None:
+            raise CapabilityError(f"capability is not registered: {key}")
+        if capability.status == "DEPRECATED":
+            raise CapabilityError(f"capability is deprecated: {key}")
+        return capability
+
+    def resolve_contract(self, contract: dict[str, Any]) -> tuple[Capability, ...]:
+        """Bind every contract capability reference to a registered capability.
+
+        This is intentionally separate from contract validation: the contract
+        module defines syntax/binding, while the registry defines whether the
+        named execution surfaces actually exist.
+        """
+        if not isinstance(contract, dict) or not isinstance(contract.get("capabilities"), list):
+            raise CapabilityError("contract capabilities must be a list")
+        resolved = tuple(self.require(key) for key in contract["capabilities"])
+        return resolved
+
     def discover(self, *, kind: str | None = None, required_inputs: Iterable[str] = (), required_outputs: Iterable[str] = (),
                  environment: str | None = None, permission: str | None = None) -> list[Capability]:
         req_in, req_out = set(required_inputs), set(required_outputs)
