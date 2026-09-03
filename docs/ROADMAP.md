@@ -1,77 +1,135 @@
 # AIOS Roadmap
 
-Status: M1 + M1.5 implemented. M2+ below is FUTURE work — none implemented.
+Status: M1 + M1.5 implemented; parts of M2/M3 implemented. This roadmap separates implemented foundation from the target architecture in `docs/TARGET_ARCHITECTURE.md`.
 
-## M0 — Bootstrap scaffold (DONE, scaffold only)
+## Phase A — Governance kernel
 
-- External AIOS directory at `E:\Projects\AIOS`.
-- `projects/RX50/project.yaml` referencing the actual RX50 repository.
-- Empty `.aios/` state directories (requirements, decisions, evidence, issues, tasks, snapshots, events).
-- Documentation only: architecture, state model, agent spec, project README, models README, OpenClaw README, tests README.
-- Zero runtime dependencies. No packages, no credentials, no API calls.
+### M0 — Bootstrap scaffold (DONE)
+- External AIOS project structure.
+- Project references without copying or owning workload source.
+- Architecture/state/agent specifications.
+- Zero runtime credentials/dependencies by default.
 
-## M1 — State inspection + controlled RX50 state import (DONE)
+### M1 — State inspection + controlled import (DONE)
+- Inspect authoritative workload registers.
+- Import into AIOS-side state without mutating workload repositories.
+- Preserve provenance.
 
-- Inspect authoritative RX50 registers, import-map to AIOS entity types WITHOUT mutating RX50.
-- Import only into AIOS `.aios/` dirs; RX50 unchanged.
-- NOTE: the human-reconciliation step for uncertain provenance is still NOT implemented; imports commit directly through the M1.5 boundary.
+### M1.5 — Writer enforcement (DONE)
+- Single validated mutation boundary.
+- Entity contracts and malformed-state rejection.
+- Mandatory actor identity.
+- Deterministic event IDs.
+- Atomic entity+event commit and recovery.
+- Undefined transitions rejected until explicitly modeled.
 
-## M1.5 — Writer enforcement (DONE)
+### M2 — Authority / verification foundation (PARTIALLY DONE)
+- Immutable snapshot/audit semantics.
+- Machine-checkable reconciliation.
+- Append-only verification records.
+- Evidence-reference resolution; missing evidence cannot produce VERIFIED.
+- Authority separation between imported source claims and AIOS verification.
+- Remaining: general transition table, policy engine, gates, contradiction resolution workflow, agent execution.
 
-- Single authoritative mutation boundary: `core/mutation.py::apply_mutations`.
-- Entity contracts per type (required fields, ID formats, structural status rules); unknown types and malformed entities fail loudly; unknown types are never silently dropped.
-- Transition legality: creation and byte-identical replay only; ANY change to a committed entity is rejected as an UNDEFINED transition (no transition rules are invented before M2).
-- Mandatory actor identity on every mutation event.
-- Deterministic content-derived event IDs: SHA-256 over canonicalized event values (full digest; no Python `hash()`).
-- Atomic entity+event commit: staged temps -> write-ahead journal -> atomic renames, with roll-forward recovery (`recover_pending`) on every mutation entry.
-- Consecutive snapshots with changed provenance (new snapshot_id) are rejected as undefined transitions by design until M2 defines refresh semantics.
+### M3 — Import/context (PARTIALLY DONE)
+- Source/store divergence detection.
+- OBSERVED snapshot + findings without automatic repair.
+- Remaining: importer hardening and deterministic context assembly.
 
-## M2 — Authority / verification foundation (PARTIALLY DONE)
+## Phase B — AIOS capability operating system
 
-- DONE: snapshot semantics OBSERVED/COMMITTED derived from the audit log (snapshots immutable; failed/rejected mutations stay OBSERVED).
-- DONE: machine-checkable reconciliation (`core/reconcile.py`): entity/event pairing, digest mismatches, committed-snapshot references, staging/journal state, foreign schemas. Detection only — no auto-repair.
-- DONE: AIOS-native verification records (`core/verification.py`): append-only attempts, outcome computed by resolving evidence refs against persisted EVIDENCE entities; missing/dangling refs can never yield VERIFIED; every record paired with an auditable event through the shared atomic kernel.
-- DONE: authority separation: imported register status text ("RX50 says X") is never treated as AIOS verification ("AIOS determined Y from evidence E").
-- NOT DONE: general entity status-transition table (M2 scope kept deliberately absent), gates, policy, contradiction resolution, agents.
+### M4 — Capability identity + registry
+- Stable `capability_id` and version contracts.
+- Capability input/output, permissions, environment, evidence and verification metadata.
+- Register agents, tools, software workloads, devices and services.
+- Capability trust/history derived from evidence, not arbitrary ratings.
 
-## M2 legacy placeholder (superseded by the section above)
+### M5 — Capability graph
+- Relationship edges: `requires`, `produces`, `composes_with`, `validated_by`, `works_under`.
+- Record verified composition history.
+- Use graph evidence for capability discovery and planning.
 
-Entity schema (requirement, decision, assumption, evidence, issue, task, artifact, gate, event).
-Validated, auditable transitions (FACT / ASSUMPTION / DECISION / VERIFIED).
-No silent class promotion.
+### M6 — Contract/policy/task engine
+- Natural-language problem intake -> machine-checkable contract.
+- Explicit requirements, constraints, evidence requirements, acceptance criteria and forbidden assumptions.
+- Agent cannot change governing policy, evidence requirements, promotion criteria, budget or terminal conditions.
 
-## M3 — Importer + context builder (PARTIALLY DONE)
+### M7 — Agent/runtime adapters
+- Role-scoped explorer/engineer/critic/verifier/gatekeeper.
+- Stable runtime adapter contract.
+- Model registry and capability-based routing.
+- OpenClaw and other runtimes remain adapters, not the authority layer.
 
-- DONE (M3 minimal, detection only): source/store divergence detection —
-  `reconcile(aios_dir, source_root=...)` re-derives entities through the
-  existing read-only import pipeline and reports `H.source_divergence.{added,
-  changed,missing,ambiguous}` findings. Neither side is ever mutated; no
-  audit event is created for divergence; repair does not exist.
-- Refresh posture: a new source observation produces a new OBSERVED snapshot
-  plus divergence findings for human review. Provenance-changing re-imports
-  remain REJECTED under M1.5 transition semantics (`TransitionError`).
-  Automatic refresh/overwrite of the entity store does not exist.
-- REMAINING: deterministic importer hardening (duplicate register IDs across
-  files currently abort batches via entity contracts) and context assembly
-  from AIOS state.
+## Phase C — Autonomous execution
 
-## M4 — Agents
+### M8 — Durable closed loop
+`OBSERVE -> DECIDE/PLAN -> ACT -> VERIFY -> PERSIST -> RESUME`
 
-- Role specs (explorer, engineer, critic, verifier, gatekeeper) become real, permission-scoped agents.
+- Bounded retries.
+- Crash/interruption recovery.
+- External-effect state machine.
+- Structured execution results.
+- No silent state promotion.
 
-## M5 — Model routing
+### M9 — Evidence / contradiction / promotion
+- Evidence graph and provenance.
+- Contradiction search and explicit resolution workflow.
+- Verification levels: OBSERVED, EVIDENCED, VERIFIED_DIGITAL, VERIFIED_PHYSICAL, PROMOTED.
+- Fixed PASS/BLOCKED/INCONCLUSIVE gates.
 
-- Model registry with capability-based routing. No keys or credentials stored in repo.
+### M10 — Experience / contribution / relationship memory
+- Record task -> capability -> action -> evidence -> result lineage.
+- Measure contribution/utility from verified outcomes.
+- Preserve negative evidence and failure history.
+- Learn capability relationships without treating model memory as truth.
 
-## M6 — OpenClaw adapter
+### M11 — Capability evolution
+- Candidate capability/version generation.
+- Regression and comparative evaluation.
+- Evidence review and promotion gate.
+- Versioned rollback.
+- No self-promotion.
 
-- AIOS task → OpenClaw adapter → runtime → tools → structured result → AIOS validation.
+## Phase D — Real-world AIOS
 
-## M7 — CLI + automation
+### M12 — Context and physical-world interfaces
+- Device, software, network, time, permission and physical context as first-class inputs.
+- Device/sensor/robot/lab adapters.
+- Separate digital vs physical verification.
+- Physical observations feed the evidence/experience loop.
 
-- CLI surface and optional autonomous execution under policy.
+### M13 — Interoperable agent network
+- Agent-to-agent, agent-to-tool, agent-to-device and agent-to-service contracts.
+- Identity, capability discovery, authorization, context, invocation, result and provenance.
+- Interoperate with emerging agent-interconnection standards without weakening AIOS governance.
 
-## Policy
+## Proof-of-system workloads
 
-- RX50 is read-only to AIOS at all milestones.
-- No invention of state; no fabricated tests; every import logged.
+The four repositories are intentionally different:
+
+- `AIOS` — control/governance/capability plane.
+- `try` — autonomous research and strategy-evaluation workload.
+- `android-ai-assistant` — software + device-agent workload.
+- `RX50` — hardware-engineering + physical-evidence workload.
+
+The objective is not to merge their source trees. The objective is to make them registered, governed capabilities of one AIOS while preserving independent ownership.
+
+## AIOS v1 Definition of Done
+
+Do not declare v1 complete because CI is green or because the control repository contains many modules.
+
+Declare v1 complete only when three independent workload classes demonstrate end-to-end:
+
+`natural-language problem -> contract -> capability discovery -> bounded execution -> evidence -> verification -> reconciliation -> artifact -> provenance -> promotion/blocked terminal state -> durable resume/reuse`.
+
+Required terminal outcomes are fixed: `PASS`, `BLOCKED`, `INCONCLUSIVE`.
+
+## Permanent invariants
+
+- No fabricated evidence, measurements, tests, or specifications.
+- No silent promotion of assumptions/observations into facts or verification.
+- No agent-controlled governing policy or terminal criteria.
+- No uncontrolled autonomous retry loop.
+- Workload source remains independently owned.
+- Every material state mutation is auditable and recoverable.
+- Verification claims must resolve to evidence or deterministic checks appropriate to the claim.
