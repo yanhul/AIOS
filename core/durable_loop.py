@@ -5,6 +5,7 @@ agent/model, and every action must pass the control-plane authorization hook.
 """
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Protocol
 
@@ -48,10 +49,10 @@ class MemoryStateStore:
     state: dict[str, Any] = field(default_factory=dict)
 
     def load(self) -> Mapping[str, Any] | None:
-        return dict(self.state) if self.state else None
+        return deepcopy(self.state) if self.state else None
 
     def save(self, state: Mapping[str, Any]) -> None:
-        self.state = dict(state)
+        self.state = deepcopy(dict(state))
 
 
 def _validate_loaded_state(
@@ -78,11 +79,12 @@ def run_durable_loop(
 ) -> Mapping[str, Any]:
     """Run/resume OBSERVE -> DECIDE -> ACT -> VERIFY -> PERSIST.
 
-    The executor proposes work but cannot bypass authorization, extend the budget,
-    redefine terminal conditions, or make a stale persisted state authoritative.
+    The executor receives isolated snapshots and cannot mutate authoritative state.
+    It cannot bypass authorization, extend the budget, redefine terminal conditions,
+    or make a stale persisted state authoritative.
     """
     loaded = store.load()
-    state: dict[str, Any] = dict(loaded or {})
+    state: dict[str, Any] = deepcopy(dict(loaded or {}))
     state.setdefault("step", 0)
     state.setdefault("status", "RUNNING")
     state.setdefault("history", [])
@@ -101,24 +103,30 @@ def run_durable_loop(
         return state
 
     while state["step"] < policy.max_steps:
-        observation = executor.observe(dict(state))
-        decision = executor.decide(observation, dict(state))
-        policy.action_authorizer(decision, dict(state))
-        action_result = executor.act(decision, dict(state))
-        verification = executor.verify(action_result, dict(state))
+        observation = executor.observe(deepcopy(state))
+        decision = executor.decide(deepcopy(observation), deepcopy(state))
+        try:
+            policy.action_authorizer(deepcopy(decision), deepcopy(state))
+        except Exception as exc:
+            state["status"] = "BLOCKED"
+            state["block_reason"] = f"action authorization failed: {type(exc).__name__}: {exc}"
+            store.save(state)
+            return state
+        action_result = executor.act(deepcopy(decision), deepcopy(state))
+        verification = executor.verify(deepcopy(action_result), deepcopy(state))
 
         state["step"] += 1
         state["history"].append(
             {
                 "step": state["step"],
-                "observation": observation,
-                "decision": decision,
-                "action": action_result,
-                "verification": verification,
+                "observation": deepcopy(observation),
+                "decision": deepcopy(decision),
+                "action": deepcopy(action_result),
+                "verification": deepcopy(verification),
             }
         )
 
-        terminal = policy.terminal_evaluator(verification, dict(state))
+        terminal = policy.terminal_evaluator(deepcopy(verification), deepcopy(state))
         if terminal is not None:
             if terminal not in TERMINAL:
                 raise ValueError(f"invalid terminal status: {terminal}")
