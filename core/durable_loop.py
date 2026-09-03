@@ -2,7 +2,7 @@
 
 The loop deliberately keeps governing policy outside the agent/model. A workload may
 observe, plan, act, verify and request the next step, but it cannot mutate policy,
-terminal conditions, evidence requirements, or retry budgets.
+terminal conditions, evidence requirements, or the execution budget.
 """
 from __future__ import annotations
 
@@ -31,7 +31,6 @@ class LoopPolicy:
 
     max_steps: int
     terminal_evaluator: Callable[[Any, Mapping[str, Any]], str | None]
-    allow_retry: bool = True
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
