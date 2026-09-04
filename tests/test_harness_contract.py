@@ -62,6 +62,50 @@ def test_resume_rejects_stale_capability_version():
         state.validate(p)
 
 
+def test_resume_rejects_budget_inflation():
+    p = policy()
+    state = HarnessState(
+        execution_id="exec-1",
+        policy_digest="sha256:policy",
+        capability_id="cap.research",
+        capability_version="1.0.0",
+        step=3,
+        budget_remaining=3,
+        retry_budget_remaining=2,
+    )
+    with pytest.raises(ValueError, match="step budget"):
+        state.validate(p)
+
+
+def test_resume_rejects_retry_budget_inflation():
+    p = policy()
+    state = HarnessState(
+        execution_id="exec-1",
+        policy_digest="sha256:policy",
+        capability_id="cap.research",
+        capability_version="1.0.0",
+        budget_remaining=2,
+        retry_budget_remaining=3,
+    )
+    with pytest.raises(ValueError, match="retry budget"):
+        state.validate(p)
+
+
+def test_running_state_cannot_carry_terminal_reason():
+    p = policy()
+    state = HarnessState(
+        execution_id="exec-1",
+        policy_digest="sha256:policy",
+        capability_id="cap.research",
+        capability_version="1.0.0",
+        budget_remaining=5,
+        retry_budget_remaining=2,
+        terminal_reason="should-not-exist",
+    )
+    with pytest.raises(ValueError, match="terminal reason"):
+        state.validate(p)
+
+
 def test_effect_must_be_declared_and_have_id():
     p = policy()
     with pytest.raises(PermissionError):
@@ -87,7 +131,7 @@ def test_terminal_state_requires_reason():
         capability_id="cap.research",
         capability_version="1.0.0",
         status="PASS",
-        budget_remaining=4,
+        budget_remaining=5,
         retry_budget_remaining=2,
     )
     with pytest.raises(ValueError, match="reason"):
@@ -103,3 +147,10 @@ def test_evidence_is_provenance_bearing():
         digest="sha256:abc",
     )
     assert evidence.digest == "sha256:abc"
+
+
+def test_evidence_rejects_non_string_provenance_fields():
+    with pytest.raises(ValueError, match="source"):
+        EvidenceRef(ref="r", source=123, claim="c", verification_level="OBSERVED")
+    with pytest.raises(ValueError, match="digest"):
+        EvidenceRef(ref="r", source="s", claim="c", verification_level="OBSERVED", digest="")
