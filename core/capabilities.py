@@ -121,13 +121,14 @@ class CapabilityRegistry:
         return sorted(active or matches, key=lambda c: c.version)[-1] if matches else None
 
     def require(self, key: str) -> Capability:
+        """Resolve a capability for execution; only ACTIVE versions are eligible."""
         if not isinstance(key, str) or "@" not in key:
             raise CapabilityError(f"capability reference must be versioned: {key!r}")
         capability = self._capabilities.get(key)
         if capability is None:
             raise CapabilityError(f"capability is not registered: {key}")
-        if capability.status == "DEPRECATED":
-            raise CapabilityError(f"capability is deprecated: {key}")
+        if capability.status != "ACTIVE":
+            raise CapabilityError(f"capability is not active: {key}")
         return capability
 
     def resolve_contract(self, contract: dict[str, Any]) -> tuple[Capability, ...]:
