@@ -6,7 +6,7 @@ same atomic commit primitive as the rest of AIOS state.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -113,6 +113,20 @@ class CapabilityRegistry:
         self._capabilities[capability.key] = capability
         return capability
 
+    def activate(self, key: str) -> Capability:
+        """Control-plane activation of an already registered candidate.
+
+        Activation changes eligibility; it does not create a new capability
+        identity and therefore cannot be expressed as a second registration.
+        Callers must explicitly persist the registry after activation.
+        """
+        capability = self.require(key)
+        if capability.status == "DEPRECATED":
+            raise CapabilityError(f"deprecated capability cannot be activated: {key}")
+        activated = replace(capability, status="ACTIVE")
+        self._capabilities[key] = activated
+        return activated
+
     def get(self, capability_id: str, version: str | None = None) -> Capability | None:
         if version is not None:
             return self._capabilities.get(f"{capability_id}@{version}")
@@ -143,56 +157,50 @@ class CapabilityRegistry:
 
     def discover(self, *, kind: str | None = None, required_inputs: Iterable[str] = (), required_outputs: Iterable[str] = (),
                  environment: str | None = None, permission: str | None = None) -> list[Capability]:
-        req_in, req_out = set(required_inputs), set(required_outputs)
+        required_inputs = set(required_inputs); required_outputs = set(required_outputs)
         result = []
         for capability in self._capabilities.values():
-            if capability.status == "DEPRECATED": continue
-            if kind and capability.kind != kind: continue
-            if req_in - set(capability.inputs) or req_out - set(capability.outputs): continue
-            if environment and environment not in capability.environments: continue
-            if permission and permission not in capability.permissions: continue
+            if capability.status == "DEPRECATED":
+                continue
+            if kind is not None and capability.kind != kind:
+                continue
+            if not required_inputs.issubset(capability.inputs) or not required_outputs.issubset(capability.outputs):
+                continue
+            if environment is not None and environment not in capability.environments:
+                continue
+            if permission is not None and permission not in capability.permissions:
+                continue
             result.append(capability)
         return sorted(result, key=lambda c: c.key)
 
     def add_edge(self, edge: CapabilityEdge) -> CapabilityEdge:
         if edge.source not in self._capabilities or edge.target not in self._capabilities:
-            raise CapabilityError("edge endpoints must be registered capabilities")
-        key = (edge.source, edge.relation, edge.target)
-        existing = self._edges.get(key)
-        if existing is not None and existing != edge:
-            raise CapabilityError("relationship already exists with different evidence")
-        self._edges[key] = edge
+            raise CapabilityError("capability relationship endpoints must be registered")
+        self._edges[(edge.source, edge.relation, edge.target)] = edge
         return edge
 
-    def relationships(self, source: str | None = None, relation: str | None = None, target: str | None = None) -> list[CapabilityEdge]:
-        return sorted((e for e in self._edges.values() if (source is None or e.source == source)
-                       and (relation is None or e.relation == relation) and (target is None or e.target == target)),
-                      key=lambda e: (e.source, e.relation, e.target))
+    def graph(self) -> tuple[CapabilityEdge, ...]:
+        return tuple(self._edges[k] for k in sorted(self._edges))
 
-    def snapshot(self) -> dict[str, Any]:
-        return {"capabilities": [c.as_dict() for c in sorted(self._capabilities.values(), key=lambda x: x.key)],
-                "edges": [e.as_dict() for e in self.relationships()]}
-
-    def persist(self, aios_dir: str | Path, actor: str) -> str:
-        if not isinstance(actor, str) or not actor.strip():
-            raise CapabilityError("actor must be a non-empty string")
-        payload = {"schema_version": 1, **self.snapshot(), "persisted_by": actor}
-        return commit_batch(str(aios_dir), [(CAPABILITY_STATE_FILE, payload)])[0]
+    def persist(self, aios_dir: str | Path, actor: str) -> None:
+        record = {"capabilities": [c.as_dict() for c in sorted(self._capabilities.values(), key=lambda c: c.key)],
+                  "edges": [e.as_dict() for e in self.graph()]}
+        commit_batch(aios_dir, [(CAPABILITY_STATE_FILE, record)], actor=actor)
 
     @classmethod
     def load(cls, aios_dir: str | Path) -> "CapabilityRegistry":
-        filename = Path(aios_dir) / CAPABILITY_STATE_FILE
-        if not filename.is_file():
-            raise CapabilityError(f"capability registry not found: {filename}")
+        path = Path(aios_dir) / CAPABILITY_STATE_FILE
+        if not path.exists():
+            raise CapabilityError(f"capability registry is missing: {path}")
         try:
-            data = json.loads(filename.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            raise CapabilityError(f"invalid capability registry JSON: {exc}") from exc
-        if data.get("schema_version") != 1:
-            raise CapabilityError("unsupported capability registry schema_version")
-        registry = cls()
-        for raw in data.get("capabilities", []): registry.register(Capability.from_dict(raw))
-        for raw in data.get("edges", []): registry.add_edge(CapabilityEdge.from_dict(raw))
-        return registry
+            record = json.loads(path.read_text(encoding="utf-8"))
+            registry = cls()
+            for value in record["capabilities"]:
+                registry.register(Capability.from_dict(value))
+            for value in record.get("edges", ()):
+                registry.add_edge(CapabilityEdge.from_dict(value))
+            return registry
+        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            raise CapabilityError(f"invalid persisted capability registry: {exc}") from exc
 
-__all__ = ["Capability", "CapabilityEdge", "CapabilityError", "CapabilityRegistry", "ALLOWED_EDGE_TYPES", "VERIFICATION_LEVELS", "CAPABILITY_STATE_FILE"]
+__all__ = ["Capability", "CapabilityEdge", "CapabilityError", "CapabilityRegistry"]
