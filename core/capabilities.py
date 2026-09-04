@@ -81,6 +81,8 @@ class CapabilityEdge:
             raise CapabilityError(f"unsupported relationship: {self.relation}")
         if not self.source or not self.target:
             raise CapabilityError("edge endpoints are required")
+        if not self.evidence_refs or any(not isinstance(ref, str) or not ref.strip() for ref in self.evidence_refs):
+            raise CapabilityError("capability relationships require explicit evidence references")
         if self.verification_level not in VERIFICATION_LEVELS:
             raise CapabilityError("invalid verification level")
 
