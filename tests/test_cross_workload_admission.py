@@ -3,6 +3,7 @@ import pytest
 from core.authority import authorize, persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
+from core.mutation import TransitionError
 
 
 WORKLOAD_CAPABILITIES = (
@@ -59,5 +60,5 @@ def test_unregistered_workload_is_rejected_before_permit_issue(tmp_path):
     registry.persist(str(tmp_path), "aios:conformance")
 
     contract = _contract("unregistered.workload@1")
-    with pytest.raises(ValueError, match="not registered"):
+    with pytest.raises(TransitionError, match="capability authority rejected contract: capability is not registered"):
         persist_contract(str(tmp_path), contract)
