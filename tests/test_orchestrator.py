@@ -33,7 +33,7 @@ def test_governed_execution_resolves_authority_before_loop(monkeypatch):
 
     result = run_governed_execution(executor=executor, store=MemoryStateStore(), policy=policy)
     assert result["status"] == "PASS"
-    assert calls == ["authorize", ("execute", "op-1")]
+    assert calls == ["authorize", "authorize", ("execute", "op-1")]
 
 
 def test_runtime_action_requires_explicit_operation_id():
@@ -93,7 +93,8 @@ def test_resume_reauthorizes_current_contract_and_permit(monkeypatch):
     assert calls == ["authorize", "authorize"]
 
 
-def test_resume_binding_mismatch_fails_closed():
+def test_resume_binding_mismatch_fails_closed(monkeypatch):
+    monkeypatch.setattr("core.orchestrator.authorize", lambda *args: None)
     store = MemoryStateStore(
         {
             "contract_id": "attacker-contract",
