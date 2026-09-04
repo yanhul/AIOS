@@ -81,7 +81,8 @@ def run_durable_loop(
 
     The executor receives isolated snapshots and cannot mutate authoritative state.
     It cannot bypass authorization, extend the budget, redefine terminal conditions,
-    or make a stale persisted state authoritative.
+    or make a stale persisted state authoritative. Execution failures are persisted
+    as BLOCKED so exceptions cannot erase the durable boundary.
     """
     loaded = store.load()
     state: dict[str, Any] = deepcopy(dict(loaded or {}))
@@ -103,8 +104,15 @@ def run_durable_loop(
         return state
 
     while state["step"] < policy.max_steps:
-        observation = executor.observe(deepcopy(state))
-        decision = executor.decide(deepcopy(observation), deepcopy(state))
+        try:
+            observation = executor.observe(deepcopy(state))
+            decision = executor.decide(deepcopy(observation), deepcopy(state))
+        except Exception as exc:
+            state["status"] = "BLOCKED"
+            state["block_reason"] = f"execution failed before authorization: {type(exc).__name__}: {exc}"
+            store.save(state)
+            return state
+
         try:
             policy.action_authorizer(deepcopy(decision), deepcopy(state))
         except Exception as exc:
@@ -112,8 +120,15 @@ def run_durable_loop(
             state["block_reason"] = f"action authorization failed: {type(exc).__name__}: {exc}"
             store.save(state)
             return state
-        action_result = executor.act(deepcopy(decision), deepcopy(state))
-        verification = executor.verify(deepcopy(action_result), deepcopy(state))
+
+        try:
+            action_result = executor.act(deepcopy(decision), deepcopy(state))
+            verification = executor.verify(deepcopy(action_result), deepcopy(state))
+        except Exception as exc:
+            state["status"] = "BLOCKED"
+            state["block_reason"] = f"execution failed after authorization: {type(exc).__name__}: {exc}"
+            store.save(state)
+            return state
 
         state["step"] += 1
         state["history"].append(
@@ -126,10 +141,17 @@ def run_durable_loop(
             }
         )
 
-        terminal = policy.terminal_evaluator(deepcopy(verification), deepcopy(state))
-        if terminal is not None:
-            if terminal not in TERMINAL:
+        try:
+            terminal = policy.terminal_evaluator(deepcopy(verification), deepcopy(state))
+            if terminal is not None and terminal not in TERMINAL:
                 raise ValueError(f"invalid terminal status: {terminal}")
+        except Exception as exc:
+            state["status"] = "BLOCKED"
+            state["block_reason"] = f"terminal evaluation failed: {type(exc).__name__}: {exc}"
+            store.save(state)
+            return state
+
+        if terminal is not None:
             state["status"] = terminal
             store.save(state)
             return state
