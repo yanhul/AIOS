@@ -56,8 +56,8 @@ def test_registered_workload_executes_through_central_aios(tmp_path, capability,
     registry.persist(tmp_path, "test:v1-conformance")
 
     contract = _contract(capability)
-    stored = persist_contract(tmp_path, contract)
-    permit = persist_permit(tmp_path, stored, "aios:root")
+    persist_contract(tmp_path, contract)
+    permit = persist_permit(tmp_path, contract, "aios:root")
     adapter = WorkloadAdapter(capability)
 
     executor = GovernedRuntimeExecutor(
