@@ -35,16 +35,24 @@ def test_graph_requires_registered_nodes_and_preserves_evidence_level():
     assert registry.relationships(source=a.key, relation="validated_by")[0] == edge
 
 
+def test_graph_rejects_relationship_without_evidence():
+    try:
+        CapabilityEdge("a@1", "requires", "b@1")
+        assert False
+    except CapabilityError as exc:
+        assert "evidence" in str(exc)
+
+
 def test_invalid_relation_and_unregistered_endpoint_fail_closed():
     registry = CapabilityRegistry()
     registry.register(cap("a"))
     try:
-        registry.add_edge(CapabilityEdge("a@1", "unknown", "a@1"))
+        registry.add_edge(CapabilityEdge("a@1", "unknown", "a@1", ("EV-1",)))
         assert False
     except CapabilityError:
         pass
     try:
-        registry.add_edge(CapabilityEdge("a@1", "requires", "missing@1"))
+        registry.add_edge(CapabilityEdge("a@1", "requires", "missing@1", ("EV-1",)))
         assert False
     except CapabilityError:
         pass
