@@ -42,7 +42,17 @@ def _normalize_refs(refs: Iterable[str], name: str) -> tuple[str, ...]:
 
 
 def experience_identity(record: Mapping[str, Any]) -> str:
-    logical = {k: v for k, v in record.items() if k not in {"experience_id"}}
+    """Return the immutable logical identity of an experience event.
+
+    Notes are intentionally excluded: they are annotations, not identity.
+    This means an attempted rewrite of the same logical experience with
+    different notes is detected as an identity collision rather than creating
+    a second history entry.
+    """
+    logical = {
+        k: v for k, v in record.items()
+        if k not in {"experience_id", "notes"}
+    }
     return hashlib.sha256(canonical_json(logical).encode("utf-8")).hexdigest()
 
 
@@ -110,7 +120,10 @@ def record_experience(
         "outcome": outcome,
         "actor": actor,
     }
-    commit_batch(aios_dir, [(rel, record), (os.path.join("events", "experience-" + record["experience_id"] + ".json"), event)])
+    commit_batch(aios_dir, [
+        (rel, record),
+        (os.path.join("events", "experience-" + record["experience_id"] + ".json"), event),
+    ])
     return {**record, "replayed": False}
 
 
