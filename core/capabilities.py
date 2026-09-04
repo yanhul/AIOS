@@ -121,12 +121,17 @@ class CapabilityRegistry:
         return sorted(active or matches, key=lambda c: c.version)[-1] if matches else None
 
     def require(self, key: str) -> Capability:
-        """Resolve a capability for execution; only ACTIVE versions are eligible."""
+        """Resolve a registered version for inspection; registration is not activation."""
         if not isinstance(key, str) or "@" not in key:
             raise CapabilityError(f"capability reference must be versioned: {key!r}")
         capability = self._capabilities.get(key)
         if capability is None:
             raise CapabilityError(f"capability is not registered: {key}")
+        return capability
+
+    def require_active(self, key: str) -> Capability:
+        """Resolve a capability eligible for execution; only ACTIVE is accepted."""
+        capability = self.require(key)
         if capability.status != "ACTIVE":
             raise CapabilityError(f"capability is not active: {key}")
         return capability
@@ -134,7 +139,7 @@ class CapabilityRegistry:
     def resolve_contract(self, contract: dict[str, Any]) -> tuple[Capability, ...]:
         if not isinstance(contract, dict) or not isinstance(contract.get("capabilities"), list):
             raise CapabilityError("contract capabilities must be a list")
-        return tuple(self.require(key) for key in contract["capabilities"])
+        return tuple(self.require_active(key) for key in contract["capabilities"])
 
     def discover(self, *, kind: str | None = None, required_inputs: Iterable[str] = (), required_outputs: Iterable[str] = (),
                  environment: str | None = None, permission: str | None = None) -> list[Capability]:
