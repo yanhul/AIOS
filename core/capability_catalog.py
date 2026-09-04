@@ -14,7 +14,12 @@ def _tuple(value: Any) -> tuple[str, ...]:
 
 
 def load_catalog(path: str | Path) -> CapabilityRegistry:
-    """Load registry.yaml and fail closed on malformed catalog data."""
+    """Load registry.yaml and fail closed on malformed catalog data.
+
+    A normative/descriptive catalog entry is intentionally loaded as CANDIDATE.
+    Registration is not activation or promotion; those require separate policy
+    and evidence gates.
+    """
     try:
         import yaml
     except ImportError as exc:
@@ -30,7 +35,8 @@ def load_catalog(path: str | Path) -> CapabilityRegistry:
             verification_methods=_tuple(raw.get("verification")),
             environments=_tuple(raw.get("context")),
             provenance=(str(raw.get("source", "")),),
-            status="ACTIVE" if str(data.get("status")) == "normative" else "CANDIDATE",
+            # Declarative registration never grants ACTIVE status.
+            status="CANDIDATE",
         ))
     for raw in data.get("relationships", []):
         registry.add_edge(CapabilityEdge(
