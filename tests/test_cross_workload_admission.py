@@ -1,3 +1,5 @@
+import pytest
+
 from core.authority import authorize, persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
@@ -46,13 +48,10 @@ def test_all_registered_workloads_are_centrally_admissible(tmp_path):
         contract_id = contract_identity(contract)
         persist_contract(str(tmp_path), contract)
         permit = persist_permit(str(tmp_path), contract, "aios:conformance")
-
-        # This is the central admission boundary: resolution + permit binding
-        # happen in AIOS before any workload/runtime action is permitted.
         assert authorize(str(tmp_path), contract_id, permit["permit_id"]) is True
 
 
-def test_unregistered_workload_cannot_enter_authority_boundary(tmp_path):
+def test_unregistered_workload_is_rejected_before_permit_issue(tmp_path):
     registry = CapabilityRegistry()
     registry.register(
         Capability("registered.workload", "1", "registry-fixture", "workload", status="ACTIVE")
@@ -60,10 +59,5 @@ def test_unregistered_workload_cannot_enter_authority_boundary(tmp_path):
     registry.persist(str(tmp_path), "aios:conformance")
 
     contract = _contract("unregistered.workload@1")
-    persist_contract(str(tmp_path), contract)
-    permit = persist_permit(str(tmp_path), contract, "aios:conformance")
-
-    import pytest
-
     with pytest.raises(ValueError, match="not registered"):
-        authorize(str(tmp_path), contract_identity(contract), permit["permit_id"])
+        persist_contract(str(tmp_path), contract)
