@@ -33,8 +33,11 @@ class EvidenceRef:
 
     def __post_init__(self) -> None:
         for name in ("ref", "source", "claim", "verification_level"):
-            if not getattr(self, name).strip():
-                raise ValueError(f"{name} must be non-empty")
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} must be a non-empty string")
+        if self.digest is not None and (not isinstance(self.digest, str) or not self.digest.strip()):
+            raise ValueError("digest must be a non-empty string when supplied")
 
 
 @dataclass(frozen=True)
@@ -61,14 +64,17 @@ class HarnessPolicy:
             "capability_id",
             "capability_version",
         ):
-            if not getattr(self, name).strip():
-                raise ValueError(f"{name} must be non-empty")
-        if self.max_steps < 1:
-            raise ValueError("max_steps must be >= 1")
-        if self.max_retries < 0:
-            raise ValueError("max_retries must be >= 0")
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} must be a non-empty string")
+        if not isinstance(self.max_steps, int) or isinstance(self.max_steps, bool) or self.max_steps < 1:
+            raise ValueError("max_steps must be an integer >= 1")
+        if not isinstance(self.max_retries, int) or isinstance(self.max_retries, bool) or self.max_retries < 0:
+            raise ValueError("max_retries must be an integer >= 0")
         if self.terminal_states != TERMINAL:
             raise ValueError("AIOS terminal states are fixed")
+        if any(not isinstance(effect, str) or not effect.strip() for effect in self.allowed_effects):
+            raise ValueError("allowed_effects must contain only non-empty strings")
 
 
 @dataclass
@@ -100,18 +106,28 @@ class HarnessState:
             raise ValueError("capability identity mismatch")
         if self.capability_version != policy.capability_version:
             raise ValueError("capability version mismatch")
-        if not isinstance(self.step, int) or self.step < 0 or self.step > policy.max_steps:
+        if not isinstance(self.step, int) or isinstance(self.step, bool) or self.step < 0 or self.step > policy.max_steps:
             raise ValueError("invalid step/budget state")
-        if not isinstance(self.attempt, int) or self.attempt < 0:
+        if not isinstance(self.attempt, int) or isinstance(self.attempt, bool) or self.attempt < 0:
             raise ValueError("invalid attempt")
         if self.phase not in PHASES:
             raise ValueError("invalid phase")
         if self.status not in {"RUNNING", *TERMINAL}:
             raise ValueError("invalid status")
-        if self.budget_remaining < 0 or self.retry_budget_remaining < 0:
-            raise ValueError("negative remaining budget")
+        if not isinstance(self.budget_remaining, int) or isinstance(self.budget_remaining, bool) or self.budget_remaining < 0:
+            raise ValueError("invalid remaining step budget")
+        if self.budget_remaining > policy.max_steps - self.step:
+            raise ValueError("remaining step budget exceeds immutable policy budget")
+        if not isinstance(self.retry_budget_remaining, int) or isinstance(self.retry_budget_remaining, bool) or self.retry_budget_remaining < 0:
+            raise ValueError("invalid remaining retry budget")
+        if self.retry_budget_remaining > policy.max_retries:
+            raise ValueError("remaining retry budget exceeds immutable policy budget")
+        if self.pending_effect_id is not None and (not isinstance(self.pending_effect_id, str) or not self.pending_effect_id.strip()):
+            raise ValueError("pending_effect_id must be a non-empty string when supplied")
         if self.status in TERMINAL and self.terminal_reason is None:
             raise ValueError("terminal state requires a reason")
+        if self.status == "RUNNING" and self.terminal_reason is not None:
+            raise ValueError("running state cannot have a terminal reason")
 
     def snapshot(self) -> dict[str, Any]:
         return {
