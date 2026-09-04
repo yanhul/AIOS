@@ -72,7 +72,7 @@ def test_registered_workload_executes_through_central_aios(tmp_path, capability,
         },
         verifier=lambda result, state: {
             "verified": result["state"] == "OBSERVED_SUCCESS",
-            "evidence": result["evidence"],
+            "evidence": result["provider_observation"],
         },
     )
     policy = LoopPolicy(
