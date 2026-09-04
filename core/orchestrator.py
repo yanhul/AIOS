@@ -58,9 +58,40 @@ def run_governed_execution(
     store: StateStore,
     policy: LoopPolicy,
 ) -> Mapping[str, Any]:
-    """Run the single AIOS durable loop after resolving contract/permit authority."""
+    """Run/resume the single AIOS durable loop with authority-bound state."""
     authorize(executor.aios_dir, executor.contract_id, executor.permit_id)
-    return run_durable_loop(executor, store, policy)
+
+    def validate_resume(state: Mapping[str, Any]) -> None:
+        if state.get("contract_id") != executor.contract_id:
+            raise ValueError("persisted contract binding does not match execution context")
+        if state.get("permit_id") != executor.permit_id:
+            raise ValueError("persisted permit binding does not match execution context")
+        authorize(executor.aios_dir, executor.contract_id, executor.permit_id)
+
+    bound_policy = LoopPolicy(
+        max_steps=policy.max_steps,
+        terminal_evaluator=policy.terminal_evaluator,
+        action_authorizer=policy.action_authorizer,
+        resume_validator=validate_resume,
+        policy_digest=policy.policy_digest,
+    )
+
+    loaded = store.load()
+    if loaded is None:
+        initial_state = {
+            "contract_id": executor.contract_id,
+            "permit_id": executor.permit_id,
+        }
+        store.save(initial_state)
+    else:
+        state = deepcopy(dict(loaded))
+        if state.get("contract_id") != executor.contract_id or state.get("permit_id") != executor.permit_id:
+            state["status"] = "BLOCKED"
+            state["block_reason"] = "persisted execution binding does not match current authority context"
+            store.save(state)
+            return state
+
+    return run_durable_loop(executor, store, bound_policy)
 
 
 __all__ = ["GovernedRuntimeExecutor", "run_governed_execution"]
