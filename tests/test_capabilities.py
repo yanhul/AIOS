@@ -101,3 +101,13 @@ def test_contract_capabilities_must_resolve_to_registered_version(tmp_path):
         assert False
     except CapabilityError:
         pass
+
+
+def test_contract_cannot_execute_candidate_capability():
+    registry = CapabilityRegistry()
+    registry.register(cap("candidate.work", status="CANDIDATE"))
+    try:
+        registry.resolve_contract({"capabilities": ["candidate.work@1"]})
+        assert False
+    except CapabilityError as exc:
+        assert "not active" in str(exc)
