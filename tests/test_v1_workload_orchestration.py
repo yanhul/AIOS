@@ -1,4 +1,5 @@
 import pytest
+from dataclasses import replace
 
 from core.authority import persist_contract, persist_permit
 from core.capability_catalog import load_catalog
@@ -53,6 +54,9 @@ def test_registered_workload_executes_through_central_aios(tmp_path, capability,
     registered = registry.require(f"{capability}@1")
     assert registered.owner == owner
     assert registered.kind == kind
+    # Catalog registration is deliberately CANDIDATE; this test explicitly
+    # simulates a separate control-plane activation before execution.
+    registry.register(replace(registered, status="ACTIVE"))
     registry.persist(tmp_path, "test:v1-conformance")
 
     contract = _contract(capability)
