@@ -31,7 +31,6 @@ def _policy(max_steps=5, terminal_evaluator=None, **kwargs):
 def test_loop_persists_and_passes_under_external_terminal_policy():
     store = MemoryStateStore()
     result = run_durable_loop(FakeExecutor(), store, _policy())
-
     assert result["status"] == "PASS"
     assert result["step"] == 3
     assert len(result["history"]) == 3
@@ -43,24 +42,16 @@ def test_budget_is_external_and_ends_inconclusive():
     result = run_durable_loop(
         FakeExecutor(), store, _policy(max_steps=2, terminal_evaluator=lambda verification, state: None)
     )
-
     assert result["status"] == "INCONCLUSIVE"
     assert result["step"] == 2
 
 
 def test_loop_resumes_from_persisted_state():
-    store = MemoryStateStore({
-        "step": 1,
-        "status": "RUNNING",
-        "history": [{"step": 1}],
-        "policy_digest": "p1",
-    })
+    store = MemoryStateStore({"step": 1, "status": "RUNNING", "history": [{"step": 1}], "policy_digest": "p1"})
     result = run_durable_loop(
-        FakeExecutor(),
-        store,
+        FakeExecutor(), store,
         _policy(max_steps=3, policy_digest="p1", terminal_evaluator=lambda verification, state: "PASS" if state["step"] >= 3 else None),
     )
-
     assert result["status"] == "PASS"
     assert result["step"] == 3
     assert len(result["history"]) == 3
@@ -68,16 +59,10 @@ def test_loop_resumes_from_persisted_state():
 
 def test_action_requires_control_plane_authorization():
     calls = []
-
     def deny(decision, state):
         calls.append(decision)
         raise PermissionError("denied by authority")
-
-    policy = LoopPolicy(
-        max_steps=3,
-        terminal_evaluator=lambda verification, state: "PASS",
-        action_authorizer=deny,
-    )
+    policy = LoopPolicy(max_steps=3, terminal_evaluator=lambda verification, state: "PASS", action_authorizer=deny)
     result = run_durable_loop(FakeExecutor(), MemoryStateStore(), policy)
     assert result["status"] == "BLOCKED"
     assert "authorization" in result["block_reason"]
@@ -85,23 +70,14 @@ def test_action_requires_control_plane_authorization():
 
 
 def test_resume_with_stale_policy_is_blocked():
-    store = MemoryStateStore({
-        "step": 1,
-        "status": "RUNNING",
-        "history": [],
-        "policy_digest": "old",
-    })
+    store = MemoryStateStore({"step": 1, "status": "RUNNING", "history": [], "policy_digest": "old"})
     result = run_durable_loop(FakeExecutor(), store, _policy(policy_digest="new"))
     assert result["status"] == "BLOCKED"
     assert "policy digest" in result["block_reason"]
 
 
 def test_persisted_budget_tampering_is_blocked():
-    store = MemoryStateStore({
-        "step": 99,
-        "status": "RUNNING",
-        "history": [],
-    })
+    store = MemoryStateStore({"step": 99, "status": "RUNNING", "history": []})
     result = run_durable_loop(FakeExecutor(), store, _policy(max_steps=2))
     assert result["status"] == "BLOCKED"
     assert "budget" in result["block_reason"]
@@ -112,12 +88,7 @@ def test_agent_cannot_forge_terminal_state():
         def decide(self, observation, state):
             state["status"] = "PASS"
             return {"next": observation["n"] + 1}
-
-    result = run_durable_loop(
-        ForgingExecutor(),
-        MemoryStateStore(),
-        _policy(max_steps=1, terminal_evaluator=lambda verification, state: None),
-    )
+    result = run_durable_loop(ForgingExecutor(), MemoryStateStore(), _policy(max_steps=1, terminal_evaluator=lambda verification, state: None))
     assert result["status"] == "INCONCLUSIVE"
 
 
@@ -126,12 +97,44 @@ def test_agent_cannot_mutate_authoritative_history_through_snapshot():
         def observe(self, state):
             state["history"].append({"forged": True})
             return {"n": state["step"]}
-
     store = MemoryStateStore()
-    result = run_durable_loop(
-        MutatingExecutor(),
-        store,
-        _policy(max_steps=1, terminal_evaluator=lambda verification, state: None),
-    )
+    result = run_durable_loop(MutatingExecutor(), store, _policy(max_steps=1, terminal_evaluator=lambda verification, state: None))
     assert result["status"] == "INCONCLUSIVE"
     assert result["history"] == [{"step": 1, "observation": {"n": 0}, "decision": {"next": 1}, "action": 1, "verification": {"value": 1}}]
+
+
+def test_execution_failure_is_persisted_as_blocked():
+    class FailingExecutor(FakeExecutor):
+        def act(self, decision, state):
+            raise RuntimeError("provider crashed")
+
+    store = MemoryStateStore()
+    result = run_durable_loop(FailingExecutor(), store, _policy(max_steps=3))
+    assert result["status"] == "BLOCKED"
+    assert "provider crashed" in result["block_reason"]
+    assert store.load() == result
+    assert result["step"] == 0
+    assert result["history"] == []
+
+
+def test_verification_failure_is_persisted_as_blocked():
+    class FailingVerifier(FakeExecutor):
+        def verify(self, action_result, state):
+            raise RuntimeError("verification unavailable")
+
+    store = MemoryStateStore()
+    result = run_durable_loop(FailingVerifier(), store, _policy(max_steps=1))
+    assert result["status"] == "BLOCKED"
+    assert "verification unavailable" in result["block_reason"]
+    assert store.load() == result
+
+
+def test_terminal_evaluation_failure_is_persisted_as_blocked():
+    store = MemoryStateStore()
+    result = run_durable_loop(
+        FakeExecutor(), store,
+        _policy(max_steps=1, terminal_evaluator=lambda verification, state: (_ for _ in ()).throw(RuntimeError("gate unavailable"))),
+    )
+    assert result["status"] == "BLOCKED"
+    assert "gate unavailable" in result["block_reason"]
+    assert store.load() == result
