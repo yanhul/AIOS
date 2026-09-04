@@ -8,9 +8,9 @@ from core.orchestrator import GovernedRuntimeExecutor, run_governed_execution
 from core.runtime import ProviderReceipt
 
 WORKLOADS = (
-    ("try.research", "yanhul/try", "research"),
-    ("android.assistant", "yanhul/android-ai-assistant", "software"),
-    ("rx50.engineering", "yanhul/RX50", "hardware"),
+    ("try.research", "yanhul/try", "research_workload"),
+    ("android.assistant", "yanhul/android-ai-assistant", "software_device_workload"),
+    ("rx50.engineering", "yanhul/RX50", "hardware_engineering_workload"),
 )
 
 
