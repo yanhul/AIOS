@@ -94,6 +94,86 @@ A restart must:
 
 If the persisted state is invalid or policy identity differs, fail closed to `BLOCKED`.
 
+## Verification and evaluation semantics
+
+Final outcome is necessary but not sufficient for critical effects. AIOS evaluates the trajectory where required:
+
+```text
+observation -> decision -> authorization -> action -> external effect -> verification -> terminal outcome
+```
+
+A verifier may require:
+
+- structured evidence references;
+- deterministic state assertions;
+- step-level checks for critical transitions;
+- effect provenance and provider response identity;
+- contradiction checks;
+- fault-injection coverage.
+
+Outcome-only model judges are advisory for non-critical interpretation. They are never the sole authority for safety-critical state transitions or promotion.
+
+## Tool/capability schema semantics
+
+Capability contracts must encode machine-checkable constraints wherever enforcement depends on them:
+
+- input types and allowed values;
+- preconditions;
+- required permissions;
+- effect declarations;
+- output schema;
+- explicit failure/unknown states;
+- evidence produced;
+- verification strategy.
+
+Prose can explain a constraint but cannot silently substitute for an executable precondition.
+
+## Long-horizon state semantics
+
+Deep action chains must preserve authoritative state independently of model context. Conformance testing must distinguish:
+
+- task interpretation failure;
+- decision/planning failure;
+- state-carrying failure;
+- tool/provider failure;
+- verification failure;
+- persistence/recovery failure.
+
+Per-step success does not imply end-to-end correctness; state propagation and effect reconciliation are explicit test targets.
+
+## Experience and memory semantics
+
+AIOS separates three layers:
+
+1. **Trajectory/state** — what happened in a particular execution.
+2. **Reflection/derived knowledge** — summaries or abstractions derived from trajectories.
+3. **Experience** — reusable task/capability/action patterns bound to evidence and verification.
+
+Memory retrieval can influence planning but does not become authoritative evidence merely because it was retrieved. Experience promotion requires external evidence, verification, and the control-plane promotion gate.
+
+Memory consolidation, pruning, and retrieval policy are themselves bounded capabilities; they cannot rewrite governing policy or terminal criteria.
+
+## Harness evolution semantics
+
+Harness changes are controlled experiments, not unconstrained self-modification.
+
+Each candidate evolution records:
+
+```text
+change_id
+parent_harness_version
+changed_component(s)
+predicted_effect
+experiment_contract
+evaluation_dataset/version
+observed_result
+evidence_refs
+verification_refs
+promotion_decision
+```
+
+A change may be promoted only by an external evaluation/promotion gate. The evolving harness cannot alter the governing policy, evidence requirements, promotion criteria, budgets, or terminal conditions that judge it.
+
 ## Terminal semantics
 
 Exactly three terminal states exist:
@@ -166,6 +246,12 @@ A runtime/capability adapter is not conformant until it passes fault-injection t
 9. missing evidence;
 10. contradictory evidence;
 11. corrupted checkpoint;
-12. provider/runtime replacement with preserved AIOS state.
+12. provider/runtime replacement with preserved AIOS state;
+13. deep dependent action-chain state corruption;
+14. silent API/tool failure;
+15. untrusted tool-output prompt injection;
+16. trajectory fault that leaves the final user-visible outcome apparently correct;
+17. harness evolution whose predicted improvement is not reproduced;
+18. memory retrieval that conflicts with authoritative evidence.
 
 The test suite must assert both the final status and the persisted state/evidence trail.
