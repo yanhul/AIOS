@@ -81,6 +81,7 @@ def run_governed_execution(
         initial_state = {
             "contract_id": executor.contract_id,
             "permit_id": executor.permit_id,
+            "policy_digest": bound_policy.policy_digest,
         }
         store.save(initial_state)
     else:
