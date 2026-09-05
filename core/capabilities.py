@@ -75,7 +75,8 @@ class CapabilityRegistry:
  def snapshot(self): return {"capabilities":[c.as_dict() for c in sorted(self._capabilities.values(),key=lambda c:c.key)],"edges":[e.as_dict() for e in self.graph()]}
  def persist(self,aios_dir,actor):
   _=actor
-  commit_batch(aios_dir,[(CAPABILITY_STATE_FILE,self.snapshot())])
+  committed=commit_batch(aios_dir,[(CAPABILITY_STATE_FILE,self.snapshot())])
+  return committed[0]
  @classmethod
  def load(cls,aios_dir):
   p=Path(aios_dir)/CAPABILITY_STATE_FILE
