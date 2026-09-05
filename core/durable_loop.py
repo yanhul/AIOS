@@ -9,7 +9,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Protocol
 
-from .harness_contract import HarnessPolicy, HarnessState, EvidenceRef
+from .harness_contract import EvidenceRef, HarnessPolicy, HarnessState
 
 
 TERMINAL = frozenset({"PASS", "BLOCKED", "INCONCLUSIVE"})
@@ -46,8 +46,11 @@ class LoopPolicy:
             not isinstance(self.policy_digest, str) or not self.policy_digest.strip()
         ):
             raise ValueError("policy_digest must be a non-empty string when supplied")
-        if self.harness_policy is not None and self.harness_policy.max_steps != self.max_steps:
-            raise ValueError("harness policy max_steps must match loop policy")
+        if self.harness_policy is not None:
+            if self.harness_policy.max_steps != self.max_steps:
+                raise ValueError("harness policy max_steps must match loop policy")
+            if self.policy_digest != self.harness_policy.policy_digest:
+                raise ValueError("loop policy digest must match harness policy digest")
 
 
 @dataclass
@@ -86,13 +89,6 @@ def _harness_from_state(state: Mapping[str, Any], policy: HarnessPolicy) -> Harn
     )
 
 
-def _sync_harness_state(state: dict[str, Any], policy: HarnessPolicy) -> None:
-    harness = _harness_from_state(state, policy)
-    harness.validate(policy)
-    state.update(harness.snapshot())
-    state["history"] = deepcopy(state.get("records", state.get("history", [])))
-
-
 def _initialize_harness_state(state: dict[str, Any], policy: HarnessPolicy) -> None:
     state.setdefault("execution_id", policy.execution_id)
     state.setdefault("policy_digest", policy.policy_digest)
@@ -102,7 +98,7 @@ def _initialize_harness_state(state: dict[str, Any], policy: HarnessPolicy) -> N
     state.setdefault("attempt", 0)
     state.setdefault("phase", "RESUME")
     state.setdefault("status", "RUNNING")
-    state.setdefault("budget_remaining", policy.max_steps)
+    state.setdefault("budget_remaining", policy.max_steps - state["step"])
     state.setdefault("retry_budget_remaining", policy.max_retries)
     state.setdefault("pending_effect_id", None)
     state.setdefault("last_checkpoint_id", None)
@@ -134,8 +130,6 @@ def _checkpoint(state: dict[str, Any], store: StateStore, *, phase: str | None =
         state["phase"] = phase
     if "records" in state:
         state["history"] = deepcopy(state["records"])
-    if "budget_remaining" in state and "step" in state:
-        state["budget_remaining"] = max(0, state.get("budget_remaining", 0))
     store.save(state)
 
 
@@ -247,6 +241,4 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
     state["status"] = "INCONCLUSIVE"
     state["terminal_reason"] = "immutable step budget exhausted" if policy.harness_policy is not None else state.get("terminal_reason")
     _checkpoint(state, store, phase="PERSIST")
-    if policy.harness_policy is not None:
-        _validate_loaded_state(state, policy)
     return state
