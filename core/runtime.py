@@ -17,6 +17,11 @@ from .effect_authority import (
     observe,
     unknown,
 )
+from .runtime_continuity import (
+    ContinuityCheckpoint,
+    RuntimeIdentity,
+    validate_runtime_replacement,
+)
 
 
 @dataclass(frozen=True)
@@ -75,6 +80,28 @@ def validate_receipt(receipt, effect, attempt_id, provider_name):
         raise ValueError("receipt outcome must be an observed terminal outcome")
     if not isinstance(receipt.observation, dict) or not receipt.observation:
         raise ValueError("receipt observation must be a non-empty dict")
+
+
+def validate_runtime_continuity(
+    checkpoint: ContinuityCheckpoint,
+    *,
+    execution_id: str,
+    policy_digest: str,
+    capability_id: str,
+    capability_version: str,
+    replacement: RuntimeIdentity,
+    effect: dict | None = None,
+) -> None:
+    """Runtime bridge entrypoint for provider replacement; authority stays in AIOS."""
+    validate_runtime_replacement(
+        checkpoint,
+        execution_id=execution_id,
+        policy_digest=policy_digest,
+        capability_id=capability_id,
+        capability_version=capability_version,
+        replacement=replacement,
+        effect=effect,
+    )
 
 
 def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
@@ -179,3 +206,14 @@ def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapt
     _submit_runtime(durable_runtime, "submit", effect, attempt_id, provider_name)
     effect = mark_dispatched(aios_dir, effect["effect_id"], actor)
     return execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id)
+
+
+__all__ = [
+    "ProviderAdapter",
+    "ProviderReceipt",
+    "execute",
+    "execute_attempt",
+    "execute_retry_attempt",
+    "validate_receipt",
+    "validate_runtime_continuity",
+]
