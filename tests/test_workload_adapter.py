@@ -3,7 +3,10 @@ import pytest
 from core.workload_adapter import validate_adapter_result
 
 
-def test_pass_result_requires_evidence_and_verification():
+def test_pass_result_requires_evidence_and_verification(tmp_path):
+    for ref in ("artifact-1", "evidence-1", "verification-1"):
+        (tmp_path / ref).write_text("fixture", encoding="utf-8")
+
     result = validate_adapter_result(
         workload_id="try.research@1",
         execution_id="exec-1",
@@ -14,6 +17,7 @@ def test_pass_result_requires_evidence_and_verification():
             "verification_refs": ("verification-1",),
             "provenance": {"producer": "try"},
         },
+        cwd=tmp_path,
     )
     assert result.to_aios_terminal() == "PASS"
 
