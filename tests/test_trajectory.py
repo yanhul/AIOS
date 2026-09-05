@@ -31,7 +31,7 @@ def test_trajectory_verification_rejects_step_gaps():
 
 def test_trajectory_verification_rejects_missing_structural_record_field():
     broken = record(1)
-    del broken["authorization"] if "authorization" in broken else broken["action"]
+    del broken["action"]
     with pytest.raises(ValueError, match="missing fields"):
         verify_trajectory([broken], max_steps=1)
 
