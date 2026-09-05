@@ -1,6 +1,6 @@
 # AIOS Roadmap
 
-Status: M1 + M1.5 implemented; parts of M2/M3 implemented. This roadmap separates implemented foundation from the target architecture in `docs/TARGET_ARCHITECTURE.md`.
+Status: M1 + M1.5 implemented; parts of M2/M3 implemented; Pro Harness P0 boundaries implemented and under conformance validation. This roadmap separates implemented foundation from the target architecture in `docs/TARGET_ARCHITECTURE.md`.
 
 ## Phase A — Governance kernel
 
@@ -70,12 +70,14 @@ Status: M1 + M1.5 implemented; parts of M2/M3 implemented. This roadmap separate
 - External-effect state machine.
 - Structured execution results.
 - No silent state promotion.
+- Pro Harness integration: authoritative HarnessState, checkpoint/resume validation, pending-effect reconciliation gate, deterministic trajectory verification.
 
 ### M9 — Evidence / contradiction / promotion
 - Evidence graph and provenance.
 - Contradiction search and explicit resolution workflow.
 - Verification levels: OBSERVED, EVIDENCED, VERIFIED_DIGITAL, VERIFIED_PHYSICAL, PROMOTED.
 - Fixed PASS/BLOCKED/INCONCLUSIVE gates.
+- Independent evaluation can now be required by the immutable promotion policy.
 
 ### M10 — Experience / contribution / relationship memory
 - Record task -> capability -> action -> evidence -> result lineage.
@@ -89,6 +91,7 @@ Status: M1 + M1.5 implemented; parts of M2/M3 implemented. This roadmap separate
 - Evidence review and promotion gate.
 - Versioned rollback.
 - No self-promotion.
+- Frozen holdout evaluation boundary exists; full workload-level evolution loop remains to be proven.
 
 ## Phase D — Real-world AIOS
 
