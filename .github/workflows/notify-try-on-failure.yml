@@ -26,8 +26,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "TRY_DISPATCH_TOKEN is not configured; notification delivery is BLOCKED." >&2
-            exit 0
+            echo "TRY_DISPATCH_TOKEN is not configured; feedback notification delivery is BLOCKED." >&2
+            exit 1
           fi
           gh api repos/yanhul/try/dispatches \
             -H 'Accept: application/vnd.github+json' \
