@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from core.authority import persist_contract, persist_permit
@@ -79,6 +81,23 @@ def test_runtime_binding_mismatch_fails_closed_before_provider(tmp_path):
     with pytest.raises(ValueError, match="effect mismatch"):
         execute(str(tmp_path), cid, pid, "op-1", "agent:test", adapter, BadRuntime())
     assert adapter.calls == 0
+
+
+def test_runtime_interruption_leaves_durable_dispatching_intent(tmp_path):
+    cid, pid = setup(tmp_path)
+
+    class BrokenRuntime(GoodRuntime):
+        def submit(self, *, effect, attempt_id):
+            raise RuntimeError("runtime crashed after intent journal")
+
+    with pytest.raises(RuntimeError, match="runtime crashed"):
+        execute(str(tmp_path), cid, pid, "op-1", "agent:test", GoodAdapter(), BrokenRuntime())
+
+    effect_files = list((tmp_path / "effects").glob("*.json"))
+    assert len(effect_files) == 1
+    effect = json.loads(effect_files[0].read_text())
+    assert effect["state"] == "DISPATCHING"
+    assert effect["attempt"] == 1
 
 
 def test_retry_bridges_explicit_bounded_retry(tmp_path):

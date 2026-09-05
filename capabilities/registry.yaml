@@ -11,11 +11,13 @@ capabilities:
     owner: yanhul/try
     source: https://github.com/yanhul/try
     manifest: aios/workload.json
+    adapter: aios/adapter.py
+    entrypoint: execute
     inputs: [natural_language_problem, research_contract]
     outputs: [experiment_ledger, research_report, terminal_state]
     verification: [regression_tests, locked_validation, locked_oos, provenance]
     context: [data_version, strategy_version, compute_environment]
-    terminal_states: [EDGE_FOUND, NO_EDGE_FOUND, INCONCLUSIVE]
+    terminal_states: [EDGE_FOUND, NO_EDGE_FOUND, INCONCLUSIVE, BLOCKED]
 
   - capability_id: android.assistant
     version: "1"
@@ -23,6 +25,8 @@ capabilities:
     owner: yanhul/android-ai-assistant
     source: https://github.com/yanhul/android-ai-assistant
     manifest: aios/workload.json
+    adapter: aios/adapter.sh
+    entrypoint: bash aios/adapter.sh
     inputs: [natural_language_command, execution_contract]
     outputs: [software_artifact, execution_result, verification_report]
     verification: [android_ci, adversarial_conformance, authority_boundary]
@@ -35,6 +39,8 @@ capabilities:
     owner: yanhul/RX50
     source: https://github.com/yanhul/RX50
     manifest: aios/workload.json
+    adapter: aios/adapter.py
+    entrypoint: execute
     inputs: [engineering_problem, requirements, evidence]
     outputs: [engineering_artifacts, evidence_report, terminal_state]
     verification: [requirements_coverage, contradiction_check, electrical_verification, physical_evidence]

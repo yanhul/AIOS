@@ -53,6 +53,8 @@ def test_registered_workload_executes_through_central_aios(tmp_path, capability,
     registered = registry.require(f"{capability}@1")
     assert registered.owner == owner
     assert registered.kind == kind
+    # Activation is an explicit control-plane transition, not a re-registration.
+    registry.activate(registered.key)
     registry.persist(tmp_path, "test:v1-conformance")
 
     contract = _contract(capability)

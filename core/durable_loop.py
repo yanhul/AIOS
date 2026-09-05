@@ -9,6 +9,8 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Protocol
 
+from .harness_contract import EvidenceRef, HarnessPolicy, HarnessState
+
 
 TERMINAL = frozenset({"PASS", "BLOCKED", "INCONCLUSIVE"})
 
@@ -34,6 +36,8 @@ class LoopPolicy:
     action_authorizer: Callable[[Any, Mapping[str, Any]], None]
     resume_validator: Callable[[Mapping[str, Any]], None] | None = None
     policy_digest: str | None = None
+    harness_policy: HarnessPolicy | None = None
+    trajectory_verifier: Callable[[list[Mapping[str, Any]], int], Any] | None = None
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
@@ -42,6 +46,11 @@ class LoopPolicy:
             not isinstance(self.policy_digest, str) or not self.policy_digest.strip()
         ):
             raise ValueError("policy_digest must be a non-empty string when supplied")
+        if self.harness_policy is not None:
+            if self.harness_policy.max_steps != self.max_steps:
+                raise ValueError("harness policy max_steps must match loop policy")
+            if self.policy_digest != self.harness_policy.policy_digest:
+                raise ValueError("loop policy digest must match harness policy digest")
 
 
 @dataclass
@@ -55,9 +64,55 @@ class MemoryStateStore:
         self.state = deepcopy(dict(state))
 
 
-def _validate_loaded_state(
-    state: Mapping[str, Any], policy: LoopPolicy
-) -> None:
+def _harness_from_state(state: Mapping[str, Any], policy: HarnessPolicy) -> HarnessState:
+    evidence = []
+    for item in state.get("evidence", []):
+        if not isinstance(item, Mapping):
+            raise ValueError("persisted evidence entry is invalid")
+        evidence.append(EvidenceRef(**dict(item)))
+    return HarnessState(
+        execution_id=state.get("execution_id", ""),
+        policy_digest=state.get("policy_digest", ""),
+        capability_id=state.get("capability_id", ""),
+        capability_version=state.get("capability_version", ""),
+        step=state.get("step", 0),
+        attempt=state.get("attempt", 0),
+        phase=state.get("phase", "RESUME"),
+        status=state.get("status", "RUNNING"),
+        budget_remaining=state.get("budget_remaining", 0),
+        retry_budget_remaining=state.get("retry_budget_remaining", 0),
+        pending_effect_id=state.get("pending_effect_id"),
+        last_checkpoint_id=state.get("last_checkpoint_id"),
+        records=state.get("records", []),
+        evidence=evidence,
+        terminal_reason=state.get("terminal_reason"),
+    )
+
+
+def _initialize_harness_state(state: dict[str, Any], policy: HarnessPolicy) -> None:
+    state.setdefault("execution_id", policy.execution_id)
+    state.setdefault("policy_digest", policy.policy_digest)
+    state.setdefault("capability_id", policy.capability_id)
+    state.setdefault("capability_version", policy.capability_version)
+    state.setdefault("step", 0)
+    state.setdefault("attempt", 0)
+    state.setdefault("phase", "RESUME")
+    state.setdefault("status", "RUNNING")
+    step = state.get("step")
+    if isinstance(step, int) and not isinstance(step, bool):
+        state.setdefault("budget_remaining", policy.max_steps - step)
+    else:
+        state.setdefault("budget_remaining", 0)
+    state.setdefault("retry_budget_remaining", policy.max_retries)
+    state.setdefault("pending_effect_id", None)
+    state.setdefault("last_checkpoint_id", None)
+    state.setdefault("records", deepcopy(state.get("history", [])))
+    state.setdefault("evidence", [])
+    state.setdefault("terminal_reason", None)
+    state["history"] = deepcopy(state["records"])
+
+
+def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None:
     if not isinstance(state.get("step"), int) or isinstance(state.get("step"), bool):
         raise ValueError("persisted step is invalid")
     if state["step"] < 0 or state["step"] > policy.max_steps:
@@ -68,22 +123,22 @@ def _validate_loaded_state(
         raise ValueError("persisted history is invalid")
     if policy.policy_digest is not None and state.get("policy_digest") != policy.policy_digest:
         raise ValueError("persisted policy digest does not match current policy")
+    if policy.harness_policy is not None:
+        _harness_from_state(state, policy.harness_policy).validate(policy.harness_policy)
     if policy.resume_validator is not None:
         policy.resume_validator(state)
 
 
-def run_durable_loop(
-    executor: Executor,
-    store: StateStore,
-    policy: LoopPolicy,
-) -> Mapping[str, Any]:
-    """Run/resume OBSERVE -> DECIDE -> ACT -> VERIFY -> PERSIST.
+def _checkpoint(state: dict[str, Any], store: StateStore, *, phase: str | None = None) -> None:
+    if phase is not None:
+        state["phase"] = phase
+    if "records" in state:
+        state["history"] = deepcopy(state["records"])
+    store.save(state)
 
-    The executor receives isolated snapshots and cannot mutate authoritative state.
-    It cannot bypass authorization, extend the budget, redefine terminal conditions,
-    or make a stale persisted state authoritative. Execution failures are persisted
-    as BLOCKED so exceptions cannot erase the durable boundary.
-    """
+
+def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) -> Mapping[str, Any]:
+    """Run/resume the governed loop, optionally backed by HarnessState authority."""
     loaded = store.load()
     state: dict[str, Any] = deepcopy(dict(loaded or {}))
     state.setdefault("step", 0)
@@ -91,74 +146,115 @@ def run_durable_loop(
     state.setdefault("history", [])
     if policy.policy_digest is not None:
         state.setdefault("policy_digest", policy.policy_digest)
+    if policy.harness_policy is not None:
+        _initialize_harness_state(state, policy.harness_policy)
 
     try:
         _validate_loaded_state(state, policy)
     except Exception as exc:
         state["status"] = "BLOCKED"
         state["block_reason"] = f"invalid durable state: {type(exc).__name__}: {exc}"
-        store.save(state)
+        if policy.harness_policy is not None:
+            state["terminal_reason"] = state["block_reason"]
+            state["phase"] = "PERSIST"
+        _checkpoint(state, store)
         return state
 
     if state["status"] in TERMINAL:
         return state
 
+    if policy.harness_policy is not None and state.get("pending_effect_id") is not None:
+        state["status"] = "BLOCKED"
+        state["block_reason"] = (
+            "pending external effect requires reconciliation before resume: "
+            f"{state['pending_effect_id']}"
+        )
+        state["terminal_reason"] = state["block_reason"]
+        _checkpoint(state, store, phase="RECONCILE")
+        return state
+
     while state["step"] < policy.max_steps:
         try:
+            state["phase"] = "OBSERVE"
             observation = executor.observe(deepcopy(state))
+            state["phase"] = "DECIDE"
             decision = executor.decide(deepcopy(observation), deepcopy(state))
         except Exception as exc:
             state["status"] = "BLOCKED"
             state["block_reason"] = f"execution failed before authorization: {type(exc).__name__}: {exc}"
-            store.save(state)
+            if policy.harness_policy is not None:
+                state["terminal_reason"] = state["block_reason"]
+            _checkpoint(state, store, phase="PERSIST")
             return state
 
         try:
+            state["phase"] = "AUTHORIZE"
             policy.action_authorizer(deepcopy(decision), deepcopy(state))
         except Exception as exc:
             state["status"] = "BLOCKED"
             state["block_reason"] = f"action authorization failed: {type(exc).__name__}: {exc}"
-            store.save(state)
+            if policy.harness_policy is not None:
+                state["terminal_reason"] = state["block_reason"]
+            _checkpoint(state, store, phase="PERSIST")
             return state
 
         try:
+            state["phase"] = "ACT"
             action_result = executor.act(deepcopy(decision), deepcopy(state))
+            state["phase"] = "VERIFY"
             verification = executor.verify(deepcopy(action_result), deepcopy(state))
         except Exception as exc:
             state["status"] = "BLOCKED"
             state["block_reason"] = f"execution failed after authorization: {type(exc).__name__}: {exc}"
-            store.save(state)
+            if policy.harness_policy is not None:
+                state["terminal_reason"] = state["block_reason"]
+            _checkpoint(state, store, phase="PERSIST")
             return state
 
         state["step"] += 1
-        state["history"].append(
-            {
-                "step": state["step"],
-                "observation": deepcopy(observation),
-                "decision": deepcopy(decision),
-                "action": deepcopy(action_result),
-                "verification": deepcopy(verification),
-            }
-        )
+        state["attempt"] = state.get("attempt", 0) + 1
+        record = {
+            "step": state["step"],
+            "observation": deepcopy(observation),
+            "decision": deepcopy(decision),
+            "action": deepcopy(action_result),
+            "verification": deepcopy(verification),
+        }
+        state["history"].append(record)
+        state["records"] = deepcopy(state["history"])
+        state["budget_remaining"] = max(0, policy.max_steps - state["step"])
 
         try:
+            if policy.trajectory_verifier is not None:
+                trajectory_result = policy.trajectory_verifier(deepcopy(state["history"]), policy.max_steps)
+                if isinstance(trajectory_result, Mapping) and trajectory_result.get("verified") is False:
+                    raise ValueError("trajectory verifier returned unverified")
+            state["phase"] = "RECONCILE"
             terminal = policy.terminal_evaluator(deepcopy(verification), deepcopy(state))
             if terminal is not None and terminal not in TERMINAL:
                 raise ValueError(f"invalid terminal status: {terminal}")
         except Exception as exc:
             state["status"] = "BLOCKED"
-            state["block_reason"] = f"terminal evaluation failed: {type(exc).__name__}: {exc}"
-            store.save(state)
+            state["block_reason"] = f"verification/terminal evaluation failed: {type(exc).__name__}: {exc}"
+            if policy.harness_policy is not None:
+                state["terminal_reason"] = state["block_reason"]
+            _checkpoint(state, store, phase="PERSIST")
             return state
 
         if terminal is not None:
             state["status"] = terminal
-            store.save(state)
+            if policy.harness_policy is not None:
+                state["terminal_reason"] = f"terminal evaluator returned {terminal}"
+            _checkpoint(state, store, phase="PERSIST")
             return state
 
         state["status"] = "RUNNING"
-        store.save(state)
+        state["terminal_reason"] = None
+        _checkpoint(state, store, phase="PERSIST")
+        if policy.harness_policy is not None:
+            _validate_loaded_state(state, policy)
 
     state["status"] = "INCONCLUSIVE"
-    store.save(state)
+    state["terminal_reason"] = "immutable step budget exhausted" if policy.harness_policy is not None else state.get("terminal_reason")
+    _checkpoint(state, store, phase="PERSIST")
     return state
