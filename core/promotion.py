@@ -1,11 +1,8 @@
 """Governed promotion and terminal gate.
 
-Promotion is a control-plane decision, never an agent decision.  This module
+Promotion is a control-plane decision, never an agent decision. This module
 accepts already-produced verification summaries and checks immutable policy
 requirements before allowing a capability/artifact to become PROMOTED.
-
-It deliberately does not execute work, mutate workload source, or infer
-verification from arbitrary fields.
 """
 from __future__ import annotations
 
@@ -28,6 +25,7 @@ class PromotionPolicy:
     required_evidence: tuple[str, ...] = ()
     required_verification_levels: tuple[str, ...] = ()
     require_no_unresolved_contradictions: bool = True
+    require_independent_evaluation: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.policy_digest, str) or not self.policy_digest.strip():
@@ -44,6 +42,7 @@ def evaluate_promotion(
     terminal: str,
     evidence: Iterable[Mapping[str, object]],
     contradictions: Iterable[Mapping[str, object]] = (),
+    independent_evaluation: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Return a deterministic promotion decision; fail closed on gaps."""
     if policy_digest != policy.policy_digest:
@@ -52,6 +51,9 @@ def evaluate_promotion(
         return {"decision": "BLOCKED", "reason": "invalid terminal state"}
     if terminal != "PASS":
         return {"decision": terminal, "reason": "promotion requires PASS terminal"}
+    if policy.require_independent_evaluation:
+        if independent_evaluation is None or independent_evaluation.get("decision") != "PASS":
+            return {"decision": "BLOCKED", "reason": "independent evaluation gate not satisfied"}
 
     records = list(evidence)
     refs: set[str] = set()
