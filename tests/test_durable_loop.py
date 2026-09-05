@@ -32,14 +32,9 @@ def _policy(max_steps=5, terminal_evaluator=None, **kwargs):
 
 def _harness(max_steps=5, **overrides):
     values = dict(
-        execution_id="exec-1",
-        contract_id="contract-1",
-        contract_version="1",
-        policy_digest="sha256:policy",
-        capability_id="cap.research",
-        capability_version="1.0.0",
-        max_steps=max_steps,
-        max_retries=2,
+        execution_id="exec-1", contract_id="contract-1", contract_version="1",
+        policy_digest="sha256:policy", capability_id="cap.research",
+        capability_version="1.0.0", max_steps=max_steps, max_retries=2,
         allowed_effects=frozenset({"filesystem.write", "process.exec"}),
     )
     values.update(overrides)
@@ -57,19 +52,14 @@ def test_loop_persists_and_passes_under_external_terminal_policy():
 
 def test_budget_is_external_and_ends_inconclusive():
     store = MemoryStateStore()
-    result = run_durable_loop(
-        FakeExecutor(), store, _policy(max_steps=2, terminal_evaluator=lambda verification, state: None)
-    )
+    result = run_durable_loop(FakeExecutor(), store, _policy(max_steps=2, terminal_evaluator=lambda verification, state: None))
     assert result["status"] == "INCONCLUSIVE"
     assert result["step"] == 2
 
 
 def test_loop_resumes_from_persisted_state():
     store = MemoryStateStore({"step": 1, "status": "RUNNING", "history": [{"step": 1}], "policy_digest": "p1"})
-    result = run_durable_loop(
-        FakeExecutor(), store,
-        _policy(max_steps=3, policy_digest="p1", terminal_evaluator=lambda verification, state: "PASS" if state["step"] >= 3 else None),
-    )
+    result = run_durable_loop(FakeExecutor(), store, _policy(max_steps=3, policy_digest="p1", terminal_evaluator=lambda verification, state: "PASS" if state["step"] >= 3 else None))
     assert result["status"] == "PASS"
     assert result["step"] == 3
     assert len(result["history"]) == 3
@@ -118,14 +108,13 @@ def test_agent_cannot_mutate_authoritative_history_through_snapshot():
     store = MemoryStateStore()
     result = run_durable_loop(MutatingExecutor(), store, _policy(max_steps=1, terminal_evaluator=lambda verification, state: None))
     assert result["status"] == "INCONCLUSIVE"
-    assert result["history"] == [{"step": 1, "observation": {"n": 0}, "decision": {"next": 1}, "action": 1, "verification": {"value": 1}}]
+    assert result["history"] == [{"step": 1, "observation": {"n": 0}, "decision": {"next": 1}, "action": 1, "verification": {"value": 1, "evidence_ref": "e-1"}}]
 
 
 def test_execution_failure_is_persisted_as_blocked():
     class FailingExecutor(FakeExecutor):
         def act(self, decision, state):
             raise RuntimeError("provider crashed")
-
     store = MemoryStateStore()
     result = run_durable_loop(FailingExecutor(), store, _policy(max_steps=3))
     assert result["status"] == "BLOCKED"
@@ -139,7 +128,6 @@ def test_verification_failure_is_persisted_as_blocked():
     class FailingVerifier(FakeExecutor):
         def verify(self, action_result, state):
             raise RuntimeError("verification unavailable")
-
     store = MemoryStateStore()
     result = run_durable_loop(FailingVerifier(), store, _policy(max_steps=1))
     assert result["status"] == "BLOCKED"
@@ -149,10 +137,7 @@ def test_verification_failure_is_persisted_as_blocked():
 
 def test_terminal_evaluation_failure_is_persisted_as_blocked():
     store = MemoryStateStore()
-    result = run_durable_loop(
-        FakeExecutor(), store,
-        _policy(max_steps=1, terminal_evaluator=lambda verification, state: (_ for _ in ()).throw(RuntimeError("gate unavailable"))),
-    )
+    result = run_durable_loop(FakeExecutor(), store, _policy(max_steps=1, terminal_evaluator=lambda verification, state: (_ for _ in ()).throw(RuntimeError("gate unavailable"))))
     assert result["status"] == "BLOCKED"
     assert "gate unavailable" in result["block_reason"]
     assert store.load() == result
@@ -160,13 +145,9 @@ def test_terminal_evaluation_failure_is_persisted_as_blocked():
 
 def test_harness_policy_is_authoritative_inside_durable_loop():
     harness = _harness(max_steps=3)
-    policy = _policy(
-        max_steps=3,
-        policy_digest=harness.policy_digest,
-        harness_policy=harness,
-        terminal_evaluator=lambda verification, state: "PASS" if state["step"] >= 2 else None,
-        trajectory_verifier=lambda records, max_steps: verify_trajectory(records, max_steps=max_steps),
-    )
+    policy = _policy(max_steps=3, policy_digest=harness.policy_digest, harness_policy=harness,
+                     terminal_evaluator=lambda verification, state: "PASS" if state["step"] >= 2 else None,
+                     trajectory_verifier=lambda records, max_steps: verify_trajectory(records, max_steps=max_steps))
     store = MemoryStateStore()
     result = run_durable_loop(FakeExecutor(), store, policy)
     assert result["status"] == "PASS"
@@ -183,22 +164,11 @@ def test_harness_resume_rejects_capability_or_budget_tampering():
     policy = _policy(max_steps=3, policy_digest=harness.policy_digest, harness_policy=harness,
                      terminal_evaluator=lambda verification, state: None)
     store = MemoryStateStore({
-        "execution_id": "exec-1",
-        "policy_digest": "sha256:policy",
-        "capability_id": "cap.research",
-        "capability_version": "0.9.0",
-        "step": 1,
-        "attempt": 1,
-        "phase": "RESUME",
-        "status": "RUNNING",
-        "budget_remaining": 3,
-        "retry_budget_remaining": 2,
-        "pending_effect_id": None,
-        "last_checkpoint_id": None,
-        "records": [],
-        "evidence": [],
-        "terminal_reason": None,
-        "history": [],
+        "execution_id": "exec-1", "policy_digest": "sha256:policy", "capability_id": "cap.research",
+        "capability_version": "0.9.0", "step": 1, "attempt": 1, "phase": "RESUME",
+        "status": "RUNNING", "budget_remaining": 3, "retry_budget_remaining": 2,
+        "pending_effect_id": None, "last_checkpoint_id": None, "records": [], "evidence": [],
+        "terminal_reason": None, "history": [],
     })
     result = run_durable_loop(FakeExecutor(), store, policy)
     assert result["status"] == "BLOCKED"
