@@ -39,7 +39,7 @@ class GovernedRuntimeExecutor(Executor):
         operation_id = decision.get("logical_operation_id")
         if not isinstance(operation_id, str) or not operation_id.strip():
             raise ValueError("runtime decision must contain logical_operation_id")
-        return execute(
+        result = execute(
             self.aios_dir,
             self.contract_id,
             self.permit_id,
@@ -47,6 +47,9 @@ class GovernedRuntimeExecutor(Executor):
             self.actor,
             self.adapter,
         )
+        if isinstance(result, Mapping) and "provider_observation" in result:
+            return {**deepcopy(dict(result)), "evidence": deepcopy(result["provider_observation"])}
+        return result
 
     def verify(self, action_result: Any, state: Mapping[str, Any]) -> Any:
         return self.verifier(deepcopy(action_result), deepcopy(state))
