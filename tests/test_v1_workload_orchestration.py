@@ -92,3 +92,7 @@ def test_registered_workload_executes_through_central_aios(tmp_path, capability,
     assert result["step"] == 1
     assert result["history"][0]["decision"]["logical_operation_id"].startswith(capability)
     assert adapter.calls == 1
+
+
+def test_e2e_ci_feedback_probe_fails_intentionally():
+    assert False, "E2E CI feedback probe: intentional failure"
