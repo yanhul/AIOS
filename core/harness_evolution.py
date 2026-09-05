@@ -45,9 +45,9 @@ def evaluate_evolution(
     an independent control-plane gate; the candidate cannot self-promote.
     """
     if proposal.policy_digest != policy.policy_digest:
-        return {"decision": "BLOCKED", "reason": "proposal policy digest mismatch"}
+        return {"decision": "BLOCKED", "reason": "proposal policy digest mismatch", "promotable": False}
     if proposal.holdout_digest != policy.holdout_digest:
-        return {"decision": "BLOCKED", "reason": "proposal holdout digest mismatch"}
+        return {"decision": "BLOCKED", "reason": "proposal holdout digest mismatch", "promotable": False}
     prediction_verified = observed_prediction == proposal.prediction
     evaluation = evaluate_candidate(
         policy=policy,
