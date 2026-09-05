@@ -88,7 +88,7 @@ def test_registered_workload_executes_through_central_aios(tmp_path, capability,
         policy=policy,
     )
 
-    assert result["status"] == "PASS"
+    assert result["status"] == "PASS", result
     assert result["step"] == 1
     assert result["history"][0]["decision"]["logical_operation_id"].startswith(capability)
     assert adapter.calls == 1
