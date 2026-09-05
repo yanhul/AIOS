@@ -92,7 +92,3 @@ def test_registered_workload_executes_through_central_aios(tmp_path, capability,
     assert result["step"] == 1
     assert result["history"][0]["decision"]["logical_operation_id"].startswith(capability)
     assert adapter.calls == 1
-
-# E2E transport probe: intentionally fail this CI run to verify CI -> try ingress.
-def test_e2e_feedback_transport_probe():
-    assert False, "intentional E2E feedback transport probe"
