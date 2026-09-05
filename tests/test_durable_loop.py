@@ -1,6 +1,8 @@
 import pytest
 
 from core.durable_loop import LoopPolicy, MemoryStateStore, run_durable_loop
+from core.harness_contract import HarnessPolicy
+from core.trajectory import verify_trajectory
 
 
 class FakeExecutor:
@@ -14,7 +16,7 @@ class FakeExecutor:
         return decision["next"]
 
     def verify(self, action_result, state):
-        return {"value": action_result}
+        return {"value": action_result, "evidence_ref": f"e-{action_result}"}
 
 
 def _policy(max_steps=5, terminal_evaluator=None, **kwargs):
@@ -26,6 +28,22 @@ def _policy(max_steps=5, terminal_evaluator=None, **kwargs):
         action_authorizer=lambda decision, state: None,
         **kwargs,
     )
+
+
+def _harness(max_steps=5, **overrides):
+    values = dict(
+        execution_id="exec-1",
+        contract_id="contract-1",
+        contract_version="1",
+        policy_digest="sha256:policy",
+        capability_id="cap.research",
+        capability_version="1.0.0",
+        max_steps=max_steps,
+        max_retries=2,
+        allowed_effects=frozenset({"filesystem.write", "process.exec"}),
+    )
+    values.update(overrides)
+    return HarnessPolicy(**values)
 
 
 def test_loop_persists_and_passes_under_external_terminal_policy():
@@ -138,3 +156,50 @@ def test_terminal_evaluation_failure_is_persisted_as_blocked():
     assert result["status"] == "BLOCKED"
     assert "gate unavailable" in result["block_reason"]
     assert store.load() == result
+
+
+def test_harness_policy_is_authoritative_inside_durable_loop():
+    harness = _harness(max_steps=3)
+    policy = _policy(
+        max_steps=3,
+        policy_digest=harness.policy_digest,
+        harness_policy=harness,
+        terminal_evaluator=lambda verification, state: "PASS" if state["step"] >= 2 else None,
+        trajectory_verifier=lambda records, max_steps: verify_trajectory(records, max_steps=max_steps),
+    )
+    store = MemoryStateStore()
+    result = run_durable_loop(FakeExecutor(), store, policy)
+    assert result["status"] == "PASS"
+    assert result["execution_id"] == "exec-1"
+    assert result["capability_version"] == "1.0.0"
+    assert result["budget_remaining"] == 1
+    assert result["phase"] == "PERSIST"
+    assert result["terminal_reason"] == "terminal evaluator returned PASS"
+    assert result["records"] == result["history"]
+
+
+def test_harness_resume_rejects_capability_or_budget_tampering():
+    harness = _harness(max_steps=3)
+    policy = _policy(max_steps=3, policy_digest=harness.policy_digest, harness_policy=harness,
+                     terminal_evaluator=lambda verification, state: None)
+    store = MemoryStateStore({
+        "execution_id": "exec-1",
+        "policy_digest": "sha256:policy",
+        "capability_id": "cap.research",
+        "capability_version": "0.9.0",
+        "step": 1,
+        "attempt": 1,
+        "phase": "RESUME",
+        "status": "RUNNING",
+        "budget_remaining": 3,
+        "retry_budget_remaining": 2,
+        "pending_effect_id": None,
+        "last_checkpoint_id": None,
+        "records": [],
+        "evidence": [],
+        "terminal_reason": None,
+        "history": [],
+    })
+    result = run_durable_loop(FakeExecutor(), store, policy)
+    assert result["status"] == "BLOCKED"
+    assert "capability version" in result["block_reason"]
