@@ -9,7 +9,14 @@ from typing import Protocol
 
 from .authority import authorize, load_contract, load_permit
 from .durable_runtime import DurableRuntime, validate_submission
-from .effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
+from .effect_authority import (
+    begin_dispatch,
+    create_effect,
+    mark_dispatched,
+    observe,
+    retry_dispatch,
+    unknown,
+)
 
 
 @dataclass(frozen=True)
@@ -114,7 +121,7 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
 
 def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapter, attempt_id, attempt,
                           durable_runtime: DurableRuntime | None = None):
-    """Authorize, dispatch and execute one explicit retry of an UNKNOWN effect.
+    """Authorize, journal and execute one explicit retry of an UNKNOWN effect.
 
     The external runtime may schedule/persist the attempt, but AIOS remains the
     authority boundary for authorization, attempt bounds and evidence acceptance.
@@ -150,12 +157,13 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
 
     dispatched = retry_dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name, attempt)
     _submit_runtime(durable_runtime, "retry", dispatched, attempt_id, provider_name, attempt=attempt)
+    dispatched = mark_dispatched(aios_dir, effect["effect_id"], actor)
     return execute_attempt(aios_dir, contract, dispatched, actor, adapter, attempt_id)
 
 
 def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapter,
             durable_runtime: DurableRuntime | None = None):
-    """Authorize/create/dispatch the first attempt, then delegate execution."""
+    """Authorize/create/journal the first attempt, then delegate execution."""
     _text(logical_operation_id, "logical_operation_id")
     _text(actor, "actor")
     if not hasattr(adapter, "name"):
@@ -176,12 +184,7 @@ def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapt
     if effect["state"] != "PLANNED":
         raise RuntimeError("logical operation already has a non-planned effect")
     attempt_id = f"{effect['effect_id']}:attempt:1"
-    effect = dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name)
+    effect = begin_dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name)
     _submit_runtime(durable_runtime, "submit", effect, attempt_id, provider_name)
+    effect = mark_dispatched(aios_dir, effect["effect_id"], actor)
     return execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id)
-
-
-__all__ = [
-    "ProviderReceipt", "ProviderAdapter", "validate_receipt",
-    "execute_attempt", "execute_retry_attempt", "execute",
-]
