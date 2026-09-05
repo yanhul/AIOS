@@ -159,6 +159,19 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
     if state["status"] in TERMINAL:
         return state
 
+    # A prepared/dispatched-but-unreconciled effect is an authoritative hazard.
+    # Never let a resumed executor create another side effect until the adapter
+    # has reconciled and explicitly cleared the pending effect.
+    if policy.harness_policy is not None and state.get("pending_effect_id") is not None:
+        state["status"] = "BLOCKED"
+        state["block_reason"] = (
+            "pending external effect requires reconciliation before resume: "
+            f"{state['pending_effect_id']}"
+        )
+        state["terminal_reason"] = state["block_reason"]
+        _checkpoint(state, store, phase="RECONCILE")
+        return state
+
     while state["step"] < policy.max_steps:
         try:
             state["phase"] = "OBSERVE"
