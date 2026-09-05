@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Sequence
 
 from .workload_adapter import WorkloadResult, validate_adapter_result
 
@@ -30,7 +30,15 @@ def run_workload_adapter(*, workload_id: str, execution_id: str,
         payload = json.loads(proc.stdout)
     except json.JSONDecodeError as exc:
         raise WorkloadAdapterError("adapter stdout is not valid JSON") from exc
-    return validate_adapter_result(workload_id=workload_id, execution_id=execution_id, result=payload)
+    try:
+        return validate_adapter_result(
+            workload_id=workload_id,
+            execution_id=execution_id,
+            result=payload,
+            cwd=cwd,
+        )
+    except ValueError as exc:
+        raise WorkloadAdapterError(f"invalid adapter result: {exc}") from exc
 
 
 __all__ = ["WorkloadAdapterError", "run_workload_adapter"]
