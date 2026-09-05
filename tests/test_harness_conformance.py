@@ -62,7 +62,7 @@ def test_02_crash_after_authorization_blocks_and_persists():
     assert store.load()["status"] == "BLOCKED"
 
 
-def test_03_timeout_like_unknown_is_not_success():
+def test_03_timeout_like_unknown_requires_reconciliation():
     h = harness()
     store = MemoryStateStore({
         "execution_id": "e1", "policy_digest": "p1", "capability_id": "cap.x",
@@ -73,9 +73,8 @@ def test_03_timeout_like_unknown_is_not_success():
     })
     result = run_durable_loop(Exec(), store, policy(h))
     assert result["pending_effect_id"] == "fx-1"
-    assert result["status"] == "PASS"
-    # A pending effect is preserved; an adapter must reconcile it before dispatch.
-    assert result["pending_effect_id"] == "fx-1"
+    assert result["status"] == "BLOCKED"
+    assert "requires reconciliation" in result["block_reason"]
 
 
 def test_04_duplicate_resume_is_idempotent_at_terminal():
