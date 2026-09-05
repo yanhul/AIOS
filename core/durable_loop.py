@@ -98,7 +98,11 @@ def _initialize_harness_state(state: dict[str, Any], policy: HarnessPolicy) -> N
     state.setdefault("attempt", 0)
     state.setdefault("phase", "RESUME")
     state.setdefault("status", "RUNNING")
-    state.setdefault("budget_remaining", policy.max_steps - state["step"])
+    step = state.get("step")
+    if isinstance(step, int) and not isinstance(step, bool):
+        state.setdefault("budget_remaining", policy.max_steps - step)
+    else:
+        state.setdefault("budget_remaining", 0)
     state.setdefault("retry_budget_remaining", policy.max_retries)
     state.setdefault("pending_effect_id", None)
     state.setdefault("last_checkpoint_id", None)
@@ -159,9 +163,6 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
     if state["status"] in TERMINAL:
         return state
 
-    # A prepared/dispatched-but-unreconciled effect is an authoritative hazard.
-    # Never let a resumed executor create another side effect until the adapter
-    # has reconciled and explicitly cleared the pending effect.
     if policy.harness_policy is not None and state.get("pending_effect_id") is not None:
         state["status"] = "BLOCKED"
         state["block_reason"] = (
@@ -225,7 +226,9 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
 
         try:
             if policy.trajectory_verifier is not None:
-                policy.trajectory_verifier(deepcopy(state["history"]), policy.max_steps)
+                trajectory_result = policy.trajectory_verifier(deepcopy(state["history"]), policy.max_steps)
+                if isinstance(trajectory_result, Mapping) and trajectory_result.get("verified") is False:
+                    raise ValueError("trajectory verifier returned unverified")
             state["phase"] = "RECONCILE"
             terminal = policy.terminal_evaluator(deepcopy(verification), deepcopy(state))
             if terminal is not None and terminal not in TERMINAL:
