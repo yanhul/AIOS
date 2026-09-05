@@ -1,3 +1,5 @@
+import pytest
+
 from core.independent_evaluation import EvaluationPolicy, evaluate_candidate
 
 
@@ -19,7 +21,7 @@ def test_candidate_must_beat_frozen_baseline_on_holdout():
         candidate={"score": 0.86},
     )
     assert result["decision"] == "PASS"
-    assert result["delta"] == 0.06
+    assert result["delta"] == pytest.approx(0.06)
 
 
 def test_agent_verdict_cannot_self_promote_candidate():
