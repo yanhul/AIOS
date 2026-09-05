@@ -11,10 +11,10 @@ from .authority import authorize, load_contract, load_permit
 from .durable_runtime import DurableRuntime, validate_submission
 from .effect_authority import (
     begin_dispatch,
+    begin_retry_dispatch,
     create_effect,
     mark_dispatched,
     observe,
-    retry_dispatch,
     unknown,
 )
 
@@ -44,14 +44,11 @@ def _text(value, name):
 
 
 def _provider_authorized(contract, provider_name):
-    return any(
-        isinstance(ref, str) and ref.split("@", 1)[0] == provider_name
-        for ref in contract.get("capabilities", [])
-    )
+    return any(isinstance(ref, str) and ref.split("@", 1)[0] == provider_name
+               for ref in contract.get("capabilities", []))
 
 
 def _submit_runtime(runtime, method, effect, attempt_id, provider_name, **kwargs):
-    """Bridge an already-authorized attempt into an external durable runtime."""
     if runtime is None:
         return None
     if not hasattr(runtime, method):
@@ -62,7 +59,6 @@ def _submit_runtime(runtime, method, effect, attempt_id, provider_name, **kwargs
 
 
 def validate_receipt(receipt, effect, attempt_id, provider_name):
-    """Fail closed unless the provider explicitly observed a bound outcome."""
     if not isinstance(receipt, ProviderReceipt):
         raise ValueError("provider must return ProviderReceipt")
     _text(receipt.provider, "receipt.provider")
@@ -82,7 +78,6 @@ def validate_receipt(receipt, effect, attempt_id, provider_name):
 
 
 def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
-    """Execute exactly one dispatched attempt and record its observation."""
     _text(actor, "actor")
     _text(attempt_id, "attempt_id")
     if not isinstance(contract, dict) or not contract:
@@ -121,11 +116,7 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
 
 def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapter, attempt_id, attempt,
                           durable_runtime: DurableRuntime | None = None):
-    """Authorize, journal and execute one explicit retry of an UNKNOWN effect.
-
-    The external runtime may schedule/persist the attempt, but AIOS remains the
-    authority boundary for authorization, attempt bounds and evidence acceptance.
-    """
+    """Authorize, journal and execute one explicit retry of an UNKNOWN effect."""
     _text(actor, "actor")
     _text(attempt_id, "attempt_id")
     if not isinstance(effect, dict) or not effect:
@@ -155,7 +146,7 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
     if "external_effect" not in contract["allowed_effects"]:
         raise PermissionError("external effect is not authorized by contract")
 
-    dispatched = retry_dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name, attempt)
+    dispatched = begin_retry_dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name, attempt)
     _submit_runtime(durable_runtime, "retry", dispatched, attempt_id, provider_name, attempt=attempt)
     dispatched = mark_dispatched(aios_dir, effect["effect_id"], actor)
     return execute_attempt(aios_dir, contract, dispatched, actor, adapter, attempt_id)
