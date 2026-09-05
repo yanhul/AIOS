@@ -4,10 +4,10 @@ import pytest
 
 from core.effect_authority import (
     begin_dispatch,
+    begin_retry_dispatch,
     create_effect,
     mark_dispatched,
     reconcile_inflight,
-    retry_dispatch,
     observe,
 )
 from core.mutation import TransitionError
@@ -39,7 +39,7 @@ def test_restart_reconciles_inflight_to_unknown_and_blocks_blind_retry(tmp_path)
     with pytest.raises(TransitionError):
         mark_dispatched(str(tmp_path), effect["effect_id"], "recovery")
 
-    retried = retry_dispatch(
+    retried = begin_retry_dispatch(
         str(tmp_path), effect["effect_id"], "control-plane",
         f'{effect["effect_id"]}:attempt:2', "provider-a", 2,
     )
@@ -61,7 +61,7 @@ def test_explicit_provider_observation_resolves_unknown_before_terminal_retry(tm
     assert observed["state"] == "OBSERVED_SUCCESS"
 
     with pytest.raises(TransitionError):
-        retry_dispatch(
+        begin_retry_dispatch(
             str(tmp_path), effect["effect_id"], "control-plane",
             f'{effect["effect_id"]}:attempt:2', "provider-a", 2,
         )
