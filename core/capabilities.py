@@ -1,8 +1,4 @@
-"""AIOS capability identity, registry, graph, and durable persistence.
-
-Registration is descriptive, not trust or promotion. Durable writes use the
-same atomic commit primitive as the rest of AIOS state.
-"""
+"""AIOS capability identity, registry, graph, and durable persistence."""
 from __future__ import annotations
 
 import json
@@ -114,12 +110,6 @@ class CapabilityRegistry:
         return capability
 
     def activate(self, key: str) -> Capability:
-        """Control-plane activation of an already registered candidate.
-
-        Activation changes eligibility; it does not create a new capability
-        identity and therefore cannot be expressed as a second registration.
-        Callers must explicitly persist the registry after activation.
-        """
         capability = self.require(key)
         if capability.status == "DEPRECATED":
             raise CapabilityError(f"deprecated capability cannot be activated: {key}")
@@ -135,7 +125,6 @@ class CapabilityRegistry:
         return sorted(active or matches, key=lambda c: c.version)[-1] if matches else None
 
     def require(self, key: str) -> Capability:
-        """Resolve a registered version for inspection; registration is not activation."""
         if not isinstance(key, str) or "@" not in key:
             raise CapabilityError(f"capability reference must be versioned: {key!r}")
         capability = self._capabilities.get(key)
@@ -144,7 +133,6 @@ class CapabilityRegistry:
         return capability
 
     def require_active(self, key: str) -> Capability:
-        """Resolve a capability eligible for execution; only ACTIVE is accepted."""
         capability = self.require(key)
         if capability.status != "ACTIVE":
             raise CapabilityError(f"capability is not active: {key}")
@@ -179,12 +167,23 @@ class CapabilityRegistry:
         self._edges[(edge.source, edge.relation, edge.target)] = edge
         return edge
 
+    def relationships(self, *, source: str | None = None, relation: str | None = None,
+                      target: str | None = None) -> tuple[CapabilityEdge, ...]:
+        edges = self.graph()
+        return tuple(e for e in edges
+                     if (source is None or e.source == source)
+                     and (relation is None or e.relation == relation)
+                     and (target is None or e.target == target))
+
     def graph(self) -> tuple[CapabilityEdge, ...]:
         return tuple(self._edges[k] for k in sorted(self._edges))
 
+    def snapshot(self) -> dict[str, Any]:
+        return {"capabilities": [c.as_dict() for c in sorted(self._capabilities.values(), key=lambda c: c.key)],
+                "edges": [e.as_dict() for e in self.graph()]}
+
     def persist(self, aios_dir: str | Path, actor: str) -> None:
-        record = {"capabilities": [c.as_dict() for c in sorted(self._capabilities.values(), key=lambda c: c.key)],
-                  "edges": [e.as_dict() for e in self.graph()]}
+        record = self.snapshot()
         commit_batch(aios_dir, [(CAPABILITY_STATE_FILE, record)], actor=actor)
 
     @classmethod
@@ -194,13 +193,16 @@ class CapabilityRegistry:
             raise CapabilityError(f"capability registry is missing: {path}")
         try:
             record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise CapabilityError(f"invalid capability registry JSON: {exc}") from exc
+        try:
             registry = cls()
             for value in record["capabilities"]:
                 registry.register(Capability.from_dict(value))
             for value in record.get("edges", ()):
                 registry.add_edge(CapabilityEdge.from_dict(value))
             return registry
-        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        except (KeyError, TypeError, ValueError) as exc:
             raise CapabilityError(f"invalid persisted capability registry: {exc}") from exc
 
 __all__ = ["Capability", "CapabilityEdge", "CapabilityError", "CapabilityRegistry"]
