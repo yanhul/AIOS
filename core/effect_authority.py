@@ -1,11 +1,11 @@
 """Authoritative external-effect transitions for M6.
 
-This is the write boundary for provider-facing state. Each transition commits
-both the effect record and an audit event in one ``commit_batch``. Provider
-success is never inferred: terminal observed states require explicit evidence.
-
-Retry is deliberately a separate semantic operation: callers cannot widen the
-generic transition graph by treating UNKNOWN as an ordinary dispatch source.
+The effect record is the durable boundary around provider execution. A
+DISPATCHING state is committed *before* the provider is called. If the
+process dies after that commit and before a provider observation is persisted,
+recovery converts DISPATCHING to UNKNOWN. UNKNOWN is never retried blindly:
+an explicit provider observation must reconcile it before retry_dispatch is
+allowed.
 """
 
 import hashlib
@@ -14,9 +14,17 @@ import os
 
 from .mutation import TransitionError, canonical_json, commit_batch, recover_pending
 
-STATES = ("PLANNED", "DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE")
+STATES = (
+    "PLANNED",
+    "DISPATCHING",
+    "DISPATCHED",
+    "UNKNOWN",
+    "OBSERVED_SUCCESS",
+    "OBSERVED_FAILURE",
+)
 _ALLOWED = {
-    "PLANNED": {"DISPATCHED"},
+    "PLANNED": {"DISPATCHING"},
+    "DISPATCHING": {"DISPATCHED", "UNKNOWN"},
     "DISPATCHED": {"UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE"},
     "UNKNOWN": {"OBSERVED_SUCCESS", "OBSERVED_FAILURE"},
     "OBSERVED_SUCCESS": set(),
@@ -89,17 +97,46 @@ def transition(aios_dir, effect_id, target, actor, **fields):
     return updated
 
 
+def begin_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt=1):
+    """Durably journal provider intent immediately before provider execution."""
+    _validate_strings(("effect_id", effect_id), ("actor", actor),
+                      ("attempt_id", attempt_id), ("provider", provider))
+    if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 1:
+        raise ValueError("attempt must be a positive integer")
+    if attempt_id != f"{effect_id}:attempt:{attempt}":
+        raise ValueError("attempt_id does not match attempt")
+    current = transition(
+        aios_dir, effect_id, "DISPATCHING", actor,
+        attempt=attempt, attempt_id=attempt_id, provider=provider,
+    )
+    return current
+
+
+def mark_dispatched(aios_dir, effect_id, actor):
+    """Record that provider dispatch returned without an authoritative outcome."""
+    return transition(aios_dir, effect_id, "DISPATCHED", actor)
+
+
 def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
-    _validate_strings(("attempt_id", attempt_id), ("provider", provider))
-    return transition(aios_dir, effect_id, "DISPATCHED", actor, attempt=1, attempt_id=attempt_id, provider=provider)
+    """Backward-compatible provider-dispatch entrypoint.
+
+    Callers that can crash between intent journaling and provider execution
+    should use ``begin_dispatch`` -> provider call -> ``mark_dispatched``.
+    This helper preserves the old API by recording the intent and then the
+    dispatched marker as one logical operation; it does not itself call a
+    provider.
+    """
+    begin_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt=1)
+    return mark_dispatched(aios_dir, effect_id, actor)
 
 
 def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
     """Explicitly dispatch the next attempt for an UNKNOWN effect.
 
-    The generic transition graph intentionally does not allow UNKNOWN ->
-    DISPATCHED. This narrow entrypoint enforces monotonic attempt sequencing
-    and preserves the logical effect identity across retries.
+    UNKNOWN -> DISPATCHING is the only retry entrypoint. The caller must then
+    execute the provider and explicitly mark the resulting state. This keeps
+    retries distinguishable and prevents an agent from widening the generic
+    transition graph.
     """
     _validate_strings(("effect_id", effect_id), ("actor", actor),
                       ("attempt_id", attempt_id), ("provider", provider))
@@ -117,22 +154,41 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
         raise TransitionError(f"retry attempt must be {expected}, got {attempt}")
     if attempt_id != f"{effect_id}:attempt:{attempt}":
         raise ValueError("attempt_id does not match retry attempt")
-    updated = dict(current)
-    updated.update({"state": "DISPATCHED", "attempt": attempt,
-                    "attempt_id": attempt_id, "provider": provider})
-    event = {
-        "kind": "external_effect", "action": "retry_dispatch", "effect_id": effect_id,
-        "from_state": "UNKNOWN", "to_state": "DISPATCHED", "actor": actor,
-        "attempt": attempt, "attempt_id": attempt_id, "provider": provider,
-    }
-    commit_batch(aios_dir, [(os.path.join("effects", effect_id + ".json"), updated),
-                            (os.path.join("events", "effect-" + effect_id + "-DISPATCHED-attempt-" + str(attempt) + ".json"), event)])
-    return updated
+    return begin_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt=attempt)
 
 
 def unknown(aios_dir, effect_id, actor, reason):
     _validate_strings(("reason", reason))
     return transition(aios_dir, effect_id, "UNKNOWN", actor, unknown_reason=reason)
+
+
+def reconcile_dispatch(aios_dir, effect_id, actor, reason="restart or interrupted provider call"):
+    """Convert an interrupted DISPATCHING intent to UNKNOWN.
+
+    This is deliberately not an inferred success/failure transition. It only
+    establishes that provider visibility is uncertain, forcing explicit
+    reconciliation before any retry.
+    """
+    _validate_strings(("reason", reason))
+    return transition(aios_dir, effect_id, "UNKNOWN", actor, unknown_reason=reason)
+
+
+def reconcile_inflight(aios_dir, actor, reason="restart or interrupted provider call"):
+    """Reconcile every durable DISPATCHING intent after process restart."""
+    _validate_strings(("actor", actor), ("reason", reason))
+    recover_pending(aios_dir)
+    effects_dir = os.path.join(aios_dir, "effects")
+    if not os.path.isdir(effects_dir):
+        return []
+    reconciled = []
+    for name in sorted(os.listdir(effects_dir)):
+        if not name.endswith(".json"):
+            continue
+        effect_id = name[:-5]
+        record = _load(os.path.join(effects_dir, name))
+        if record.get("state") == "DISPATCHING":
+            reconciled.append(reconcile_dispatch(aios_dir, effect_id, actor, reason))
+    return reconciled
 
 
 def observe(aios_dir, effect_id, actor, outcome, provider_observation):
