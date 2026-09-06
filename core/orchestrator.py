@@ -9,7 +9,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
-from .authority import authorize
+from .authority import authorize, load_contract
 from .durable_loop import Executor, LoopPolicy, StateStore, run_durable_loop
 from .runtime import ProviderAdapter, execute
 
@@ -63,6 +63,15 @@ def run_governed_execution(
 ) -> Mapping[str, Any]:
     """Run/resume the single AIOS durable loop with authority-bound state."""
     authorize(executor.aios_dir, executor.contract_id, executor.permit_id)
+    contract = load_contract(executor.aios_dir, executor.contract_id)
+
+    # The runtime may tighten a budget, but it may never enlarge or replace the
+    # governing contract's policy binding. A policy digest is mandatory here so
+    # callers cannot silently execute under an unrelated policy.
+    if policy.policy_digest != contract["policy_digest"]:
+        raise PermissionError("execution policy digest does not match governing contract")
+    if policy.max_steps > contract["max_attempts"]:
+        raise PermissionError("execution budget exceeds governing contract max_attempts")
 
     def validate_resume(state: Mapping[str, Any]) -> None:
         if state.get("contract_id") != executor.contract_id:
@@ -76,7 +85,7 @@ def run_governed_execution(
         terminal_evaluator=policy.terminal_evaluator,
         action_authorizer=policy.action_authorizer,
         resume_validator=validate_resume,
-        policy_digest=policy.policy_digest,
+        policy_digest=contract["policy_digest"],
     )
 
     loaded = store.load()
