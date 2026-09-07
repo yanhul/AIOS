@@ -186,10 +186,12 @@ def main() -> int:
         env.update({"AIOS_POLICY_DIGEST": args.policy_digest, "AIOS_CONTRACT_ID": contract_identity(contract),
                     "AIOS_EXECUTION_ID": args.execution_id, "AIOS_CAPABILITY": capability_ref,
                     "AIOS_PROBLEM": args.problem})
+        existing_pythonpath = env.get("PYTHONPATH")
+        env["PYTHONPATH"] = str(cwd) + (os.pathsep + existing_pythonpath if existing_pythonpath else "")
         proc = subprocess.run(command, cwd=cwd, env=env, text=True, capture_output=True,
                               timeout=args.timeout_seconds, check=False, shell=False)
         if proc.returncode != 0:
-            raise ValueError(f"adapter exited non-zero: {proc.returncode}")
+            raise ValueError(f"adapter exited non-zero: {proc.returncode}: {proc.stderr.strip()[-500:]}")
         result = parse_single_json_document(proc.stdout)
         required = {"status", "evidence_refs", "verification_refs", "provenance"}
         if not required.issubset(result):
