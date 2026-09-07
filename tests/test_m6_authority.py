@@ -9,9 +9,16 @@ from core.authority import (
 )
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
+from core.policy_registry import persist_policy
 
 
-def _contract(policy="policy-v1"):
+def _policy(name="v1"):
+    return {"policy_type": "GOVERNING_POLICY", "name": name, "terminal_states": ["SUCCESS", "FAILURE"]}
+
+
+def _contract(policy=None):
+    if policy is None:
+        policy = persist_policy(_TMP, _policy("v1"))
     return {
         "contract_type": "EXECUTION_CONTRACT",
         "task_id": "TASK-1",
@@ -28,6 +35,8 @@ def _contract(policy="policy-v1"):
 
 
 def _seed_registry(tmp_path):
+    global _TMP
+    _TMP = str(tmp_path)
     registry = CapabilityRegistry()
     registry.register(Capability("read", "1", "test", "test", status="ACTIVE"))
     registry.register(Capability("write", "1", "test", "test", status="ACTIVE"))
@@ -61,7 +70,8 @@ def test_permit_cannot_be_rebound(tmp_path):
     _seed_registry(tmp_path)
     c = _contract()
     p = persist_permit(str(tmp_path), c, "governing-authority")
-    other = _contract(policy="policy-v2")
+    other_policy = persist_policy(str(tmp_path), _policy("v2"))
+    other = _contract(other_policy)
     persist_contract(str(tmp_path), other)
     from core.contract import verify_permit
     with pytest.raises(ValueError):
@@ -86,13 +96,37 @@ def test_unknown_capability_cannot_get_authority(tmp_path):
 
 def test_missing_registry_fails_closed(tmp_path):
     with pytest.raises(Exception, match="capability authority rejected contract"):
-        persist_contract(str(tmp_path), _contract())
+        persist_contract(str(tmp_path), {**_contract(persist_policy(str(tmp_path), _policy())), "policy_digest": "sha256:unknown"})
+
+
+def test_unknown_policy_digest_cannot_get_authority(tmp_path):
+    _seed_registry(tmp_path)
+    c = _contract("sha256:attacker-invented")
+    with pytest.raises(Exception, match="policy authority rejected contract"):
+        persist_contract(str(tmp_path), c)
+
+
+def test_tampered_policy_artifact_fails_closed(tmp_path):
+    _seed_registry(tmp_path)
+    import json, os
+    digest = persist_policy(str(tmp_path), _policy())
+    path = os.path.join(str(tmp_path), "policies", digest + ".json")
+    with open(path, "r", encoding="utf-8") as fh:
+        record = json.load(fh)
+    record["name"] = "tampered"
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(record, fh)
+    with pytest.raises(Exception, match="policy authority rejected contract"):
+        persist_contract(str(tmp_path), _contract(digest))
 
 
 def test_deprecated_capability_cannot_execute(tmp_path):
+    global _TMP
+    _TMP = str(tmp_path)
     registry = CapabilityRegistry()
     registry.register(Capability("read", "1", "test", "test", status="DEPRECATED"))
     registry.register(Capability("write", "1", "test", "test", status="ACTIVE"))
     registry.persist(str(tmp_path), "test-fixture")
+    c = _contract()
     with pytest.raises(Exception, match="capability authority rejected contract"):
-        persist_contract(str(tmp_path), _contract())
+        persist_contract(str(tmp_path), c)
