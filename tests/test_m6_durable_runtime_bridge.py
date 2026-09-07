@@ -5,10 +5,11 @@ from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.durable_runtime import RuntimeSubmission
 from core.effect_authority import create_effect, dispatch, transition
+from core.policy_registry import persist_policy
 from core.runtime import ProviderReceipt, execute, execute_retry_attempt
 
 
-def make_contract(max_attempts=1):
+def make_contract(policy_digest, max_attempts=1):
     return {
         "contract_type": "EXECUTION_CONTRACT",
         "task_id": "task-durable-runtime",
@@ -20,7 +21,7 @@ def make_contract(max_attempts=1):
         "evidence_required": ["provider_receipt"],
         "max_attempts": max_attempts,
         "terminal_states": ["SUCCESS", "FAILURE"],
-        "policy_digest": "policy-1",
+        "policy_digest": policy_digest,
     }
 
 
@@ -49,7 +50,8 @@ def setup(tmp_path, max_attempts=1):
     registry = CapabilityRegistry()
     registry.register(Capability("fake-provider", "1", "test-fixture", "test", status="ACTIVE"))
     registry.persist(str(tmp_path), "test-fixture")
-    contract = make_contract(max_attempts)
+    policy = persist_policy(str(tmp_path), {"policy_type":"GOVERNING_POLICY","name":"durable-runtime-fixture"})
+    contract = make_contract(policy, max_attempts)
     cid = contract_identity(contract)
     persist_contract(str(tmp_path), contract)
     permit = persist_permit(str(tmp_path), contract, "root")
