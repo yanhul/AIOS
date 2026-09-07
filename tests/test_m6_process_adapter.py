@@ -5,10 +5,11 @@ from adapters.process import SubprocessAdapter
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
+from core.policy_registry import persist_policy
 from core.runtime import execute
 
 
-def make_contract():
+def make_contract(policy_digest):
     return {
         "contract_type": "EXECUTION_CONTRACT",
         "task_id": "task-process",
@@ -20,7 +21,7 @@ def make_contract():
         "evidence_required": ["provider_receipt"],
         "max_attempts": 1,
         "terminal_states": ["SUCCESS", "FAILURE"],
-        "policy_digest": "policy-1",
+        "policy_digest": policy_digest,
     }
 
 
@@ -28,7 +29,8 @@ def setup(tmp_path):
     registry = CapabilityRegistry()
     registry.register(Capability("process-provider", "1", "test-fixture", "test", status="ACTIVE"))
     registry.persist(str(tmp_path), "test-fixture")
-    contract = make_contract()
+    policy = persist_policy(str(tmp_path), {"policy_type":"GOVERNING_POLICY","name":"process-fixture"})
+    contract = make_contract(policy)
     cid = contract_identity(contract)
     persist_contract(str(tmp_path), contract)
     permit = persist_permit(str(tmp_path), contract, "root")
