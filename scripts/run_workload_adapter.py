@@ -44,6 +44,20 @@ def read_json(path: Path) -> dict:
     return value
 
 
+def parse_single_json_document(stdout: str) -> dict:
+    """Accept one JSON document regardless of pretty-printing; reject extra data."""
+    decoder = json.JSONDecoder()
+    try:
+        value, end = decoder.raw_decode(stdout.lstrip())
+    except ValueError as exc:
+        raise ValueError("adapter output is not valid JSON") from exc
+    if stdout.lstrip()[end:].strip():
+        raise ValueError("adapter must emit exactly one JSON result object")
+    if not isinstance(value, dict):
+        raise ValueError("adapter result must be an object")
+    return value
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--workload-id", required=True)
@@ -109,15 +123,25 @@ def main() -> int:
             declared_adapter.relative_to(cwd)
         except ValueError as exc:
             raise ValueError("declared adapter escapes workload root") from exc
-        if not declared_adapter.is_file() or declared_adapter.suffix != ".py":
-            raise ValueError("manifest must declare an existing Python adapter")
+        if not declared_adapter.is_file():
+            raise ValueError("manifest must declare an existing adapter")
         if not command:
             raise ValueError("adapter command missing")
-        if len(command) != 2 or command[0] not in {"python", "python3", sys.executable}:
-            raise ValueError("execution command does not match manifest adapter")
-        invoked = (cwd / command[1]).resolve()
+        if len(command) != 2:
+            raise ValueError("adapter command must contain exactly interpreter and adapter")
+        interpreter, invoked_rel = command
+        allowed_interpreters = {"python", "python3", sys.executable, "bash", "sh", "/bin/bash", "/bin/sh"}
+        if interpreter not in allowed_interpreters:
+            raise ValueError("execution command interpreter is not governed")
+        invoked = (cwd / invoked_rel).resolve()
         if invoked != declared_adapter:
             raise ValueError("execution command does not match manifest adapter")
+        if declared_adapter.suffix == ".py" and interpreter not in {"python", "python3", sys.executable}:
+            raise ValueError("Python adapter requires a Python interpreter")
+        if declared_adapter.suffix == ".sh" and interpreter not in {"bash", "sh", "/bin/bash", "/bin/sh"}:
+            raise ValueError("shell adapter requires a shell interpreter")
+        if declared_adapter.suffix not in {".py", ".sh"}:
+            raise ValueError("only Python and POSIX shell adapters are supported")
 
         input_digest = "sha256:" + sha256_bytes(canonical_json({"problem": args.problem, "workload_id": args.workload_id}).encode())
         contract = {
@@ -135,20 +159,13 @@ def main() -> int:
 
         env = os.environ.copy()
         env.update({"AIOS_POLICY_DIGEST": args.policy_digest, "AIOS_CONTRACT_ID": contract_identity(contract),
-                    "AIOS_EXECUTION_ID": args.execution_id, "AIOS_CAPABILITY": capability_ref})
+                    "AIOS_EXECUTION_ID": args.execution_id, "AIOS_CAPABILITY": capability_ref,
+                    "AIOS_PROBLEM": args.problem})
         proc = subprocess.run(command, cwd=cwd, env=env, text=True, capture_output=True,
                               timeout=args.timeout_seconds, check=False, shell=False)
         if proc.returncode != 0:
             raise ValueError(f"adapter exited non-zero: {proc.returncode}")
-        lines = [line for line in proc.stdout.splitlines() if line.strip()]
-        if len(lines) != 1:
-            raise ValueError("adapter must emit exactly one JSON result object")
-        try:
-            result = json.loads(lines[0])
-        except ValueError as exc:
-            raise ValueError("adapter output is not valid JSON") from exc
-        if not isinstance(result, dict):
-            raise ValueError("adapter result must be an object")
+        result = parse_single_json_document(proc.stdout)
         required = {"status", "evidence_refs", "verification_refs", "provenance"}
         if not required.issubset(result):
             raise ValueError(f"adapter result missing fields: {sorted(required - set(result))}")
