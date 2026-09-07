@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed central runner for AIOS workload adapters.
-
-The workload repository is untrusted input. Policy, authority and contract
-semantics live here; the adapter can only produce an observed result.
-"""
+"""Fail-closed central AIOS workload adapter runner."""
 from __future__ import annotations
 
 import argparse
@@ -14,37 +10,36 @@ import subprocess
 import sys
 from pathlib import Path
 
+import yaml
+
+from core.capability_catalog import load_catalog
 from core.contract import contract_identity, issue_permit, validate_contract, verify_permit
-from core.policy_registry import policy_digest
+from core.policy_registry import resolve_policy
+from core.workload_registry import WorkloadRegistry
+from core.mutation import canonical_json
 
-POLICY = {
-    "policy_type": "GOVERNING_POLICY",
-    "policy_id": "central-workload-conformance",
-    "version": "1",
-    "max_attempts": 1,
-    "allowed_effects": ["process_execution"],
-    "evidence_required": ["adapter_result"],
-    "terminal_state_source": "workload_manifest",
-    "require_manifest_authority": "yanhul/AIOS",
-    "require_manifest_capability_binding": True,
-}
+AIOS_ROOT = Path(__file__).resolve().parents[1]
+AUTHORITY = "yanhul/AIOS"
+DEFAULT_POLICY = "sha256:0640840b0d5ab455470a7069163a928bd6d14a79168e834bb218a79559ba46b7"
 
 
-def die(message: str, code: int = 2) -> None:
-    print(json.dumps({"status": "BLOCKED", "reason": message}, sort_keys=True))
-    raise SystemExit(code)
+def blocked(reason: str) -> int:
+    print(json.dumps({"status": "BLOCKED", "reason": reason}, sort_keys=True))
+    return 2
 
 
-def sha256_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+def sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
 
 
-def load_json(path: Path):
+def read_json(path: Path) -> dict:
     try:
-        with path.open("r", encoding="utf-8") as fh:
-            return json.load(fh)
+        value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        die(f"cannot load JSON artifact: {path}")
+        raise ValueError(f"invalid JSON artifact: {path}") from exc
+    if not isinstance(value, dict):
+        raise ValueError(f"JSON artifact must be an object: {path}")
+    return value
 
 
 def main() -> int:
@@ -54,107 +49,150 @@ def main() -> int:
     ap.add_argument("--cwd", required=True)
     ap.add_argument("--problem", required=True)
     ap.add_argument("--timeout-seconds", type=int, default=300)
-    ap.add_argument("--", dest="_separator", nargs="*")
+    ap.add_argument("--policy-digest", default=DEFAULT_POLICY)
     args, command = ap.parse_known_args()
-    if not command:
-        die("adapter command missing")
-    if args.timeout_seconds < 1 or args.timeout_seconds > 3600:
-        die("timeout outside governed range")
-
-    root = Path(args.cwd).resolve()
-    manifest_path = root / "aios" / "workload.json"
-    if not manifest_path.is_file():
-        die("workload manifest missing")
-    manifest = load_json(manifest_path)
-    required = {"protocol_version", "capability", "owner", "aios_authority", "adapter", "entrypoint", "terminal_states", "verification_classes"}
-    if not required.issubset(manifest):
-        die("workload manifest schema incomplete")
-    if manifest["aios_authority"] != POLICY["require_manifest_authority"]:
-        die("workload manifest authority mismatch")
-    if manifest["owner"] + "@" + str(manifest["protocol_version"]) != args.workload_id and args.workload_id not in (manifest["owner"], manifest["capability"]):
-        # Keep the CLI identifier an explicit workload selector, never an authority grant.
-        die("workload identity mismatch")
-    if not isinstance(manifest["terminal_states"], list) or not manifest["terminal_states"]:
-        die("manifest terminal states missing")
-    if not isinstance(manifest["verification_classes"], list) or not manifest["verification_classes"]:
-        die("manifest verification classes missing")
-
-    declared_adapter = (root / manifest["adapter"]).resolve()
     try:
-        declared_adapter.relative_to(root)
-    except ValueError:
-        die("declared adapter escapes workload root")
-    if not declared_adapter.is_file():
-        die("declared adapter missing")
-    # The command must execute exactly the declared adapter; this prevents a
-    # workflow from bypassing the manifest by substituting another program.
-    command_paths = [Path(x) for x in command[1:] if not x.startswith("-")]
-    if command[0] in {"python", "python3", sys.executable} and command_paths:
-        invoked = (root / command_paths[0]).resolve()
-    elif command[0].endswith("/python") and command_paths:
-        invoked = (root / command_paths[0]).resolve()
-    else:
-        invoked = (root / command[0]).resolve()
-    if invoked != declared_adapter:
-        die("execution command does not match manifest adapter")
+        if args.timeout_seconds < 1 or args.timeout_seconds > 3600:
+            raise ValueError("timeout outside governed range")
+        cwd = Path(args.cwd).resolve()
+        if not cwd.is_dir():
+            raise ValueError("workload cwd does not exist")
 
-    pdigest = policy_digest(POLICY)
-    contract = {
-        "contract_type": "EXECUTION_CONTRACT",
-        "task_id": args.execution_id,
-        "scope": str(root),
-        "actor": "AIOS_CENTRAL_RUNNER",
-        "capabilities": [manifest["capability"]],
-        "input_digest": "sha256:" + sha256_bytes(args.problem.encode("utf-8")),
-        "allowed_effects": list(POLICY["allowed_effects"]),
-        "evidence_required": list(POLICY["evidence_required"]),
-        "max_attempts": POLICY["max_attempts"],
-        "terminal_states": list(manifest["terminal_states"]),
-        "policy_digest": pdigest,
-    }
-    validate_contract(contract)
-    permit = issue_permit(contract, "yanhul/AIOS")
-    verify_permit(contract, permit)
+        policy = resolve_policy(str(AIOS_ROOT), args.policy_digest)
+        catalog_path = AIOS_ROOT / "capabilities" / "registry.yaml"
+        catalog = load_catalog(catalog_path)
+        raw_catalog = yaml.safe_load(catalog_path.read_text(encoding="utf-8")) or {}
+        entries = [e for e in raw_catalog.get("capabilities", []) if e.get("owner") == args.workload_id]
+        if len(entries) != 1:
+            raise ValueError("workload must have exactly one normative catalog registration")
+        entry = entries[0]
+        capability_ref = f"{entry['capability_id']}@{entry['version']}"
+        registration_id = f"{entry['owner']}@{entry['version']}"
+        registration = WorkloadRegistry.from_capability_entries(entries).resolve(registration_id)
+        capability = catalog.resolve(capability_ref)
+        if capability.status != "ACTIVE":
+            raise ValueError("capability is not ACTIVE under the normative catalog")
 
-    env = os.environ.copy()
-    env["AIOS_POLICY_DIGEST"] = pdigest
-    env["AIOS_CONTRACT_ID"] = contract_identity(contract)
-    env["AIOS_EXECUTION_ID"] = args.execution_id
-    env["AIOS_CAPABILITY"] = manifest["capability"]
-    try:
-        proc = subprocess.run(command, cwd=root, env=env, text=True, capture_output=True, timeout=args.timeout_seconds, shell=False)
+        manifest_path = (cwd / registration.adapter).resolve()
+        try:
+            manifest_path.relative_to(cwd)
+        except ValueError as exc:
+            raise ValueError("catalog manifest escapes workload root") from exc
+        manifest = read_json(manifest_path)
+        if manifest.get("aios_authority") != AUTHORITY:
+            raise ValueError("manifest authority mismatch")
+        if manifest.get("owner") != entry["owner"]:
+            raise ValueError("manifest owner mismatch")
+        if manifest.get("capability") != capability_ref:
+            raise ValueError("manifest capability/version mismatch")
+        if manifest.get("protocol_version") != 1:
+            raise ValueError("unsupported workload protocol version")
+        terminal_states = manifest.get("terminal_states")
+        catalog_terminal_states = set(entry.get("terminal_states", []))
+        if not isinstance(terminal_states, list) or not terminal_states:
+            raise ValueError("manifest terminal states missing")
+        if not set(terminal_states).issubset(catalog_terminal_states):
+            raise ValueError("manifest terminal states exceed normative capability contract")
+        verification = manifest.get("verification_classes")
+        if not isinstance(verification, list) or not verification:
+            raise ValueError("manifest verification classes missing")
+
+        adapter_rel = manifest.get("adapter")
+        entrypoint = manifest.get("entrypoint")
+        if not isinstance(adapter_rel, str) or not isinstance(entrypoint, str) or not adapter_rel or not entrypoint:
+            raise ValueError("manifest adapter/entrypoint missing")
+        declared_adapter = (cwd / adapter_rel).resolve()
+        try:
+            declared_adapter.relative_to(cwd)
+        except ValueError as exc:
+            raise ValueError("declared adapter escapes workload root") from exc
+        if not declared_adapter.is_file() or declared_adapter.suffix != ".py":
+            raise ValueError("manifest must declare an existing Python adapter")
+        if not command:
+            raise ValueError("adapter command missing")
+        # Workload CI may choose the Python executable, but the program path must
+        # be exactly the manifest-declared adapter. Shell interpolation is never used.
+        invoked = None
+        if command[0] in {"python", "python3", sys.executable} and len(command) >= 2:
+            invoked = (cwd / command[1]).resolve()
+        if invoked is None or invoked != declared_adapter:
+            raise ValueError("execution command does not match manifest adapter")
+        if len(command) != 2:
+            raise ValueError("adapter command may contain only the declared adapter")
+
+        input_digest = "sha256:" + sha256_bytes(canonical_json({"problem": args.problem, "workload_id": args.workload_id}).encode())
+        contract = {
+            "contract_type": "EXECUTION_CONTRACT",
+            "task_id": args.execution_id,
+            "scope": args.workload_id,
+            "actor": "AIOS_CENTRAL_RUNNER",
+            "capabilities": [capability_ref],
+            "input_digest": input_digest,
+            "allowed_effects": list(policy["allowed_effects"]),
+            "evidence_required": list(policy["evidence_required"]),
+            "max_attempts": int(policy["max_attempts"]),
+            "terminal_states": sorted(terminal_states),
+            "policy_digest": args.policy_digest,
+        }
+        validate_contract(contract)
+        permit = issue_permit(contract, AUTHORITY)
+        verify_permit(contract, permit)
+
+        env = os.environ.copy()
+        env.update({
+            "AIOS_POLICY_DIGEST": args.policy_digest,
+            "AIOS_CONTRACT_ID": contract_identity(contract),
+            "AIOS_EXECUTION_ID": args.execution_id,
+            "AIOS_CAPABILITY": capability_ref,
+        })
+        proc = subprocess.run(command, cwd=cwd, env=env, text=True, capture_output=True,
+                              timeout=args.timeout_seconds, check=False, shell=False)
+        if proc.returncode != 0:
+            raise ValueError(f"adapter exited non-zero: {proc.returncode}")
+        lines = [line for line in proc.stdout.splitlines() if line.strip()]
+        if len(lines) != 1:
+            raise ValueError(f"adapter must emit exactly one JSON result object; got {len(lines)}")
+        try:
+            result = json.loads(lines[0])
+        except ValueError as exc:
+            raise ValueError("adapter output is not valid JSON") from exc
+        if not isinstance(result, dict):
+            raise ValueError("adapter result must be an object")
+        required = {"status", "evidence_refs", "verification_refs", "provenance"}
+        if not required.issubset(result):
+            raise ValueError(f"adapter result missing fields: {sorted(required - set(result))}")
+        if result["status"] not in terminal_states:
+            raise ValueError(f"adapter returned undeclared terminal state: {result['status']!r}")
+        if not isinstance(result["evidence_refs"], (list, tuple)) or not result["evidence_refs"]:
+            raise ValueError("adapter result must contain evidence refs")
+        if not isinstance(result["verification_refs"], (list, tuple)) or not result["verification_refs"]:
+            raise ValueError("adapter result must contain verification refs")
+        if not isinstance(result["provenance"], dict) or result["provenance"].get("producer") != entry["owner"]:
+            raise ValueError("adapter provenance producer mismatch")
+        if "adapter_result" not in policy["evidence_required"]:
+            raise ValueError("governing policy does not require adapter-result evidence")
+
+        receipt = {
+            "receipt_type": "AIOS_GOVERNED_EXECUTION_RECEIPT",
+            "execution_id": args.execution_id,
+            "workload_id": args.workload_id,
+            "capability": capability_ref,
+            "policy_digest": args.policy_digest,
+            "contract_id": contract_identity(contract),
+            "permit_id": permit["permit_id"],
+            "status": result["status"],
+            "evidence_refs": list(result["evidence_refs"]),
+            "verification_refs": list(result["verification_refs"]),
+            "provenance": result["provenance"],
+            "manifest_sha256": "sha256:" + sha256_bytes(manifest_path.read_bytes()),
+            "result_sha256": "sha256:" + sha256_bytes(canonical_json(result).encode()),
+        }
+        print(canonical_json(receipt))
+        return 0
     except subprocess.TimeoutExpired:
-        die("adapter exceeded governed timeout")
-    if proc.returncode != 0:
-        die(f"adapter exited non-zero: {proc.returncode}")
-    lines = [line for line in proc.stdout.splitlines() if line.strip()]
-    if len(lines) != 1:
-        die("adapter must emit exactly one JSON result object")
-    try:
-        result = json.loads(lines[0])
-    except ValueError:
-        die("adapter output is not valid JSON")
-    if not isinstance(result, dict):
-        die("adapter result must be an object")
-    if result.get("status") not in {"PASS", "BLOCKED", "INCONCLUSIVE"}:
-        die("adapter result has unsupported status")
-    if not isinstance(result.get("evidence_refs"), (list, tuple)):
-        die("adapter result missing evidence_refs")
-    if not isinstance(result.get("verification_refs"), (list, tuple)):
-        die("adapter result missing verification_refs")
-    if not isinstance(result.get("provenance"), dict):
-        die("adapter result missing provenance")
-    if result["provenance"].get("producer") != manifest["owner"]:
-        die("adapter provenance producer mismatch")
-    observed = dict(result)
-    observed["governed"] = True
-    observed["policy_digest"] = pdigest
-    observed["contract_id"] = contract_identity(contract)
-    observed["permit_id"] = permit["permit_id"]
-    observed["execution_id"] = args.execution_id
-    observed["manifest_sha256"] = sha256_bytes(manifest_path.read_bytes())
-    print(json.dumps(observed, sort_keys=True, separators=(",", ":")))
-    return 0
+        return blocked("adapter exceeded governed timeout")
+    except Exception as exc:
+        return blocked(str(exc))
 
 
 if __name__ == "__main__":
