@@ -16,9 +16,9 @@ def _policy(name="v1"):
     return {"policy_type": "GOVERNING_POLICY", "name": name, "terminal_states": ["SUCCESS", "FAILURE"]}
 
 
-def _contract(policy=None):
+def _contract(tmp_path, policy=None):
     if policy is None:
-        policy = persist_policy(_TMP, _policy("v1"))
+        policy = persist_policy(str(tmp_path), _policy("v1"))
     return {
         "contract_type": "EXECUTION_CONTRACT",
         "task_id": "TASK-1",
@@ -35,8 +35,6 @@ def _contract(policy=None):
 
 
 def _seed_registry(tmp_path):
-    global _TMP
-    _TMP = str(tmp_path)
     registry = CapabilityRegistry()
     registry.register(Capability("read", "1", "test", "test", status="ACTIVE"))
     registry.register(Capability("write", "1", "test", "test", status="ACTIVE"))
@@ -45,7 +43,7 @@ def _seed_registry(tmp_path):
 
 def test_contract_and_permit_are_durable(tmp_path):
     _seed_registry(tmp_path)
-    c = _contract()
+    c = _contract(tmp_path)
     stored = persist_contract(str(tmp_path), c)
     assert stored["contract_id"] == contract_identity(c)
     p = persist_permit(str(tmp_path), c, "governing-authority")
@@ -56,7 +54,7 @@ def test_contract_and_permit_are_durable(tmp_path):
 
 def test_contract_is_immutable_and_content_addressed(tmp_path):
     _seed_registry(tmp_path)
-    c = _contract()
+    c = _contract(tmp_path)
     first = persist_contract(str(tmp_path), c)
     changed = dict(c)
     changed["max_attempts"] = 4
@@ -68,10 +66,10 @@ def test_contract_is_immutable_and_content_addressed(tmp_path):
 
 def test_permit_cannot_be_rebound(tmp_path):
     _seed_registry(tmp_path)
-    c = _contract()
+    c = _contract(tmp_path)
     p = persist_permit(str(tmp_path), c, "governing-authority")
     other_policy = persist_policy(str(tmp_path), _policy("v2"))
-    other = _contract(other_policy)
+    other = _contract(tmp_path, other_policy)
     persist_contract(str(tmp_path), other)
     from core.contract import verify_permit
     with pytest.raises(ValueError):
@@ -80,7 +78,7 @@ def test_permit_cannot_be_rebound(tmp_path):
 
 def test_replay_is_idempotent(tmp_path):
     _seed_registry(tmp_path)
-    c = _contract()
+    c = _contract(tmp_path)
     first = persist_permit(str(tmp_path), c, "governing-authority")
     second = persist_permit(str(tmp_path), c, "governing-authority")
     assert first == second
@@ -88,7 +86,7 @@ def test_replay_is_idempotent(tmp_path):
 
 def test_unknown_capability_cannot_get_authority(tmp_path):
     _seed_registry(tmp_path)
-    c = _contract()
+    c = _contract(tmp_path)
     c["capabilities"] = ["read@1", "not-registered@1"]
     with pytest.raises(Exception, match="capability authority rejected contract"):
         persist_contract(str(tmp_path), c)
@@ -96,12 +94,12 @@ def test_unknown_capability_cannot_get_authority(tmp_path):
 
 def test_missing_registry_fails_closed(tmp_path):
     with pytest.raises(Exception, match="capability authority rejected contract"):
-        persist_contract(str(tmp_path), {**_contract(persist_policy(str(tmp_path), _policy())), "policy_digest": "sha256:unknown"})
+        persist_contract(str(tmp_path), _contract(tmp_path))
 
 
 def test_unknown_policy_digest_cannot_get_authority(tmp_path):
     _seed_registry(tmp_path)
-    c = _contract("sha256:attacker-invented")
+    c = _contract(tmp_path, "sha256:attacker-invented")
     with pytest.raises(Exception, match="policy authority rejected contract"):
         persist_contract(str(tmp_path), c)
 
@@ -117,16 +115,14 @@ def test_tampered_policy_artifact_fails_closed(tmp_path):
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(record, fh)
     with pytest.raises(Exception, match="policy authority rejected contract"):
-        persist_contract(str(tmp_path), _contract(digest))
+        persist_contract(str(tmp_path), _contract(tmp_path, digest))
 
 
 def test_deprecated_capability_cannot_execute(tmp_path):
-    global _TMP
-    _TMP = str(tmp_path)
     registry = CapabilityRegistry()
     registry.register(Capability("read", "1", "test", "test", status="DEPRECATED"))
     registry.register(Capability("write", "1", "test", "test", status="ACTIVE"))
     registry.persist(str(tmp_path), "test-fixture")
-    c = _contract()
+    c = _contract(tmp_path)
     with pytest.raises(Exception, match="capability authority rejected contract"):
         persist_contract(str(tmp_path), c)
