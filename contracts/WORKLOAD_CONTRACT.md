@@ -43,4 +43,4 @@ The reference MUST resolve in the AIOS Capability Registry before execution is a
 
 ## Workload declaration
 
-Each workload repository MUST publish `aios/workload.json` containing its canonical capability reference, owner repository, protocol version, and declared terminal states. This file is descriptive; activation remains governed by AIOS authority.
+Each registered capability MUST have a descriptive manifest containing its canonical capability reference, owner repository, protocol version, and declared terminal states. For a workload repository that can publish AIOS metadata, the canonical location is `aios/workload.json`. For an externally owned workload that cannot be modified as part of AIOS integration, the AIOS adapter MAY host the manifest at the path recorded in `capabilities/registry.yaml`. The manifest is descriptive; activation remains governed by AIOS authority.
