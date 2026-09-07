@@ -23,8 +23,14 @@ jobs:
       - name: Checkout registered workloads
         run: |
           git clone --depth 1 https://github.com/yanhul/try.git "$RUNNER_TEMP/try"
+          git -C "$RUNNER_TEMP/try" fetch --depth 1 origin 2c1297c7e59444ade498cf4a8e12b6617c760943
+          git -C "$RUNNER_TEMP/try" checkout --detach 2c1297c7e59444ade498cf4a8e12b6617c760943
           git clone --depth 1 https://github.com/yanhul/android-ai-assistant.git "$RUNNER_TEMP/android-ai-assistant"
+          git -C "$RUNNER_TEMP/android-ai-assistant" fetch --depth 1 origin 2df06a12c83ad1adcd8cf5c6d7287fe95f242000
+          git -C "$RUNNER_TEMP/android-ai-assistant" checkout --detach 2df06a12c83ad1adcd8cf5c6d7287fe95f242000
           git clone --depth 1 https://github.com/yanhul/RX50.git "$RUNNER_TEMP/RX50"
+          git -C "$RUNNER_TEMP/RX50" fetch --depth 1 origin 42d2993df72e699528d3469526c2335e8f7ab218
+          git -C "$RUNNER_TEMP/RX50" checkout --detach 42d2993df72e699528d3469526c2335e8f7ab218
       - name: Run live three-workload conformance
         run: |
           python scripts/run_3_workload_conformance.py \
