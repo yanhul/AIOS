@@ -47,15 +47,25 @@ def read_json(path: Path) -> dict:
 def parse_single_json_document(stdout: str) -> dict:
     """Accept one JSON document regardless of pretty-printing; reject extra data."""
     decoder = json.JSONDecoder()
+    stripped = stdout.lstrip()
     try:
-        value, end = decoder.raw_decode(stdout.lstrip())
+        value, end = decoder.raw_decode(stripped)
     except ValueError as exc:
         raise ValueError("adapter output is not valid JSON") from exc
-    if stdout.lstrip()[end:].strip():
+    if stripped[end:].strip():
         raise ValueError("adapter must emit exactly one JSON result object")
     if not isinstance(value, dict):
         raise ValueError("adapter result must be an object")
     return value
+
+
+def persist_receipt(path: Path, receipt: dict) -> None:
+    """Atomically publish the terminal receipt so a restart can reuse it."""
+    path = path.resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(canonical_json(receipt) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def main() -> int:
@@ -66,6 +76,7 @@ def main() -> int:
     ap.add_argument("--problem", required=True)
     ap.add_argument("--timeout-seconds", type=int, default=300)
     ap.add_argument("--policy-digest", default=DEFAULT_POLICY)
+    ap.add_argument("--receipt-path")
     args, command = ap.parse_known_args()
     if command and command[0] == "--":
         command = command[1:]
@@ -157,6 +168,20 @@ def main() -> int:
         permit = issue_permit(contract, AUTHORITY)
         verify_permit(contract, permit)
 
+        receipt_path = Path(args.receipt_path).resolve() if args.receipt_path else None
+        if receipt_path and receipt_path.exists():
+            saved = read_json(receipt_path)
+            if saved.get("receipt_type") != "AIOS_GOVERNED_EXECUTION_RECEIPT":
+                raise ValueError("persisted receipt type mismatch")
+            if saved.get("execution_id") != args.execution_id or saved.get("workload_id") != args.workload_id:
+                raise ValueError("persisted receipt identity mismatch")
+            if saved.get("contract_id") != contract_identity(contract):
+                raise ValueError("persisted receipt contract mismatch")
+            if saved.get("policy_digest") != args.policy_digest or saved.get("capability") != capability_ref:
+                raise ValueError("persisted receipt authority mismatch")
+            print(canonical_json(saved))
+            return 0
+
         env = os.environ.copy()
         env.update({"AIOS_POLICY_DIGEST": args.policy_digest, "AIOS_CONTRACT_ID": contract_identity(contract),
                     "AIOS_EXECUTION_ID": args.execution_id, "AIOS_CAPABILITY": capability_ref,
@@ -189,6 +214,8 @@ def main() -> int:
             "provenance": result["provenance"], "manifest_sha256": "sha256:" + sha256_bytes(manifest_path.read_bytes()),
             "result_sha256": "sha256:" + sha256_bytes(canonical_json(result).encode()),
         }
+        if receipt_path:
+            persist_receipt(receipt_path, receipt)
         print(canonical_json(receipt))
         return 0
     except subprocess.TimeoutExpired:
