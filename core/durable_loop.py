@@ -34,6 +34,7 @@ class LoopPolicy:
     action_authorizer: Callable[[Any, Mapping[str, Any]], None]
     resume_validator: Callable[[Mapping[str, Any]], None] | None = None
     policy_digest: str | None = None
+    terminal_states: frozenset[str] = TERMINAL
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
@@ -42,6 +43,10 @@ class LoopPolicy:
             not isinstance(self.policy_digest, str) or not self.policy_digest.strip()
         ):
             raise ValueError("policy_digest must be a non-empty string when supplied")
+        if not self.terminal_states or not all(
+            isinstance(value, str) and value.strip() for value in self.terminal_states
+        ):
+            raise ValueError("terminal_states must be a non-empty set of strings")
 
 
 @dataclass
@@ -62,7 +67,7 @@ def _validate_loaded_state(
         raise ValueError("persisted step is invalid")
     if state["step"] < 0 or state["step"] > policy.max_steps:
         raise ValueError("persisted step exceeds immutable execution budget")
-    if state.get("status") not in {"RUNNING", *TERMINAL}:
+    if state.get("status") not in {"RUNNING", *policy.terminal_states}:
         raise ValueError("persisted status is invalid")
     if not isinstance(state.get("history"), list):
         raise ValueError("persisted history is invalid")
@@ -100,7 +105,7 @@ def run_durable_loop(
         store.save(state)
         return state
 
-    if state["status"] in TERMINAL:
+    if state["status"] in policy.terminal_states:
         return state
 
     while state["step"] < policy.max_steps:
@@ -143,7 +148,7 @@ def run_durable_loop(
 
         try:
             terminal = policy.terminal_evaluator(deepcopy(verification), deepcopy(state))
-            if terminal is not None and terminal not in TERMINAL:
+            if terminal is not None and terminal not in policy.terminal_states:
                 raise ValueError(f"invalid terminal status: {terminal}")
         except Exception as exc:
             state["status"] = "BLOCKED"
@@ -159,6 +164,9 @@ def run_durable_loop(
         state["status"] = "RUNNING"
         store.save(state)
 
-    state["status"] = "INCONCLUSIVE"
+    if "INCONCLUSIVE" in policy.terminal_states:
+        state["status"] = "INCONCLUSIVE"
+    else:
+        state["status"] = next(iter(policy.terminal_states))
     store.save(state)
     return state
