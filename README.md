@@ -18,18 +18,21 @@ AIOS is not a model and not a single agent. It governs agents, tools, software, 
 - **Experience / Evolution:** verified task-to-capability history, negative evidence, versioned candidate capabilities and governed promotion.
 - **Context:** task, identity, device/software, permissions, resources, time, location and physical state are first-class execution inputs.
 
-See `docs/TARGET_ARCHITECTURE.md` for the normative target and `docs/ROADMAP.md` for implementation status. See `docs/HARNESS_REFERENCE.md` for the Claude Code/Jarvis-style durable-harness boundary adopted by AIOS.
+See `docs/TARGET_ARCHITECTURE.md` for the normative target and `docs/ROADMAP.md` for implementation status. See `docs/HARNESS_REFERENCE.md` for the durable-harness boundary adopted by AIOS.
 
 ## Proof-of-system workloads
 
-The four repositories are deliberately independent:
+The workload repositories remain independently owned:
 
 - `AIOS` — control, governance and capability plane.
 - `try` — autonomous research and strategy-evaluation workload.
 - `android-ai-assistant` — software/device-agent workload.
 - `RX50` — hardware-engineering and physical-evidence workload.
+- `jingyaogong/minimind` — model-learning substrate for pretraining, SFT, preference/RL training, tool use and agentic RL.
 
 AIOS references and governs workloads; it does not copy, merge, or silently rewrite their source.
+
+MiniMind is integrated only through `adapters/minimind`: AIOS authorizes the learning task and validates artifact lineage and independent evaluation evidence. Training reward is a learning signal, not promotion authority.
 
 Initial workload registrations live in `capabilities/registry.yaml`.
 
@@ -42,7 +45,8 @@ Initial workload registrations live in `capabilities/registry.yaml`.
 - Every material state mutation is auditable and recoverable.
 - Verification claims must resolve to evidence or deterministic checks appropriate to the claim.
 - Digital verification and physical verification remain distinct.
+- Model-learning workloads must provide immutable artifact lineage; reward scores alone cannot authorize promotion.
 
 ## Current implementation
 
-The repository contains the M1/M1.5 state and mutation foundation plus implemented authority, verification, reconciliation, contract, runtime and durable-execution components. A dependency-free governed durable loop is now implemented in `core/durable_loop.py` with coverage for bounded execution, persistence, terminal gating and resume. Capability identity/registry and first-class execution context are now established as the next control-plane foundation; capability-graph persistence, full task orchestration and end-to-end cross-repository execution remain governed implementation work.
+The repository contains the M1/M1.5 state and mutation foundation plus implemented authority, verification, reconciliation, contract, runtime and durable-execution components. A dependency-free governed durable loop is implemented in `core/durable_loop.py` with coverage for bounded execution, persistence, terminal gating and resume. Capability identity/registry, first-class execution context, and governed workload adapters are now established; full cross-repository training execution and promotion automation remain separate implementation work.
