@@ -35,6 +35,7 @@ class LoopPolicy:
     resume_validator: Callable[[Mapping[str, Any]], None] | None = None
     policy_digest: str | None = None
     terminal_states: frozenset[str] = TERMINAL
+    budget_exhaustion_state: str = "INCONCLUSIVE"
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
@@ -47,6 +48,10 @@ class LoopPolicy:
             isinstance(value, str) and value.strip() for value in self.terminal_states
         ):
             raise ValueError("terminal_states must be a non-empty set of strings")
+        if not isinstance(self.budget_exhaustion_state, str) or not self.budget_exhaustion_state.strip():
+            raise ValueError("budget_exhaustion_state must be a non-empty string")
+        if self.budget_exhaustion_state not in self.terminal_states:
+            raise ValueError("budget_exhaustion_state must be an authorized terminal state")
 
 
 @dataclass
@@ -164,9 +169,9 @@ def run_durable_loop(
         state["status"] = "RUNNING"
         store.save(state)
 
-    if "INCONCLUSIVE" in policy.terminal_states:
-        state["status"] = "INCONCLUSIVE"
-    else:
-        state["status"] = next(iter(policy.terminal_states))
+    state["status"] = policy.budget_exhaustion_state
     store.save(state)
     return state
+
+
+__all__ = ["TERMINAL", "LoopPolicy", "MemoryStateStore", "run_durable_loop"]
