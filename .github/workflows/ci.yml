@@ -20,3 +20,14 @@ jobs:
         run: python -m pip install --upgrade pytest PyYAML
       - name: Run test suite
         run: python -m pytest -q
+      - name: Checkout registered workloads
+        run: |
+          git clone --depth 1 https://github.com/yanhul/try.git "$RUNNER_TEMP/try"
+          git clone --depth 1 https://github.com/yanhul/android-ai-assistant.git "$RUNNER_TEMP/android-ai-assistant"
+          git clone --depth 1 https://github.com/yanhul/RX50.git "$RUNNER_TEMP/RX50"
+      - name: Run live three-workload conformance
+        run: |
+          python scripts/run_3_workload_conformance.py \
+            --root yanhul/try "$RUNNER_TEMP/try" \
+            --root yanhul/android-ai-assistant "$RUNNER_TEMP/android-ai-assistant" \
+            --root yanhul/RX50 "$RUNNER_TEMP/RX50"
