@@ -168,3 +168,23 @@ def test_custom_terminal_state_cannot_be_forged_by_executor():
         ),
     )
     assert result["status"] == "INCONCLUSIVE"
+
+
+def test_budget_exhaustion_terminal_must_be_explicitly_authorized():
+    with pytest.raises(ValueError, match="budget_exhaustion_state"):
+        _policy(
+            max_steps=1,
+            terminal_states=frozenset({"PASS", "BLOCKED"}),
+            terminal_evaluator=lambda verification, state: None,
+        )
+
+
+def test_budget_exhaustion_uses_governed_terminal_state():
+    policy = _policy(
+        max_steps=1,
+        terminal_states=frozenset({"PASS", "REJECT", "INCONCLUSIVE", "BLOCKED"}),
+        budget_exhaustion_state="REJECT",
+        terminal_evaluator=lambda verification, state: None,
+    )
+    result = run_durable_loop(FakeExecutor(), MemoryStateStore(), policy)
+    assert result["status"] == "REJECT"
