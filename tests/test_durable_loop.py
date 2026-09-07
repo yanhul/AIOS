@@ -138,3 +138,53 @@ def test_terminal_evaluation_failure_is_persisted_as_blocked():
     assert result["status"] == "BLOCKED"
     assert "gate unavailable" in result["block_reason"]
     assert store.load() == result
+
+
+def test_custom_terminal_states_are_authoritative():
+    store = MemoryStateStore()
+    policy = _policy(
+        max_steps=1,
+        terminal_states=frozenset({"PROMOTE", "REJECT", "INCONCLUSIVE", "BLOCKED"}),
+        terminal_evaluator=lambda verification, state: "PROMOTE",
+    )
+    result = run_durable_loop(FakeExecutor(), store, policy)
+    assert result["status"] == "PROMOTE"
+    assert store.load() == result
+
+
+def test_custom_terminal_state_cannot_be_forged_by_executor():
+    class ForgingExecutor(FakeExecutor):
+        def decide(self, observation, state):
+            state["status"] = "PROMOTE"
+            return {"next": observation["n"] + 1}
+
+    result = run_durable_loop(
+        ForgingExecutor(),
+        MemoryStateStore(),
+        _policy(
+            max_steps=1,
+            terminal_states=frozenset({"PROMOTE", "REJECT", "INCONCLUSIVE", "BLOCKED"}),
+            terminal_evaluator=lambda verification, state: None,
+        ),
+    )
+    assert result["status"] == "INCONCLUSIVE"
+
+
+def test_budget_exhaustion_terminal_must_be_explicitly_authorized():
+    with pytest.raises(ValueError, match="budget_exhaustion_state"):
+        _policy(
+            max_steps=1,
+            terminal_states=frozenset({"PASS", "BLOCKED"}),
+            terminal_evaluator=lambda verification, state: None,
+        )
+
+
+def test_budget_exhaustion_uses_governed_terminal_state():
+    policy = _policy(
+        max_steps=1,
+        terminal_states=frozenset({"PASS", "REJECT", "INCONCLUSIVE", "BLOCKED"}),
+        budget_exhaustion_state="REJECT",
+        terminal_evaluator=lambda verification, state: None,
+    )
+    result = run_durable_loop(FakeExecutor(), MemoryStateStore(), policy)
+    assert result["status"] == "REJECT"

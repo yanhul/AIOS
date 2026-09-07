@@ -5,10 +5,11 @@ from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.effect_authority import create_effect, dispatch, retry_dispatch, transition
+from core.policy_registry import persist_policy
 from core.runtime import ProviderReceipt, execute, execute_attempt, execute_retry_attempt
 
 
-def contract(max_attempts=1):
+def contract(policy_digest, max_attempts=1):
     return {
         "contract_type": "EXECUTION_CONTRACT",
         "task_id": "task-runtime",
@@ -20,7 +21,7 @@ def contract(max_attempts=1):
         "evidence_required": ["provider_receipt"],
         "max_attempts": max_attempts,
         "terminal_states": ["SUCCESS", "FAILURE"],
-        "policy_digest": "policy-1",
+        "policy_digest": policy_digest,
     }
 
 
@@ -44,7 +45,8 @@ def setup_authority(tmp_path, max_attempts=1):
     registry = CapabilityRegistry()
     registry.register(Capability("fake-provider", "1", "test-fixture", "test", status="ACTIVE"))
     registry.persist(str(tmp_path), "test-fixture")
-    c = contract(max_attempts)
+    policy = persist_policy(str(tmp_path), {"policy_type":"GOVERNING_POLICY","name":"runtime-fixture"})
+    c = contract(policy, max_attempts)
     cid = contract_identity(c)
     persist_contract(str(tmp_path), c)
     permit = persist_permit(str(tmp_path), c, "root")
@@ -94,8 +96,7 @@ def test_mismatched_receipt_becomes_unknown(tmp_path):
 
 
 def test_execute_attempt_runs_only_a_dispatched_attempt(tmp_path):
-    _, cid, _ = setup_authority(tmp_path)
-    c = contract()
+    c, cid, _ = setup_authority(tmp_path)
     effect = create_effect(str(tmp_path), cid, "op-1", "agent:test")
     attempt_id = f"{effect['effect_id']}:attempt:1"
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")
@@ -104,8 +105,7 @@ def test_execute_attempt_runs_only_a_dispatched_attempt(tmp_path):
 
 
 def test_execute_attempt_rejects_non_dispatched_effect(tmp_path):
-    _, cid, _ = setup_authority(tmp_path)
-    c = contract()
+    c, cid, _ = setup_authority(tmp_path)
     effect = create_effect(str(tmp_path), cid, "op-1", "agent:test")
     with pytest.raises(RuntimeError, match="DISPATCHED"):
         execute_attempt(str(tmp_path), c, effect, "agent:test", GoodAdapter(),
@@ -113,7 +113,7 @@ def test_execute_attempt_rejects_non_dispatched_effect(tmp_path):
 
 
 def test_execute_attempt_does_not_authorize_or_create_effect(tmp_path):
-    c = contract()
+    c, _, _ = setup_authority(tmp_path)
     effect = create_effect(str(tmp_path), "CT-unrelated", "op-1", "agent:test")
     attempt_id = f"{effect['effect_id']}:attempt:1"
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")

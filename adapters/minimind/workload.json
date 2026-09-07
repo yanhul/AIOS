@@ -1,0 +1,9 @@
+{
+  "protocol_version": "1",
+  "capability": "minimind.learning@1",
+  "owner_repository": "jingyaogong/minimind",
+  "source": "https://github.com/jingyaogong/minimind",
+  "kind": "model_learning_workload",
+  "terminal_states": ["PROMOTE", "REJECT", "INCONCLUSIVE", "BLOCKED"],
+  "note": "Descriptive declaration only; AIOS authority controls activation and promotion."
+}

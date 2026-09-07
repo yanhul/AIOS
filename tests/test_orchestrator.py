@@ -11,6 +11,7 @@ class FakeAdapter:
 GOVERNING_CONTRACT = {
     "policy_digest": "policy-1",
     "max_attempts": 1,
+    "terminal_states": ["PASS", "BLOCKED", "INCONCLUSIVE"],
 }
 
 
@@ -25,6 +26,7 @@ def make_policy(**overrides):
         "terminal_evaluator": lambda verification, state: "PASS" if verification["verified"] else None,
         "action_authorizer": lambda decision, state: None,
         "policy_digest": "policy-1",
+        "terminal_states": frozenset(GOVERNING_CONTRACT["terminal_states"]),
     }
     values.update(overrides)
     return LoopPolicy(**values)
@@ -136,3 +138,41 @@ def test_resume_binding_mismatch_fails_closed(monkeypatch):
     result = run_governed_execution(executor=executor, store=store, policy=make_policy())
     assert result["status"] == "BLOCKED"
     assert "binding" in result["block_reason"]
+
+
+def test_terminal_states_must_match_governing_contract(monkeypatch):
+    calls = []
+    _patch_authority(monkeypatch, calls)
+    executor = GovernedRuntimeExecutor(
+        aios_dir="/tmp/aios", contract_id="c1", permit_id="p1", actor="agent",
+        adapter=FakeAdapter(), observer=lambda state: None,
+        decider=lambda observation, state: {"logical_operation_id": "op"},
+        verifier=lambda result, state: result,
+    )
+    with pytest.raises(PermissionError, match="terminal states"):
+        run_governed_execution(
+            executor=executor,
+            store=MemoryStateStore(),
+            policy=make_policy(terminal_states=frozenset({"PROMOTE", "REJECT", "INCONCLUSIVE", "BLOCKED"})),
+        )
+
+
+def test_custom_terminal_states_are_preserved_and_enforced(monkeypatch):
+    calls = []
+    contract = dict(GOVERNING_CONTRACT)
+    contract["terminal_states"] = ["PROMOTE", "REJECT", "INCONCLUSIVE", "BLOCKED"]
+    monkeypatch.setattr("core.orchestrator.authorize", lambda *args: calls.append("authorize"))
+    monkeypatch.setattr("core.orchestrator.load_contract", lambda *args: dict(contract))
+    monkeypatch.setattr("core.orchestrator.execute", lambda *args: {"ok": True})
+    executor = GovernedRuntimeExecutor(
+        aios_dir="/tmp/aios", contract_id="c1", permit_id="p1", actor="agent",
+        adapter=FakeAdapter(), observer=lambda state: None,
+        decider=lambda observation, state: {"logical_operation_id": "op-promote"},
+        verifier=lambda result, state: {"verified": True},
+    )
+    policy = make_policy(
+        terminal_states=frozenset(contract["terminal_states"]),
+        terminal_evaluator=lambda verification, state: "PROMOTE",
+    )
+    result = run_governed_execution(executor=executor, store=MemoryStateStore(), policy=policy)
+    assert result["status"] == "PROMOTE"

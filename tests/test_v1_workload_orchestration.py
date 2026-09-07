@@ -5,12 +5,14 @@ from core.capability_catalog import load_catalog
 from core.contract import contract_identity
 from core.durable_loop import LoopPolicy, MemoryStateStore
 from core.orchestrator import GovernedRuntimeExecutor, run_governed_execution
+from core.policy_registry import persist_policy
 from core.runtime import ProviderReceipt
 
 WORKLOADS = (
     ("try.research", "yanhul/try", "research_workload"),
     ("android.assistant", "yanhul/android-ai-assistant", "software_device_workload"),
     ("rx50.engineering", "yanhul/RX50", "hardware_engineering_workload"),
+    ("minimind.learning", "jingyaogong/minimind", "model_learning_workload"),
 )
 
 
@@ -31,7 +33,12 @@ class WorkloadAdapter:
         )
 
 
-def _contract(capability):
+def _contract(capability, policy_digest):
+    terminal_states = (
+        ["PROMOTE", "REJECT", "INCONCLUSIVE", "BLOCKED"]
+        if capability == "minimind.learning"
+        else ["PASS", "BLOCKED", "INCONCLUSIVE"]
+    )
     return {
         "contract_type": "EXECUTION_CONTRACT",
         "task_id": f"v1-{capability.replace('.', '-')}",
@@ -42,8 +49,8 @@ def _contract(capability):
         "allowed_effects": ["external_effect"],
         "evidence_required": ["provider_receipt"],
         "max_attempts": 1,
-        "terminal_states": ["PASS", "BLOCKED", "INCONCLUSIVE"],
-        "policy_digest": "v1-central-policy",
+        "terminal_states": terminal_states,
+        "policy_digest": policy_digest,
     }
 
 
@@ -54,8 +61,9 @@ def test_registered_workload_executes_through_central_aios(tmp_path, capability,
     assert registered.owner == owner
     assert registered.kind == kind
     registry.persist(tmp_path, "test:v1-conformance")
+    policy_digest = persist_policy(str(tmp_path), {"policy_type":"GOVERNING_POLICY","name":"v1-central-conformance"})
 
-    contract = _contract(capability)
+    contract = _contract(capability, policy_digest)
     persist_contract(tmp_path, contract)
     permit = persist_permit(tmp_path, contract, "aios:root")
     adapter = WorkloadAdapter(capability)
@@ -75,11 +83,16 @@ def test_registered_workload_executes_through_central_aios(tmp_path, capability,
             "evidence": result["evidence"],
         },
     )
+    # Conformance proves execution wiring only. Promotion is intentionally not
+    # granted by this generic smoke test; MiniMind promotion requires its own
+    # validated evidence and locked-holdout gate.
+    terminal = "INCONCLUSIVE"
     policy = LoopPolicy(
         max_steps=1,
-        terminal_evaluator=lambda verification, state: "PASS" if verification["verified"] else "INCONCLUSIVE",
+        terminal_evaluator=lambda verification, state: terminal if verification["verified"] else "INCONCLUSIVE",
         action_authorizer=lambda decision, state: None,
         policy_digest=contract["policy_digest"],
+        terminal_states=frozenset(contract["terminal_states"]),
     )
 
     result = run_governed_execution(
@@ -88,7 +101,7 @@ def test_registered_workload_executes_through_central_aios(tmp_path, capability,
         policy=policy,
     )
 
-    assert result["status"] == "PASS", result
+    assert result["status"] == terminal, result
     assert result["step"] == 1
     assert result["history"][0]["decision"]["logical_operation_id"].startswith(capability)
     assert adapter.calls == 1

@@ -3,7 +3,9 @@ status: normative
 
 # Registration is descriptive. Activation/promotion is governed by AIOS policy
 # and evidence; workload repositories remain independently owned.
-# Every workload MUST publish aios/workload.json matching this declaration.
+# Every registered capability MUST declare a manifest at the path recorded below.
+# A manifest may be published by the workload repository or by its AIOS adapter
+# when the workload is external and cannot be modified as part of this repository.
 capabilities:
   - capability_id: try.research
     version: "1"
@@ -40,6 +42,18 @@ capabilities:
     verification: [requirements_coverage, contradiction_check, electrical_verification, physical_evidence]
     context: [component_revisions, measurements, hardware_state, toolchain]
     terminal_states: [PASS, BLOCKED, INCONCLUSIVE]
+
+  - capability_id: minimind.learning
+    version: "1"
+    kind: model_learning_workload
+    owner: jingyaogong/minimind
+    source: https://github.com/jingyaogong/minimind
+    manifest: adapters/minimind/workload.json
+    inputs: [learning_problem, dataset_artifact, training_contract]
+    outputs: [model_artifact, training_receipt, evaluation_receipt, terminal_state]
+    verification: [artifact_lineage, independent_evaluation, locked_holdout, provenance]
+    context: [workload_revision, dataset_digest, tokenizer_digest, environment_digest]
+    terminal_states: [PROMOTE, REJECT, INCONCLUSIVE, BLOCKED]
 
 # Edges are created only when both endpoints are registered and the relation
 # has explicit provenance/evidence. No relationship is assumed by registration.
