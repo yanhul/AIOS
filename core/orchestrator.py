@@ -72,6 +72,8 @@ def run_governed_execution(
         raise PermissionError("execution policy digest does not match governing contract")
     if policy.max_steps > contract["max_attempts"]:
         raise PermissionError("execution budget exceeds governing contract max_attempts")
+    if not policy.terminal_states:
+        raise PermissionError("governing execution must define terminal states")
 
     def validate_resume(state: Mapping[str, Any]) -> None:
         if state.get("contract_id") != executor.contract_id:
@@ -86,6 +88,7 @@ def run_governed_execution(
         action_authorizer=policy.action_authorizer,
         resume_validator=validate_resume,
         policy_digest=contract["policy_digest"],
+        terminal_states=policy.terminal_states,
     )
 
     loaded = store.load()
