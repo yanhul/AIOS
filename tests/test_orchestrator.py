@@ -136,3 +136,21 @@ def test_resume_binding_mismatch_fails_closed(monkeypatch):
     result = run_governed_execution(executor=executor, store=store, policy=make_policy())
     assert result["status"] == "BLOCKED"
     assert "binding" in result["block_reason"]
+
+
+def test_custom_terminal_states_are_preserved_and_enforced(monkeypatch):
+    calls = []
+    _patch_authority(monkeypatch, calls)
+    monkeypatch.setattr("core.orchestrator.execute", lambda *args: {"ok": True})
+    executor = GovernedRuntimeExecutor(
+        aios_dir="/tmp/aios", contract_id="c1", permit_id="p1", actor="agent",
+        adapter=FakeAdapter(), observer=lambda state: None,
+        decider=lambda observation, state: {"logical_operation_id": "op-promote"},
+        verifier=lambda result, state: {"verified": True},
+    )
+    policy = make_policy(
+        terminal_states=frozenset({"PROMOTE", "REJECT", "INCONCLUSIVE", "BLOCKED"}),
+        terminal_evaluator=lambda verification, state: "PROMOTE",
+    )
+    result = run_governed_execution(executor=executor, store=MemoryStateStore(), policy=policy)
+    assert result["status"] == "PROMOTE"
