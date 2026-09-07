@@ -11,6 +11,7 @@ WORKLOADS = (
     ("try.research", "yanhul/try", "research_workload"),
     ("android.assistant", "yanhul/android-ai-assistant", "software_device_workload"),
     ("rx50.engineering", "yanhul/RX50", "hardware_engineering_workload"),
+    ("minimind.learning", "jingyaogong/minimind", "model_learning_workload"),
 )
 
 
@@ -32,6 +33,11 @@ class WorkloadAdapter:
 
 
 def _contract(capability):
+    terminal_states = (
+        ["PROMOTE", "REJECT", "INCONCLUSIVE", "BLOCKED"]
+        if capability == "minimind.learning"
+        else ["PASS", "BLOCKED", "INCONCLUSIVE"]
+    )
     return {
         "contract_type": "EXECUTION_CONTRACT",
         "task_id": f"v1-{capability.replace('.', '-')}",
@@ -42,7 +48,7 @@ def _contract(capability):
         "allowed_effects": ["external_effect"],
         "evidence_required": ["provider_receipt"],
         "max_attempts": 1,
-        "terminal_states": ["PASS", "BLOCKED", "INCONCLUSIVE"],
+        "terminal_states": terminal_states,
         "policy_digest": "v1-central-policy",
     }
 
@@ -75,11 +81,13 @@ def test_registered_workload_executes_through_central_aios(tmp_path, capability,
             "evidence": result["evidence"],
         },
     )
+    terminal = "PROMOTE" if capability == "minimind.learning" else "PASS"
     policy = LoopPolicy(
         max_steps=1,
-        terminal_evaluator=lambda verification, state: "PASS" if verification["verified"] else "INCONCLUSIVE",
+        terminal_evaluator=lambda verification, state: terminal if verification["verified"] else "INCONCLUSIVE",
         action_authorizer=lambda decision, state: None,
         policy_digest=contract["policy_digest"],
+        terminal_states=frozenset(contract["terminal_states"]),
     )
 
     result = run_governed_execution(
@@ -88,7 +96,7 @@ def test_registered_workload_executes_through_central_aios(tmp_path, capability,
         policy=policy,
     )
 
-    assert result["status"] == "PASS", result
+    assert result["status"] == terminal, result
     assert result["step"] == 1
     assert result["history"][0]["decision"]["logical_operation_id"].startswith(capability)
     assert adapter.calls == 1
