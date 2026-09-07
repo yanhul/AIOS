@@ -10,8 +10,8 @@ def receipt(**overrides):
 
 def test_valid_learning_receipt(): assert validate_receipt(receipt())["task_id"] == "task-1"
 def test_reward_only_cannot_promote():
-    value=receipt(terminal_state="PROMOTE"); value["evidence"]["evaluation_receipt"]={"reward":2.9}
-    with pytest.raises(ValueError,match="does not match declared artifact lineage"): validate_receipt(value)
+    value=receipt(terminal_state="PROMOTE"); value["evidence"]["evaluation_receipt"].update({"independent":False,"reward":2.9})
+    with pytest.raises(ValueError,match="independent"): validate_receipt(value)
 def test_promotion_requires_locked_holdout():
     value=receipt(terminal_state="PROMOTE"); value["evidence"]["evaluation_receipt"]["holdout"]=False
     with pytest.raises(ValueError,match="holdout"): validate_receipt(value)
