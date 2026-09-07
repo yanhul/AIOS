@@ -10,6 +10,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+AIOS_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(AIOS_ROOT))
+
 import yaml
 
 from core.capability_catalog import load_catalog
@@ -18,7 +21,6 @@ from core.policy_registry import resolve_policy
 from core.workload_registry import WorkloadRegistry
 from core.mutation import canonical_json
 
-AIOS_ROOT = Path(__file__).resolve().parents[1]
 AUTHORITY = "yanhul/AIOS"
 DEFAULT_POLICY = "sha256:0640840b0d5ab455470a7069163a928bd6d14a79168e834bb218a79559ba46b7"
 
@@ -98,9 +100,8 @@ def main() -> int:
             raise ValueError("manifest verification classes missing")
 
         adapter_rel = manifest.get("adapter")
-        entrypoint = manifest.get("entrypoint")
-        if not isinstance(adapter_rel, str) or not isinstance(entrypoint, str) or not adapter_rel or not entrypoint:
-            raise ValueError("manifest adapter/entrypoint missing")
+        if not isinstance(adapter_rel, str) or not adapter_rel:
+            raise ValueError("manifest adapter missing")
         declared_adapter = (cwd / adapter_rel).resolve()
         try:
             declared_adapter.relative_to(cwd)
@@ -110,48 +111,36 @@ def main() -> int:
             raise ValueError("manifest must declare an existing Python adapter")
         if not command:
             raise ValueError("adapter command missing")
-        # Workload CI may choose the Python executable, but the program path must
-        # be exactly the manifest-declared adapter. Shell interpolation is never used.
-        invoked = None
-        if command[0] in {"python", "python3", sys.executable} and len(command) >= 2:
-            invoked = (cwd / command[1]).resolve()
-        if invoked is None or invoked != declared_adapter:
+        if len(command) != 2 or command[0] not in {"python", "python3", sys.executable}:
+            raise ValueError("execution command must be exactly the Python manifest adapter")
+        invoked = (cwd / command[1]).resolve()
+        if invoked != declared_adapter:
             raise ValueError("execution command does not match manifest adapter")
-        if len(command) != 2:
-            raise ValueError("adapter command may contain only the declared adapter")
 
         input_digest = "sha256:" + sha256_bytes(canonical_json({"problem": args.problem, "workload_id": args.workload_id}).encode())
         contract = {
-            "contract_type": "EXECUTION_CONTRACT",
-            "task_id": args.execution_id,
-            "scope": args.workload_id,
-            "actor": "AIOS_CENTRAL_RUNNER",
-            "capabilities": [capability_ref],
-            "input_digest": input_digest,
+            "contract_type": "EXECUTION_CONTRACT", "task_id": args.execution_id,
+            "scope": args.workload_id, "actor": "AIOS_CENTRAL_RUNNER",
+            "capabilities": [capability_ref], "input_digest": input_digest,
             "allowed_effects": list(policy["allowed_effects"]),
             "evidence_required": list(policy["evidence_required"]),
             "max_attempts": int(policy["max_attempts"]),
-            "terminal_states": sorted(terminal_states),
-            "policy_digest": args.policy_digest,
+            "terminal_states": sorted(terminal_states), "policy_digest": args.policy_digest,
         }
         validate_contract(contract)
         permit = issue_permit(contract, AUTHORITY)
         verify_permit(contract, permit)
 
         env = os.environ.copy()
-        env.update({
-            "AIOS_POLICY_DIGEST": args.policy_digest,
-            "AIOS_CONTRACT_ID": contract_identity(contract),
-            "AIOS_EXECUTION_ID": args.execution_id,
-            "AIOS_CAPABILITY": capability_ref,
-        })
+        env.update({"AIOS_POLICY_DIGEST": args.policy_digest, "AIOS_CONTRACT_ID": contract_identity(contract),
+                    "AIOS_EXECUTION_ID": args.execution_id, "AIOS_CAPABILITY": capability_ref})
         proc = subprocess.run(command, cwd=cwd, env=env, text=True, capture_output=True,
                               timeout=args.timeout_seconds, check=False, shell=False)
         if proc.returncode != 0:
             raise ValueError(f"adapter exited non-zero: {proc.returncode}")
         lines = [line for line in proc.stdout.splitlines() if line.strip()]
         if len(lines) != 1:
-            raise ValueError(f"adapter must emit exactly one JSON result object; got {len(lines)}")
+            raise ValueError("adapter must emit exactly one JSON result object")
         try:
             result = json.loads(lines[0])
         except ValueError as exc:
@@ -173,18 +162,12 @@ def main() -> int:
             raise ValueError("governing policy does not require adapter-result evidence")
 
         receipt = {
-            "receipt_type": "AIOS_GOVERNED_EXECUTION_RECEIPT",
-            "execution_id": args.execution_id,
-            "workload_id": args.workload_id,
-            "capability": capability_ref,
-            "policy_digest": args.policy_digest,
-            "contract_id": contract_identity(contract),
-            "permit_id": permit["permit_id"],
-            "status": result["status"],
-            "evidence_refs": list(result["evidence_refs"]),
-            "verification_refs": list(result["verification_refs"]),
-            "provenance": result["provenance"],
-            "manifest_sha256": "sha256:" + sha256_bytes(manifest_path.read_bytes()),
+            "receipt_type": "AIOS_GOVERNED_EXECUTION_RECEIPT", "execution_id": args.execution_id,
+            "workload_id": args.workload_id, "capability": capability_ref,
+            "policy_digest": args.policy_digest, "contract_id": contract_identity(contract),
+            "permit_id": permit["permit_id"], "status": result["status"],
+            "evidence_refs": list(result["evidence_refs"]), "verification_refs": list(result["verification_refs"]),
+            "provenance": result["provenance"], "manifest_sha256": "sha256:" + sha256_bytes(manifest_path.read_bytes()),
             "result_sha256": "sha256:" + sha256_bytes(canonical_json(result).encode()),
         }
         print(canonical_json(receipt))
