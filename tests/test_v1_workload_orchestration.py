@@ -81,7 +81,10 @@ def test_registered_workload_executes_through_central_aios(tmp_path, capability,
             "evidence": result["evidence"],
         },
     )
-    terminal = "PROMOTE" if capability == "minimind.learning" else "PASS"
+    # Conformance proves execution wiring only. Promotion is intentionally not
+    # granted by this generic smoke test; MiniMind promotion requires its own
+    # validated evidence and locked-holdout gate.
+    terminal = "INCONCLUSIVE"
     policy = LoopPolicy(
         max_steps=1,
         terminal_evaluator=lambda verification, state: terminal if verification["verified"] else "INCONCLUSIVE",
