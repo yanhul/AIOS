@@ -17,7 +17,7 @@ capabilities:
     outputs: [experiment_ledger, research_report, terminal_state]
     verification: [regression_tests, locked_validation, locked_oos, provenance]
     context: [data_version, strategy_version, compute_environment]
-    terminal_states: [EDGE_FOUND, NO_EDGE_FOUND, INCONCLUSIVE]
+    terminal_states: [EDGE_FOUND, NO_EDGE_FOUND, INCONCLUSIVE, BLOCKED]
 
   - capability_id: android.assistant
     version: "1"
