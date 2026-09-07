@@ -71,7 +71,7 @@ def main() -> int:
         capability_ref = f"{entry['capability_id']}@{entry['version']}"
         registration_id = f"{entry['owner']}@{entry['version']}"
         registration = WorkloadRegistry.from_capability_entries(entries).resolve(registration_id)
-        capability = catalog.resolve(capability_ref)
+        capability = catalog.require(capability_ref)
         if capability.status != "ACTIVE":
             raise ValueError("capability is not ACTIVE under the normative catalog")
 
