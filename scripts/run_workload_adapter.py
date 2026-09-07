@@ -53,6 +53,8 @@ def main() -> int:
     ap.add_argument("--timeout-seconds", type=int, default=300)
     ap.add_argument("--policy-digest", default=DEFAULT_POLICY)
     args, command = ap.parse_known_args()
+    if command and command[0] == "--":
+        command = command[1:]
     try:
         if args.timeout_seconds < 1 or args.timeout_seconds > 3600:
             raise ValueError("timeout outside governed range")
@@ -112,7 +114,7 @@ def main() -> int:
         if not command:
             raise ValueError("adapter command missing")
         if len(command) != 2 or command[0] not in {"python", "python3", sys.executable}:
-            raise ValueError("execution command must be exactly the Python manifest adapter")
+            raise ValueError("execution command does not match manifest adapter")
         invoked = (cwd / command[1]).resolve()
         if invoked != declared_adapter:
             raise ValueError("execution command does not match manifest adapter")
