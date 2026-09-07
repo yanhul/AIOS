@@ -5,6 +5,7 @@ from core.capability_catalog import load_catalog
 from core.contract import contract_identity
 from core.durable_loop import LoopPolicy, MemoryStateStore
 from core.orchestrator import GovernedRuntimeExecutor, run_governed_execution
+from core.policy_registry import persist_policy
 from core.runtime import ProviderReceipt
 
 WORKLOADS = (
@@ -32,7 +33,7 @@ class WorkloadAdapter:
         )
 
 
-def _contract(capability):
+def _contract(capability, policy_digest):
     terminal_states = (
         ["PROMOTE", "REJECT", "INCONCLUSIVE", "BLOCKED"]
         if capability == "minimind.learning"
@@ -49,7 +50,7 @@ def _contract(capability):
         "evidence_required": ["provider_receipt"],
         "max_attempts": 1,
         "terminal_states": terminal_states,
-        "policy_digest": "v1-central-policy",
+        "policy_digest": policy_digest,
     }
 
 
@@ -60,8 +61,9 @@ def test_registered_workload_executes_through_central_aios(tmp_path, capability,
     assert registered.owner == owner
     assert registered.kind == kind
     registry.persist(tmp_path, "test:v1-conformance")
+    policy_digest = persist_policy(str(tmp_path), {"policy_type":"GOVERNING_POLICY","name":"v1-central-conformance"})
 
-    contract = _contract(capability)
+    contract = _contract(capability, policy_digest)
     persist_contract(tmp_path, contract)
     permit = persist_permit(tmp_path, contract, "aios:root")
     adapter = WorkloadAdapter(capability)
