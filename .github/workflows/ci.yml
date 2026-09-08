@@ -23,8 +23,8 @@ jobs:
       - name: Checkout registered workloads
         run: |
           git clone --depth 1 https://github.com/yanhul/try.git "$RUNNER_TEMP/try"
-          git -C "$RUNNER_TEMP/try" fetch --depth 1 origin 2c1297c7e59444ade498cf4a8e12b6617c760943
-          git -C "$RUNNER_TEMP/try" checkout --detach 2c1297c7e59444ade498cf4a8e12b6617c760943
+          git -C "$RUNNER_TEMP/try" fetch --depth 1 origin 4ec189b719b7d880973e7ebc3bef84a38cee51db
+          git -C "$RUNNER_TEMP/try" checkout --detach 4ec189b719b7d880973e7ebc3bef84a38cee51db
           git clone --depth 1 https://github.com/yanhul/android-ai-assistant.git "$RUNNER_TEMP/android-ai-assistant"
           git -C "$RUNNER_TEMP/android-ai-assistant" fetch --depth 1 origin 2df06a12c83ad1adcd8cf5c6d7287fe95f242000
           git -C "$RUNNER_TEMP/android-ai-assistant" checkout --detach 2df06a12c83ad1adcd8cf5c6d7287fe95f242000
