@@ -45,6 +45,16 @@ jobs:
             --root yanhul/try "$RUNNER_TEMP/try" \
             --root yanhul/android-ai-assistant "$RUNNER_TEMP/android-ai-assistant" \
             --root yanhul/RX50 "$RUNNER_TEMP/RX50"
+      - name: Checkout MiniMind capability provider
+        run: |
+          git clone --depth 1 https://github.com/jingyaogong/minimind.git "$RUNNER_TEMP/minimind"
+          git -C "$RUNNER_TEMP/minimind" fetch --depth 1 origin 6fc918beb68a0d8c40452338df6319fe168014ba
+          git -C "$RUNNER_TEMP/minimind" checkout --detach 6fc918beb68a0d8c40452338df6319fe168014ba
+      - name: Check MiniMind capability
+        env:
+          MINIMIND_ROOT: ${{ runner.temp }}/minimind
+          MINIMIND_EXPECTED_REV: 6fc918beb68a0d8c40452338df6319fe168014ba
+        run: python scripts/check_minimind_capability.py --root "$RUNNER_TEMP/minimind"
       - name: Require product E2E conformance
         run: |
           python - <<'PY'
