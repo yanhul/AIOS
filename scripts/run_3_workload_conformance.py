@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Run the real registered workloads through the AIOS central runner.
+"""Run all currently registered AIOS workloads through the central runner.
 
-The workload directories are supplied by CI after checkout of their pinned
-public repositories. A workload may legitimately terminate BLOCKED when its
-own evidence/environment gate is not satisfied; what must never be accepted
-is an ungoverned or malformed terminal result.
+External workloads may legitimately terminate BLOCKED/INCONCLUSIVE when their
+independent evidence gate is not satisfied.  The conformance gate accepts only
+well-formed, authority-bound terminal receipts and verifies durable reuse.
 """
 from __future__ import annotations
 
@@ -18,6 +17,8 @@ WORKLOADS = {
     "yanhul/try": ("try.research@1", "python", "aios/adapter.py"),
     "yanhul/android-ai-assistant": ("android.assistant@1", "bash", "aios/adapter.sh"),
     "yanhul/RX50": ("rx50.engineering@1", "python", "aios/adapter.py"),
+    # MiniMind is external; its AIOS adapter/manifest live in the AIOS checkout.
+    "jingyaogong/minimind": ("minimind.learning@1", "python", "adapters/minimind/adapter.py"),
 }
 
 
@@ -28,7 +29,7 @@ def run_one(runner: Path, workload_id: str, root: Path, receipt: Path) -> dict:
         "--workload-id", workload_id,
         "--execution-id", f"conformance-{workload_id.replace('/', '-')}",
         "--cwd", str(root),
-        "--problem", "AIOS v1 three-workload conformance",
+        "--problem", "AIOS registered-workload conformance",
         "--receipt-path", str(receipt),
         "--", interpreter, adapter,
     ]
