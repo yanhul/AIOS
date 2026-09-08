@@ -21,6 +21,15 @@ def _runner():
     return Path(__file__).parents[1] / "scripts" / "run_workload_adapter.py"
 
 
+def _result(status="BLOCKED"):
+    return {
+        "status": status,
+        "evidence_refs": ["e"],
+        "verification_refs": ["provenance"],
+        "provenance": {"producer": "yanhul/try", "adapter": "try.research@1"},
+    }
+
+
 def test_runner_rejects_undeclared_adapter(tmp_path):
     (tmp_path / "aios").mkdir()
     (tmp_path / "aios" / "workload.json").write_text(json.dumps(_manifest()))
@@ -50,8 +59,7 @@ def test_runner_accepts_pretty_json_python_adapter(tmp_path):
     (tmp_path / "aios").mkdir()
     (tmp_path / "aios" / "workload.json").write_text(json.dumps(_manifest()))
     (tmp_path / "aios" / "adapter.py").write_text(
-        "import json\nprint(json.dumps({'status':'BLOCKED','evidence_refs':['e'],'verification_refs':['v'],"
-        "'provenance':{'producer':'yanhul/try'}}, indent=2))\n"
+        "import json\nprint(json.dumps(" + repr(_result()) + ", indent=2))\n"
     )
     p = subprocess.run([
         sys.executable, str(_runner()), "--workload-id", "yanhul/try",
@@ -68,7 +76,7 @@ def test_runner_accepts_declared_shell_adapter(tmp_path):
     (tmp_path / "aios" / "workload.json").write_text(json.dumps(_manifest("aios/adapter.sh")))
     (tmp_path / "aios" / "adapter.sh").write_text(
         "printf '%s\\n' '{\"status\":\"BLOCKED\",\"evidence_refs\":[\"e\"],"
-        "\"verification_refs\":[\"v\"],\"provenance\":{\"producer\":\"yanhul/try\"}}'\n"
+        "\"verification_refs\":[\"provenance\"],\"provenance\":{\"producer\":\"yanhul/try\",\"adapter\":\"try.research@1\"}}'\n"
     )
     p = subprocess.run([
         sys.executable, str(_runner()), "--workload-id", "yanhul/try",
