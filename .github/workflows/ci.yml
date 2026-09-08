@@ -26,8 +26,8 @@ jobs:
           git -C "$RUNNER_TEMP/try" fetch --depth 1 origin 4ec189b719b7d880973e7ebc3bef84a38cee51db
           git -C "$RUNNER_TEMP/try" checkout --detach 4ec189b719b7d880973e7ebc3bef84a38cee51db
           git clone --depth 1 https://github.com/yanhul/android-ai-assistant.git "$RUNNER_TEMP/android-ai-assistant"
-          git -C "$RUNNER_TEMP/android-ai-assistant" fetch --depth 1 origin 2df06a12c83ad1adcd8cf5c6d7287fe95f242000
-          git -C "$RUNNER_TEMP/android-ai-assistant" checkout --detach 2df06a12c83ad1adcd8cf5c6d7287fe95f242000
+          git -C "$RUNNER_TEMP/android-ai-assistant" fetch --depth 1 origin 0eb77ae45076de18876f01383ecaa5a369b4f112
+          git -C "$RUNNER_TEMP/android-ai-assistant" checkout --detach 0eb77ae45076de18876f01383ecaa5a369b4f112
           git clone --depth 1 https://github.com/yanhul/RX50.git "$RUNNER_TEMP/RX50"
           git -C "$RUNNER_TEMP/RX50" fetch --depth 1 origin 42d2993df72e699528d3469526c2335e8f7ab218
           git -C "$RUNNER_TEMP/RX50" checkout --detach 42d2993df72e699528d3469526c2335e8f7ab218
