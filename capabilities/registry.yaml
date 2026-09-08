@@ -43,17 +43,20 @@ capabilities:
     context: [component_revisions, measurements, hardware_state, toolchain]
     terminal_states: [PASS, BLOCKED, INCONCLUSIVE]
 
-  - capability_id: minimind.learning
+  # MiniMind is a reusable model capability/provider, not an AIOS workload.
+  # It may be consumed by workloads (e.g. research/assistant) through a
+  # governed capability binding; its upstream repository remains external.
+  - capability_id: minimind.model
     version: "1"
-    kind: model_learning_workload
+    kind: model_capability
     owner: jingyaogong/minimind
     source: https://github.com/jingyaogong/minimind
     manifest: adapters/minimind/workload.json
-    inputs: [learning_problem, dataset_artifact, training_contract]
-    outputs: [model_artifact, training_receipt, evaluation_receipt, terminal_state]
+    inputs: [model_task, model_input, inference_contract]
+    outputs: [model_output, capability_receipt, provenance]
     verification: [artifact_lineage, independent_evaluation, locked_holdout, provenance]
-    context: [workload_revision, dataset_digest, tokenizer_digest, environment_digest]
-    terminal_states: [PROMOTE, REJECT, INCONCLUSIVE, BLOCKED]
+    context: [workload_revision, model_digest, tokenizer_digest, environment_digest]
+    terminal_states: [AVAILABLE, BLOCKED, INCONCLUSIVE]
 
 # Edges are created only when both endpoints are registered and the relation
 # has explicit provenance/evidence. No relationship is assumed by registration.
