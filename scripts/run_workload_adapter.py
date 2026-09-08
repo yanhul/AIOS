@@ -59,6 +59,44 @@ def parse_single_json_document(stdout: str) -> dict:
     return value
 
 
+def receipt_digest(receipt: dict) -> str:
+    unsigned = dict(receipt)
+    unsigned.pop("receipt_sha256", None)
+    return "sha256:" + sha256_bytes(canonical_json(unsigned).encode())
+
+
+def validate_saved_receipt(saved: dict, *, execution_id: str, workload_id: str,
+                           capability_ref: str, contract_id: str, policy_digest: str,
+                           producer: str, terminal_states: list[str]) -> None:
+    required = {
+        "receipt_type", "execution_id", "workload_id", "capability", "policy_digest",
+        "contract_id", "permit_id", "status", "evidence_refs", "verification_refs",
+        "provenance", "manifest_sha256", "result_sha256", "receipt_sha256",
+    }
+    missing = required - set(saved)
+    if missing:
+        raise ValueError(f"persisted receipt missing fields: {sorted(missing)}")
+    if saved.get("receipt_type") != "AIOS_GOVERNED_EXECUTION_RECEIPT":
+        raise ValueError("persisted receipt type mismatch")
+    if saved.get("execution_id") != execution_id or saved.get("workload_id") != workload_id:
+        raise ValueError("persisted receipt identity mismatch")
+    if saved.get("contract_id") != contract_id:
+        raise ValueError("persisted receipt contract mismatch")
+    if saved.get("policy_digest") != policy_digest or saved.get("capability") != capability_ref:
+        raise ValueError("persisted receipt authority mismatch")
+    if saved.get("status") not in terminal_states:
+        raise ValueError("persisted receipt terminal state mismatch")
+    if not isinstance(saved.get("evidence_refs"), list) or not saved["evidence_refs"]:
+        raise ValueError("persisted receipt evidence refs missing")
+    if not isinstance(saved.get("verification_refs"), list) or not saved["verification_refs"]:
+        raise ValueError("persisted receipt verification refs missing")
+    provenance = saved.get("provenance")
+    if not isinstance(provenance, dict) or provenance.get("producer") != producer or provenance.get("adapter") != capability_ref:
+        raise ValueError("persisted receipt provenance mismatch")
+    if saved.get("receipt_sha256") != receipt_digest(saved):
+        raise ValueError("persisted receipt integrity mismatch")
+
+
 def persist_receipt(path: Path, receipt: dict) -> None:
     """Atomically publish the terminal receipt so a restart can reuse it."""
     path = path.resolve()
@@ -171,14 +209,11 @@ def main() -> int:
         receipt_path = Path(args.receipt_path).resolve() if args.receipt_path else None
         if receipt_path and receipt_path.exists():
             saved = read_json(receipt_path)
-            if saved.get("receipt_type") != "AIOS_GOVERNED_EXECUTION_RECEIPT":
-                raise ValueError("persisted receipt type mismatch")
-            if saved.get("execution_id") != args.execution_id or saved.get("workload_id") != args.workload_id:
-                raise ValueError("persisted receipt identity mismatch")
-            if saved.get("contract_id") != contract_identity(contract):
-                raise ValueError("persisted receipt contract mismatch")
-            if saved.get("policy_digest") != args.policy_digest or saved.get("capability") != capability_ref:
-                raise ValueError("persisted receipt authority mismatch")
+            validate_saved_receipt(
+                saved, execution_id=args.execution_id, workload_id=args.workload_id,
+                capability_ref=capability_ref, contract_id=contract_identity(contract),
+                policy_digest=args.policy_digest, producer=entry["owner"], terminal_states=terminal_states,
+            )
             print(canonical_json(saved))
             return 0
 
@@ -204,6 +239,10 @@ def main() -> int:
             raise ValueError("adapter result must contain verification refs")
         if not isinstance(result["provenance"], dict) or result["provenance"].get("producer") != entry["owner"]:
             raise ValueError("adapter provenance producer mismatch")
+        if result["provenance"].get("adapter") != capability_ref:
+            raise ValueError("adapter provenance capability mismatch")
+        if not set(result["verification_refs"]).issubset(set(verification)):
+            raise ValueError("adapter verification refs exceed manifest verification classes")
         if "adapter_result" not in policy["evidence_required"]:
             raise ValueError("governing policy does not require adapter-result evidence")
 
@@ -216,6 +255,7 @@ def main() -> int:
             "provenance": result["provenance"], "manifest_sha256": "sha256:" + sha256_bytes(manifest_path.read_bytes()),
             "result_sha256": "sha256:" + sha256_bytes(canonical_json(result).encode()),
         }
+        receipt["receipt_sha256"] = receipt_digest(receipt)
         if receipt_path:
             persist_receipt(receipt_path, receipt)
         print(canonical_json(receipt))
