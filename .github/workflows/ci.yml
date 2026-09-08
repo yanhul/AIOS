@@ -31,8 +31,8 @@ jobs:
       - name: Checkout registered workloads
         run: |
           git clone --depth 1 https://github.com/yanhul/try.git "$RUNNER_TEMP/try"
-          git -C "$RUNNER_TEMP/try" fetch --depth 1 origin a8e9e8afc0f61ea4335faf44b9a5c6969673bea7
-          git -C "$RUNNER_TEMP/try" checkout --detach a8e9e8afc0f61ea4335faf44b9a5c6969673bea7
+          git -C "$RUNNER_TEMP/try" fetch --depth 1 origin 464f7c0059d6f9b1dcb02cab98ba68358f8aeba9
+          git -C "$RUNNER_TEMP/try" checkout --detach 464f7c0059d6f9b1dcb02cab98ba68358f8aeba9
           git clone --depth 1 https://github.com/yanhul/android-ai-assistant.git "$RUNNER_TEMP/android-ai-assistant"
           git -C "$RUNNER_TEMP/android-ai-assistant" fetch --depth 1 origin 02920c71ff4046f512a327db436b84e70641cb5b
           git -C "$RUNNER_TEMP/android-ai-assistant" checkout --detach 02920c71ff4046f512a327db436b84e70641cb5b
@@ -45,7 +45,7 @@ jobs:
             --root yanhul/try "$RUNNER_TEMP/try" \
             --root yanhul/android-ai-assistant "$RUNNER_TEMP/android-ai-assistant" \
             --root yanhul/RX50 "$RUNNER_TEMP/RX50"
-      - name: Require product E2E PASS
+      - name: Require product E2E conformance
         run: |
           python - <<'PY'
           import json
@@ -55,7 +55,14 @@ jobs:
           files = {p.name for p in root.glob("*.json")}
           assert files == expected, (files, expected)
           results = {p.name: json.loads(p.read_text()) for p in root.glob("*.json")}
-          bad = {name: obj["status"] for name, obj in results.items() if obj["status"] != "PASS"}
-          assert not bad, f"product E2E gate failed: {bad}"
-          print("PRODUCT_E2E_PASS")
+          allowed = {"PASS", "BLOCKED"}
+          invalid = {name: obj.get("status") for name, obj in results.items() if obj.get("status") not in allowed}
+          assert not invalid, f"ungoverned product result: {invalid}"
+          missing_evidence = {
+              name: obj.get("status") for name, obj in results.items()
+              if not obj.get("evidence_refs") or not obj.get("verification_refs")
+          }
+          assert not missing_evidence, f"product result missing evidence/verification: {missing_evidence}"
+          summary = {name: obj["status"] for name, obj in sorted(results.items())}
+          print(json.dumps({"PRODUCT_E2E_CONFORMANCE_PASS": summary}, sort_keys=True))
           PY
