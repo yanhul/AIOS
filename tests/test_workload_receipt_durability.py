@@ -24,7 +24,8 @@ def test_terminal_receipt_is_reused_without_reexecuting_adapter(tmp_path):
         "p.write_text(p.read_text()+'x' if p.exists() else 'x')\n"
         "import json\n"
         "print(json.dumps({'status':'BLOCKED','evidence_refs':['e'],"
-        "'verification_refs':['v'],'provenance':{'producer':'yanhul/try'}}, indent=2))\n"
+        "'verification_refs':['provenance'],"
+        "'provenance':{'producer':'yanhul/try','adapter':'try.research@1'}}, indent=2))\n"
     )
     runner = Path(__file__).parents[1] / "scripts" / "run_workload_adapter.py"
     receipt = tmp_path / "receipt.json"
