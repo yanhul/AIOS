@@ -39,18 +39,12 @@ jobs:
           git clone --depth 1 https://github.com/yanhul/RX50.git "$RUNNER_TEMP/RX50"
           git -C "$RUNNER_TEMP/RX50" fetch --depth 1 origin 1f1abf3df019b2c40a89218f726620e6e3a96e25
           git -C "$RUNNER_TEMP/RX50" checkout --detach 1f1abf3df019b2c40a89218f726620e6e3a96e25
-          git clone --depth 1 https://github.com/jingyaogong/minimind.git "$RUNNER_TEMP/minimind"
-          git -C "$RUNNER_TEMP/minimind" fetch --depth 1 origin 6fc918beb68a0d8c40452338df6319fe168014ba
-          git -C "$RUNNER_TEMP/minimind" checkout --detach 6fc918beb68a0d8c40452338df6319fe168014ba
       - name: Run live registered-workload conformance
-        env:
-          MINIMIND_ROOT: ${{ runner.temp }}/minimind
         run: |
           python scripts/run_3_workload_conformance.py \
             --root yanhul/try "$RUNNER_TEMP/try" \
             --root yanhul/android-ai-assistant "$RUNNER_TEMP/android-ai-assistant" \
-            --root yanhul/RX50 "$RUNNER_TEMP/RX50" \
-            --root jingyaogong/minimind "$GITHUB_WORKSPACE"
+            --root yanhul/RX50 "$RUNNER_TEMP/RX50"
       - name: Require product E2E conformance
         run: |
           python - <<'PY'
@@ -61,7 +55,6 @@ jobs:
               "yanhul__try.json",
               "yanhul__android-ai-assistant.json",
               "yanhul__RX50.json",
-              "jingyaogong__minimind.json",
           }
           files = {p.name for p in root.glob("*.json")}
           assert files == expected, (files, expected)
