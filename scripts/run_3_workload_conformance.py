@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Run all currently registered AIOS workloads through the central runner.
+"""Run the three executable AIOS workload adapters through the central runner.
 
-External workloads may legitimately terminate BLOCKED/INCONCLUSIVE when their
-independent evidence gate is not satisfied.  The conformance gate accepts only
-well-formed, authority-bound terminal receipts and verifies durable reuse.
+MiniMind is a registered capability provider, not a fourth workload, so it is
+intentionally excluded from workload conformance.
 """
 from __future__ import annotations
 
@@ -17,22 +16,15 @@ WORKLOADS = {
     "yanhul/try": ("try.research@1", "python", "aios/adapter.py"),
     "yanhul/android-ai-assistant": ("android.assistant@1", "bash", "aios/adapter.sh"),
     "yanhul/RX50": ("rx50.engineering@1", "python", "aios/adapter.py"),
-    # MiniMind is external; its AIOS adapter/manifest live in the AIOS checkout.
-    "jingyaogong/minimind": ("minimind.learning@1", "python", "adapters/minimind/adapter.py"),
 }
 
 
 def run_one(runner: Path, workload_id: str, root: Path, receipt: Path) -> dict:
     capability, interpreter, adapter = WORKLOADS[workload_id]
-    command = [
-        sys.executable, str(runner),
-        "--workload-id", workload_id,
-        "--execution-id", f"conformance-{workload_id.replace('/', '-')}",
-        "--cwd", str(root),
-        "--problem", "AIOS registered-workload conformance",
-        "--receipt-path", str(receipt),
-        "--", interpreter, adapter,
-    ]
+    command = [sys.executable, str(runner), "--workload-id", workload_id,
+               "--execution-id", f"conformance-{workload_id.replace('/', '-')}",
+               "--cwd", str(root), "--problem", "AIOS v1 three-workload conformance",
+               "--receipt-path", str(receipt), "--", interpreter, adapter]
     proc = subprocess.run(command, text=True, capture_output=True, check=False, timeout=900)
     if proc.returncode != 0:
         raise RuntimeError(f"{workload_id}: runner failed: {proc.stdout.strip()} {proc.stderr.strip()}")
@@ -66,7 +58,6 @@ def main() -> int:
         raise SystemExit(f"exactly these workload roots are required: {sorted(WORKLOADS)}")
     receipt_dir = Path(args.receipt_dir).resolve()
     receipt_dir.mkdir(parents=True, exist_ok=True)
-
     for workload_id in WORKLOADS:
         root = Path(roots[workload_id]).resolve()
         receipt = receipt_dir / (workload_id.replace("/", "__") + ".json")
