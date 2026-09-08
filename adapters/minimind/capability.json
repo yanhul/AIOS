@@ -10,5 +10,23 @@
   "outputs": ["model_output", "capability_receipt", "provenance"],
   "verification": ["artifact_lineage", "independent_evaluation", "locked_holdout", "provenance"],
   "terminal_states": ["AVAILABLE", "BLOCKED", "INCONCLUSIVE"],
-  "note": "Capability declaration only; AIOS authority governs binding and workload promotion."
+  "upstream_directions": {
+    "agentic_rl": {
+      "baseline": "trainer/train_agent.py",
+      "async_pr": 784,
+      "status": "open_pr_not_promoted"
+    },
+    "on_policy_distillation": {
+      "pr": 811,
+      "status": "open_pr_not_promoted"
+    }
+  },
+  "governance": {
+    "authority": "yanhul/AIOS",
+    "policy_owner": "AIOS",
+    "promotion_owner": "AIOS",
+    "terminal_condition_owner": "AIOS",
+    "provider_may_not_modify_governance": true
+  },
+  "note": "MiniMind is a reusable model/agentic capability provider. Upstream open PRs are tracked as evidence-backed integration candidates, not treated as merged functionality or workload registrations. AIOS authority governs binding, evaluation, and workload promotion."
 }
