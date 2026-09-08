@@ -31,11 +31,11 @@ jobs:
       - name: Checkout registered workloads
         run: |
           git clone --depth 1 https://github.com/yanhul/try.git "$RUNNER_TEMP/try"
-          git -C "$RUNNER_TEMP/try" fetch --depth 1 origin 35790dfae6bde370d3c95292b4f88a48bd48cfb8
-          git -C "$RUNNER_TEMP/try" checkout --detach 35790dfae6bde370d3c95292b4f88a48bd48cfb8
+          git -C "$RUNNER_TEMP/try" fetch --depth 1 origin a8e9e8afc0f61ea4335faf44b9a5c6969673bea7
+          git -C "$RUNNER_TEMP/try" checkout --detach a8e9e8afc0f61ea4335faf44b9a5c6969673bea7
           git clone --depth 1 https://github.com/yanhul/android-ai-assistant.git "$RUNNER_TEMP/android-ai-assistant"
-          git -C "$RUNNER_TEMP/android-ai-assistant" fetch --depth 1 origin 4869cd8d86e62f03d6d3fa29190f0b726f84b417
-          git -C "$RUNNER_TEMP/android-ai-assistant" checkout --detach 4869cd8d86e62f03d6d3fa29190f0b726f84b417
+          git -C "$RUNNER_TEMP/android-ai-assistant" fetch --depth 1 origin 02920c71ff4046f512a327db436b84e70641cb5b
+          git -C "$RUNNER_TEMP/android-ai-assistant" checkout --detach 02920c71ff4046f512a327db436b84e70641cb5b
           git clone --depth 1 https://github.com/yanhul/RX50.git "$RUNNER_TEMP/RX50"
           git -C "$RUNNER_TEMP/RX50" fetch --depth 1 origin 1f1abf3df019b2c40a89218f726620e6e3a96e25
           git -C "$RUNNER_TEMP/RX50" checkout --detach 1f1abf3df019b2c40a89218f726620e6e3a96e25
