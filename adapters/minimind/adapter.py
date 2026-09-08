@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""AIOS adapter for the external MiniMind learning workload.
+"""AIOS capability adapter for the external MiniMind model provider.
 
-This adapter never fabricates a training/evaluation result.  When a pinned
-MiniMind checkout is supplied through MINIMIND_ROOT it performs a lightweight,
-deterministic artifact/evaluation preflight.  Without the external checkout it
-terminates BLOCKED with explicit evidence, which is a governed terminal state.
+MiniMind is a reusable capability, not a workload. This adapter only reports
+provider/artifact availability and provenance; it never fabricates model quality
+or promotion evidence. A workload must supply its own evaluation contract and
+locked holdout evidence before relying on MiniMind for a promoted result.
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import json
 import os
 from pathlib import Path
 
-CAPABILITY = "minimind.learning@1"
+CAPABILITY = "minimind.model@1"
 OWNER = "jingyaogong/minimind"
 
 
@@ -41,36 +41,26 @@ def emit(status: str, evidence: list[str], verification: list[str], reason: str 
 def main() -> int:
     root_value = os.environ.get("MINIMIND_ROOT")
     if not root_value:
-        return emit(
-            "BLOCKED",
-            ["minimind:external_checkout_missing"],
-            ["provenance"],
-            "set MINIMIND_ROOT to a pinned MiniMind checkout for learning evaluation",
-        )
+        return emit("BLOCKED", ["minimind:external_checkout_missing"], ["provenance"],
+                    "set MINIMIND_ROOT to a pinned MiniMind checkout")
 
     root = Path(root_value).resolve()
     if not root.is_dir():
-        return emit("BLOCKED", ["minimind:checkout_not_found"], ["provenance"], "MINIMIND_ROOT is not a directory")
+        return emit("BLOCKED", ["minimind:checkout_not_found"], ["provenance"],
+                    "MINIMIND_ROOT is not a directory")
 
     readme = root / "README.md"
     if not readme.is_file():
-        return emit("BLOCKED", ["minimind:readme_missing"], ["provenance"], "MiniMind checkout is incomplete")
+        return emit("BLOCKED", ["minimind:readme_missing"], ["provenance"],
+                    "MiniMind checkout is incomplete")
 
-    tracked_candidates = [root / "model", root / "dataset", root / "dataset.py", root / "model.py", root / "trainer"]
-    existing = [p for p in tracked_candidates if p.exists()]
-    evidence = [f"minimind:readme_sha256={sha256_file(readme)}"]
-    evidence.append("minimind:checkout_present")
-    if existing:
-        evidence.append("minimind:core_paths_present=" + str(len(existing)))
+    evidence = [f"minimind:readme_sha256={sha256_file(readme)}", "minimind:checkout_present"]
+    for name in ("model", "dataset", "dataset.py", "model.py", "trainer", "eval_llm.py"):
+        if (root / name).exists():
+            evidence.append(f"minimind:path_present={name}")
 
-    # This is deliberately a preflight, not a fabricated quality claim.
-    # Promotion requires an independently produced evaluation + locked holdout.
-    return emit(
-        "INCONCLUSIVE",
-        evidence,
-        ["artifact_lineage", "provenance"],
-        "checkout preflight passed; independent evaluation and locked holdout are still required",
-    )
+    return emit("AVAILABLE", evidence, ["artifact_lineage", "provenance"],
+                "provider availability verified; workload-specific quality evaluation remains external")
 
 
 if __name__ == "__main__":
