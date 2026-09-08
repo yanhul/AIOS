@@ -1,0 +1,14 @@
+{
+  "protocol_version": "1",
+  "capability": "minimind.model@1",
+  "owner_repository": "jingyaogong/minimind",
+  "source": "https://github.com/jingyaogong/minimind",
+  "kind": "model_capability",
+  "adapter": "adapters/minimind/adapter.py",
+  "entrypoint": "python adapters/minimind/adapter.py",
+  "inputs": ["model_task", "model_input", "inference_contract"],
+  "outputs": ["model_output", "capability_receipt", "provenance"],
+  "verification": ["artifact_lineage", "independent_evaluation", "locked_holdout", "provenance"],
+  "terminal_states": ["AVAILABLE", "BLOCKED", "INCONCLUSIVE"],
+  "note": "Capability declaration only; AIOS authority governs binding and workload promotion."
+}
