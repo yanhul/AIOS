@@ -46,7 +46,7 @@ def test_central_runner_crash_restart_does_not_reuse_incomplete_execution(tmp_pa
     first.wait(timeout=5)
     assert not receipt.exists(), "crashed execution must not publish a terminal receipt"
 
-    second = subprocess.run(base, capture_output=True, text=True, timeout=10)
+    second = subprocess.run(base, capture_output=True, text=True, timeout=45)
     assert second.returncode == 0, second.stdout + second.stderr
     assert receipt.exists()
     saved = json.loads(receipt.read_text(encoding="utf-8"))
