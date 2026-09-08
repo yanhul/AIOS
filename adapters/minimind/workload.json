@@ -1,9 +1,17 @@
 {
-  "protocol_version": "1",
+  "protocol_version": 1,
   "capability": "minimind.learning@1",
+  "owner": "jingyaogong/minimind",
+  "aios_authority": "yanhul/AIOS",
   "owner_repository": "jingyaogong/minimind",
   "source": "https://github.com/jingyaogong/minimind",
   "kind": "model_learning_workload",
+  "adapter": "adapters/minimind/adapter.py",
+  "entrypoint": "python adapters/minimind/adapter.py",
   "terminal_states": ["PROMOTE", "REJECT", "INCONCLUSIVE", "BLOCKED"],
-  "note": "Descriptive declaration only; AIOS authority controls activation and promotion."
+  "verification_classes": ["artifact_lineage", "independent_evaluation", "locked_holdout", "provenance"],
+  "durable_loop": ["OBSERVE", "DECIDE", "ACT", "VERIFY", "PERSIST", "RESUME"],
+  "agent_may_not_modify_policy": true,
+  "agent_may_not_modify_terminal_conditions": true,
+  "external_workload": true
 }
