@@ -8,11 +8,12 @@ from core.orchestrator import GovernedRuntimeExecutor, run_governed_execution
 from core.policy_registry import persist_policy
 from core.runtime import ProviderReceipt
 
+# Only executable workloads belong in this orchestration smoke test. MiniMind is
+# a reusable model capability provider and is tested by its capability check.
 WORKLOADS = (
     ("try.research", "yanhul/try", "research_workload"),
     ("android.assistant", "yanhul/android-ai-assistant", "software_device_workload"),
     ("rx50.engineering", "yanhul/RX50", "hardware_engineering_workload"),
-    ("minimind.learning", "jingyaogong/minimind", "model_learning_workload"),
 )
 
 
@@ -34,11 +35,6 @@ class WorkloadAdapter:
 
 
 def _contract(capability, policy_digest):
-    terminal_states = (
-        ["PROMOTE", "REJECT", "INCONCLUSIVE", "BLOCKED"]
-        if capability == "minimind.learning"
-        else ["PASS", "BLOCKED", "INCONCLUSIVE"]
-    )
     return {
         "contract_type": "EXECUTION_CONTRACT",
         "task_id": f"v1-{capability.replace('.', '-')}",
@@ -49,7 +45,7 @@ def _contract(capability, policy_digest):
         "allowed_effects": ["external_effect"],
         "evidence_required": ["provider_receipt"],
         "max_attempts": 1,
-        "terminal_states": terminal_states,
+        "terminal_states": ["PASS", "BLOCKED", "INCONCLUSIVE"],
         "policy_digest": policy_digest,
     }
 
@@ -83,9 +79,6 @@ def test_registered_workload_executes_through_central_aios(tmp_path, capability,
             "evidence": result["evidence"],
         },
     )
-    # Conformance proves execution wiring only. Promotion is intentionally not
-    # granted by this generic smoke test; MiniMind promotion requires its own
-    # validated evidence and locked-holdout gate.
     terminal = "INCONCLUSIVE"
     policy = LoopPolicy(
         max_steps=1,
