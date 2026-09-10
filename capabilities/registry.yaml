@@ -58,6 +58,20 @@ capabilities:
     context: [workload_revision, model_digest, tokenizer_digest, environment_digest]
     terminal_states: [AVAILABLE, BLOCKED, INCONCLUSIVE]
 
+  # External skill provider. Registration is descriptive; the provider cannot
+  # grant AIOS authority or alter policy/evidence/terminal criteria.
+  - capability_id: software.audit
+    version: "1"
+    kind: skill_provider
+    owner: ptn1411/skill
+    source: https://github.com/ptn1411/skill
+    manifest: external/skill/authorized-artifact-auditor
+    inputs: [software_artifact, audit_contract]
+    outputs: [audit_report, findings, remediation_plan]
+    verification: [report_contract, regression_tests, provenance]
+    context: [artifact_revision, analysis_environment, authorization_scope]
+    terminal_states: [PASS, BLOCKED, INCONCLUSIVE]
+
 # Edges are created only when both endpoints are registered and the relation
 # has explicit provenance/evidence. No relationship is assumed by registration.
 relationships: []
