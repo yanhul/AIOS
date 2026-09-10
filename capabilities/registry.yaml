@@ -65,7 +65,7 @@ capabilities:
     kind: skill_provider
     owner: ptn1411/skill
     source: https://github.com/ptn1411/skill
-    manifest: external/skill/authorized-artifact-auditor
+    manifest: external/skill/authorized-artifact-auditor/workload.json
     inputs: [software_artifact, audit_contract]
     outputs: [audit_report, findings, remediation_plan]
     verification: [report_contract, regression_tests, provenance]
