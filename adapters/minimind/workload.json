@@ -1,0 +1,14 @@
+{
+  "protocol_version": 1,
+  "capability": "minimind.model@1",
+  "owner": "jingyaogong/minimind",
+  "aios_authority": "yanhul/AIOS",
+  "role": "model_adapter",
+  "adapter": "external",
+  "entrypoint": "provider-defined",
+  "terminal_states": ["AVAILABLE", "BLOCKED", "INCONCLUSIVE"],
+  "verification_classes": ["artifact_lineage", "independent_evaluation", "locked_holdout", "provenance"],
+  "durable_loop": ["OBSERVE", "DECIDE", "ACT", "VERIFY", "PERSIST", "RESUME"],
+  "agent_may_modify_policy": false,
+  "agent_may_modify_terminal_conditions": false
+}
