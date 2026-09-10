@@ -32,7 +32,7 @@ def _normalise(value: str) -> str:
 def route(problem: str, skills: Iterable[SkillSpec], *, dry_run: bool = True) -> RoutePlan:
     """Return a deterministic proposal; never grants execution authority.
 
-    Ties are resolved by skill_id so routing is stable across runs.
+    Ties are resolved by the lexicographically smallest skill_id.
     """
     text = _normalise(problem)
     candidates: list[tuple[int, SkillSpec, tuple[str, ...]]] = []
@@ -42,7 +42,10 @@ def route(problem: str, skills: Iterable[SkillSpec], *, dry_run: bool = True) ->
             candidates.append((len(matches), skill, matches))
     if not candidates:
         return RoutePlan(None, None, (), dry_run=dry_run)
-    _, selected, matches = max(candidates, key=lambda item: (item[0], -len(item[1].skill_id), item[1].skill_id))
+    _, selected, matches = min(
+        candidates,
+        key=lambda item: (-item[0], item[1].skill_id),
+    )
     return RoutePlan(selected.skill_id, selected.capability_id, matches, dry_run=dry_run)
 
 
