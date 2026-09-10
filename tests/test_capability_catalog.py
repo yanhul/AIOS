@@ -35,13 +35,15 @@ def test_aios_local_manifests_exist():
 def test_missing_aios_local_manifest_fails_closed(tmp_path):
     catalog = tmp_path / "registry.yaml"
     catalog.write_text(
-        """schema_version: 1\nstatus: normative\ncapabilities:\n"
+        "schema_version: 1\n"
+        "status: normative\n"
+        "capabilities:\n"
         "  - capability_id: broken\n"
         "    version: \"1\"\n"
         "    kind: test\n"
         "    owner: test/test\n"
         "    manifest: adapters/missing/workload.json\n"
-        "relationships: []\n""",
+        "relationships: []\n",
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="missing AIOS-local manifest"):
