@@ -43,6 +43,7 @@ Status: M1 + M1.5 implemented; parts of M2/M3 implemented. This roadmap separate
 - Capability input/output, permissions, environment, evidence and verification metadata.
 - Register agents, tools, software workloads, devices and services.
 - Capability trust/history derived from evidence, not arbitrary ratings.
+- **Absorbed:** deterministic skill registry/route-plan boundary; external skills remain descriptive capabilities and cannot grant authority.
 
 ### M5 — Capability graph
 - Relationship edges: `requires`, `produces`, `composes_with`, `validated_by`, `works_under`.
@@ -59,6 +60,7 @@ Status: M1 + M1.5 implemented; parts of M2/M3 implemented. This roadmap separate
 - Stable runtime adapter contract.
 - Model registry and capability-based routing.
 - OpenClaw and other runtimes remain adapters, not the authority layer.
+- Skill providers are adapters/capabilities, never a second control plane.
 
 ## Phase C — Autonomous execution
 
@@ -70,12 +72,14 @@ Status: M1 + M1.5 implemented; parts of M2/M3 implemented. This roadmap separate
 - External-effect state machine.
 - Structured execution results.
 - No silent state promotion.
+- Skill routing may precede `PERMIT`, but authorization remains external to the skill.
 
 ### M9 — Evidence / contradiction / promotion
 - Evidence graph and provenance.
 - Contradiction search and explicit resolution workflow.
 - Verification levels: OBSERVED, EVIDENCED, VERIFIED_DIGITAL, VERIFIED_PHYSICAL, PROMOTED.
 - Fixed PASS/BLOCKED/INCONCLUSIVE gates.
+- Reports remain derived artifacts; raw evidence is authoritative.
 
 ### M10 — Experience / contribution / relationship memory
 - Record task -> capability -> action -> evidence -> result lineage.
@@ -133,3 +137,4 @@ Required terminal outcomes are fixed: `PASS`, `BLOCKED`, `INCONCLUSIVE`.
 - Workload source remains independently owned.
 - Every material state mutation is auditable and recoverable.
 - Verification claims must resolve to evidence or deterministic checks appropriate to the claim.
+- Skill routing is advisory; authorization, evidence, verification, and terminal decisions remain AIOS-controlled.
