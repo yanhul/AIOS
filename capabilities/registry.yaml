@@ -43,9 +43,6 @@ capabilities:
     context: [component_revisions, measurements, hardware_state, toolchain]
     terminal_states: [PASS, BLOCKED, INCONCLUSIVE]
 
-  # MiniMind is a reusable model capability/provider, not an AIOS workload.
-  # It may be consumed by workloads (e.g. research/assistant) through a
-  # governed capability binding; its upstream repository remains external.
   - capability_id: minimind.model
     version: "1"
     kind: model_capability
@@ -58,8 +55,6 @@ capabilities:
     context: [workload_revision, model_digest, tokenizer_digest, environment_digest]
     terminal_states: [AVAILABLE, BLOCKED, INCONCLUSIVE]
 
-  # External skill provider. Registration is descriptive; the provider cannot
-  # grant AIOS authority or alter policy/evidence/terminal criteria.
   - capability_id: software.audit
     version: "1"
     kind: skill_provider
@@ -72,6 +67,66 @@ capabilities:
     context: [artifact_revision, analysis_environment, authorization_scope]
     terminal_states: [PASS, BLOCKED, INCONCLUSIVE]
 
-# Edges are created only when both endpoints are registered and the relation
-# has explicit provenance/evidence. No relationship is assumed by registration.
+  # AIOS-owned worker contracts. These are worker/capability interfaces, not
+  # authority providers. Execution and promotion remain outside worker control.
+  - capability_id: research.deep
+    version: "1"
+    kind: research_worker
+    owner: yanhul/AIOS
+    source: aios://core/research_worker
+    manifest: core/research_worker.py
+    inputs: [research_request, objective, constraints, evidence_requirements]
+    outputs: [research_findings, evidence_refs, artifacts]
+    verification: [source_evidence, adversarial_verification, provenance]
+    context: [research_worker_state, policy_digest, run_id]
+    terminal_states: [PASS, BLOCKED, INCONCLUSIVE]
+
+  - capability_id: research.recent_signals
+    version: "1"
+    kind: research_worker
+    owner: yanhul/AIOS
+    source: aios://core/research_worker
+    manifest: core/research_worker.py
+    inputs: [research_request, recency_window, source_set]
+    outputs: [recent_findings, evidence_refs, artifacts]
+    verification: [source_timestamp, source_evidence, provenance]
+    context: [research_worker_state, policy_digest, run_id]
+    terminal_states: [PASS, BLOCKED, INCONCLUSIVE]
+
+  - capability_id: runtime.background_worker
+    version: "1"
+    kind: durable_worker
+    owner: yanhul/AIOS
+    source: aios://core/worker_lifecycle
+    manifest: core/worker_lifecycle.py
+    inputs: [worker_contract, checkpoint, resume_token]
+    outputs: [worker_state, checkpoint, durable_result]
+    verification: [state_integrity, bounded_transition, provenance]
+    context: [policy_digest, run_id, lifecycle_state]
+    terminal_states: [DONE, BLOCKED, INCONCLUSIVE]
+
+  - capability_id: execution.coding
+    version: "1"
+    kind: coding_worker
+    owner: yanhul/AIOS
+    source: aios://core/worker_lifecycle
+    manifest: core/worker_lifecycle.py
+    inputs: [coding_contract, source_revision, execution_budget]
+    outputs: [artifact, exit_result, test_evidence]
+    verification: [exit_code, tests, adversarial_verification, provenance]
+    context: [worktree, source_commit, policy_digest, run_id]
+    terminal_states: [PASS, BLOCKED, INCONCLUSIVE]
+
+  - capability_id: market.universe_discovery
+    version: "1"
+    kind: domain_worker
+    owner: yanhul/AIOS
+    source: aios://capability/market-universe-discovery
+    manifest: core/research_worker.py
+    inputs: [market_contract, universe_constraints, discovery_sources]
+    outputs: [universe_candidates, source_refs, discovery_artifacts]
+    verification: [source_evidence, provenance]
+    context: [research_worker_state, policy_digest, run_id]
+    terminal_states: [PASS, BLOCKED, INCONCLUSIVE]
+
 relationships: []
