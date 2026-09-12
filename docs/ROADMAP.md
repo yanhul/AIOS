@@ -1,6 +1,6 @@
 # AIOS Roadmap
 
-Status: M1 + M1.5 implemented; parts of M2/M3 implemented. This roadmap separates implemented foundation from the target architecture in `docs/TARGET_ARCHITECTURE.md`.
+Status: M1 + M1.5 implemented; M2/M3 foundations implemented; absorbed execution/research primitives are now AIOS-owned boundaries.
 
 ## Phase A — Governance kernel
 
@@ -23,17 +23,19 @@ Status: M1 + M1.5 implemented; parts of M2/M3 implemented. This roadmap separate
 - Atomic entity+event commit and recovery.
 - Undefined transitions rejected until explicitly modeled.
 
-### M2 — Authority / verification foundation (PARTIALLY DONE)
+### M2 — Authority / verification foundation (IMPLEMENTED FOUNDATION)
 - Immutable snapshot/audit semantics.
 - Machine-checkable reconciliation.
 - Append-only verification records.
 - Evidence-reference resolution; missing evidence cannot produce VERIFIED.
 - Authority separation between imported source claims and AIOS verification.
-- Remaining: general transition table, policy engine, gates, contradiction resolution workflow, agent execution.
+- Adversarial verification rail: independent verifier, bounded repair/re-verify, no self-approval.
+- Immutable experiment lineage: run/worktree/commit/artifact/result/log integrity.
 
-### M3 — Import/context (PARTIALLY DONE)
+### M3 — Import/context (IMPLEMENTED FOUNDATION)
 - Source/store divergence detection.
 - OBSERVED snapshot + findings without automatic repair.
+- Research-worker contract with explicit evidence references and AIOS reconciliation boundary.
 - Remaining: importer hardening and deterministic context assembly.
 
 ## Phase B — AIOS capability operating system
@@ -44,6 +46,8 @@ Status: M1 + M1.5 implemented; parts of M2/M3 implemented. This roadmap separate
 - Register agents, tools, software workloads, devices and services.
 - Capability trust/history derived from evidence, not arbitrary ratings.
 - **Absorbed:** deterministic skill registry/route-plan boundary; external skills remain descriptive capabilities and cannot grant authority.
+- **Absorbed:** durable worker lifecycle (`WORKING/BLOCKED/DONE`, checkpoint/resume).
+- **Absorbed:** research-worker abstraction for deep research, recent-signal discovery, background workers and coding execution.
 
 ### M5 — Capability graph
 - Relationship edges: `requires`, `produces`, `composes_with`, `validated_by`, `works_under`.
@@ -74,20 +78,20 @@ Status: M1 + M1.5 implemented; parts of M2/M3 implemented. This roadmap separate
 - No silent state promotion.
 - Skill routing may precede `PERMIT`, but authorization remains external to the skill.
 
-### M9 — Evidence / contradiction / promotion
+## M9 — Evidence / contradiction / promotion
 - Evidence graph and provenance.
 - Contradiction search and explicit resolution workflow.
 - Verification levels: OBSERVED, EVIDENCED, VERIFIED_DIGITAL, VERIFIED_PHYSICAL, PROMOTED.
 - Fixed PASS/BLOCKED/INCONCLUSIVE gates.
 - Reports remain derived artifacts; raw evidence is authoritative.
 
-### M10 — Experience / contribution / relationship memory
+## M10 — Experience / contribution / relationship memory
 - Record task -> capability -> action -> evidence -> result lineage.
 - Measure contribution/utility from verified outcomes.
 - Preserve negative evidence and failure history.
 - Learn capability relationships without treating model memory as truth.
 
-### M11 — Capability evolution
+## M11 — Capability evolution
 - Candidate capability/version generation.
 - Regression and comparative evaluation.
 - Evidence review and promotion gate.
