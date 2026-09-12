@@ -1,0 +1,14 @@
+{
+  "protocol_version": 1,
+  "capability": "software.audit@1",
+  "owner": "ptn1411/skill",
+  "aios_authority": "yanhul/AIOS",
+  "role": "skill_provider_adapter",
+  "adapter": "external",
+  "entrypoint": "provider-defined",
+  "terminal_states": ["PASS", "BLOCKED", "INCONCLUSIVE"],
+  "verification_classes": ["report_contract", "regression_tests", "provenance"],
+  "durable_loop": ["OBSERVE", "DECIDE", "ACT", "VERIFY", "PERSIST", "RESUME"],
+  "agent_may_modify_policy": false,
+  "agent_may_modify_terminal_conditions": false
+}
