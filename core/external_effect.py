@@ -1,8 +1,12 @@
 """Durable external-effect state machine for AIOS contract execution.
 
 No provider execution is inferred. A successful terminal state requires an
-explicit provider observation. UNKNOWN is durable and can only be resolved by
-a later explicit observation.
+explicit provider observation bound to the active attempt and a valid AIOS
+evidence record. UNKNOWN is durable and can only be resolved by a later
+explicit observation.
+
+This module is retained for compatibility with older callers; the M6
+``effect_authority`` module is the preferred authoritative write boundary.
 """
 
 import datetime
@@ -10,6 +14,7 @@ import hashlib
 import json
 import os
 
+from .evidence import verify_evidence
 from .mutation import MutationError, TransitionError, canonical_json
 
 STATES = ("PLANNED", "DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE")
@@ -120,4 +125,17 @@ def record_observation(aios_dir, effect_id, outcome, provider_observation):
         raise ExternalEffectError("invalid observation outcome")
     if not isinstance(provider_observation, dict) or not provider_observation:
         raise ExternalEffectError("provider_observation must be a non-empty dict")
+    path = _path(aios_dir, effect_id)
+    if not os.path.exists(path):
+        raise ExternalEffectError(f"unknown effect: {effect_id}")
+    rec = _load(path)
+    if provider_observation.get("attempt_id") != rec.get("attempt_id"):
+        raise TransitionError("observation attempt does not match dispatched attempt")
+    if provider_observation.get("provider") != rec.get("provider"):
+        raise TransitionError("observation provider does not match dispatched provider")
+    evidence = provider_observation.get("evidence")
+    if not isinstance(evidence, dict) or not verify_evidence(evidence):
+        raise ExternalEffectError("observation requires a valid AIOS evidence record")
+    if evidence.get("provider") != rec.get("provider"):
+        raise ExternalEffectError("evidence provider does not match effect provider")
     return _transition(aios_dir, effect_id, outcome, provider_observation=provider_observation)
