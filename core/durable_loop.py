@@ -4,6 +4,8 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Protocol
 
+from .fix_protocol import FixPlan, require_fix_plan, require_fix_proof, FixProof
+
 TERMINAL = frozenset({"PASS", "BLOCKED", "INCONCLUSIVE"})
 
 class StateStore(Protocol):
@@ -28,6 +30,10 @@ class LoopPolicy:
     failure_state: str = "BLOCKED"
     require_execution_receipt: bool = False
     execution_receipt_validator: Callable[[Mapping[str, Any], Mapping[str, Any]], None] | None = None
+    # Fix workflows opt into the normative fix protocol. The plan is external
+    # governance; the executor cannot replace or weaken it.
+    fix_plan: FixPlan | None = None
+    fix_success_state: str = "PASS"
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
@@ -48,6 +54,12 @@ class LoopPolicy:
             raise ValueError("require_execution_receipt must be boolean")
         if self.execution_receipt_validator is not None and not callable(self.execution_receipt_validator):
             raise ValueError("execution_receipt_validator must be callable")
+        if not isinstance(self.fix_success_state, str) or not self.fix_success_state.strip():
+            raise ValueError("fix_success_state must be a non-empty string")
+        if self.fix_success_state not in self.terminal_states:
+            raise ValueError("fix_success_state must be an authorized terminal state")
+        if self.fix_plan is not None:
+            require_fix_plan(self.fix_plan)
 
 def _validate_execution_receipt(verification: Any) -> Mapping[str, Any]:
     """Fail closed unless verification contains a complete execution receipt."""
@@ -89,8 +101,18 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
     if policy.resume_validator is not None:
         policy.resume_validator(state)
 
+def _validate_fix_success(verification: Any, expected_state: str) -> None:
+    """Require externally verifiable runtime proof before fix promotion."""
+    if expected_state == "PASS":
+        if not isinstance(verification, Mapping) or verification.get("status") != "FIXED":
+            raise ValueError("PASS in a governed fix workflow requires status=FIXED")
+        proof = verification.get("fix_proof")
+        if not isinstance(proof, FixProof):
+            raise ValueError("FIXED requires verifier-supplied FixProof")
+        require_fix_proof(proof)
+
 def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) -> Mapping[str, Any]:
-    """Run/resume OBSERVE -> DECIDE -> ACT -> VERIFY -> PERSIST with governed receipt enforcement."""
+    """Run/resume OBSERVE -> DECIDE -> ACT -> VERIFY -> PERSIST with governed receipt/fix enforcement."""
     loaded = store.load()
     state: dict[str, Any] = deepcopy(dict(loaded or {}))
     state.setdefault("step", 0)
@@ -144,6 +166,8 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                 raise ValueError(f"invalid terminal status: {terminal}")
             if policy.require_execution_receipt and receipt is not None and receipt["status"] == "UNKNOWN" and terminal is not None:
                 raise ValueError("UNKNOWN execution receipt cannot authorize a terminal verdict")
+            if policy.fix_plan is not None and terminal == policy.fix_success_state:
+                _validate_fix_success(verification, terminal)
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"terminal evaluation failed: {type(exc).__name__}: {exc}"
