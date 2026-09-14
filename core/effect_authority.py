@@ -1,18 +1,22 @@
 """Authoritative external-effect transitions for M6.
 
-This is the write boundary for provider-facing state. Each transition commits
-both the effect record and an audit event in one ``commit_batch``. Provider
-success is never inferred: terminal observed states require explicit,
-cryptographically self-consistent evidence bound to the executing attempt.
+This module is the single write boundary for provider-facing effects. An
+external effect cannot be created, dispatched, retried, or observed unless the
+immutable contract and permit authorize the requested effect. Identity fields
+are immutable after creation; attempt IDs are deterministic and tied to the
+effect/attempt number; observations must carry AIOS-owned cryptographic
+evidence bound to the executing provider and attempt.
 
-Retry is deliberately a separate semantic operation: callers cannot widen the
-generic transition graph by treating UNKNOWN as an ordinary dispatch source.
+UNKNOWN is deliberately non-terminal. It can only re-enter DISPATCHED through
+the explicit retry path, subject to the contract attempt budget.
 """
 
 import hashlib
 import json
 import os
 
+from .authority import authorize, load_contract, load_permit
+from .contract import verify_permit
 from .evidence import verify_evidence
 from .mutation import TransitionError, canonical_json, commit_batch, recover_pending
 
@@ -46,14 +50,36 @@ def _validate_strings(*pairs):
             raise ValueError(f"{name} must be a non-empty string")
 
 
-def create_effect(aios_dir, contract_id, logical_operation_id, actor):
-    _validate_strings(("contract_id", contract_id), ("logical_operation_id", logical_operation_id), ("actor", actor))
+def _authorized_contract(aios_dir, contract_id, permit_id, actor, effect_type):
+    _validate_strings(("contract_id", contract_id), ("permit_id", permit_id),
+                      ("actor", actor), ("effect_type", effect_type))
+    authorize(aios_dir, contract_id, permit_id)
+    contract = load_contract(aios_dir, contract_id)
+    permit = load_permit(aios_dir, permit_id)
+    verify_permit(contract, permit)
+    if actor != contract["actor"]:
+        raise TransitionError("effect actor does not match contract actor")
+    if effect_type not in contract["allowed_effects"]:
+        raise TransitionError(f"effect type is not authorized by contract: {effect_type}")
+    return contract, permit
+
+
+def _attempt_id(effect_id, attempt):
+    return f"{effect_id}:attempt:{attempt}"
+
+
+def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id, effect_type):
+    _validate_strings(("contract_id", contract_id), ("logical_operation_id", logical_operation_id),
+                      ("actor", actor), ("permit_id", permit_id), ("effect_type", effect_type))
+    contract, _permit = _authorized_contract(aios_dir, contract_id, permit_id, actor, effect_type)
     recover_pending(aios_dir)
     effect_id = _id(contract_id, logical_operation_id, actor)
     rec = {
         "record_type": "EXTERNAL_EFFECT", "effect_id": effect_id,
         "contract_id": contract_id, "logical_operation_id": logical_operation_id,
-        "actor": actor, "state": "PLANNED", "attempt": 0,
+        "actor": actor, "effect_type": effect_type, "permit_id": permit_id,
+        "policy_digest": contract["policy_digest"], "max_attempts": contract["max_attempts"],
+        "state": "PLANNED", "attempt": 0,
     }
     path = _path(aios_dir, effect_id)
     if os.path.exists(path):
@@ -61,7 +87,9 @@ def create_effect(aios_dir, contract_id, logical_operation_id, actor):
         if canonical_json(existing) == canonical_json(rec):
             return existing
         raise TransitionError("external effect identity collision with different content")
-    event = {"kind": "external_effect", "action": "create", "effect_id": effect_id, "state": "PLANNED", "actor": actor}
+    event = {"kind": "external_effect", "action": "create", "effect_id": effect_id,
+             "contract_id": contract_id, "permit_id": permit_id, "effect_type": effect_type,
+             "state": "PLANNED", "actor": actor}
     commit_batch(aios_dir, [(os.path.join("effects", effect_id + ".json"), rec),
                             (os.path.join("events", "effect-create-" + effect_id + ".json"), event)])
     return rec
@@ -71,11 +99,21 @@ def transition(aios_dir, effect_id, target, actor, **fields):
     _validate_strings(("effect_id", effect_id), ("actor", actor))
     if target not in STATES:
         raise ValueError("invalid effect state")
+    allowed_fields = {
+        "DISPATCHED": {"attempt", "attempt_id", "provider"},
+        "UNKNOWN": {"unknown_reason"},
+        "OBSERVED_SUCCESS": {"provider_observation"},
+        "OBSERVED_FAILURE": {"provider_observation"},
+    }.get(target, set())
+    if set(fields) - allowed_fields:
+        raise TransitionError("effect transition attempted to mutate protected or unsupported fields")
     recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
     if not os.path.exists(path):
         raise KeyError(f"unknown effect: {effect_id}")
     current = _load(path)
+    if actor != current.get("actor"):
+        raise TransitionError("effect transition actor does not match effect owner")
     if current.get("state") not in _ALLOWED or target not in _ALLOWED[current["state"]]:
         raise TransitionError(f"undefined external-effect transition: {current.get('state')} -> {target}")
     updated = dict(current)
@@ -93,7 +131,20 @@ def transition(aios_dir, effect_id, target, actor, **fields):
 
 def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
     _validate_strings(("attempt_id", attempt_id), ("provider", provider))
-    return transition(aios_dir, effect_id, "DISPATCHED", actor, attempt=1, attempt_id=attempt_id, provider=provider)
+    recover_pending(aios_dir)
+    path = _path(aios_dir, effect_id)
+    if not os.path.exists(path):
+        raise KeyError(f"unknown effect: {effect_id}")
+    current = _load(path)
+    if current.get("state") != "PLANNED":
+        raise TransitionError(f"initial dispatch requires PLANNED effect, got {current.get('state')}")
+    expected = _attempt_id(effect_id, 1)
+    if attempt_id != expected:
+        raise ValueError("attempt_id does not match initial effect attempt")
+    if int(current.get("max_attempts", 0)) < 1:
+        raise TransitionError("effect has no authorized execution attempts")
+    return transition(aios_dir, effect_id, "DISPATCHED", actor,
+                      attempt=1, attempt_id=attempt_id, provider=provider)
 
 
 def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
@@ -107,12 +158,16 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
     if not os.path.exists(path):
         raise KeyError(f"unknown effect: {effect_id}")
     current = _load(path)
+    if current.get("actor") != actor:
+        raise TransitionError("retry actor does not match effect owner")
     if current.get("state") != "UNKNOWN":
         raise TransitionError(f"retry requires UNKNOWN effect, got {current.get('state')}")
     expected = int(current.get("attempt", 0)) + 1
     if attempt != expected:
         raise TransitionError(f"retry attempt must be {expected}, got {attempt}")
-    if attempt_id != f"{effect_id}:attempt:{attempt}":
+    if attempt > int(current.get("max_attempts", 0)):
+        raise TransitionError("retry exceeds contract attempt budget")
+    if attempt_id != _attempt_id(effect_id, attempt):
         raise ValueError("attempt_id does not match retry attempt")
     updated = dict(current)
     updated.update({"state": "DISPATCHED", "attempt": attempt,
@@ -142,9 +197,13 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
     if not os.path.exists(path):
         raise KeyError(f"unknown effect: {effect_id}")
     current = _load(path)
+    if actor != current.get("actor"):
+        raise TransitionError("observation actor does not match effect owner")
     attempt_id = provider_observation.get("attempt_id")
     provider = provider_observation.get("provider")
     evidence = provider_observation.get("evidence")
+    if current.get("state") != "DISPATCHED":
+        raise TransitionError("observation requires a currently DISPATCHED attempt")
     if attempt_id != current.get("attempt_id"):
         raise TransitionError("observation attempt does not match dispatched attempt")
     if provider != current.get("provider"):
@@ -154,3 +213,6 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
     if evidence.get("provider") != provider:
         raise ValueError("evidence provider does not match effect provider")
     return transition(aios_dir, effect_id, outcome, actor, provider_observation=provider_observation)
+
+
+__all__ = ["STATES", "create_effect", "transition", "dispatch", "retry_dispatch", "unknown", "observe"]
