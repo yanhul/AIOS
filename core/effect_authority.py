@@ -2,7 +2,8 @@
 
 This is the write boundary for provider-facing state. Each transition commits
 both the effect record and an audit event in one ``commit_batch``. Provider
-success is never inferred: terminal observed states require explicit evidence.
+success is never inferred: terminal observed states require explicit,
+cryptographically self-consistent evidence bound to the executing attempt.
 
 Retry is deliberately a separate semantic operation: callers cannot widen the
 generic transition graph by treating UNKNOWN as an ordinary dispatch source.
@@ -12,6 +13,7 @@ import hashlib
 import json
 import os
 
+from .evidence import verify_evidence
 from .mutation import TransitionError, canonical_json, commit_batch, recover_pending
 
 STATES = ("PLANNED", "DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE")
@@ -95,12 +97,7 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
 
 
 def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
-    """Explicitly dispatch the next attempt for an UNKNOWN effect.
-
-    The generic transition graph intentionally does not allow UNKNOWN ->
-    DISPATCHED. This narrow entrypoint enforces monotonic attempt sequencing
-    and preserves the logical effect identity across retries.
-    """
+    """Explicitly dispatch the next attempt for an UNKNOWN effect."""
     _validate_strings(("effect_id", effect_id), ("actor", actor),
                       ("attempt_id", attempt_id), ("provider", provider))
     if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 2:
@@ -140,4 +137,20 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
         raise ValueError("invalid observation outcome")
     if not isinstance(provider_observation, dict) or not provider_observation:
         raise ValueError("provider_observation must be a non-empty dict")
+    recover_pending(aios_dir)
+    path = _path(aios_dir, effect_id)
+    if not os.path.exists(path):
+        raise KeyError(f"unknown effect: {effect_id}")
+    current = _load(path)
+    attempt_id = provider_observation.get("attempt_id")
+    provider = provider_observation.get("provider")
+    evidence = provider_observation.get("evidence")
+    if attempt_id != current.get("attempt_id"):
+        raise TransitionError("observation attempt does not match dispatched attempt")
+    if provider != current.get("provider"):
+        raise TransitionError("observation provider does not match dispatched provider")
+    if not isinstance(evidence, dict) or not verify_evidence(evidence):
+        raise ValueError("observation requires a valid AIOS evidence record")
+    if evidence.get("provider") != provider:
+        raise ValueError("evidence provider does not match effect provider")
     return transition(aios_dir, effect_id, outcome, actor, provider_observation=provider_observation)
