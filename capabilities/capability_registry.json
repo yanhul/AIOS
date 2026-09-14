@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "capabilities": [
+    {"capability_id":"try.research","version":"1","owner":"yanhul/try","kind":"research_workload","inputs":["natural_language_problem","research_contract"],"outputs":["experiment_ledger","research_report","terminal_state"],"status":"ACTIVE"},
+    {"capability_id":"android.assistant","version":"1","owner":"yanhul/android-ai-assistant","kind":"software_device_workload","inputs":["natural_language_command","execution_contract"],"outputs":["software_artifact","execution_result","verification_report"],"status":"ACTIVE"},
+    {"capability_id":"rx50.engineering","version":"1","owner":"yanhul/RX50","kind":"hardware_engineering_workload","inputs":["engineering_problem","requirements","evidence"],"outputs":["engineering_artifacts","evidence_report","terminal_state"],"status":"ACTIVE"},
+    {"capability_id":"minimind.model","version":"1","owner":"jingyaogong/minimind","kind":"model_capability","inputs":["model_task","model_input","inference_contract"],"outputs":["model_output","capability_receipt","provenance"],"status":"ACTIVE"},
+    {"capability_id":"software.audit","version":"1","owner":"ptn1411/skill","kind":"skill_provider","inputs":["software_artifact","audit_contract"],"outputs":["audit_report","findings","remediation_plan"],"status":"ACTIVE"},
+    {"capability_id":"research.deep","version":"1","owner":"yanhul/AIOS","kind":"research_worker","inputs":["research_request","objective","constraints","evidence_requirements"],"outputs":["research_findings","evidence_refs","artifacts"],"status":"ACTIVE"},
+    {"capability_id":"research.recent_signals","version":"1","owner":"yanhul/AIOS","kind":"research_worker","inputs":["research_request","recency_window","source_set"],"outputs":["recent_findings","evidence_refs","artifacts"],"status":"ACTIVE"},
+    {"capability_id":"runtime.background_worker","version":"1","owner":"yanhul/AIOS","kind":"durable_worker","inputs":["worker_contract","checkpoint","resume_token"],"outputs":["worker_state","checkpoint","durable_result"],"status":"ACTIVE"},
+    {"capability_id":"execution.coding","version":"1","owner":"yanhul/AIOS","kind":"coding_worker","inputs":["coding_contract","source_revision","execution_budget"],"outputs":["artifact","exit_result","test_evidence"],"status":"ACTIVE"},
+    {"capability_id":"market.universe_discovery","version":"1","owner":"yanhul/AIOS","kind":"domain_worker","inputs":["market_contract","universe_constraints","discovery_sources"],"outputs":["universe_candidates","source_refs","discovery_artifacts"],"status":"ACTIVE"}
+  ],
+  "edges": []
+}
