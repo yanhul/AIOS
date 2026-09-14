@@ -188,3 +188,46 @@ def test_budget_exhaustion_uses_governed_terminal_state():
     )
     result = run_durable_loop(FakeExecutor(), MemoryStateStore(), policy)
     assert result["status"] == "REJECT"
+
+
+class ReceiptExecutor(FakeExecutor):
+    def verify(self, action_result, state):
+        return {
+            "value": action_result,
+            "receipt": {
+                "effect_id": "effect-1",
+                "attempt_id": f"attempt-{state['step']}",
+                "status": "OBSERVED",
+                "evidence": {"result": action_result},
+            },
+        }
+
+
+def test_receipt_lineage_is_required_before_terminal_evaluation():
+    policy = _policy(max_steps=1, require_execution_receipt=True, terminal_evaluator=lambda verification, state: "PASS")
+    result = run_durable_loop(FakeExecutor(), MemoryStateStore(), policy)
+    assert result["status"] == "BLOCKED"
+    assert "receipt" in result["block_reason"]
+    assert result["step"] == 0
+    assert result["history"] == []
+
+
+def test_valid_receipt_lineage_reaches_terminal_evaluation():
+    policy = _policy(max_steps=1, require_execution_receipt=True, terminal_evaluator=lambda verification, state: "PASS")
+    result = run_durable_loop(ReceiptExecutor(), MemoryStateStore(), policy)
+    assert result["status"] == "PASS"
+    assert result["step"] == 1
+    assert result["history"][0]["verification"]["receipt"]["attempt_id"] == "attempt-0"
+
+
+def test_unknown_receipt_status_cannot_be_promoted_to_terminal_pass():
+    class UnknownReceiptExecutor(ReceiptExecutor):
+        def verify(self, action_result, state):
+            result = super().verify(action_result, state)
+            result["receipt"]["status"] = "DISPATCHED"
+            return result
+
+    policy = _policy(max_steps=1, require_execution_receipt=True, terminal_evaluator=lambda verification, state: "PASS")
+    result = run_durable_loop(UnknownReceiptExecutor(), MemoryStateStore(), policy)
+    assert result["status"] == "BLOCKED"
+    assert "unauthorized status" in result["block_reason"]
