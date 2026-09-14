@@ -220,14 +220,14 @@ def test_valid_receipt_lineage_reaches_terminal_evaluation():
     assert result["history"][0]["verification"]["receipt"]["attempt_id"] == "attempt-0"
 
 
-def test_unknown_receipt_status_cannot_be_promoted_to_terminal_pass():
+def test_unknown_receipt_cannot_authorize_terminal_verdict():
     class UnknownReceiptExecutor(ReceiptExecutor):
         def verify(self, action_result, state):
             result = super().verify(action_result, state)
-            result["receipt"]["status"] = "DISPATCHED"
+            result["receipt"]["status"] = "UNKNOWN"
             return result
 
     policy = _policy(max_steps=1, require_execution_receipt=True, terminal_evaluator=lambda verification, state: "PASS")
     result = run_durable_loop(UnknownReceiptExecutor(), MemoryStateStore(), policy)
     assert result["status"] == "BLOCKED"
-    assert "unauthorized status" in result["block_reason"]
+    assert "UNKNOWN execution receipt" in result["block_reason"]
