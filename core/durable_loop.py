@@ -26,6 +26,7 @@ class LoopPolicy:
     terminal_states: frozenset[str] = TERMINAL
     budget_exhaustion_state: str = "INCONCLUSIVE"
     failure_state: str = "BLOCKED"
+    require_execution_receipt: bool = False
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
@@ -42,6 +43,23 @@ class LoopPolicy:
             raise ValueError("failure_state must be a non-empty string")
         if self.failure_state not in self.terminal_states:
             raise ValueError("failure_state must be an authorized terminal state")
+        if not isinstance(self.require_execution_receipt, bool):
+            raise ValueError("require_execution_receipt must be boolean")
+
+def _validate_execution_receipt(verification: Any) -> None:
+    """Fail closed unless verification contains an immutable execution lineage receipt."""
+    if not isinstance(verification, Mapping):
+        raise ValueError("execution receipt missing from verification")
+    receipt = verification.get("receipt")
+    if not isinstance(receipt, Mapping):
+        raise ValueError("execution receipt missing from verification")
+    required = ("effect_id", "attempt_id", "status")
+    if any(not isinstance(receipt.get(key), str) or not receipt[key].strip() for key in required):
+        raise ValueError("execution receipt lineage is incomplete")
+    if receipt.get("status") not in {"OBSERVED", "UNKNOWN"}:
+        raise ValueError("execution receipt has unauthorized status")
+    if "evidence" not in receipt:
+        raise ValueError("execution receipt evidence is missing")
 
 @dataclass
 class MemoryStateStore:
@@ -66,7 +84,7 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
         policy.resume_validator(state)
 
 def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) -> Mapping[str, Any]:
-    """Run/resume OBSERVE -> DECIDE -> ACT -> VERIFY -> PERSIST."""
+    """Run/resume OBSERVE -> DECIDE -> ACT -> VERIFY -> PERSIST with optional receipt enforcement."""
     loaded = store.load()
     state: dict[str, Any] = deepcopy(dict(loaded or {}))
     state.setdefault("step", 0)
@@ -102,6 +120,8 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         try:
             action_result = executor.act(deepcopy(decision), deepcopy(state))
             verification = executor.verify(deepcopy(action_result), deepcopy(state))
+            if policy.require_execution_receipt:
+                _validate_execution_receipt(verification)
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"execution failed after authorization: {type(exc).__name__}: {exc}"
