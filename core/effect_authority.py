@@ -64,6 +64,23 @@ def _authorized_contract(aios_dir, contract_id, permit_id, actor, effect_type):
     return contract, permit
 
 
+def _validate_persisted_effect(aios_dir, effect):
+    required = ("effect_id", "contract_id", "permit_id", "actor", "effect_type",
+                "policy_digest", "max_attempts", "state", "attempt")
+    if any(key not in effect for key in required):
+        raise TransitionError("persisted effect schema is incomplete")
+    contract, permit = _authorized_contract(
+        aios_dir, effect["contract_id"], effect["permit_id"],
+        effect["actor"], effect["effect_type"])
+    if effect["policy_digest"] != contract["policy_digest"]:
+        raise TransitionError("effect policy digest differs from authorized contract")
+    if effect["max_attempts"] != contract["max_attempts"]:
+        raise TransitionError("effect attempt budget differs from authorized contract")
+    if not isinstance(effect["attempt"], int) or isinstance(effect["attempt"], bool) or effect["attempt"] < 0:
+        raise TransitionError("persisted effect attempt is invalid")
+    return contract, permit
+
+
 def _attempt_id(effect_id, attempt):
     return f"{effect_id}:attempt:{attempt}"
 
@@ -112,6 +129,7 @@ def transition(aios_dir, effect_id, target, actor, **fields):
     if not os.path.exists(path):
         raise KeyError(f"unknown effect: {effect_id}")
     current = _load(path)
+    _validate_persisted_effect(aios_dir, current)
     if actor != current.get("actor"):
         raise TransitionError("effect transition actor does not match effect owner")
     if current.get("state") not in _ALLOWED or target not in _ALLOWED[current["state"]]:
@@ -136,6 +154,7 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
     if not os.path.exists(path):
         raise KeyError(f"unknown effect: {effect_id}")
     current = _load(path)
+    _validate_persisted_effect(aios_dir, current)
     if current.get("state") != "PLANNED":
         raise TransitionError(f"initial dispatch requires PLANNED effect, got {current.get('state')}")
     expected = _attempt_id(effect_id, 1)
@@ -158,6 +177,7 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
     if not os.path.exists(path):
         raise KeyError(f"unknown effect: {effect_id}")
     current = _load(path)
+    _validate_persisted_effect(aios_dir, current)
     if current.get("actor") != actor:
         raise TransitionError("retry actor does not match effect owner")
     if current.get("state") != "UNKNOWN":
@@ -197,6 +217,7 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
     if not os.path.exists(path):
         raise KeyError(f"unknown effect: {effect_id}")
     current = _load(path)
+    _validate_persisted_effect(aios_dir, current)
     if actor != current.get("actor"):
         raise TransitionError("observation actor does not match effect owner")
     attempt_id = provider_observation.get("attempt_id")
