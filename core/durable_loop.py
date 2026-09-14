@@ -27,6 +27,7 @@ class LoopPolicy:
     budget_exhaustion_state: str = "INCONCLUSIVE"
     failure_state: str = "BLOCKED"
     require_execution_receipt: bool = False
+    execution_receipt_validator: Callable[[Mapping[str, Any], Mapping[str, Any]], None] | None = None
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
@@ -45,9 +46,11 @@ class LoopPolicy:
             raise ValueError("failure_state must be an authorized terminal state")
         if not isinstance(self.require_execution_receipt, bool):
             raise ValueError("require_execution_receipt must be boolean")
+        if self.execution_receipt_validator is not None and not callable(self.execution_receipt_validator):
+            raise ValueError("execution_receipt_validator must be callable")
 
-def _validate_execution_receipt(verification: Any) -> None:
-    """Fail closed unless verification contains an immutable execution lineage receipt."""
+def _validate_execution_receipt(verification: Any) -> Mapping[str, Any]:
+    """Fail closed unless verification contains a complete execution receipt."""
     if not isinstance(verification, Mapping):
         raise ValueError("execution receipt missing from verification")
     receipt = verification.get("receipt")
@@ -56,10 +59,13 @@ def _validate_execution_receipt(verification: Any) -> None:
     required = ("effect_id", "attempt_id", "status")
     if any(not isinstance(receipt.get(key), str) or not receipt[key].strip() for key in required):
         raise ValueError("execution receipt lineage is incomplete")
-    if receipt.get("status") not in {"OBSERVED", "UNKNOWN"}:
+    status = receipt.get("status")
+    if status not in {"OBSERVED", "UNKNOWN"}:
         raise ValueError("execution receipt has unauthorized status")
-    if "evidence" not in receipt:
-        raise ValueError("execution receipt evidence is missing")
+    evidence = receipt.get("evidence")
+    if not isinstance(evidence, Mapping) or not evidence:
+        raise ValueError("execution receipt evidence is missing or empty")
+    return receipt
 
 @dataclass
 class MemoryStateStore:
@@ -84,7 +90,7 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
         policy.resume_validator(state)
 
 def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) -> Mapping[str, Any]:
-    """Run/resume OBSERVE -> DECIDE -> ACT -> VERIFY -> PERSIST with optional receipt enforcement."""
+    """Run/resume OBSERVE -> DECIDE -> ACT -> VERIFY -> PERSIST with governed receipt enforcement."""
     loaded = store.load()
     state: dict[str, Any] = deepcopy(dict(loaded or {}))
     state.setdefault("step", 0)
@@ -120,8 +126,11 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         try:
             action_result = executor.act(deepcopy(decision), deepcopy(state))
             verification = executor.verify(deepcopy(action_result), deepcopy(state))
+            receipt = None
             if policy.require_execution_receipt:
-                _validate_execution_receipt(verification)
+                receipt = _validate_execution_receipt(verification)
+                if policy.execution_receipt_validator is not None:
+                    policy.execution_receipt_validator(deepcopy(receipt), deepcopy(state))
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"execution failed after authorization: {type(exc).__name__}: {exc}"
@@ -133,6 +142,8 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
             terminal = policy.terminal_evaluator(deepcopy(verification), deepcopy(state))
             if terminal is not None and terminal not in policy.terminal_states:
                 raise ValueError(f"invalid terminal status: {terminal}")
+            if policy.require_execution_receipt and receipt is not None and receipt["status"] == "UNKNOWN" and terminal is not None:
+                raise ValueError("UNKNOWN execution receipt cannot authorize a terminal verdict")
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"terminal evaluation failed: {type(exc).__name__}: {exc}"
