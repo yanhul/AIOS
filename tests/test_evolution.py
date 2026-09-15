@@ -4,6 +4,7 @@ from core.evolution import (
     Candidate,
     EvaluationEvidence,
     MemoryCandidateStore,
+    admit,
     promote,
     record_evaluation,
     transition,
@@ -14,21 +15,23 @@ def _candidate():
     return Candidate(candidate_id="c1", parent_id=None, artifact_ref="artifact:c1")
 
 
-def _evidence(digest="eval-v1"):
+def _evidence(digest="eval-v1", held_in_status="PASS", held_out_status="PASS"):
     return EvaluationEvidence(
         evaluator_digest=digest,
-        held_in={"status": "PASS", "metric": 1.2},
-        held_out={"status": "PASS", "metric": 1.1},
+        held_in={"status": held_in_status, "metric": 1.2},
+        held_out={"status": held_out_status, "metric": 1.1},
         evidence_refs=("receipt:r1",),
     )
 
 
-def test_candidate_progresses_through_governed_states():
-    candidate = _candidate()
-    candidate = transition(candidate, "CANDIDATE")
+def _evaluated(evidence=None):
+    candidate = transition(_candidate(), "CANDIDATE")
     candidate = transition(candidate, "CHALLENGER")
-    candidate = record_evaluation(candidate, _evidence(), evaluator_digest="eval-v1")
-    candidate = transition(candidate, "PROMOTABLE")
+    return record_evaluation(candidate, evidence or _evidence(), evaluator_digest="eval-v1")
+
+
+def test_candidate_progresses_through_governed_states():
+    candidate = admit(_evaluated())
     candidate = promote(candidate, authorize=lambda _: None)
     assert candidate.state == "ACTIVE"
     assert candidate.evaluation is not None
@@ -56,11 +59,20 @@ def test_held_out_evidence_is_required():
         )
 
 
+def test_admission_requires_both_held_sets_to_pass():
+    with pytest.raises(ValueError, match="held-out evidence"):
+        admit(_evaluated(_evidence(held_out_status="FAIL")))
+    with pytest.raises(ValueError, match="held-in evidence"):
+        admit(_evaluated(_evidence(held_in_status="FAIL")))
+
+
+def test_direct_evaluated_to_promotable_transition_is_blocked():
+    with pytest.raises(ValueError, match="unauthorized transition"):
+        transition(_evaluated(), "PROMOTABLE")
+
+
 def test_promotion_requires_external_authority():
-    candidate = transition(_candidate(), "CANDIDATE")
-    candidate = transition(candidate, "CHALLENGER")
-    candidate = record_evaluation(candidate, _evidence(), evaluator_digest="eval-v1")
-    candidate = transition(candidate, "PROMOTABLE")
+    candidate = admit(_evaluated())
     calls = []
 
     def deny(candidate):
