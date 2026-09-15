@@ -105,7 +105,12 @@ def record_evaluation(candidate: Candidate, evidence: EvaluationEvidence, *, eva
 
 
 def admit(candidate: Candidate, *, required_status: str = "PASS") -> Candidate:
-    """Admit an evaluated candidate only when both held-in and held-out evidence pass."""
+    """Admit an evaluated candidate only when both held-in and held-out evidence pass.
+
+    Admission is a governed transition that is intentionally not exposed through
+    the generic transition() API. This keeps the evidence gate authoritative while
+    preserving the fail-closed state-transition surface.
+    """
     if candidate.state != "EVALUATED": raise ValueError("only EVALUATED candidates can be admitted")
     evidence = candidate.evaluation
     if evidence is None: raise ValueError("admission requires evaluation evidence")
@@ -115,7 +120,10 @@ def admit(candidate: Candidate, *, required_status: str = "PASS") -> Candidate:
         raise ValueError("held-out evidence did not satisfy admission gate")
     if not evidence.evidence_refs:
         raise ValueError("admission requires evidence references")
-    return transition(candidate, "PROMOTABLE")
+    return Candidate(candidate_id=candidate.candidate_id, parent_id=candidate.parent_id,
+                     artifact_ref=candidate.artifact_ref, state="PROMOTABLE",
+                     lineage_depth=candidate.lineage_depth, evaluation=evidence,
+                     metadata=dict(candidate.metadata))
 
 
 def promote(candidate: Candidate, *, authorize: Callable[[Candidate], None]) -> Candidate:
