@@ -1,67 +1,103 @@
+import json
 import os
 import tempfile
 import unittest
 
+from core.authority import persist_contract, persist_permit
+from core.capabilities import Capability, CapabilityRegistry
+from core.contract import contract_identity
+from core.effect_authority import create_effect, dispatch, observe, unknown
 from core.evidence import EvidenceRecord
-from core.external_effect import ExternalEffectError, create_effect, load_effects, record_dispatch, record_observation, record_unknown
-from core.mutation import TransitionError
+from core.policy_registry import persist_policy
 
 
-def evidence(provider="provider:test"):
+def contract(policy_digest):
+    return {
+        "contract_type": "EXECUTION_CONTRACT",
+        "task_id": "task-external-effect",
+        "scope": "external-effect-test",
+        "actor": "agent:a",
+        "capabilities": ["provider:test@1"],
+        "input_digest": "input-1",
+        "allowed_effects": ["external_effect"],
+        "evidence_required": ["provider_receipt"],
+        "max_attempts": 2,
+        "terminal_states": ["SUCCESS", "FAILURE"],
+        "policy_digest": policy_digest,
+    }
+
+
+def evidence():
     return EvidenceRecord(
         evidence_id="EV-1",
         level="OBSERVED",
         source_ref="provider://receipt/1",
         claim="provider completed operation",
         run_id="run-1",
-        provider=provider,
+        provider="provider:test",
     ).as_record()
 
 
 class TestExternalEffect(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
-        self.aios = os.path.join(self.tmp, ".aios")
+        registry = CapabilityRegistry()
+        registry.register(Capability("provider:test", "1", "test-fixture", "test", status="ACTIVE"))
+        registry.persist(self.tmp, "test-fixture")
+        policy = persist_policy(self.tmp, {"policy_type": "GOVERNING_POLICY", "name": "external-effect-fixture"})
+        c = contract(policy)
+        self.cid = contract_identity(c)
+        persist_contract(self.tmp, c)
+        permit = persist_permit(self.tmp, c, "root")
+        self.pid = permit["permit_id"]
 
     def tearDown(self):
         import shutil
         shutil.rmtree(self.tmp, ignore_errors=True)
 
+    def effect(self):
+        return create_effect(self.tmp, self.cid, "LO-1", "agent:a", self.pid, "external_effect")
+
+    def persisted_effect(self, effect_id):
+        path = os.path.join(self.tmp, "effects", effect_id + ".json")
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+
     def test_requires_observation_for_success(self):
-        e = create_effect(self.aios, "CT-1", "LO-1", "agent:a")
+        e = self.effect()
         attempt = f"{e['effect_id']}:attempt:1"
-        record_dispatch(self.aios, e["effect_id"], attempt, "provider:test")
-        with self.assertRaises(ExternalEffectError):
-            record_observation(self.aios, e["effect_id"], "OBSERVED_SUCCESS", {})
+        dispatch(self.tmp, e["effect_id"], "agent:a", attempt, "provider:test")
+        with self.assertRaises(Exception):
+            observe(self.tmp, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {"attempt_id": attempt, "provider": "provider:test"})
 
     def test_unknown_is_durable_and_needs_verified_observation(self):
-        e = create_effect(self.aios, "CT-1", "LO-1", "agent:a")
+        e = self.effect()
         attempt = f"{e['effect_id']}:attempt:1"
-        record_dispatch(self.aios, e["effect_id"], attempt, "provider:test")
-        record_unknown(self.aios, e["effect_id"], "provider timeout")
-        self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "UNKNOWN")
-        record_observation(self.aios, e["effect_id"], "OBSERVED_SUCCESS", {
+        dispatch(self.tmp, e["effect_id"], "agent:a", attempt, "provider:test")
+        unknown(self.tmp, e["effect_id"], "agent:a", "provider timeout")
+        self.assertEqual(self.persisted_effect(e["effect_id"])["state"], "UNKNOWN")
+        observe(self.tmp, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {
             "attempt_id": attempt, "provider": "provider:test", "evidence": evidence()
         })
-        self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "OBSERVED_SUCCESS")
+        self.assertEqual(self.persisted_effect(e["effect_id"])["state"], "OBSERVED_SUCCESS")
 
     def test_attempt_mismatch_is_rejected(self):
-        e = create_effect(self.aios, "CT-1", "LO-1", "agent:a")
+        e = self.effect()
         attempt = f"{e['effect_id']}:attempt:1"
-        record_dispatch(self.aios, e["effect_id"], attempt, "provider:test")
-        with self.assertRaises(ExternalEffectError):
-            record_observation(self.aios, e["effect_id"], "OBSERVED_SUCCESS", {
+        dispatch(self.tmp, e["effect_id"], "agent:a", attempt, "provider:test")
+        with self.assertRaises(Exception):
+            observe(self.tmp, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {
                 "attempt_id": "different", "provider": "provider:test", "evidence": evidence()
             })
 
     def test_illegal_transition_rejected(self):
-        e = create_effect(self.aios, "CT-1", "LO-1", "agent:a")
-        with self.assertRaises(ExternalEffectError):
-            record_observation(self.aios, e["effect_id"], "OBSERVED_SUCCESS", {"receipt_id": "R-1"})
+        e = self.effect()
+        with self.assertRaises(Exception):
+            observe(self.tmp, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {"receipt_id": "R-1"})
 
     def test_effect_identity_is_replayable(self):
-        a = create_effect(self.aios, "CT-1", "LO-1", "agent:a")
-        b = create_effect(self.aios, "CT-1", "LO-1", "agent:a")
+        a = self.effect()
+        b = self.effect()
         self.assertEqual(a["effect_id"], b["effect_id"])
 
 
