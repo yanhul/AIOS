@@ -11,13 +11,14 @@ def _require_id(value,name):
  if not isinstance(value,str) or not value.strip(): raise ValueError(f"{name} must be a non-empty string")
 def _path(aios_dir,kind,ident): return os.path.join(aios_dir,AUTHORITY_DIR,kind,ident+".json")
 def _load(path):
- with open(path,"r",encoding="utf-8") as fh:return json.load(fh)
+ try:
+  with open(path,"r",encoding="utf-8") as fh:return json.load(fh)
+ except FileNotFoundError as exc: raise ValueError(f"authority record not found: {path}") from exc
 def _canonical_contract(contract):
  if not isinstance(contract,dict): raise ValueError("contract must be a dict")
  extra=set(contract)-set(_CONTRACT_FIELDS); allowed_record_metadata={"record_type","contract_id"}
  if extra-allowed_record_metadata: raise ValueError(f"contract contains unsupported fields: {sorted(extra-allowed_record_metadata)}")
- canonical={k:contract[k] for k in _CONTRACT_FIELDS if k in contract}
- validate_contract(canonical)
+ canonical={k:contract[k] for k in _CONTRACT_FIELDS if k in contract}; validate_contract(canonical)
  if "contract_id" in contract and contract["contract_id"]!=contract_identity(canonical): raise TransitionError("stored contract identity mismatch")
  return canonical
 def _resolve_capabilities(aios_dir,contract):
@@ -41,7 +42,6 @@ def persist_permit(aios_dir,contract,issuer):
   verify_permit(canonical,existing); return existing
  commit_batch(aios_dir,[(os.path.join(AUTHORITY_DIR,PERMITS_DIR,permit["permit_id"]+".json"),permit)]); return permit
 def persist_attestation(aios_dir,contract,permit,secret):
- """Atomically persist an authenticity attestation for an issued permit."""
  canonical=_canonical_contract(contract); verify_permit(canonical,permit); _resolve_capabilities(aios_dir,canonical); _resolve_policy(aios_dir,canonical); attestation=issue_attestation(canonical,permit,secret); recover_pending(aios_dir); path=_path(aios_dir,ATTESTATIONS_DIR,permit["permit_id"])
  if os.path.exists(path):
   existing=_load(path)
