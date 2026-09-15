@@ -15,17 +15,10 @@ def setup_authority(tmp_path, max_attempts=1):
     registry.persist(str(tmp_path), "test-fixture")
     policy = persist_policy(str(tmp_path), {"policy_type": "GOVERNING_POLICY", "name": "effect-fixture"})
     contract = {
-        "contract_type": "EXECUTION_CONTRACT",
-        "task_id": "task-effect",
-        "scope": "effect-test",
-        "actor": "agent-1",
-        "capabilities": ["provider@1"],
-        "input_digest": "input-1",
-        "allowed_effects": ["external_effect"],
-        "evidence_required": ["provider_receipt"],
-        "max_attempts": max_attempts,
-        "terminal_states": ["SUCCESS", "FAILURE"],
-        "policy_digest": policy,
+        "contract_type": "EXECUTION_CONTRACT", "task_id": "task-effect", "scope": "effect-test",
+        "actor": "agent-1", "capabilities": ["provider@1"], "input_digest": "input-1",
+        "allowed_effects": ["external_effect"], "evidence_required": ["provider_receipt"],
+        "max_attempts": max_attempts, "terminal_states": ["SUCCESS", "FAILURE"], "policy_digest": policy,
     }
     cid = contract_identity(contract)
     persist_contract(str(tmp_path), contract)
@@ -34,22 +27,11 @@ def setup_authority(tmp_path, max_attempts=1):
 
 
 def evidence(provider="provider"):
-    return EvidenceRecord(
-        evidence_id="EV-1",
-        level="OBSERVED",
-        source_ref="provider://receipt/1",
-        claim="provider completed operation",
-        run_id="run-1",
-        provider=provider,
-    ).as_record()
+    return EvidenceRecord("EV-1", "OBSERVED", "provider://receipt/1", "provider completed operation", "run-1", provider).as_record()
 
 
 def observation(effect_id, provider="provider"):
-    return {
-        "attempt_id": f"{effect_id}:attempt:1",
-        "provider": provider,
-        "evidence": evidence(provider),
-    }
+    return {"attempt_id": f"{effect_id}:attempt:1", "provider": provider, "evidence": evidence(provider)}
 
 
 def make_effect(tmp_path):
@@ -61,10 +43,13 @@ def test_effect_transition_is_atomic_and_audited(tmp_path):
     effect = make_effect(tmp_path)
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider")
     unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
-    done = dispatch if False else observe
-    result = done(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", observation(effect["effect_id"]))
+    # UNKNOWN is intentionally non-dispatchable; this test checks the direct
+    # observed path on a fresh dispatched attempt instead.
+    effect = make_effect(tmp_path / "fresh")
+    dispatch(str(tmp_path / "fresh"), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider")
+    result = observe(str(tmp_path / "fresh"), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", observation(effect["effect_id"]))
     assert result["state"] == "OBSERVED_SUCCESS"
-    assert (tmp_path / "events" / ("effect-" + effect["effect_id"] + "-OBSERVED_SUCCESS.json")).exists()
+    assert (tmp_path / "fresh" / "events" / ("effect-" + effect["effect_id"] + "-OBSERVED_SUCCESS.json")).exists()
 
 
 def test_unknown_cannot_return_to_dispatch(tmp_path):
@@ -100,7 +85,5 @@ def test_tampered_evidence_digest_is_rejected(tmp_path):
     forged["claim"] = "tampered"
     with pytest.raises(ValueError):
         observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", {
-            "attempt_id": f"{effect['effect_id']}:attempt:1",
-            "provider": "provider",
-            "evidence": forged,
+            "attempt_id": f"{effect['effect_id']}:attempt:1", "provider": "provider", "evidence": forged,
         })
