@@ -30,8 +30,6 @@ class LoopPolicy:
     failure_state: str = "BLOCKED"
     require_execution_receipt: bool = False
     execution_receipt_validator: Callable[[Mapping[str, Any], Mapping[str, Any]], None] | None = None
-    # Fix workflows opt into the normative fix protocol. The plan is external
-    # governance; the executor cannot replace or weaken it.
     fix_plan: FixPlan | None = None
     fix_success_state: str = "PASS"
 
@@ -79,6 +77,19 @@ def _validate_execution_receipt(verification: Any) -> Mapping[str, Any]:
         raise ValueError("execution receipt evidence is missing or empty")
     return receipt
 
+
+def _validate_terminal_evidence(state: Mapping[str, Any]) -> None:
+    """A terminal state is valid only when its immutable evidence projection exists."""
+    evidence = state.get("terminal_evidence")
+    if not isinstance(evidence, Mapping):
+        raise ValueError("terminal state has no terminal evidence")
+    if evidence.get("status") != state.get("status"):
+        raise ValueError("terminal evidence status does not match state")
+    if not isinstance(evidence.get("step"), int) or evidence["step"] != state.get("step"):
+        raise ValueError("terminal evidence step does not match state")
+    if "verification" not in evidence:
+        raise ValueError("terminal evidence verification is missing")
+
 @dataclass
 class MemoryStateStore:
     state: dict[str, Any] = field(default_factory=dict)
@@ -100,6 +111,8 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
         raise ValueError("persisted policy digest does not match current policy")
     if policy.resume_validator is not None:
         policy.resume_validator(state)
+    if state.get("status") in policy.terminal_states:
+        _validate_terminal_evidence(state)
 
 def _validate_fix_success(verification: Any, expected_state: str) -> None:
     """Require externally verifiable runtime proof before fix promotion."""
@@ -175,11 +188,21 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
             return state
         if terminal is not None:
             state["status"] = terminal
+            state["terminal_evidence"] = {
+                "step": state["step"],
+                "status": terminal,
+                "verification": deepcopy(verification),
+            }
             store.save(state)
             return state
         state["status"] = "RUNNING"
         store.save(state)
     state["status"] = policy.budget_exhaustion_state
+    state["terminal_evidence"] = {
+        "step": state["step"],
+        "status": state["status"],
+        "verification": {"reason": "BUDGET_EXHAUSTED"},
+    }
     store.save(state)
     return state
 
