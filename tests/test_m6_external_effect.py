@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -5,10 +6,9 @@ import unittest
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
-from core.effect_authority import create_effect, dispatch, observe, transition, unknown
+from core.effect_authority import create_effect, dispatch, observe, unknown
 from core.evidence import EvidenceRecord
 from core.policy_registry import persist_policy
-from core.mutation import TransitionError
 
 
 def contract(policy_digest):
@@ -41,7 +41,6 @@ def evidence():
 class TestExternalEffect(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
-        self.aios = os.path.join(self.tmp, ".aios")
         registry = CapabilityRegistry()
         registry.register(Capability("provider:test", "1", "test-fixture", "test", status="ACTIVE"))
         registry.persist(self.tmp, "test-fixture")
@@ -59,6 +58,11 @@ class TestExternalEffect(unittest.TestCase):
     def effect(self):
         return create_effect(self.tmp, self.cid, "LO-1", "agent:a", self.pid, "external_effect")
 
+    def persisted_effect(self, effect_id):
+        path = os.path.join(self.tmp, "effects", effect_id + ".json")
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+
     def test_requires_observation_for_success(self):
         e = self.effect()
         attempt = f"{e['effect_id']}:attempt:1"
@@ -71,12 +75,11 @@ class TestExternalEffect(unittest.TestCase):
         attempt = f"{e['effect_id']}:attempt:1"
         dispatch(self.tmp, e["effect_id"], "agent:a", attempt, "provider:test")
         unknown(self.tmp, e["effect_id"], "agent:a", "provider timeout")
-        from core.external_effect import load_effects
-        self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "UNKNOWN")
+        self.assertEqual(self.persisted_effect(e["effect_id"])["state"], "UNKNOWN")
         observe(self.tmp, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {
             "attempt_id": attempt, "provider": "provider:test", "evidence": evidence()
         })
-        self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "OBSERVED_SUCCESS")
+        self.assertEqual(self.persisted_effect(e["effect_id"])["state"], "OBSERVED_SUCCESS")
 
     def test_attempt_mismatch_is_rejected(self):
         e = self.effect()
