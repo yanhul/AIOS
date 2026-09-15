@@ -42,14 +42,9 @@ def make_effect(tmp_path):
 def test_effect_transition_is_atomic_and_audited(tmp_path):
     effect = make_effect(tmp_path)
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider")
-    unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
-    # UNKNOWN is intentionally non-dispatchable; this test checks the direct
-    # observed path on a fresh dispatched attempt instead.
-    effect = make_effect(tmp_path / "fresh")
-    dispatch(str(tmp_path / "fresh"), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider")
-    result = observe(str(tmp_path / "fresh"), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", observation(effect["effect_id"]))
+    result = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", observation(effect["effect_id"]))
     assert result["state"] == "OBSERVED_SUCCESS"
-    assert (tmp_path / "fresh" / "events" / ("effect-" + effect["effect_id"] + "-OBSERVED_SUCCESS.json")).exists()
+    assert (tmp_path / "events" / ("effect-" + effect["effect_id"] + "-OBSERVED_SUCCESS.json")).exists()
 
 
 def test_unknown_cannot_return_to_dispatch(tmp_path):
