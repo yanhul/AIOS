@@ -200,6 +200,11 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, *,
         raise TransitionError("retry exceeds contract attempt budget")
     if attempt_id != _attempt_id(effect_id, attempt):
         raise ValueError("attempt_id does not match retry attempt")
+    current_fence = current.get("attempt_fence")
+    if not isinstance(current_fence, int) or isinstance(current_fence, bool) or current_fence < 0:
+        raise TransitionError("persisted effect attempt_fence is invalid")
+    if attempt_fence <= current_fence:
+        raise TransitionError("retry attempt_fence must increase monotonically")
     updated = dict(current)
     updated.update({"state": "DISPATCHED", "attempt": attempt,
                     "attempt_id": attempt_id, "provider": provider,
@@ -232,17 +237,33 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
     _validate_persisted_effect(aios_dir, current)
     if actor != current.get("actor"):
         raise TransitionError("observation actor does not match effect owner")
-    attempt_id = provider_observation.get("attempt_id")
-    provider = provider_observation.get("provider")
-    evidence = provider_observation.get("evidence")
+    required = ("attempt_id", "provider", "target_sha", "evidence_ref", "lineage_ref", "idempotency_key", "attempt_fence", "evidence")
+    if any(field not in provider_observation for field in required):
+        raise ValueError("observation is missing mandatory Gateway bindings")
+    attempt_id = provider_observation["attempt_id"]
+    provider = provider_observation["provider"]
+    evidence = provider_observation["evidence"]
     if current.get("state") not in ("DISPATCHED", "UNKNOWN"):
         raise TransitionError("observation requires a DISPATCHED or UNKNOWN attempt")
     if attempt_id != current.get("attempt_id"):
         raise TransitionError("observation attempt does not match current effect attempt")
     if provider != current.get("provider"):
         raise TransitionError("observation provider does not match current effect provider")
+    if provider_observation["target_sha"] != current.get("target_sha"):
+        raise ValueError("observation target_sha binding mismatch")
+    if provider_observation["evidence_ref"] != current.get("evidence_ref"):
+        raise ValueError("observation evidence_ref binding mismatch")
+    if provider_observation["lineage_ref"] != current.get("lineage_ref"):
+        raise ValueError("observation lineage_ref binding mismatch")
+    if provider_observation["idempotency_key"] != current.get("idempotency_key"):
+        raise ValueError("observation idempotency_key binding mismatch")
+    expected_fence = current.get("attempt_fence")
+    if provider_observation["attempt_fence"] != expected_fence:
+        raise ValueError("observation attempt_fence binding mismatch")
     if not isinstance(evidence, dict) or not verify_evidence(evidence):
         raise ValueError("observation requires a valid AIOS evidence record")
+    if evidence.get("evidence_id") != current.get("evidence_ref"):
+        raise ValueError("observation evidence identity binding mismatch")
     if evidence.get("provider") != provider:
         raise ValueError("evidence provider does not match effect provider")
     return transition(aios_dir, effect_id, outcome, actor, provider_observation=provider_observation)
