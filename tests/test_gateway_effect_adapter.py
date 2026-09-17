@@ -112,7 +112,7 @@ def test_forged_authority_ref_and_effect_binding_are_rejected(tmp_path):
     with pytest.raises(ValueError, match="persisted effect permit"):
         _build(tmp_path, contract, permit, attestation, effect, authority_ref="PT-forged")
     forged = dict(effect, effect_id="effect-forged")
-    with pytest.raises(ValueError, match="authoritative persisted effect"):
+    with pytest.raises(KeyError, match="unknown effect"):
         _build(tmp_path, contract, permit, attestation, forged)
 
 
