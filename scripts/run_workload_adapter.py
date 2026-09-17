@@ -59,19 +59,41 @@ def parse_single_json_document(stdout: str) -> dict:
     return value
 
 
+def result_digest(result: dict) -> str:
+    return "sha256:" + sha256_bytes(canonical_json(result).encode())
+
+
 def receipt_digest(receipt: dict) -> str:
     unsigned = dict(receipt)
     unsigned.pop("receipt_sha256", None)
     return "sha256:" + sha256_bytes(canonical_json(unsigned).encode())
 
 
-def validate_saved_receipt(saved: dict, *, execution_id: str, workload_id: str,
+def validate_adapter_result(result: dict, *, terminal_states: list[str], verification: list[str], producer: str, capability_ref: str) -> None:
+    required = {"status", "evidence_refs", "verification_refs", "provenance"}
+    if not required.issubset(result):
+        raise ValueError(f"adapter result missing fields: {sorted(required - set(result))}")
+    if result["status"] not in terminal_states:
+        raise ValueError(f"adapter returned undeclared terminal state: {result['status']!r}")
+    if not isinstance(result["evidence_refs"], (list, tuple)) or not result["evidence_refs"]:
+        raise ValueError("adapter result must contain evidence refs")
+    if not isinstance(result["verification_refs"], (list, tuple)) or not result["verification_refs"]:
+        raise ValueError("adapter result must contain verification refs")
+    if not isinstance(result["provenance"], dict) or result["provenance"].get("producer") != producer:
+        raise ValueError("adapter provenance producer mismatch")
+    if result["provenance"].get("adapter") != capability_ref:
+        raise ValueError("adapter provenance capability mismatch")
+    if not set(result["verification_refs"]).issubset(set(verification)):
+        raise ValueError("adapter verification refs exceed manifest verification classes")
+
+
+def validate_saved_receipt(saved: dict, *, receipt_path: Path, execution_id: str, workload_id: str,
                            capability_ref: str, contract_id: str, policy_digest: str,
-                           producer: str, terminal_states: list[str]) -> None:
+                           producer: str, terminal_states: list[str], verification: list[str]) -> dict:
     required = {
         "receipt_type", "execution_id", "workload_id", "capability", "policy_digest",
         "contract_id", "permit_id", "status", "evidence_refs", "verification_refs",
-        "provenance", "manifest_sha256", "result_sha256", "receipt_sha256",
+        "provenance", "manifest_sha256", "result_ref", "result_sha256", "receipt_sha256",
     }
     missing = required - set(saved)
     if missing:
@@ -96,14 +118,44 @@ def validate_saved_receipt(saved: dict, *, execution_id: str, workload_id: str,
     if saved.get("receipt_sha256") != receipt_digest(saved):
         raise ValueError("persisted receipt integrity mismatch")
 
+    result_ref = saved.get("result_ref")
+    if not isinstance(result_ref, str) or not result_ref:
+        raise ValueError("persisted receipt result ref missing")
+    result_path = (receipt_path.parent / result_ref).resolve()
+    try:
+        result_path.relative_to(receipt_path.parent.resolve())
+    except ValueError as exc:
+        raise ValueError("persisted receipt result ref escapes receipt directory") from exc
+    if not result_path.is_file():
+        raise ValueError("persisted receipt result artifact missing")
+    result = read_json(result_path)
+    if saved.get("result_sha256") != result_digest(result):
+        raise ValueError("persisted result integrity mismatch")
+    validate_adapter_result(result, terminal_states=terminal_states, verification=verification,
+                             producer=producer, capability_ref=capability_ref)
+    if result["status"] != saved["status"]:
+        raise ValueError("persisted result status disagrees with receipt")
+    if list(result["evidence_refs"]) != saved["evidence_refs"]:
+        raise ValueError("persisted result evidence refs disagree with receipt")
+    if list(result["verification_refs"]) != saved["verification_refs"]:
+        raise ValueError("persisted result verification refs disagree with receipt")
+    if result["provenance"] != saved["provenance"]:
+        raise ValueError("persisted result provenance disagrees with receipt")
+    return result
 
-def persist_receipt(path: Path, receipt: dict) -> None:
-    """Atomically publish the terminal receipt so a restart can reuse it."""
+
+def persist_json(path: Path, value: dict) -> None:
+    """Atomically publish a JSON artifact."""
     path = path.resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(canonical_json(receipt) + "\n", encoding="utf-8")
+    tmp.write_text(canonical_json(value) + "\n", encoding="utf-8")
     os.replace(tmp, path)
+
+
+def persist_receipt(path: Path, receipt: dict) -> None:
+    """Atomically publish the terminal receipt so a restart can reuse it."""
+    persist_json(path, receipt)
 
 
 def main() -> int:
@@ -210,9 +262,10 @@ def main() -> int:
         if receipt_path and receipt_path.exists():
             saved = read_json(receipt_path)
             validate_saved_receipt(
-                saved, execution_id=args.execution_id, workload_id=args.workload_id,
+                saved, receipt_path=receipt_path, execution_id=args.execution_id, workload_id=args.workload_id,
                 capability_ref=capability_ref, contract_id=contract_identity(contract),
                 policy_digest=args.policy_digest, producer=entry["owner"], terminal_states=terminal_states,
+                verification=verification,
             )
             print(canonical_json(saved))
             return 0
@@ -228,21 +281,8 @@ def main() -> int:
         if proc.returncode != 0:
             raise ValueError(f"adapter exited non-zero: {proc.returncode}: {proc.stderr.strip()[-500:]}")
         result = parse_single_json_document(proc.stdout)
-        required = {"status", "evidence_refs", "verification_refs", "provenance"}
-        if not required.issubset(result):
-            raise ValueError(f"adapter result missing fields: {sorted(required - set(result))}")
-        if result["status"] not in terminal_states:
-            raise ValueError(f"adapter returned undeclared terminal state: {result['status']!r}")
-        if not isinstance(result["evidence_refs"], (list, tuple)) or not result["evidence_refs"]:
-            raise ValueError("adapter result must contain evidence refs")
-        if not isinstance(result["verification_refs"], (list, tuple)) or not result["verification_refs"]:
-            raise ValueError("adapter result must contain verification refs")
-        if not isinstance(result["provenance"], dict) or result["provenance"].get("producer") != entry["owner"]:
-            raise ValueError("adapter provenance producer mismatch")
-        if result["provenance"].get("adapter") != capability_ref:
-            raise ValueError("adapter provenance capability mismatch")
-        if not set(result["verification_refs"]).issubset(set(verification)):
-            raise ValueError("adapter verification refs exceed manifest verification classes")
+        validate_adapter_result(result, terminal_states=terminal_states, verification=verification,
+                                producer=entry["owner"], capability_ref=capability_ref)
         if "adapter_result" not in policy["evidence_required"]:
             raise ValueError("governing policy does not require adapter-result evidence")
 
@@ -253,10 +293,13 @@ def main() -> int:
             "permit_id": permit["permit_id"], "status": result["status"],
             "evidence_refs": list(result["evidence_refs"]), "verification_refs": list(result["verification_refs"]),
             "provenance": result["provenance"], "manifest_sha256": "sha256:" + sha256_bytes(manifest_path.read_bytes()),
-            "result_sha256": "sha256:" + sha256_bytes(canonical_json(result).encode()),
+            "result_ref": receipt_path.name + ".result.json" if receipt_path else "inline:adapter-result",
+            "result_sha256": result_digest(result),
         }
         receipt["receipt_sha256"] = receipt_digest(receipt)
         if receipt_path:
+            result_path = receipt_path.with_name(receipt_path.name + ".result.json")
+            persist_json(result_path, result)
             persist_receipt(receipt_path, receipt)
         print(canonical_json(receipt))
         return 0

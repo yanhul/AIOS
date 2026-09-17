@@ -1,9 +1,4 @@
-"""Capability-only bounded subprocess provider adapter.
-
-AIOS owns authorization and durable state. The subprocess receives one bounded
-JSON request and must return one bounded JSON receipt. It cannot write AIOS
-state through this adapter.
-"""
+"""Capability-only bounded subprocess provider adapter."""
 
 from __future__ import annotations
 
@@ -33,6 +28,12 @@ class SubprocessAdapter:
         if self.max_output_bytes <= 0 or self.max_input_bytes <= 0:
             raise ValueError("I/O limits must be positive")
 
+        required = (
+            "target_sha", "evidence_ref", "lineage_ref", "idempotency_key", "attempt_fence"
+        )
+        if any(field not in effect for field in required):
+            raise ValueError("effect is missing mandatory Gateway receipt bindings")
+
         request = json.dumps(
             {"contract": dict(contract), "effect": dict(effect), "attempt_id": attempt_id},
             sort_keys=True,
@@ -40,7 +41,6 @@ class SubprocessAdapter:
         ).encode("utf-8")
         if len(request) > self.max_input_bytes:
             raise ValueError("provider request exceeds input limit")
-
         try:
             completed = subprocess.run(
                 list(self.command),
@@ -52,12 +52,10 @@ class SubprocessAdapter:
             )
         except subprocess.TimeoutExpired as exc:
             raise TimeoutError("provider timed out") from exc
-
         if len(completed.stdout) > self.max_output_bytes:
             raise ValueError("provider stdout exceeds output limit")
         if completed.returncode != 0:
             raise RuntimeError(f"provider exited with code {completed.returncode}")
-
         try:
             payload = json.loads(completed.stdout.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -65,13 +63,26 @@ class SubprocessAdapter:
         if not isinstance(payload, dict):
             raise ValueError("provider receipt must be a JSON object")
 
+        required_receipt = (
+            "provider", "effect_id", "attempt_id", "provider_operation_id", "outcome",
+            "observation", "target_sha", "evidence_ref", "lineage_ref",
+            "idempotency_key", "attempt_fence",
+        )
+        if any(field not in payload for field in required_receipt):
+            raise ValueError("provider receipt is missing mandatory Gateway bindings")
+
         return ProviderReceipt(
-            provider=payload.get("provider", ""),
-            effect_id=payload.get("effect_id", ""),
-            attempt_id=payload.get("attempt_id", ""),
-            provider_operation_id=payload.get("provider_operation_id", ""),
-            outcome=payload.get("outcome", ""),
-            observation=payload.get("observation", {}),
+            provider=payload["provider"],
+            effect_id=payload["effect_id"],
+            attempt_id=payload["attempt_id"],
+            provider_operation_id=payload["provider_operation_id"],
+            outcome=payload["outcome"],
+            observation=payload["observation"],
+            target_sha=payload["target_sha"],
+            evidence_ref=payload["evidence_ref"],
+            lineage_ref=payload["lineage_ref"],
+            idempotency_key=payload["idempotency_key"],
+            attempt_fence=payload["attempt_fence"],
         )
 
 

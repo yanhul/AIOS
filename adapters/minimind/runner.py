@@ -36,6 +36,11 @@ class MiniMindAdapter:
         if self.max_output_bytes <= 0 or self.max_input_bytes <= 0:
             raise ValueError("I/O limits must be positive")
 
+        required_effect_fields = (
+            "target_sha", "evidence_ref", "lineage_ref", "idempotency_key", "attempt_fence"
+        )
+        if any(field not in effect for field in required_effect_fields):
+            raise ValueError("effect is missing mandatory Gateway receipt bindings")
         request = json.dumps(
             {"contract": dict(contract), "effect": dict(effect), "attempt_id": attempt_id},
             sort_keys=True,
@@ -66,6 +71,12 @@ class MiniMindAdapter:
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("MiniMind stdout is not valid JSON") from exc
 
+        required_receipt = (
+            "target_sha", "evidence_ref", "lineage_ref", "idempotency_key", "attempt_fence"
+        )
+        if any(field not in receipt for field in required_receipt):
+            raise ValueError("MiniMind receipt is missing mandatory Gateway bindings")
+
         validate_receipt(receipt)
         if receipt["task_id"] != contract.get("task_id"):
             raise ValueError("MiniMind receipt task binding mismatch")
@@ -74,11 +85,18 @@ class MiniMindAdapter:
 
         return ProviderReceipt(
             provider=self.name,
-            effect_id=effect["effect_id"],
-            attempt_id=attempt_id,
-            provider_operation_id=f"{self.name}:{receipt['task_id']}:{attempt_id}",
+            effect_id=receipt.get("effect_id", effect["effect_id"]),
+            attempt_id=receipt.get("attempt_id", attempt_id),
+            provider_operation_id=receipt.get(
+                "provider_operation_id", f"{self.name}:{receipt['task_id']}:{attempt_id}"
+            ),
             outcome="OBSERVED_SUCCESS",
             observation={"minimind_receipt": receipt},
+            target_sha=receipt["target_sha"],
+            evidence_ref=receipt["evidence_ref"],
+            lineage_ref=receipt["lineage_ref"],
+            idempotency_key=receipt["idempotency_key"],
+            attempt_fence=receipt["attempt_fence"],
         )
 
     @staticmethod
