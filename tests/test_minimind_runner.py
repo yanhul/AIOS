@@ -10,10 +10,11 @@ def _adapter(payload):
     code="import json,sys; print(json.dumps("+repr(payload)+"))"
     return MiniMindAdapter(command=[sys.executable,"-c",code])
 def _contract(): return {"task_id":"task-1","capabilities":["minimind.learning@1"]}
-def _effect(): return {"effect_id":"effect-1"}
+def _effect(): return {"effect_id":"effect-1","target_sha":"sha256:worker-v1","evidence_ref":"EV-1","lineage_ref":"LIN-1","idempotency_key":"idem-1","attempt_fence":1}
 def test_runner_accepts_valid_receipt_and_binds_operation():
     result=_adapter(_receipt()).execute(contract=_contract(),effect=_effect(),attempt_id="attempt-1")
     assert result.provider=="minimind" and result.outcome=="OBSERVED_SUCCESS" and result.effect_id=="effect-1" and result.attempt_id=="attempt-1"
+    assert result.target_sha=="sha256:worker-v1" and result.attempt_fence==1
     assert result.observation["minimind_receipt"]["terminal_state"]=="INCONCLUSIVE"
 def test_runner_rejects_invalid_receipt():
     value=_receipt(); del value["artifacts"]["dataset_digest"]
