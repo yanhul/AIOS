@@ -1,15 +1,4 @@
-"""Authoritative external-effect transitions for M6.
-
-This module is the single write boundary for provider-facing effects. An
-external effect cannot be created, dispatched, retried, or observed unless the
-immutable contract and permit authorize the requested effect. Identity fields
-are immutable after creation; attempt IDs are deterministic and tied to the
-effect/attempt number; observations must carry AIOS-owned cryptographic
-evidence bound to the executing provider and attempt.
-
-UNKNOWN is deliberately non-terminal. It can only re-enter DISPATCHED through
-the explicit retry path, subject to the contract attempt budget.
-"""
+"""Authoritative external-effect transitions for M6."""
 
 import hashlib
 import json
@@ -117,7 +106,7 @@ def transition(aios_dir, effect_id, target, actor, **fields):
     if target not in STATES:
         raise ValueError("invalid effect state")
     allowed_fields = {
-        "DISPATCHED": {"attempt", "attempt_id", "provider"},
+        "DISPATCHED": {"attempt", "attempt_id", "provider", "target_sha", "evidence_ref", "lineage_ref", "idempotency_key", "attempt_fence"},
         "UNKNOWN": {"unknown_reason"},
         "OBSERVED_SUCCESS": {"provider_observation"},
         "OBSERVED_FAILURE": {"provider_observation"},
@@ -147,8 +136,23 @@ def transition(aios_dir, effect_id, target, actor, **fields):
     return updated
 
 
-def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
+def _validate_binding(target_sha, attempt_fence):
+    _validate_strings(("target_sha", target_sha))
+    if not isinstance(attempt_fence, int) or isinstance(attempt_fence, bool) or attempt_fence < 0:
+        raise ValueError("attempt_fence must be a non-negative integer")
+    return target_sha.strip(), attempt_fence
+
+
+def _validate_gateway_refs(evidence_ref, lineage_ref, idempotency_key):
+    _validate_strings(("evidence_ref", evidence_ref), ("lineage_ref", lineage_ref),
+                      ("idempotency_key", idempotency_key))
+    return evidence_ref.strip(), lineage_ref.strip(), idempotency_key.strip()
+
+
+def dispatch(aios_dir, effect_id, actor, attempt_id, provider, *, target_sha, evidence_ref, lineage_ref, idempotency_key, attempt_fence):
     _validate_strings(("attempt_id", attempt_id), ("provider", provider))
+    target_sha, attempt_fence = _validate_binding(target_sha, attempt_fence)
+    evidence_ref, lineage_ref, idempotency_key = _validate_gateway_refs(evidence_ref, lineage_ref, idempotency_key)
     recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
     if not os.path.exists(path):
@@ -163,13 +167,17 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
     if int(current.get("max_attempts", 0)) < 1:
         raise TransitionError("effect has no authorized execution attempts")
     return transition(aios_dir, effect_id, "DISPATCHED", actor,
-                      attempt=1, attempt_id=attempt_id, provider=provider)
+                      attempt=1, attempt_id=attempt_id, provider=provider,
+                      target_sha=target_sha, evidence_ref=evidence_ref,
+                      lineage_ref=lineage_ref, idempotency_key=idempotency_key,
+                      attempt_fence=attempt_fence)
 
 
-def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
+def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, *, target_sha, attempt_fence):
     """Explicitly dispatch the next attempt for an UNKNOWN effect."""
     _validate_strings(("effect_id", effect_id), ("actor", actor),
                       ("attempt_id", attempt_id), ("provider", provider))
+    target_sha, attempt_fence = _validate_binding(target_sha, attempt_fence)
     if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 2:
         raise ValueError("retry attempt must be an integer >= 2")
     recover_pending(aios_dir)
@@ -182,6 +190,9 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
         raise TransitionError("retry actor does not match effect owner")
     if current.get("state") != "UNKNOWN":
         raise TransitionError(f"retry requires UNKNOWN effect, got {current.get('state')}")
+    for field in ("evidence_ref", "lineage_ref", "idempotency_key"):
+        if field not in current or not isinstance(current[field], str) or not current[field].strip():
+            raise TransitionError(f"effect {field} must be bound before retry")
     expected = int(current.get("attempt", 0)) + 1
     if attempt != expected:
         raise TransitionError(f"retry attempt must be {expected}, got {attempt}")
@@ -191,7 +202,8 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
         raise ValueError("attempt_id does not match retry attempt")
     updated = dict(current)
     updated.update({"state": "DISPATCHED", "attempt": attempt,
-                    "attempt_id": attempt_id, "provider": provider})
+                    "attempt_id": attempt_id, "provider": provider,
+                    "target_sha": target_sha, "attempt_fence": attempt_fence})
     event = {
         "kind": "external_effect", "action": "retry_dispatch", "effect_id": effect_id,
         "from_state": "UNKNOWN", "to_state": "DISPATCHED", "actor": actor,
