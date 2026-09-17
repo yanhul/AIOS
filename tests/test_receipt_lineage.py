@@ -47,10 +47,8 @@ def _receipt(tmp_path, result):
     return receipt_path, receipt
 
 
-def test_persisted_blocked_result_is_replayable_and_reason_survives(tmp_path):
-    result = _result()
-    receipt_path, receipt = _receipt(tmp_path, result)
-    loaded = validate_saved_receipt(
+def _validate(receipt_path, receipt):
+    return validate_saved_receipt(
         receipt,
         receipt_path=receipt_path,
         execution_id=receipt["execution_id"],
@@ -62,9 +60,23 @@ def test_persisted_blocked_result_is_replayable_and_reason_survives(tmp_path):
         terminal_states=["PASS", "BLOCKED"],
         verification=["engineering-evidence"],
     )
+
+
+def test_persisted_blocked_result_is_replayable_and_reason_survives(tmp_path):
+    result = _result()
+    receipt_path, receipt = _receipt(tmp_path, result)
+    loaded = _validate(receipt_path, receipt)
     assert loaded["status"] == "BLOCKED"
     assert loaded["reason"] == "physical evidence required"
     assert loaded["artifact_refs"] == ["evidence/physical/index.json"]
+
+
+def test_missing_adapter_result_artifact_is_rejected(tmp_path):
+    result = _result()
+    receipt_path, receipt = _receipt(tmp_path, result)
+    receipt_path.with_name(receipt_path.name + ".result.json").unlink()
+    with pytest.raises(ValueError, match="result artifact missing"):
+        _validate(receipt_path, receipt)
 
 
 def test_tampered_adapter_result_is_rejected(tmp_path):
@@ -75,18 +87,7 @@ def test_tampered_adapter_result_is_rejected(tmp_path):
     result_path.write_text(canonical_json(result) + "\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="persisted result integrity mismatch"):
-        validate_saved_receipt(
-            receipt,
-            receipt_path=receipt_path,
-            execution_id=receipt["execution_id"],
-            workload_id=receipt["workload_id"],
-            capability_ref=receipt["capability"],
-            contract_id=receipt["contract_id"],
-            policy_digest=receipt["policy_digest"],
-            producer="yanhul/RX50",
-            terminal_states=["PASS", "BLOCKED"],
-            verification=["engineering-evidence"],
-        )
+        _validate(receipt_path, receipt)
 
 
 def test_tampered_result_status_cannot_disagree_with_receipt(tmp_path):
@@ -99,15 +100,4 @@ def test_tampered_result_status_cannot_disagree_with_receipt(tmp_path):
     result_path.write_text(canonical_json(tampered) + "\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="persisted result integrity mismatch"):
-        validate_saved_receipt(
-            receipt,
-            receipt_path=receipt_path,
-            execution_id=receipt["execution_id"],
-            workload_id=receipt["workload_id"],
-            capability_ref=receipt["capability"],
-            contract_id=receipt["contract_id"],
-            policy_digest=receipt["policy_digest"],
-            producer="yanhul/RX50",
-            terminal_states=["PASS", "BLOCKED"],
-            verification=["engineering-evidence"],
-        )
+        _validate(receipt_path, receipt)
