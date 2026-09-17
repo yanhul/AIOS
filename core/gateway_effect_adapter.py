@@ -8,6 +8,8 @@ attestation before crossing into the external gateway.
 
 from __future__ import annotations
 
+import json
+import os
 from collections.abc import Mapping
 
 from .attestation import verify_attestation
@@ -46,6 +48,19 @@ def _validate_workload_contract(contract: Mapping[str, object]) -> None:
         raise ValueError("max_attempts must be a positive integer")
 
 
+def _load_persisted_effect(aios_dir: str, effect_id: str) -> dict[str, object]:
+    path = os.path.join(aios_dir, "effects", effect_id + ".json")
+    if not os.path.exists(path):
+        raise KeyError(f"unknown effect: {effect_id}")
+    with open(path, "r", encoding="utf-8") as fh:
+        effect = json.load(fh)
+    if not isinstance(effect, dict):
+        raise ValueError("persisted effect record must be an object")
+    if effect.get("effect_id") != effect_id:
+        raise ValueError("persisted effect identity does not match requested effect")
+    return effect
+
+
 def build_gateway_effect_contract(
     workload_contract: Mapping[str, object],
     *,
@@ -64,10 +79,10 @@ def build_gateway_effect_contract(
 ) -> dict[str, object]:
     """Build a v3 gateway contract from the current persisted authority/effect state.
 
-    Caller-supplied contract/permit data is treated as an assertion, never as
-    the source of truth. The adapter reloads the persisted contract and permit,
-    re-runs current capability/policy authorization, verifies the persisted
-    effect binding, and verifies the current deployment attestation.
+    Caller-supplied contract/permit/effect data is treated as an assertion,
+    never as the source of truth. The adapter reloads the persisted effect,
+    contract, permit and attestation and re-runs current authorization before
+    crossing into the external gateway.
     """
     if not isinstance(persisted_effect, Mapping):
         raise ValueError("persisted_effect must be a mapping")
@@ -80,11 +95,16 @@ def build_gateway_effect_contract(
     lineage_ref = _required_text(lineage_ref, "lineage_ref")
     idempotency_key = _required_text(idempotency_key, "idempotency_key")
 
-    stored_effect_id = _required_text(persisted_effect.get("effect_id"), "persisted_effect.effect_id")
-    stored_contract_id = _required_text(persisted_effect.get("contract_id"), "persisted_effect.contract_id")
-    stored_permit_id = _required_text(persisted_effect.get("permit_id"), "persisted_effect.permit_id")
-    stored_actor = _required_text(persisted_effect.get("actor"), "persisted_effect.actor")
-    stored_action = _required_text(persisted_effect.get("effect_type"), "persisted_effect.effect_type")
+    current_effect = _load_persisted_effect(aios_dir, effect_id)
+    supplied_effect = dict(persisted_effect)
+    if supplied_effect != current_effect:
+        raise ValueError("persisted effect assertion does not match authoritative effect")
+
+    stored_effect_id = _required_text(current_effect.get("effect_id"), "persisted effect.effect_id")
+    stored_contract_id = _required_text(current_effect.get("contract_id"), "persisted effect.contract_id")
+    stored_permit_id = _required_text(current_effect.get("permit_id"), "persisted effect.permit_id")
+    stored_actor = _required_text(current_effect.get("actor"), "persisted effect.actor")
+    stored_action = _required_text(current_effect.get("effect_type"), "persisted effect.effect_type")
     if effect_id != stored_effect_id:
         raise ValueError("effect_id does not match persisted effect")
     if action != stored_action:
@@ -111,7 +131,7 @@ def build_gateway_effect_contract(
         raise ValueError("capability_ref is not granted by workload contract")
     if action not in current_contract["allowed_effects"]:
         raise ValueError("action is not allowed by workload contract")
-    if persisted_effect.get("policy_digest") != current_contract["policy_digest"]:
+    if current_effect.get("policy_digest") != current_contract["policy_digest"]:
         raise ValueError("persisted effect policy digest differs from current authority")
 
     return {
