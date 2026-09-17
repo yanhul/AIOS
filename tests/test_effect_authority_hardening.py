@@ -42,6 +42,15 @@ def _dispatch(td, effect, attempt=1, **overrides):
     return dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:{attempt}", "provider-a", **binding)
 
 
+def _observation(effect_id):
+    evidence = EvidenceRecord(evidence_id="EV-effect-1", level="OBSERVED", source_ref="runtime/provider-a",
+                              claim="execution completed", run_id="run-1", provider="provider-a").as_record()
+    return {
+        "attempt_id": f"{effect_id}:attempt:1", "provider": "provider-a",
+        **BINDING, "evidence": evidence,
+    }
+
+
 def test_effect_creation_requires_bound_permit_and_allowed_effect():
     with tempfile.TemporaryDirectory() as td:
         with pytest.raises((ValueError, KeyError, TransitionError)):
@@ -84,19 +93,36 @@ def test_unknown_can_only_return_to_dispatch_through_bounded_retry():
                            target_sha=BINDING["target_sha"], attempt_fence=3)
 
 
+def test_retry_rejects_equal_or_lower_attempt_fence():
+    for candidate in (1, 0):
+        with tempfile.TemporaryDirectory() as td:
+            _contract, _permit, effect = make_authorized(td)
+            _dispatch(td, effect)
+            unknown(td, effect["effect_id"], "bc-controller", "provider timeout")
+            with pytest.raises(TransitionError, match="increase monotonically"):
+                retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:2", "provider-a", 2,
+                               target_sha=BINDING["target_sha"], attempt_fence=candidate)
+
+
+def test_retry_accepts_higher_attempt_fence():
+    with tempfile.TemporaryDirectory() as td:
+        _contract, _permit, effect = make_authorized(td)
+        _dispatch(td, effect)
+        unknown(td, effect["effect_id"], "bc-controller", "provider timeout")
+        retried = retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:2", "provider-a", 2,
+                                 target_sha=BINDING["target_sha"], attempt_fence=2)
+        assert retried["attempt_fence"] == 2
+
+
 def test_observation_requires_current_attempt_and_valid_aios_evidence():
     with tempfile.TemporaryDirectory() as td:
         _contract, _permit, effect = make_authorized(td)
         attempt_id = f"{effect['effect_id']}:attempt:1"
         _dispatch(td, effect)
-        evidence = EvidenceRecord(evidence_id="EV-effect-1", level="OBSERVED", source_ref="runtime/provider-a",
-                                  claim="execution completed", run_id="run-1", provider="provider-a").as_record()
-        observed = observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS",
-                           {"attempt_id": attempt_id, "provider": "provider-a", "evidence": evidence})
+        observed = observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS", _observation(effect["effect_id"]))
         assert observed["state"] == "OBSERVED_SUCCESS"
         with pytest.raises(TransitionError):
-            observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS",
-                    {"attempt_id": attempt_id, "provider": "provider-a", "evidence": evidence})
+            observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS", _observation(effect["effect_id"]))
 
 
 def test_tampered_persisted_authority_blocks_future_transition():
