@@ -130,15 +130,21 @@ def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id,
 
 
 def transition(aios_dir, effect_id, target, actor, **fields):
+    """Apply only non-authoritative state changes.
+
+    Dispatch and observation are separate authority boundaries because they
+    create immutable execution-attempt/receipt lineage. Keeping those targets
+    out of this generic helper prevents a caller from forging DISPATCHED or
+    OBSERVED state by supplying fields directly.
+    """
     _validate_strings(("effect_id", effect_id), ("actor", actor))
+    if target in ("DISPATCHED", "OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
+        raise TransitionError(
+            "authoritative execution transition must use dispatch/retry_dispatch/observe"
+        )
     if target not in STATES:
         raise ValueError("invalid effect state")
-    allowed_fields = {
-        "DISPATCHED": {"attempt", "attempt_id", "provider"},
-        "UNKNOWN": {"unknown_reason"},
-        "OBSERVED_SUCCESS": {"provider_observation", "receipt_id"},
-        "OBSERVED_FAILURE": {"provider_observation", "receipt_id"},
-    }.get(target, set())
+    allowed_fields = {"UNKNOWN": {"unknown_reason"}}.get(target, set())
     if set(fields) - allowed_fields:
         raise TransitionError("effect transition attempted to mutate protected or unsupported fields")
     recover_pending(aios_dir)
