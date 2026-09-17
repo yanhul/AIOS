@@ -1,5 +1,6 @@
 import pytest
 
+from core.evidence import EvidenceRecord
 from core.runtime import ProviderReceipt, validate_receipt
 
 
@@ -16,6 +17,17 @@ BASE_EFFECT = {
 }
 
 
+def _evidence(evidence_id="EV-1"):
+    return EvidenceRecord(
+        evidence_id=evidence_id,
+        level="OBSERVED",
+        source_ref="test://gate1",
+        claim="provider observed terminal outcome",
+        run_id="run-1",
+        provider="fake-provider",
+    ).as_record()
+
+
 def receipt(**overrides):
     values = {
         "provider": "fake-provider",
@@ -23,7 +35,7 @@ def receipt(**overrides):
         "attempt_id": "EF-1:attempt:1",
         "provider_operation_id": "provider-op-1",
         "outcome": "OBSERVED_SUCCESS",
-        "observation": {"status": "ok"},
+        "observation": {"status": "ok", "evidence": _evidence()},
         "target_sha": "abc123",
         "evidence_ref": "EV-1",
         "lineage_ref": "LIN-1",
@@ -98,6 +110,16 @@ def test_gate1_rejects_negative_fence():
 def test_gate1_rejects_non_terminal_outcome():
     with pytest.raises(ValueError, match="terminal outcome"):
         validate_receipt(receipt(outcome="UNKNOWN"), BASE_EFFECT, "EF-1:attempt:1", "fake-provider")
+
+
+def test_gate1_rejects_mismatched_nested_evidence_identity():
+    with pytest.raises(ValueError, match="evidence identity binding"):
+        validate_receipt(
+            receipt(observation={"status": "ok", "evidence": _evidence("EV-OTHER")}),
+            BASE_EFFECT,
+            "EF-1:attempt:1",
+            "fake-provider",
+        )
 
 
 def test_gate1_receipt_is_frozen():
