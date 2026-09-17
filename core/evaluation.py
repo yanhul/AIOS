@@ -9,7 +9,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import re
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -30,11 +29,10 @@ def evaluation_path(aios_dir: str, evaluation_id: str) -> str:
 
 
 def attempt_filename(attempt_id: str) -> str:
-    """Return one deterministic filesystem-safe filename for an attempt ID."""
+    """Return a deterministic, filesystem-safe, collision-resistant filename."""
     if not isinstance(attempt_id, str) or not attempt_id.strip():
         raise ValueError("attempt_id is required")
-    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", attempt_id)
-    return safe + ".json"
+    return "ATT-" + hashlib.sha256(attempt_id.encode("utf-8")).hexdigest() + ".json"
 
 
 def attempt_path(aios_dir: str, attempt_id: str) -> str:
