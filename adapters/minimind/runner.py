@@ -71,17 +71,17 @@ class MiniMindAdapter:
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("MiniMind stdout is not valid JSON") from exc
 
-        validate_receipt(receipt)
-        if receipt["task_id"] != contract.get("task_id"):
-            raise ValueError("MiniMind receipt task binding mismatch")
-        if receipt["capability"] != self._capability(contract):
-            raise ValueError("MiniMind receipt capability binding mismatch")
-
         required_receipt = (
             "target_sha", "evidence_ref", "lineage_ref", "idempotency_key", "attempt_fence"
         )
         if any(field not in receipt for field in required_receipt):
             raise ValueError("MiniMind receipt is missing mandatory Gateway bindings")
+
+        validate_receipt(receipt)
+        if receipt["task_id"] != contract.get("task_id"):
+            raise ValueError("MiniMind receipt task binding mismatch")
+        if receipt["capability"] != self._capability(contract):
+            raise ValueError("MiniMind receipt capability binding mismatch")
 
         return ProviderReceipt(
             provider=self.name,
