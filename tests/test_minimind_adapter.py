@@ -1,9 +1,11 @@
 import pytest
 from adapters.minimind.contract import MINIMIND_CAPABILITY, validate_receipt
 
+BINDING={"target_sha":"sha256:worker-v1","evidence_ref":"EV-1","lineage_ref":"LIN-1","idempotency_key":"idem-1","attempt_fence":1}
+
 def receipt(**overrides):
     artifacts = {"workload_revision":"rev-1","dataset_digest":"sha256:data","tokenizer_digest":"sha256:tok","model_digest":"sha256:model","environment_digest":"sha256:env"}
-    value = {"capability":MINIMIND_CAPABILITY,"task_id":"task-1","terminal_state":"INCONCLUSIVE","artifacts":artifacts,"evidence":{name:{**artifacts,"steps":1} for name in ("training_receipt","evaluation_receipt","provenance")}}
+    value = {"capability":MINIMIND_CAPABILITY,"task_id":"task-1","terminal_state":"INCONCLUSIVE","artifacts":artifacts,"evidence":{name:{**artifacts,"steps":1} for name in ("training_receipt","evaluation_receipt","provenance")},**BINDING}
     value["evidence"]["evaluation_receipt"].update({"independent":True,"holdout":True})
     value.update(overrides)
     return value
