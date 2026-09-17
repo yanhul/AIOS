@@ -6,7 +6,7 @@ import pytest
 
 from core.authority import persist_contract, persist_permit
 from core.contract import contract_identity
-from core.effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
+from core.effect_authority import create_effect, dispatch, observe, retry_dispatch, transition, unknown
 from core.evidence import EvidenceRecord
 from core.evaluation import evaluate
 from core.mutation import TransitionError
@@ -72,6 +72,22 @@ def test_observe_is_the_authoritative_receipt_boundary():
         assert result["attempt_id"] == receipt["attempt_id"]
         assert result["receipt_id"] == receipt["receipt_id"]
         assert result["verdict"] == "PASS"
+
+
+def test_generic_transition_cannot_forge_dispatch_or_observation():
+    with tempfile.TemporaryDirectory() as td:
+        effect = make_authorized(td)
+        with pytest.raises(TransitionError):
+            transition(td, effect["effect_id"], "DISPATCHED", "bc-controller",
+                       attempt=1, attempt_id=f"{effect['effect_id']}:attempt:1", provider="provider-a")
+
+        attempt_id = f"{effect['effect_id']}:attempt:1"
+        dispatch(td, effect["effect_id"], "bc-controller", attempt_id, "provider-a")
+        provider_observation = {"attempt_id": attempt_id, "provider": "provider-a",
+                                "evidence": evidence("EV-generic", "run-generic", "provider-a")}
+        with pytest.raises(TransitionError):
+            transition(td, effect["effect_id"], "OBSERVED_SUCCESS", "bc-controller",
+                       provider_observation=provider_observation, receipt_id="RC-forged")
 
 
 def test_evaluation_rejects_missing_receipt():
