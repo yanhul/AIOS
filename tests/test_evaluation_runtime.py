@@ -84,12 +84,17 @@ def test_dispatch_rejects_wrong_actor():
         assert not os.path.exists(attempt_path(td, attempt_id))
 
 
-def test_attempt_filename_is_filesystem_safe():
-    attempt_id = "EF-abc:def/ghi:attempt:1"
-    filename = attempt_filename(attempt_id)
-    assert filename.endswith(".json")
-    assert all(ch not in filename for ch in ("/", "\\", ":"))
-    assert attempt_path("/tmp/aios", attempt_id).endswith(os.path.join("attempts", filename))
+def test_attempt_filename_is_filesystem_safe_and_collision_resistant():
+    attempt_a = "EF-abc:def/ghi:attempt:1"
+    attempt_b = "EF-abc/def:ghi:attempt:1"
+    filename_a = attempt_filename(attempt_a)
+    filename_b = attempt_filename(attempt_b)
+    assert filename_a.endswith(".json")
+    assert filename_b.endswith(".json")
+    assert all(ch not in filename_a for ch in ("/", "\\", ":"))
+    assert all(ch not in filename_b for ch in ("/", "\\", ":"))
+    assert filename_a != filename_b
+    assert attempt_path("/tmp/aios", attempt_a).endswith(os.path.join("attempts", filename_a))
 
 
 def test_generic_transition_cannot_forge_dispatch_or_observation():
