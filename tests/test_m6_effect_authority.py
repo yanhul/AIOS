@@ -34,9 +34,9 @@ def _authorized(tmp_path):
     return create_effect(str(tmp_path), contract_identity(contract), "op-1", "agent-1", permit["permit_id"], "process_execution")
 
 
-def _evidence(provider="provider-1"):
+def _evidence(provider="provider-1", evidence_id="EV-1"):
     return EvidenceRecord(
-        evidence_id="EV-1",
+        evidence_id=evidence_id,
         level="OBSERVED",
         source_ref="provider://receipt/1",
         claim="provider completed operation",
@@ -45,12 +45,15 @@ def _evidence(provider="provider-1"):
     ).as_record()
 
 
-def _observation(effect_id, provider="provider-1"):
-    return {
+def _observation(effect_id, provider="provider-1", **overrides):
+    value = {
         "attempt_id": f"{effect_id}:attempt:1",
         "provider": provider,
+        **BINDING,
         "evidence": _evidence(provider),
     }
+    value.update(overrides)
+    return value
 
 
 def _dispatch(tmp_path, effect, **overrides):
@@ -95,16 +98,36 @@ def test_observation_provider_must_match_effect(tmp_path):
         observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", _observation(effect["effect_id"], "provider-2"))
 
 
+def test_direct_observe_rejects_gateway_binding_mismatch(tmp_path):
+    effect = _authorized(tmp_path)
+    _dispatch(tmp_path, effect)
+    for field, value in {
+        "target_sha": "wrong-sha",
+        "evidence_ref": "EV-wrong",
+        "lineage_ref": "LIN-wrong",
+        "idempotency_key": "idem-wrong",
+        "attempt_fence": 2,
+    }.items():
+        with pytest.raises(ValueError, match=f"{field} binding mismatch"):
+            observe(tmp_path, effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", _observation(effect["effect_id"], **{field: value}))
+
+
+def test_direct_observe_rejects_nested_evidence_identity_mismatch(tmp_path):
+    effect = _authorized(tmp_path)
+    _dispatch(tmp_path, effect)
+    with pytest.raises(ValueError, match="evidence identity binding mismatch"):
+        observe(tmp_path, effect["effect_id"], "agent-1", "OBSERVED_SUCCESS",
+                _observation(effect["effect_id"], evidence=_evidence(evidence_id="EV-OTHER")))
+
+
 def test_tampered_evidence_digest_is_rejected(tmp_path):
     effect = _authorized(tmp_path)
     _dispatch(tmp_path, effect)
     evidence = _evidence()
     evidence["claim"] = "tampered"
     with pytest.raises(ValueError):
-        observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", {
-            "attempt_id": f"{effect['effect_id']}:attempt:1",
-            "provider": "provider-1",
-            "evidence": evidence,
+        observe(tmp_path, effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", {
+            **_observation(effect["effect_id"]), "evidence": evidence,
         })
 
 
