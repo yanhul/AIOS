@@ -3,10 +3,10 @@ import json
 import pytest
 
 from core.attestation import issue_attestation
-from core.authority import persist_attestation, persist_contract, persist_permit
+from core.authority import load_permit, persist_attestation, persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity, issue_permit
-from core.effect_authority import create_effect
+from core.effect_authority import create_effect, dispatch, retry_dispatch, unknown
 from core.gateway_effect_adapter import build_gateway_effect_contract
 from core.policy_registry import persist_policy
 
@@ -114,6 +114,35 @@ def test_forged_authority_ref_and_effect_binding_are_rejected(tmp_path):
     forged = dict(effect, effect_id="effect-forged")
     with pytest.raises(KeyError, match="unknown effect"):
         _build(tmp_path, contract, permit, attestation, forged)
+
+
+def test_load_permit_fails_closed_on_malformed_or_mismatched_record(tmp_path):
+    contract, permit, attestation, effect = _authority(tmp_path)
+    path = tmp_path / "authority" / "permits" / f"{permit['permit_id']}.json"
+    data = json.loads(path.read_text())
+    data.pop("issuer")
+    path.write_text(json.dumps(data))
+    with pytest.raises(Exception, match="malformed"):
+        load_permit(str(tmp_path), permit["permit_id"])
+
+
+def test_retry_after_capability_authority_change_is_rejected(tmp_path):
+    contract, permit, attestation, effect = _authority(tmp_path)
+    dispatched = dispatch(
+        str(tmp_path), effect["effect_id"], "aios", f"{effect['effect_id']}:attempt:1", "try.research",
+        target_sha="sha256:target", evidence_ref="EV-1", lineage_ref="LIN-1",
+        idempotency_key="idem-1", attempt_fence=1,
+    )
+    unknown(str(tmp_path), effect["effect_id"], "aios", "provider timeout")
+    registry = CapabilityRegistry()
+    registry.register(Capability("try.research", "1", "test", "research", status="DEPRECATED"))
+    registry.persist(str(tmp_path), "revoker")
+    with pytest.raises(Exception):
+        retry_dispatch(
+            str(tmp_path), effect["effect_id"], "aios", f"{effect['effect_id']}:attempt:2", "try.research", 2,
+            target_sha="sha256:target", attempt_fence=2,
+        )
+    assert dispatched["attempt"] == 1
 
 
 def test_missing_or_undeclared_capability_and_effect_remain_fail_closed(tmp_path):
