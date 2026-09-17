@@ -11,21 +11,14 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from .attestation import verify_attestation
+from .authority import authorize, load_attestation, load_contract, load_permit
 from .contract import verify_permit
 
 GATEWAY_PROTOCOL_VERSION = 3
 REQUIRED_WORKLOAD_FIELDS = (
-    "contract_type",
-    "task_id",
-    "scope",
-    "actor",
-    "capabilities",
-    "input_digest",
-    "allowed_effects",
-    "evidence_required",
-    "max_attempts",
-    "terminal_states",
-    "policy_digest",
+    "contract_type", "task_id", "scope", "actor", "capabilities",
+    "input_digest", "allowed_effects", "evidence_required", "max_attempts",
+    "terminal_states", "policy_digest",
 )
 
 
@@ -39,18 +32,15 @@ def _validate_workload_contract(contract: Mapping[str, object]) -> None:
     for field in REQUIRED_WORKLOAD_FIELDS:
         if field not in contract:
             raise ValueError(f"missing workload contract field: {field}")
-
     capabilities = contract["capabilities"]
     if not isinstance(capabilities, (list, tuple)) or not capabilities:
         raise ValueError("capabilities must be a non-empty sequence")
     for ref in capabilities:
         if not isinstance(ref, str) or "@" not in ref or ref.endswith("@"):
             raise ValueError("capabilities must contain versioned refs")
-
     allowed_effects = contract["allowed_effects"]
     if not isinstance(allowed_effects, (list, tuple, set, frozenset)):
         raise ValueError("allowed_effects must be a sequence")
-
     max_attempts = contract["max_attempts"]
     if not isinstance(max_attempts, int) or isinstance(max_attempts, bool) or max_attempts < 1:
         raise ValueError("max_attempts must be a positive integer")
@@ -59,6 +49,8 @@ def _validate_workload_contract(contract: Mapping[str, object]) -> None:
 def build_gateway_effect_contract(
     workload_contract: Mapping[str, object],
     *,
+    aios_dir: str,
+    persisted_effect: Mapping[str, object],
     effect_id: str,
     action: str,
     capability_ref: str,
@@ -70,14 +62,16 @@ def build_gateway_effect_contract(
     lineage_ref: str,
     idempotency_key: str,
 ) -> dict[str, object]:
-    """Build the v3 gateway contract without minting authority.
+    """Build a v3 gateway contract from the current persisted authority/effect state.
 
-    The caller must provide the already-issued permit and its deployment-bound
-    attestation. The adapter verifies both and only carries the verified
-    ``permit_id`` across the boundary; it never creates authority material.
+    Caller-supplied contract/permit data is treated as an assertion, never as
+    the source of truth. The adapter reloads the persisted contract and permit,
+    re-runs current capability/policy authorization, verifies the persisted
+    effect binding, and verifies the current deployment attestation.
     """
+    if not isinstance(persisted_effect, Mapping):
+        raise ValueError("persisted_effect must be a mapping")
     _validate_workload_contract(workload_contract)
-
     effect_id = _required_text(effect_id, "effect_id")
     action = _required_text(action, "action")
     capability_ref = _required_text(capability_ref, "capability_ref")
@@ -86,35 +80,46 @@ def build_gateway_effect_contract(
     lineage_ref = _required_text(lineage_ref, "lineage_ref")
     idempotency_key = _required_text(idempotency_key, "idempotency_key")
 
-    capabilities = workload_contract["capabilities"]
-    if capability_ref not in capabilities:
+    stored_effect_id = _required_text(persisted_effect.get("effect_id"), "persisted_effect.effect_id")
+    stored_contract_id = _required_text(persisted_effect.get("contract_id"), "persisted_effect.contract_id")
+    stored_permit_id = _required_text(persisted_effect.get("permit_id"), "persisted_effect.permit_id")
+    stored_actor = _required_text(persisted_effect.get("actor"), "persisted_effect.actor")
+    stored_action = _required_text(persisted_effect.get("effect_type"), "persisted_effect.effect_type")
+    if effect_id != stored_effect_id:
+        raise ValueError("effect_id does not match persisted effect")
+    if action != stored_action:
+        raise ValueError("action does not match persisted effect")
+    if authority_ref != stored_permit_id:
+        raise ValueError("authority_ref does not match persisted effect permit")
+
+    authorize(aios_dir, stored_contract_id, stored_permit_id)
+    current_contract = load_contract(aios_dir, stored_contract_id)
+    current_permit = load_permit(aios_dir, stored_permit_id)
+    current_attestation = load_attestation(aios_dir, stored_permit_id)
+    verify_permit(current_contract, current_permit)
+    verify_attestation(current_contract, current_permit, current_attestation, attestation_secret)
+
+    if dict(current_contract) != dict(workload_contract):
+        raise ValueError("workload contract does not match persisted authority contract")
+    if not isinstance(authority_permit, Mapping) or dict(authority_permit) != dict(current_permit):
+        raise ValueError("authority permit does not match current persisted permit")
+    if not isinstance(authority_attestation, Mapping) or dict(authority_attestation) != dict(current_attestation):
+        raise ValueError("authority attestation does not match current persisted attestation")
+    if stored_actor != current_contract["actor"]:
+        raise ValueError("persisted effect actor does not match current contract actor")
+    if capability_ref not in current_contract["capabilities"]:
         raise ValueError("capability_ref is not granted by workload contract")
-
-    if action not in workload_contract["allowed_effects"]:
+    if action not in current_contract["allowed_effects"]:
         raise ValueError("action is not allowed by workload contract")
-
-    if not isinstance(authority_permit, Mapping):
-        raise ValueError("authority_permit must be a mapping")
-    verify_permit(dict(workload_contract), dict(authority_permit))
-    permit_id = _required_text(authority_permit.get("permit_id"), "authority_permit.permit_id")
-    if authority_ref != permit_id:
-        raise ValueError("authority_ref does not match verified permit")
-
-    if not isinstance(authority_attestation, Mapping):
-        raise ValueError("authority_attestation must be a mapping")
-    verify_attestation(
-        dict(workload_contract),
-        dict(authority_permit),
-        dict(authority_attestation),
-        attestation_secret,
-    )
+    if persisted_effect.get("policy_digest") != current_contract["policy_digest"]:
+        raise ValueError("persisted effect policy digest differs from current authority")
 
     return {
         "protocol_version": GATEWAY_PROTOCOL_VERSION,
         "effect_id": effect_id,
         "action": action,
         "capability_ref": capability_ref,
-        "authority_ref": permit_id,
+        "authority_ref": stored_permit_id,
         "evidence_ref": evidence_ref,
         "lineage_ref": lineage_ref,
         "idempotency_key": idempotency_key,
