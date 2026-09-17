@@ -152,6 +152,11 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
         "provider_operation_id": receipt.provider_operation_id,
         "effect_id": receipt.effect_id,
         "attempt_id": receipt.attempt_id,
+        "target_sha": receipt.target_sha,
+        "evidence_ref": receipt.evidence_ref,
+        "lineage_ref": receipt.lineage_ref,
+        "idempotency_key": receipt.idempotency_key,
+        "attempt_fence": receipt.attempt_fence,
         "observation": receipt.observation,
         "evidence": receipt.observation["evidence"],
     }
