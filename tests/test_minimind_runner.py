@@ -3,18 +3,21 @@ import sys
 import pytest
 from adapters.minimind.runner import MiniMindAdapter
 
+BINDING={"target_sha":"sha256:worker-v1","evidence_ref":"EV-1","lineage_ref":"LIN-1","idempotency_key":"idem-1","attempt_fence":1}
+
 def _receipt():
     artifacts={"workload_revision":"rev-1","dataset_digest":"sha256:data","tokenizer_digest":"sha256:tok","model_digest":"sha256:model","environment_digest":"sha256:env"}
-    return {"capability":"minimind.learning@1","task_id":"task-1","terminal_state":"INCONCLUSIVE","artifacts":artifacts,"evidence":{name:{**artifacts,"steps":1} for name in ("training_receipt","evaluation_receipt","provenance")}}
+    return {"capability":"minimind.learning@1","task_id":"task-1","terminal_state":"INCONCLUSIVE","artifacts":artifacts,"evidence":{name:{**artifacts,"steps":1} for name in ("training_receipt","evaluation_receipt","provenance")},**BINDING}
 def _adapter(payload):
     code="import json,sys; print(json.dumps("+repr(payload)+"))"
     return MiniMindAdapter(command=[sys.executable,"-c",code])
 def _contract(): return {"task_id":"task-1","capabilities":["minimind.learning@1"]}
-def _effect(): return {"effect_id":"effect-1","target_sha":"sha256:worker-v1","evidence_ref":"EV-1","lineage_ref":"LIN-1","idempotency_key":"idem-1","attempt_fence":1}
+def _effect(): return {"effect_id":"effect-1",**BINDING}
 def test_runner_accepts_valid_receipt_and_binds_operation():
     result=_adapter(_receipt()).execute(contract=_contract(),effect=_effect(),attempt_id="attempt-1")
     assert result.provider=="minimind" and result.outcome=="OBSERVED_SUCCESS" and result.effect_id=="effect-1" and result.attempt_id=="attempt-1"
     assert result.target_sha=="sha256:worker-v1" and result.attempt_fence==1
+    assert result.evidence_ref=="EV-1" and result.lineage_ref=="LIN-1" and result.idempotency_key=="idem-1"
     assert result.observation["minimind_receipt"]["terminal_state"]=="INCONCLUSIVE"
 def test_runner_rejects_invalid_receipt():
     value=_receipt(); del value["artifacts"]["dataset_digest"]
@@ -32,3 +35,7 @@ def test_runner_preserves_workload_terminal_state_as_observation():
     result=_adapter(value).execute(contract=_contract(),effect=_effect(),attempt_id="attempt-1")
     assert result.outcome=="OBSERVED_SUCCESS"
     assert result.observation["minimind_receipt"]["terminal_state"]=="REJECT"
+def test_runner_rejects_missing_gateway_binding():
+    value=_receipt(); del value["target_sha"]
+    with pytest.raises(ValueError,match="missing mandatory Gateway bindings"):
+        _adapter(value).execute(contract=_contract(),effect=_effect(),attempt_id="attempt-1")
