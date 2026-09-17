@@ -42,7 +42,7 @@ def test_subprocess_output_limit_becomes_unknown(tmp_path):
 def test_subprocess_command_is_not_shell_interpolated(tmp_path):
     cid,pid=setup(tmp_path)
     evidence=EvidenceRecord(evidence_id="EV-process-1",level="OBSERVED",source_ref="process://test",claim="process completed operation",run_id="task-process",provider="process-provider").as_record()
-    code="import json,sys; r=json.load(sys.stdin); print(json.dumps({'provider':'process-provider','effect_id':r['effect']['effect_id'],'attempt_id':r['attempt_id'],'provider_operation_id':'proc-safe','outcome':'OBSERVED_SUCCESS','observation':{'safe':True,'evidence':"+repr(evidence)+"},**r['effect']))"
+    code="import json,sys; r=json.load(sys.stdin); print(json.dumps({'provider':'process-provider','effect_id':r['effect']['effect_id'],'attempt_id':r['attempt_id'],'provider_operation_id':'proc-safe','outcome':'OBSERVED_SUCCESS','observation':{'safe':True,'evidence':"+repr(evidence)+"},**r['effect']}))"
     adapter=SubprocessAdapter("process-provider",[sys.executable,"-c",code,"literal;not;a;shell;command"]); result=_execute(tmp_path,cid,pid,adapter)
     assert result["state"]=="OBSERVED_SUCCESS"
 
