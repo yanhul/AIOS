@@ -80,7 +80,7 @@ Status: M1 + M1.5 implemented; M2/M3 foundations implemented; absorbed execution
 - Skill routing may precede `PERMIT`, but authorization remains external to the skill.
 - **Absorbed invariants:** every retry is a new attempt; downstream evaluation must bind to the exact effect/attempt/receipt lineage.
 
-### M9 — Evidence / contradiction / promotion
+## M9 — Evidence / contradiction / promotion
 - Evidence graph and provenance.
 - Contradiction search and explicit resolution workflow.
 - Verification levels: OBSERVED, EVIDENCED, VERIFIED_DIGITAL, VERIFIED_PHYSICAL, PROMOTED.
