@@ -105,6 +105,11 @@ def validate_receipt(receipt, effect, attempt_id, provider_name):
         raise ValueError("receipt outcome must be an observed terminal outcome")
     if not isinstance(receipt.observation, dict) or not receipt.observation:
         raise ValueError("receipt observation must be a non-empty dict")
+    evidence = receipt.observation.get("evidence")
+    if not isinstance(evidence, dict) or not evidence:
+        raise ValueError("receipt observation requires a valid evidence record")
+    if evidence.get("evidence_id") != effect["evidence_ref"]:
+        raise ValueError("receipt evidence identity binding mismatch")
 
 
 def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
@@ -148,9 +153,8 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
         "effect_id": receipt.effect_id,
         "attempt_id": receipt.attempt_id,
         "observation": receipt.observation,
+        "evidence": receipt.observation["evidence"],
     }
-    if "evidence" in receipt.observation:
-        provider_observation["evidence"] = receipt.observation["evidence"]
     return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, provider_observation)
 
 
