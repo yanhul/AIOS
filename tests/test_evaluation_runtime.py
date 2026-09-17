@@ -8,7 +8,7 @@ from core.authority import persist_contract, persist_permit
 from core.contract import contract_identity
 from core.effect_authority import create_effect, dispatch, observe, retry_dispatch, transition, unknown
 from core.evidence import EvidenceRecord
-from core.evaluation import evaluate
+from core.evaluation import attempt_filename, attempt_path, evaluate
 from core.mutation import TransitionError
 from core.policy_registry import persist_policy
 
@@ -58,7 +58,8 @@ def test_observe_is_the_authoritative_receipt_boundary():
         assert receipt["effect_id"] == effect["effect_id"]
         assert receipt["attempt_id"] == observed["attempt_id"]
         assert receipt["provider"] == observed["provider"]
-        assert os.path.exists(f"{td}/attempts/{observed['attempt_id'].replace('/', '_')}.json")
+        assert os.path.exists(attempt_path(td, observed["attempt_id"]))
+        assert ":" not in os.path.basename(attempt_path(td, observed["attempt_id"]))
 
         with pytest.raises(TransitionError):
             observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS",
@@ -72,6 +73,23 @@ def test_observe_is_the_authoritative_receipt_boundary():
         assert result["attempt_id"] == receipt["attempt_id"]
         assert result["receipt_id"] == receipt["receipt_id"]
         assert result["verdict"] == "PASS"
+
+
+def test_dispatch_rejects_wrong_actor():
+    with tempfile.TemporaryDirectory() as td:
+        effect = make_authorized(td)
+        attempt_id = f"{effect['effect_id']}:attempt:1"
+        with pytest.raises(TransitionError):
+            dispatch(td, effect["effect_id"], "attacker", attempt_id, "provider-a")
+        assert not os.path.exists(attempt_path(td, attempt_id))
+
+
+def test_attempt_filename_is_filesystem_safe():
+    attempt_id = "EF-abc:def/ghi:attempt:1"
+    filename = attempt_filename(attempt_id)
+    assert filename.endswith(".json")
+    assert all(ch not in filename for ch in ("/", "\\", ":"))
+    assert attempt_path("/tmp/aios", attempt_id).endswith(os.path.join("attempts", filename))
 
 
 def test_generic_transition_cannot_forge_dispatch_or_observation():
