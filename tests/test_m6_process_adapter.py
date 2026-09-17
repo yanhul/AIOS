@@ -23,7 +23,7 @@ def _execute(tmp_path,cid,pid,adapter):
 
 def _success_code():
     evidence=EvidenceRecord(evidence_id="EV-process-1",level="OBSERVED",source_ref="process://test",claim="process completed operation",run_id="task-process",provider="process-provider").as_record()
-    payload={"provider":"process-provider","effect_id":"EFFECT","attempt_id":"ATTEMPT","provider_operation_id":"proc-1","outcome":"OBSERVED_SUCCESS","observation":{"exit":0,"evidence":evidence}}
+    payload={"provider":"process-provider","effect_id":"EFFECT","attempt_id":"ATTEMPT","provider_operation_id":"proc-1","outcome":"OBSERVED_SUCCESS","observation":{"exit":0,"evidence":evidence},**BINDING}
     return "import json,sys; r=json.load(sys.stdin); p="+repr(payload)+"; p['effect_id']=r['effect']['effect_id']; p['attempt_id']=r['attempt_id']; print(json.dumps(p))"
 
 def test_subprocess_adapter_returns_bound_receipt(tmp_path):
@@ -42,6 +42,12 @@ def test_subprocess_output_limit_becomes_unknown(tmp_path):
 def test_subprocess_command_is_not_shell_interpolated(tmp_path):
     cid,pid=setup(tmp_path)
     evidence=EvidenceRecord(evidence_id="EV-process-1",level="OBSERVED",source_ref="process://test",claim="process completed operation",run_id="task-process",provider="process-provider").as_record()
-    code="import json,sys; r=json.load(sys.stdin); print(json.dumps({'provider':'process-provider','effect_id':r['effect']['effect_id'],'attempt_id':r['attempt_id'],'provider_operation_id':'proc-safe','outcome':'OBSERVED_SUCCESS','observation':{'safe':True,'evidence':"+repr(evidence)+"}}))"
+    code="import json,sys; r=json.load(sys.stdin); print(json.dumps({'provider':'process-provider','effect_id':r['effect']['effect_id'],'attempt_id':r['attempt_id'],'provider_operation_id':'proc-safe','outcome':'OBSERVED_SUCCESS','observation':{'safe':True,'evidence':"+repr(evidence)+"},**r['effect']))"
     adapter=SubprocessAdapter("process-provider",[sys.executable,"-c",code,"literal;not;a;shell;command"]); result=_execute(tmp_path,cid,pid,adapter)
     assert result["state"]=="OBSERVED_SUCCESS"
+
+def test_subprocess_rejects_receipt_missing_gateway_binding(tmp_path):
+    cid,pid=setup(tmp_path)
+    code="import json; print(json.dumps({'provider':'process-provider','effect_id':'x','attempt_id':'x','provider_operation_id':'proc-1','outcome':'OBSERVED_SUCCESS','observation':{'ok':True}}))"
+    with __import__('pytest').raises(ValueError, match="missing mandatory Gateway bindings"):
+        SubprocessAdapter("process-provider",[sys.executable,"-c",code]).execute(contract=make_contract("x"),effect={"target_sha":"x","evidence_ref":"x","lineage_ref":"x","idempotency_key":"x","attempt_fence":1},attempt_id="x")
