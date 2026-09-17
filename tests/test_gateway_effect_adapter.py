@@ -28,8 +28,8 @@ def _authority(tmp_path):
     stored = persist_contract(str(tmp_path), contract)
     permit = persist_permit(str(tmp_path), stored, "AIOS_AUTHORITY")
     attestation = persist_attestation(str(tmp_path), stored, permit, SECRET)
-    effect = create_effect(str(tmp_path), contract_identity(stored), "op-1", "aios", permit["permit_id"], "run_research")
-    return stored, permit, attestation, effect
+    effect = create_effect(str(tmp_path), contract_identity(contract), "op-1", "aios", permit["permit_id"], "run_research")
+    return contract, permit, attestation, effect
 
 
 def _build(tmp_path, contract, permit, attestation, effect, **overrides):
@@ -102,7 +102,7 @@ def test_contract_a_cannot_cross_effect_b(tmp_path):
     stored_b = persist_contract(str(tmp_path), contract_b)
     permit_b = persist_permit(str(tmp_path), stored_b, "AIOS_AUTHORITY")
     attestation_b = persist_attestation(str(tmp_path), stored_b, permit_b, SECRET)
-    effect_b = create_effect(str(tmp_path), contract_identity(stored_b), "op-2", "aios", permit_b["permit_id"], "run_research")
+    effect_b = create_effect(str(tmp_path), contract_identity(contract_b), "op-2", "aios", permit_b["permit_id"], "run_research")
     with pytest.raises(ValueError, match="workload contract"):
         _build(tmp_path, contract_a, permit_b, attestation_b, effect_b)
 
