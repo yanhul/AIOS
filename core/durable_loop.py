@@ -54,10 +54,16 @@ class LoopPolicy:
             raise ValueError("execution_receipt_validator must be callable")
         if not isinstance(self.fix_success_state, str) or not self.fix_success_state.strip():
             raise ValueError("fix_success_state must be a non-empty string")
-        if self.fix_plan is not None and self.fix_success_state not in self.terminal_states:
-            raise ValueError("fix_success_state must be an authorized terminal state")
         if self.fix_plan is not None:
             require_fix_plan(self.fix_plan)
+
+
+def _authorized_terminal_states(policy: LoopPolicy) -> frozenset[str]:
+    """Return policy terminals plus the separately governed fix promotion state."""
+    if policy.fix_plan is None:
+        return policy.terminal_states
+    return frozenset((*policy.terminal_states, policy.fix_success_state))
+
 
 def _validate_execution_receipt(verification: Any) -> Mapping[str, Any]:
     """Fail closed unless verification contains a complete execution receipt."""
@@ -103,7 +109,7 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
         raise ValueError("persisted step is invalid")
     if state["step"] < 0 or state["step"] > policy.max_steps:
         raise ValueError("persisted step exceeds immutable execution budget")
-    if state.get("status") not in {"RUNNING", *policy.terminal_states}:
+    if state.get("status") not in {"RUNNING", *_authorized_terminal_states(policy)}:
         raise ValueError("persisted status is invalid")
     if not isinstance(state.get("history"), list):
         raise ValueError("persisted history is invalid")
@@ -111,7 +117,7 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
         raise ValueError("persisted policy digest does not match current policy")
     if policy.resume_validator is not None:
         policy.resume_validator(state)
-    if state.get("status") in policy.terminal_states:
+    if state.get("status") in _authorized_terminal_states(policy):
         _validate_terminal_evidence(state)
 
 def _validate_fix_success(verification: Any, expected_state: str) -> None:
@@ -140,7 +146,7 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         state["block_reason"] = f"invalid durable state: {type(exc).__name__}: {exc}"
         store.save(state)
         return state
-    if state["status"] in policy.terminal_states:
+    if state["status"] in _authorized_terminal_states(policy):
         return state
     while state["step"] < policy.max_steps:
         try:
@@ -175,7 +181,7 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         state["history"].append({"step": state["step"], "observation": deepcopy(observation), "decision": deepcopy(decision), "action": deepcopy(action_result), "verification": deepcopy(verification)})
         try:
             terminal = policy.terminal_evaluator(deepcopy(verification), deepcopy(state))
-            if terminal is not None and terminal not in policy.terminal_states:
+            if terminal is not None and terminal not in _authorized_terminal_states(policy):
                 raise ValueError(f"invalid terminal status: {terminal}")
             if policy.require_execution_receipt and receipt is not None and receipt["status"] == "UNKNOWN" and terminal is not None:
                 raise ValueError("UNKNOWN execution receipt cannot authorize a terminal verdict")
