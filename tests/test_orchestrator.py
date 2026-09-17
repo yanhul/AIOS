@@ -8,6 +8,14 @@ class FakeAdapter:
     name = "fake"
 
 
+GATEWAY_BINDING = {
+    "target_sha": "sha256:test-worker-v1",
+    "evidence_ref": "EV-test",
+    "lineage_ref": "LIN-test",
+    "idempotency_key": "idem-test",
+    "attempt_fence": 1,
+}
+
 GOVERNING_CONTRACT = {
     "policy_digest": "policy-1",
     "max_attempts": 1,
@@ -32,6 +40,22 @@ def make_policy(**overrides):
     return LoopPolicy(**values)
 
 
+def _executor(**overrides):
+    values = {
+        "aios_dir": "/tmp/aios",
+        "contract_id": "c1",
+        "permit_id": "p1",
+        "actor": "agent",
+        "adapter": FakeAdapter(),
+        "observer": lambda state: {"ready": True},
+        "decider": lambda observation, state: {"logical_operation_id": "op-1"},
+        "verifier": lambda result, state: {"verified": result["ok"]},
+        "gateway_binding": dict(GATEWAY_BINDING),
+    }
+    values.update(overrides)
+    return GovernedRuntimeExecutor(**values)
+
+
 def test_governed_execution_resolves_authority_before_loop(monkeypatch):
     calls = []
     _patch_authority(monkeypatch, calls)
@@ -40,18 +64,7 @@ def test_governed_execution_resolves_authority_before_loop(monkeypatch):
         lambda *args: calls.append(("execute", args[3])) or {"ok": True},
     )
 
-    executor = GovernedRuntimeExecutor(
-        aios_dir="/tmp/aios",
-        contract_id="c1",
-        permit_id="p1",
-        actor="agent",
-        adapter=FakeAdapter(),
-        observer=lambda state: {"ready": True},
-        decider=lambda observation, state: {"logical_operation_id": "op-1"},
-        verifier=lambda result, state: {"verified": result["ok"]},
-    )
-
-    result = run_governed_execution(executor=executor, store=MemoryStateStore(), policy=make_policy())
+    result = run_governed_execution(executor=_executor(), store=MemoryStateStore(), policy=make_policy())
     assert result["status"] == "PASS"
     assert calls == ["authorize", "authorize", ("execute", "op-1")]
 
@@ -59,12 +72,7 @@ def test_governed_execution_resolves_authority_before_loop(monkeypatch):
 def test_policy_digest_mismatch_fails_closed(monkeypatch):
     calls = []
     _patch_authority(monkeypatch, calls)
-    executor = GovernedRuntimeExecutor(
-        aios_dir="/tmp/aios", contract_id="c1", permit_id="p1", actor="agent",
-        adapter=FakeAdapter(), observer=lambda state: None,
-        decider=lambda observation, state: {"logical_operation_id": "op"},
-        verifier=lambda result, state: result,
-    )
+    executor = _executor()
     with pytest.raises(PermissionError, match="policy digest"):
         run_governed_execution(
             executor=executor,
@@ -76,12 +84,7 @@ def test_policy_digest_mismatch_fails_closed(monkeypatch):
 def test_budget_cannot_exceed_contract(monkeypatch):
     calls = []
     _patch_authority(monkeypatch, calls)
-    executor = GovernedRuntimeExecutor(
-        aios_dir="/tmp/aios", contract_id="c1", permit_id="p1", actor="agent",
-        adapter=FakeAdapter(), observer=lambda state: None,
-        decider=lambda observation, state: {"logical_operation_id": "op"},
-        verifier=lambda result, state: result,
-    )
+    executor = _executor()
     with pytest.raises(PermissionError, match="execution budget"):
         run_governed_execution(
             executor=executor,
@@ -91,11 +94,7 @@ def test_budget_cannot_exceed_contract(monkeypatch):
 
 
 def test_runtime_action_requires_explicit_operation_id():
-    executor = GovernedRuntimeExecutor(
-        aios_dir="/tmp/aios", contract_id="c1", permit_id="p1", actor="agent",
-        adapter=FakeAdapter(), observer=lambda state: None,
-        decider=lambda observation, state: {}, verifier=lambda result, state: result,
-    )
+    executor = _executor(decider=lambda observation, state: {})
     with pytest.raises(ValueError, match="logical_operation_id"):
         executor.act({}, {})
 
@@ -109,12 +108,8 @@ def test_resume_reauthorizes_current_contract_and_permit(monkeypatch):
         "contract_id": "c1", "permit_id": "p1", "step": 0,
         "status": "RUNNING", "history": [], "policy_digest": "policy-1",
     })
-    executor = GovernedRuntimeExecutor(
-        aios_dir="/tmp/aios", contract_id="c1", permit_id="p1", actor="agent",
-        adapter=FakeAdapter(), observer=lambda state: None,
-        decider=lambda observation, state: {"logical_operation_id": "op-resume"},
-        verifier=lambda result, state: {"verified": True},
-    )
+    executor = _executor(decider=lambda observation, state: {"logical_operation_id": "op-resume"},
+                         verifier=lambda result, state: {"verified": True})
 
     result = run_governed_execution(executor=executor, store=store, policy=make_policy())
     assert result["status"] == "PASS"
@@ -128,12 +123,7 @@ def test_resume_binding_mismatch_fails_closed(monkeypatch):
         "contract_id": "attacker-contract", "permit_id": "p1", "step": 0,
         "status": "RUNNING", "history": [],
     })
-    executor = GovernedRuntimeExecutor(
-        aios_dir="/tmp/aios", contract_id="c1", permit_id="p1", actor="agent",
-        adapter=FakeAdapter(), observer=lambda state: None,
-        decider=lambda observation, state: {"logical_operation_id": "op"},
-        verifier=lambda result, state: result,
-    )
+    executor = _executor()
 
     result = run_governed_execution(executor=executor, store=store, policy=make_policy())
     assert result["status"] == "BLOCKED"
@@ -143,12 +133,7 @@ def test_resume_binding_mismatch_fails_closed(monkeypatch):
 def test_terminal_states_must_match_governing_contract(monkeypatch):
     calls = []
     _patch_authority(monkeypatch, calls)
-    executor = GovernedRuntimeExecutor(
-        aios_dir="/tmp/aios", contract_id="c1", permit_id="p1", actor="agent",
-        adapter=FakeAdapter(), observer=lambda state: None,
-        decider=lambda observation, state: {"logical_operation_id": "op"},
-        verifier=lambda result, state: result,
-    )
+    executor = _executor()
     with pytest.raises(PermissionError, match="terminal states"):
         run_governed_execution(
             executor=executor,
@@ -164,12 +149,7 @@ def test_custom_terminal_states_are_preserved_and_enforced(monkeypatch):
     monkeypatch.setattr("core.orchestrator.authorize", lambda *args: calls.append("authorize"))
     monkeypatch.setattr("core.orchestrator.load_contract", lambda *args: dict(contract))
     monkeypatch.setattr("core.orchestrator.execute", lambda *args: {"ok": True})
-    executor = GovernedRuntimeExecutor(
-        aios_dir="/tmp/aios", contract_id="c1", permit_id="p1", actor="agent",
-        adapter=FakeAdapter(), observer=lambda state: None,
-        decider=lambda observation, state: {"logical_operation_id": "op-promote"},
-        verifier=lambda result, state: {"verified": True},
-    )
+    executor = _executor()
     policy = make_policy(
         terminal_states=frozenset(contract["terminal_states"]),
         terminal_evaluator=lambda verification, state: "PROMOTE",
