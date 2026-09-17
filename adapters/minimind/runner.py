@@ -36,15 +36,11 @@ class MiniMindAdapter:
         if self.max_output_bytes <= 0 or self.max_input_bytes <= 0:
             raise ValueError("I/O limits must be positive")
 
-        required_effect_fields = ("target_sha", "evidence_ref", "lineage_ref", "idempotency_key", "attempt_fence")
+        required_effect_fields = (
+            "target_sha", "evidence_ref", "lineage_ref", "idempotency_key", "attempt_fence"
+        )
         if any(field not in effect for field in required_effect_fields):
             raise ValueError("effect is missing mandatory Gateway receipt bindings")
-        for field in ("target_sha", "evidence_ref", "lineage_ref", "idempotency_key"):
-            if not isinstance(effect[field], str) or not effect[field].strip():
-                raise ValueError(f"effect {field} must be a non-empty string")
-        if not isinstance(effect["attempt_fence"], int) or isinstance(effect["attempt_fence"], bool) or effect["attempt_fence"] < 0:
-            raise ValueError("effect attempt_fence must be a non-negative integer")
-
         request = json.dumps(
             {"contract": dict(contract), "effect": dict(effect), "attempt_id": attempt_id},
             sort_keys=True,
@@ -81,18 +77,26 @@ class MiniMindAdapter:
         if receipt["capability"] != self._capability(contract):
             raise ValueError("MiniMind receipt capability binding mismatch")
 
+        required_receipt = (
+            "target_sha", "evidence_ref", "lineage_ref", "idempotency_key", "attempt_fence"
+        )
+        if any(field not in receipt for field in required_receipt):
+            raise ValueError("MiniMind receipt is missing mandatory Gateway bindings")
+
         return ProviderReceipt(
             provider=self.name,
-            effect_id=effect["effect_id"],
-            attempt_id=attempt_id,
-            provider_operation_id=f"{self.name}:{receipt['task_id']}:{attempt_id}",
+            effect_id=receipt.get("effect_id", effect["effect_id"]),
+            attempt_id=receipt.get("attempt_id", attempt_id),
+            provider_operation_id=receipt.get(
+                "provider_operation_id", f"{self.name}:{receipt['task_id']}:{attempt_id}"
+            ),
             outcome="OBSERVED_SUCCESS",
             observation={"minimind_receipt": receipt},
-            target_sha=effect["target_sha"],
-            evidence_ref=effect["evidence_ref"],
-            lineage_ref=effect["lineage_ref"],
-            idempotency_key=effect["idempotency_key"],
-            attempt_fence=effect["attempt_fence"],
+            target_sha=receipt["target_sha"],
+            evidence_ref=receipt["evidence_ref"],
+            lineage_ref=receipt["lineage_ref"],
+            idempotency_key=receipt["idempotency_key"],
+            attempt_fence=receipt["attempt_fence"],
         )
 
     @staticmethod
