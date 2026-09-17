@@ -7,6 +7,7 @@ from .policy_registry import resolve_policy
 from .mutation import TransitionError,canonical_json,commit_batch,recover_pending
 AUTHORITY_DIR="authority"; CONTRACTS_DIR="contracts"; PERMITS_DIR="permits"; ATTESTATIONS_DIR="attestations"
 _CONTRACT_FIELDS=("contract_type","task_id","scope","actor","capabilities","input_digest","allowed_effects","evidence_required","max_attempts","terminal_states","policy_digest")
+_PERMIT_FIELDS=("permit_type","permit_id","contract_id","task_id","actor","capabilities","allowed_effects","max_attempts","policy_digest","issuer")
 def _require_id(value,name):
  if not isinstance(value,str) or not value.strip(): raise ValueError(f"{name} must be a non-empty string")
 def _path(aios_dir,kind,ident): return os.path.join(aios_dir,AUTHORITY_DIR,kind,ident+".json")
@@ -61,7 +62,18 @@ def load_contract(aios_dir,contract_id):
  if contract_identity(contract)!=contract_id: raise TransitionError("stored contract identity mismatch")
  validate_contract(contract); _resolve_policy(aios_dir,contract); return contract
 def load_permit(aios_dir,permit_id):
- _require_id(permit_id,"permit_id"); return _load(_path(aios_dir,PERMITS_DIR,permit_id))
+ _require_id(permit_id,"permit_id")
+ try:
+  permit=_load(_path(aios_dir,PERMITS_DIR,permit_id))
+ except (OSError, ValueError, TypeError) as exc:
+  raise TransitionError(f"authority permit record unavailable: {permit_id}") from exc
+ if not isinstance(permit,dict) or set(permit) != set(_PERMIT_FIELDS):
+  raise TransitionError(f"authority permit record malformed: {permit_id}")
+ if permit.get("permit_id") != permit_id:
+  raise TransitionError(f"stored permit identity mismatch: {permit_id}")
+ for field in ("contract_id","task_id","actor","issuer","policy_digest"):
+  _require_id(permit.get(field),f"permit.{field}")
+ return permit
 def load_attestation(aios_dir,permit_id):
  _require_id(permit_id,"permit_id"); return _load(_path(aios_dir,ATTESTATIONS_DIR,permit_id))
 def authorize(aios_dir,contract_id,permit_id):
