@@ -14,12 +14,18 @@ from .effect_authority import create_effect, dispatch, observe, retry_dispatch, 
 
 @dataclass(frozen=True)
 class ProviderReceipt:
+    """Immutable provider receipt at the AIOS/Gateway receipt boundary."""
     provider: str
     effect_id: str
     attempt_id: str
     provider_operation_id: str
     outcome: str
     observation: dict
+    target_sha: str
+    evidence_ref: str
+    lineage_ref: str
+    idempotency_key: str
+    attempt_fence: int
 
 
 class ProviderAdapter(Protocol):
@@ -55,19 +61,55 @@ def _submit_runtime(runtime, method, effect, attempt_id, provider_name, **kwargs
 
 
 def validate_receipt(receipt, effect, attempt_id, provider_name):
-    """Fail closed unless the provider explicitly observed a bound outcome."""
+    """Fail closed unless the provider returned a complete, bound receipt.
+
+    Receipt integrity failures are protocol failures, not execution ambiguity.
+    Only an exception raised by adapter.execute() enters UNKNOWN.
+    """
     if not isinstance(receipt, ProviderReceipt):
         raise ValueError("provider must return ProviderReceipt")
+
     _text(receipt.provider, "receipt.provider")
     _text(receipt.effect_id, "receipt.effect_id")
     _text(receipt.attempt_id, "receipt.attempt_id")
     _text(receipt.provider_operation_id, "receipt.provider_operation_id")
+    _text(receipt.target_sha, "receipt.target_sha")
+    _text(receipt.evidence_ref, "receipt.evidence_ref")
+    _text(receipt.lineage_ref, "receipt.lineage_ref")
+    _text(receipt.idempotency_key, "receipt.idempotency_key")
+
+    if "target_sha" not in effect:
+        raise ValueError("effect target_sha is required before execution")
+    if "attempt_fence" not in effect:
+        raise ValueError("effect attempt_fence is required before execution")
+    expected_target_sha = _text(effect["target_sha"], "effect.target_sha")
+    expected_fence = effect["attempt_fence"]
+    if not isinstance(expected_fence, int) or isinstance(expected_fence, bool) or expected_fence < 0:
+        raise ValueError("effect attempt_fence must be a non-negative integer")
+    if not isinstance(receipt.attempt_fence, int) or isinstance(receipt.attempt_fence, bool):
+        raise ValueError("receipt.attempt_fence must be an integer")
+    if receipt.attempt_fence < 0:
+        raise ValueError("receipt.attempt_fence must be non-negative")
+
     if receipt.effect_id != effect["effect_id"]:
         raise ValueError("receipt effect binding mismatch")
     if receipt.attempt_id != attempt_id:
         raise ValueError("receipt attempt binding mismatch")
     if receipt.provider != provider_name:
         raise ValueError("receipt provider binding mismatch")
+    if receipt.target_sha != expected_target_sha:
+        raise ValueError("receipt target_sha binding mismatch")
+    if receipt.attempt_fence != expected_fence:
+        raise ValueError("receipt attempt_fence binding mismatch")
+
+    # These references are mandatory on the dispatched effect and receipt.
+    for field in ("evidence_ref", "lineage_ref", "idempotency_key"):
+        if field not in effect:
+            raise ValueError(f"effect {field} is required before execution")
+        expected = _text(effect[field], f"effect.{field}")
+        if getattr(receipt, field) != expected:
+            raise ValueError(f"receipt {field} binding mismatch")
+
     if receipt.outcome not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
         raise ValueError("receipt outcome must be an observed terminal outcome")
     if not isinstance(receipt.observation, dict) or not receipt.observation:
@@ -98,27 +140,35 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
 
     try:
         receipt = adapter.execute(contract=dict(contract), effect=dict(effect), attempt_id=attempt_id)
-        validate_receipt(receipt, effect, attempt_id, provider_name)
     except Exception as exc:
-        return unknown(aios_dir, effect["effect_id"], actor,
-                       f"provider ambiguity: {type(exc).__name__}: {exc}")
+        return unknown(
+            aios_dir,
+            effect["effect_id"],
+            actor,
+            f"provider ambiguity: {type(exc).__name__}: {exc}",
+        )
 
-    return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, {
-        "provider": receipt.provider,
-        "provider_operation_id": receipt.provider_operation_id,
-        "effect_id": receipt.effect_id,
-        "attempt_id": receipt.attempt_id,
-        "observation": receipt.observation,
-    })
+    # Gate 1: receipt integrity/binding failure MUST NOT be converted to UNKNOWN.
+    validate_receipt(receipt, effect, attempt_id, provider_name)
+
+    return observe(
+        aios_dir,
+        effect["effect_id"],
+        actor,
+        receipt.outcome,
+        {
+            "provider": receipt.provider,
+            "provider_operation_id": receipt.provider_operation_id,
+            "effect_id": receipt.effect_id,
+            "attempt_id": receipt.attempt_id,
+            "observation": receipt.observation,
+        },
+    )
 
 
 def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapter, attempt_id, attempt,
                           durable_runtime: DurableRuntime | None = None):
-    """Authorize, dispatch and execute one explicit retry of an UNKNOWN effect.
-
-    The external runtime may schedule/persist the attempt, but AIOS remains the
-    authority boundary for authorization, attempt bounds and evidence acceptance.
-    """
+    """Authorize, dispatch and execute one explicit retry of an UNKNOWN effect."""
     _text(actor, "actor")
     _text(attempt_id, "attempt_id")
     if not isinstance(effect, dict) or not effect:
@@ -128,7 +178,7 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
     if effect.get("contract_id") != contract_id:
         raise PermissionError("effect contract binding mismatch")
     if effect.get("actor") != actor:
-        raise PermissionError("effect actor does not match execution actor")
+        raise PermissionError("effect actor does not match effect owner")
     if effect.get("state") != "UNKNOWN":
         raise RuntimeError("effect must be UNKNOWN before retry")
 
