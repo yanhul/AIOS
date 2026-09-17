@@ -24,6 +24,7 @@ AIOS owns:
 - evidence requirements and provenance
 - contradiction detection/reconciliation
 - verification records
+- evaluation records and evaluation provenance
 - promotion gates and terminal conditions
 - audit/event history
 - capability registration and trust metadata
@@ -61,11 +62,13 @@ Every registered capability has an identity and machine-readable contract:
 
 The registry should evolve into a **Capability Graph**, where nodes are capabilities and edges record observed, verified relationships such as `requires`, `produces`, `composes_with`, `validated_by`, and `works_under`.
 
-## 4. Evidence and experience graph
+## 4. Evidence, evaluation, and experience graph
 
 AIOS stores more than conversation memory. It records:
 
-`task -> capability -> action -> evidence -> verification -> result -> contribution -> relationship -> capability version`
+`task -> capability -> action -> evidence -> verification -> evaluation -> result -> contribution -> relationship -> capability version`
+
+Evaluation is a derived interpretation of execution evidence. A governed evaluation must bind to the exact `effect_id -> attempt_id -> receipt_id` lineage it evaluates. Evaluation records may contain fine-grained test/rubric results, but a score or reward is not authority by itself.
 
 Experience is reusable only when provenance and verification permit reuse. Failed, blocked, and contradictory experiences are retained as negative evidence rather than erased.
 
@@ -104,7 +107,23 @@ AIOS distinguishes at least:
 
 Verification never upgrades an item merely because an agent asserted it.
 
-## 8. Evolution
+Evaluation is downstream of valid evidence, not a replacement for it. An evaluator cannot manufacture a missing receipt or retroactively bind a result to a different attempt.
+
+## 8. Evaluation plane
+
+Execution and evaluation are separate governed boundaries:
+
+`CONTRACT -> PERMIT -> EFFECT -> EXECUTE_ATTEMPT -> RECEIPT -> OBSERVATION -> EVALUATION -> DECISION`
+
+A multi-harness system may use heterogeneous execution environments behind stable AIOS capability/adapter contracts. Harnesses remain workload providers and cannot become a second authority plane.
+
+Evaluation receipts MUST preserve evaluator identity/version, evaluation policy/rubric version, evidence references, target effect/attempt/receipt identity, and verdict/provenance. A retry is a new attempt; an evaluator MUST NOT attach an outcome from one attempt to another.
+
+Future attribution/credit-assignment mechanisms remain derived artifacts. They may inform evaluation or learning, but cannot directly grant execution authority or promotion.
+
+See `docs/EVALUATION_PLANE.md` for the normative invariants.
+
+## 9. Evolution
 
 A capability may propose a new version from accumulated experience:
 
@@ -112,17 +131,19 @@ A capability may propose a new version from accumulated experience:
 
 Self-modification cannot directly promote itself.
 
-## 9. Interoperability
+Learning reward is a signal, not promotion authority.
+
+## 10. Interoperability
 
 AIOS should expose stable contracts for agent-to-agent, agent-to-tool, agent-to-device, and agent-to-service invocation. The protocol layer must carry identity, capability declaration, authorization, context, invocation, result, and provenance.
 
 The implementation may adopt or interoperate with emerging agent-interconnection standards; protocol choice must not weaken AIOS authority and verification boundaries.
 
-## 10. Physical-world extension
+## 11. Physical-world extension
 
 AIOS is designed to extend from digital execution to devices, sensors, robots, laboratories, and other physical systems. Digital verification and physical verification remain distinct evidence classes.
 
-## 11. Target end state
+## 12. Target end state
 
 A user should be able to submit a problem in natural language. AIOS should be able to:
 
@@ -132,23 +153,24 @@ A user should be able to submit a problem in natural language. AIOS should be ab
 4. compose and execute a bounded plan;
 5. observe and persist every meaningful state change;
 6. verify outputs and search for contradictions;
-7. repair/replan within policy when allowed;
-8. produce artifacts, evidence, provenance, and verification records;
-9. terminate with `PASS`, `BLOCKED`, or `INCONCLUSIVE` under externally governed criteria;
-10. reuse verified experience without silently importing unverified assumptions.
+7. evaluate outcomes from bound evidence;
+8. repair/replan within policy when allowed;
+9. produce artifacts, evidence, provenance, and verification/evaluation records;
+10. terminate with `PASS`, `BLOCKED`, or `INCONCLUSIVE` under externally governed criteria;
+11. reuse verified experience without silently importing unverified assumptions.
 
-## 12. Four-repository integration
+## 13. Four-repository integration
 
 The repositories are capability domains, not four competing control planes:
 
-- `AIOS`: governance, state, authority, evidence, verification, orchestration, capability registry/graph.
+- `AIOS`: governance, state, authority, evidence, verification, evaluation, orchestration, capability registry/graph.
 - `try`: research capability/workload.
 - `android-ai-assistant`: software/device-agent capability/workload.
 - `RX50`: hardware-engineering capability/workload.
 
 Each workload remains independently testable and source-owned. AIOS owns the cross-workload contract and governance boundary.
 
-## 13. Definition of Done for AIOS v1
+## 14. Definition of Done for AIOS v1
 
 AIOS v1 is complete when at least three independent workload classes can execute the governed loop end-to-end and demonstrate:
 
@@ -157,6 +179,7 @@ AIOS v1 is complete when at least three independent workload classes can execute
 - capability discovery/registration
 - evidence and provenance
 - deterministic or explicitly scoped verification
+- evidence-bound evaluation
 - contradiction handling
 - durable resume
 - tamper/authority resistance
@@ -165,3 +188,14 @@ AIOS v1 is complete when at least three independent workload classes can execute
 - reusable versioned capability history
 
 This is a proof-of-system criterion, not a claim of general AGI or universal correctness.
+
+## 15. Permanent evaluation invariants
+
+- Raw execution evidence is authoritative; evaluation is derived.
+- `evaluation/pass` cannot fill missing `receipt/evidence`.
+- Evaluation MUST bind to the exact `effect_id -> attempt_id -> receipt_id` lineage.
+- Retry creates a new attempt; prior attempts are immutable.
+- Test/rubric versions influencing governed decisions are provenance-bound.
+- Reward/score/attribution never directly grants authority or promotion.
+- Evaluators are bounded capabilities, not a second control plane.
+- Multi-harness execution preserves common identity, authorization, context, result, evidence, and provenance.

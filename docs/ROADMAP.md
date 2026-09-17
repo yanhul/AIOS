@@ -1,6 +1,6 @@
 # AIOS Roadmap
 
-Status: M1 + M1.5 implemented; M2/M3 foundations implemented; absorbed execution/research primitives are now AIOS-owned boundaries.
+Status: M1 + M1.5 implemented; M2/M3 foundations implemented; absorbed execution/research primitives are now AIOS-owned boundaries; evaluation-plane architecture/invariants absorbed from public MiMo evidence.
 
 ## Phase A — Governance kernel
 
@@ -65,6 +65,7 @@ Status: M1 + M1.5 implemented; M2/M3 foundations implemented; absorbed execution
 - Model registry and capability-based routing.
 - OpenClaw and other runtimes remain adapters, not the authority layer.
 - Skill providers are adapters/capabilities, never a second control plane.
+- **Absorbed architecture:** heterogeneous harnesses execute behind the same AIOS contract/authority boundary.
 
 ## Phase C — Autonomous execution
 
@@ -77,6 +78,7 @@ Status: M1 + M1.5 implemented; M2/M3 foundations implemented; absorbed execution
 - Structured execution results.
 - No silent state promotion.
 - Skill routing may precede `PERMIT`, but authorization remains external to the skill.
+- **Absorbed invariants:** every retry is a new attempt; downstream evaluation must bind to the exact effect/attempt/receipt lineage.
 
 ## M9 — Evidence / contradiction / promotion
 - Evidence graph and provenance.
@@ -84,19 +86,24 @@ Status: M1 + M1.5 implemented; M2/M3 foundations implemented; absorbed execution
 - Verification levels: OBSERVED, EVIDENCED, VERIFIED_DIGITAL, VERIFIED_PHYSICAL, PROMOTED.
 - Fixed PASS/BLOCKED/INCONCLUSIVE gates.
 - Reports remain derived artifacts; raw evidence is authoritative.
+- **Absorbed:** evaluation plane separated from execution; evaluation receipts bind to execution lineage.
+- **Absorbed:** fine-grained test/rubric results are provenance-bound; reward/score is a signal, not promotion authority.
+- **Absorbed:** evaluator/grader is a bounded capability and cannot become a second control plane.
 
-## M10 — Experience / contribution / relationship memory
+### M10 — Experience / contribution / relationship memory
 - Record task -> capability -> action -> evidence -> result lineage.
 - Measure contribution/utility from verified outcomes.
 - Preserve negative evidence and failure history.
 - Learn capability relationships without treating model memory as truth.
+- **Reserved:** group/trajectory/attempt identity for future attribution and multi-rollout learning.
 
-## M11 — Capability evolution
+### M11 — Capability evolution
 - Candidate capability/version generation.
 - Regression and comparative evaluation.
 - Evidence review and promotion gate.
 - Versioned rollback.
 - No self-promotion.
+- **Reserved:** agentic/in-group credit assignment interface; algorithm remains research until independently specified and verified.
 
 ## Phase D — Real-world AIOS
 
@@ -142,3 +149,9 @@ Required terminal outcomes are fixed: `PASS`, `BLOCKED`, `INCONCLUSIVE`.
 - Every material state mutation is auditable and recoverable.
 - Verification claims must resolve to evidence or deterministic checks appropriate to the claim.
 - Skill routing is advisory; authorization, evidence, verification, and terminal decisions remain AIOS-controlled.
+- Raw execution evidence is authoritative; evaluation is derived.
+- Evaluation cannot repair missing evidence or receipt lineage.
+- Evaluation binds to the exact effect/attempt/receipt being evaluated.
+- Test/rubric versions influencing governed decisions are provenance-bound.
+- Reward, score, and attribution cannot directly grant authority or promotion.
+- Evaluators are bounded capabilities, never a second control plane.
