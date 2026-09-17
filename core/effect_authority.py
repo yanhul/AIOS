@@ -11,6 +11,7 @@ record; it never rewrites the identity of an earlier attempt.
 import hashlib
 import json
 import os
+import re
 
 from .authority import authorize, load_contract, load_permit
 from .contract import verify_permit
@@ -171,13 +172,15 @@ def transition(aios_dir, effect_id, target, actor, **fields):
 
 
 def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
-    _validate_strings(("attempt_id", attempt_id), ("provider", provider))
+    _validate_strings(("actor", actor), ("attempt_id", attempt_id), ("provider", provider))
     recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
     if not os.path.exists(path):
         raise KeyError(f"unknown effect: {effect_id}")
     current = _load(path)
     _validate_persisted_effect(aios_dir, current)
+    if current.get("actor") != actor:
+        raise TransitionError("dispatch actor does not match effect owner")
     if current.get("state") != "PLANNED":
         raise TransitionError(f"initial dispatch requires PLANNED effect, got {current.get('state')}")
     expected = _attempt_id(effect_id, 1)
@@ -192,7 +195,7 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
     attempt_rec = _commit_attempt(aios_dir, current, attempt_id, 1, actor, provider)
     commit_batch(aios_dir, [
         (os.path.join("effects", effect_id + ".json"), updated),
-        (os.path.join("attempts", attempt_id.replace("/", "_") + ".json"), attempt_rec),
+        (attempt_path(aios_dir, attempt_id), attempt_rec),
         (os.path.join("events", "effect-" + effect_id + "-DISPATCHED-attempt-1.json"), event),
     ])
     return updated
@@ -228,7 +231,7 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
     attempt_rec = _commit_attempt(aios_dir, current, attempt_id, attempt, actor, provider)
     commit_batch(aios_dir, [
         (os.path.join("effects", effect_id + ".json"), updated),
-        (os.path.join("attempts", attempt_id.replace("/", "_") + ".json"), attempt_rec),
+        (attempt_path(aios_dir, attempt_id), attempt_rec),
         (os.path.join("events", "effect-" + effect_id + "-DISPATCHED-attempt-" + str(attempt) + ".json"), event),
     ])
     return updated
