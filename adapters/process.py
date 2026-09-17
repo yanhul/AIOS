@@ -1,9 +1,4 @@
-"""Capability-only bounded subprocess provider adapter.
-
-AIOS owns authorization and durable state. The subprocess receives one bounded
-JSON request and must return one bounded JSON receipt. It cannot write AIOS
-state through this adapter.
-"""
+"""Capability-only bounded subprocess provider adapter."""
 
 from __future__ import annotations
 
@@ -33,31 +28,21 @@ class SubprocessAdapter:
         if self.max_output_bytes <= 0 or self.max_input_bytes <= 0:
             raise ValueError("I/O limits must be positive")
 
-        request = json.dumps(
-            {"contract": dict(contract), "effect": dict(effect), "attempt_id": attempt_id},
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
+        required = ("target_sha", "evidence_ref", "lineage_ref", "idempotency_key", "attempt_fence")
+        if any(field not in effect for field in required):
+            raise ValueError("effect is missing mandatory Gateway receipt bindings")
+
+        request = json.dumps({"contract": dict(contract), "effect": dict(effect), "attempt_id": attempt_id}, sort_keys=True, separators=(",", ":")).encode("utf-8")
         if len(request) > self.max_input_bytes:
             raise ValueError("provider request exceeds input limit")
-
         try:
-            completed = subprocess.run(
-                list(self.command),
-                input=request,
-                capture_output=True,
-                timeout=self.timeout_seconds,
-                check=False,
-                shell=False,
-            )
+            completed = subprocess.run(list(self.command), input=request, capture_output=True, timeout=self.timeout_seconds, check=False, shell=False)
         except subprocess.TimeoutExpired as exc:
             raise TimeoutError("provider timed out") from exc
-
         if len(completed.stdout) > self.max_output_bytes:
             raise ValueError("provider stdout exceeds output limit")
         if completed.returncode != 0:
             raise RuntimeError(f"provider exited with code {completed.returncode}")
-
         try:
             payload = json.loads(completed.stdout.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -66,12 +51,12 @@ class SubprocessAdapter:
             raise ValueError("provider receipt must be a JSON object")
 
         return ProviderReceipt(
-            provider=payload.get("provider", ""),
-            effect_id=payload.get("effect_id", ""),
-            attempt_id=payload.get("attempt_id", ""),
-            provider_operation_id=payload.get("provider_operation_id", ""),
-            outcome=payload.get("outcome", ""),
-            observation=payload.get("observation", {}),
+            provider=payload.get("provider", ""), effect_id=payload.get("effect_id", ""),
+            attempt_id=payload.get("attempt_id", ""), provider_operation_id=payload.get("provider_operation_id", ""),
+            outcome=payload.get("outcome", ""), observation=payload.get("observation", {}),
+            target_sha=effect["target_sha"], evidence_ref=effect["evidence_ref"],
+            lineage_ref=effect["lineage_ref"], idempotency_key=effect["idempotency_key"],
+            attempt_fence=effect["attempt_fence"],
         )
 
 
