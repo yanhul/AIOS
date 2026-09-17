@@ -126,7 +126,11 @@ def validate_saved_receipt(saved: dict, *, receipt_path: Path, execution_id: str
         result_path.relative_to(receipt_path.parent.resolve())
     except ValueError as exc:
         raise ValueError("persisted receipt result ref escapes receipt directory") from exc
+    if not result_path.is_file():
+        raise ValueError("persisted receipt result artifact missing")
     result = read_json(result_path)
+    if saved.get("result_sha256") != result_digest(result):
+        raise ValueError("persisted result integrity mismatch")
     validate_adapter_result(result, terminal_states=terminal_states, verification=verification,
                              producer=producer, capability_ref=capability_ref)
     if result["status"] != saved["status"]:
@@ -137,8 +141,6 @@ def validate_saved_receipt(saved: dict, *, receipt_path: Path, execution_id: str
         raise ValueError("persisted result verification refs disagree with receipt")
     if result["provenance"] != saved["provenance"]:
         raise ValueError("persisted result provenance disagrees with receipt")
-    if saved.get("result_sha256") != result_digest(result):
-        raise ValueError("persisted result integrity mismatch")
     return result
 
 
