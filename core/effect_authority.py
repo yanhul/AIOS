@@ -1,14 +1,11 @@
 """Authoritative external-effect transitions for M6.
 
-This module is the single write boundary for provider-facing effects. An
-external effect cannot be created, dispatched, retried, or observed unless the
-immutable contract and permit authorize the requested effect. Identity fields
-are immutable after creation; attempt IDs are deterministic and tied to the
-effect/attempt number; observations must carry AIOS-owned cryptographic
-evidence bound to the executing provider and attempt.
+This module is the single write boundary for provider-facing effects. Receipt
+creation is part of the authoritative observation transition; callers cannot
+observe successfully and then separately manufacture a receipt.
 
-UNKNOWN is deliberately non-terminal. It can only re-enter DISPATCHED through
-the explicit retry path, subject to the contract attempt budget.
+Attempt records are immutable snapshots. Retry advances to a new attempt
+record; it never rewrites the identity of an earlier attempt.
 """
 
 import hashlib
@@ -18,13 +15,14 @@ import os
 from .authority import authorize, load_contract, load_permit
 from .contract import verify_permit
 from .evidence import verify_evidence
+from .evaluation import attempt_path, build_receipt_record, receipt_path
 from .mutation import TransitionError, canonical_json, commit_batch, recover_pending
 
 STATES = ("PLANNED", "DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE")
 _ALLOWED = {
     "PLANNED": {"DISPATCHED"},
     "DISPATCHED": {"UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE"},
-    "UNKNOWN": {"OBSERVED_SUCCESS", "OBSERVED_FAILURE"},
+    "UNKNOWN": {"DISPATCHED"},
     "OBSERVED_SUCCESS": set(),
     "OBSERVED_FAILURE": set(),
 }
@@ -85,6 +83,25 @@ def _attempt_id(effect_id, attempt):
     return f"{effect_id}:attempt:{attempt}"
 
 
+def _attempt_record(effect, attempt_id, attempt, actor, provider):
+    body = {"record_type": "EXECUTION_ATTEMPT", "attempt_id": attempt_id,
+            "effect_id": effect["effect_id"], "attempt": attempt,
+            "actor": actor, "provider": provider}
+    body["digest"] = hashlib.sha256(canonical_json(body).encode("utf-8")).hexdigest()
+    return body
+
+
+def _commit_attempt(aios_dir, effect, attempt_id, attempt, actor, provider):
+    rec = _attempt_record(effect, attempt_id, attempt, actor, provider)
+    path = attempt_path(aios_dir, attempt_id)
+    if os.path.exists(path):
+        existing = _load(path)
+        if canonical_json(existing) == canonical_json(rec):
+            return rec
+        raise TransitionError("attempt identity collision")
+    return rec
+
+
 def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id, effect_type):
     _validate_strings(("contract_id", contract_id), ("logical_operation_id", logical_operation_id),
                       ("actor", actor), ("permit_id", permit_id), ("effect_type", effect_type))
@@ -119,8 +136,8 @@ def transition(aios_dir, effect_id, target, actor, **fields):
     allowed_fields = {
         "DISPATCHED": {"attempt", "attempt_id", "provider"},
         "UNKNOWN": {"unknown_reason"},
-        "OBSERVED_SUCCESS": {"provider_observation"},
-        "OBSERVED_FAILURE": {"provider_observation"},
+        "OBSERVED_SUCCESS": {"provider_observation", "receipt_id"},
+        "OBSERVED_FAILURE": {"provider_observation", "receipt_id"},
     }.get(target, set())
     if set(fields) - allowed_fields:
         raise TransitionError("effect transition attempted to mutate protected or unsupported fields")
@@ -162,8 +179,17 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
         raise ValueError("attempt_id does not match initial effect attempt")
     if int(current.get("max_attempts", 0)) < 1:
         raise TransitionError("effect has no authorized execution attempts")
-    return transition(aios_dir, effect_id, "DISPATCHED", actor,
-                      attempt=1, attempt_id=attempt_id, provider=provider)
+    updated = dict(current, state="DISPATCHED", attempt=1, attempt_id=attempt_id, provider=provider)
+    event = {"kind": "external_effect", "action": "dispatch", "effect_id": effect_id,
+             "from_state": "PLANNED", "to_state": "DISPATCHED", "actor": actor,
+             "attempt": 1, "attempt_id": attempt_id, "provider": provider}
+    attempt_rec = _commit_attempt(aios_dir, current, attempt_id, 1, actor, provider)
+    commit_batch(aios_dir, [
+        (os.path.join("effects", effect_id + ".json"), updated),
+        (os.path.join("attempts", attempt_id.replace("/", "_") + ".json"), attempt_rec),
+        (os.path.join("events", "effect-" + effect_id + "-DISPATCHED-attempt-1.json"), event),
+    ])
+    return updated
 
 
 def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
@@ -189,16 +215,16 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
         raise TransitionError("retry exceeds contract attempt budget")
     if attempt_id != _attempt_id(effect_id, attempt):
         raise ValueError("attempt_id does not match retry attempt")
-    updated = dict(current)
-    updated.update({"state": "DISPATCHED", "attempt": attempt,
-                    "attempt_id": attempt_id, "provider": provider})
-    event = {
-        "kind": "external_effect", "action": "retry_dispatch", "effect_id": effect_id,
-        "from_state": "UNKNOWN", "to_state": "DISPATCHED", "actor": actor,
-        "attempt": attempt, "attempt_id": attempt_id, "provider": provider,
-    }
-    commit_batch(aios_dir, [(os.path.join("effects", effect_id + ".json"), updated),
-                            (os.path.join("events", "effect-" + effect_id + "-DISPATCHED-attempt-" + str(attempt) + ".json"), event)])
+    updated = dict(current, state="DISPATCHED", attempt=attempt, attempt_id=attempt_id, provider=provider)
+    event = {"kind": "external_effect", "action": "retry_dispatch", "effect_id": effect_id,
+             "from_state": "UNKNOWN", "to_state": "DISPATCHED", "actor": actor,
+             "attempt": attempt, "attempt_id": attempt_id, "provider": provider}
+    attempt_rec = _commit_attempt(aios_dir, current, attempt_id, attempt, actor, provider)
+    commit_batch(aios_dir, [
+        (os.path.join("effects", effect_id + ".json"), updated),
+        (os.path.join("attempts", attempt_id.replace("/", "_") + ".json"), attempt_rec),
+        (os.path.join("events", "effect-" + effect_id + "-DISPATCHED-attempt-" + str(attempt) + ".json"), event),
+    ])
     return updated
 
 
@@ -208,6 +234,7 @@ def unknown(aios_dir, effect_id, actor, reason):
 
 
 def observe(aios_dir, effect_id, actor, outcome, provider_observation):
+    """Authoritatively observe an attempt and atomically persist its receipt."""
     if outcome not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
         raise ValueError("invalid observation outcome")
     if not isinstance(provider_observation, dict) or not provider_observation:
@@ -233,7 +260,31 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
         raise ValueError("observation requires a valid AIOS evidence record")
     if evidence.get("provider") != provider:
         raise ValueError("evidence provider does not match effect provider")
-    return transition(aios_dir, effect_id, outcome, actor, provider_observation=provider_observation)
+
+    receipt = build_receipt_record(current, provider_observation)
+    receipt_id = receipt["receipt_id"]
+    receipt_file = receipt_path(aios_dir, receipt_id)
+    if os.path.exists(receipt_file):
+        existing = _load(receipt_file)
+        if canonical_json(existing) != canonical_json(receipt):
+            raise TransitionError("receipt identity collision")
+        raise TransitionError("observation already has an authoritative receipt")
+
+    updated = dict(current, state=outcome, receipt_id=receipt_id, provider_observation=provider_observation)
+    event = {"kind": "external_effect", "action": "observe", "effect_id": effect_id,
+             "from_state": current["state"], "to_state": outcome, "actor": actor,
+             "attempt": current["attempt"], "attempt_id": attempt_id, "provider": provider,
+             "receipt_id": receipt_id}
+    commit_batch(aios_dir, [
+        (os.path.join("effects", effect_id + ".json"), updated),
+        (os.path.join("receipts", receipt_id + ".json"), receipt),
+        (os.path.join("events", "effect-" + effect_id + "-" + outcome + "-" + receipt_id + ".json"), event),
+        (os.path.join("events", "receipt-" + receipt_id + ".json"), {
+            "kind": "execution_receipt", "action": "create", "receipt_id": receipt_id,
+            "effect_id": effect_id, "attempt_id": attempt_id, "provider": provider,
+        }),
+    ])
+    return updated
 
 
 __all__ = ["STATES", "create_effect", "transition", "dispatch", "retry_dispatch", "unknown", "observe"]
