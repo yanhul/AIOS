@@ -61,14 +61,9 @@ def _submit_runtime(runtime, method, effect, attempt_id, provider_name, **kwargs
 
 
 def validate_receipt(receipt, effect, attempt_id, provider_name):
-    """Fail closed unless the provider returned a complete, bound receipt.
-
-    Receipt integrity failures are protocol failures, not execution ambiguity.
-    Only an exception raised by adapter.execute() enters UNKNOWN.
-    """
+    """Fail closed unless the provider returned a complete, bound receipt."""
     if not isinstance(receipt, ProviderReceipt):
         raise ValueError("provider must return ProviderReceipt")
-
     _text(receipt.provider, "receipt.provider")
     _text(receipt.effect_id, "receipt.effect_id")
     _text(receipt.attempt_id, "receipt.attempt_id")
@@ -90,7 +85,6 @@ def validate_receipt(receipt, effect, attempt_id, provider_name):
         raise ValueError("receipt.attempt_fence must be an integer")
     if receipt.attempt_fence < 0:
         raise ValueError("receipt.attempt_fence must be non-negative")
-
     if receipt.effect_id != effect["effect_id"]:
         raise ValueError("receipt effect binding mismatch")
     if receipt.attempt_id != attempt_id:
@@ -101,15 +95,12 @@ def validate_receipt(receipt, effect, attempt_id, provider_name):
         raise ValueError("receipt target_sha binding mismatch")
     if receipt.attempt_fence != expected_fence:
         raise ValueError("receipt attempt_fence binding mismatch")
-
-    # These references are mandatory on the dispatched effect and receipt.
     for field in ("evidence_ref", "lineage_ref", "idempotency_key"):
         if field not in effect:
             raise ValueError(f"effect {field} is required before execution")
         expected = _text(effect[field], f"effect.{field}")
         if getattr(receipt, field) != expected:
             raise ValueError(f"receipt {field} binding mismatch")
-
     if receipt.outcome not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
         raise ValueError("receipt outcome must be an observed terminal outcome")
     if not isinstance(receipt.observation, dict) or not receipt.observation:
@@ -151,23 +142,20 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
     # Gate 1: receipt integrity/binding failure MUST NOT be converted to UNKNOWN.
     validate_receipt(receipt, effect, attempt_id, provider_name)
 
-    return observe(
-        aios_dir,
-        effect["effect_id"],
-        actor,
-        receipt.outcome,
-        {
-            "provider": receipt.provider,
-            "provider_operation_id": receipt.provider_operation_id,
-            "effect_id": receipt.effect_id,
-            "attempt_id": receipt.attempt_id,
-            "observation": receipt.observation,
-        },
-    )
+    provider_observation = {
+        "provider": receipt.provider,
+        "provider_operation_id": receipt.provider_operation_id,
+        "effect_id": receipt.effect_id,
+        "attempt_id": receipt.attempt_id,
+        "observation": receipt.observation,
+    }
+    if "evidence" in receipt.observation:
+        provider_observation["evidence"] = receipt.observation["evidence"]
+    return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, provider_observation)
 
 
 def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapter, attempt_id, attempt,
-                          durable_runtime: DurableRuntime | None = None):
+                          target_sha, attempt_fence, durable_runtime: DurableRuntime | None = None):
     """Authorize, dispatch and execute one explicit retry of an UNKNOWN effect."""
     _text(actor, "actor")
     _text(attempt_id, "attempt_id")
@@ -181,7 +169,6 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
         raise PermissionError("effect actor does not match effect owner")
     if effect.get("state") != "UNKNOWN":
         raise RuntimeError("effect must be UNKNOWN before retry")
-
     authorize(aios_dir, contract_id, permit_id)
     contract = load_contract(aios_dir, contract_id)
     permit = load_permit(aios_dir, permit_id)
@@ -197,21 +184,21 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
         raise PermissionError("provider capability is not authorized by contract")
     if "external_effect" not in contract["allowed_effects"]:
         raise PermissionError("external effect is not authorized by contract")
-
-    dispatched = retry_dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name, attempt)
+    dispatched = retry_dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name, attempt,
+                                target_sha=target_sha, attempt_fence=attempt_fence)
     _submit_runtime(durable_runtime, "retry", dispatched, attempt_id, provider_name, attempt=attempt)
     return execute_attempt(aios_dir, contract, dispatched, actor, adapter, attempt_id)
 
 
 def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapter,
+            target_sha, evidence_ref, lineage_ref, idempotency_key, attempt_fence,
             durable_runtime: DurableRuntime | None = None):
-    """Authorize/create/dispatch the first attempt, then delegate execution."""
+    """Authorize/create/dispatch the first attempt with an external Gateway binding."""
     _text(logical_operation_id, "logical_operation_id")
     _text(actor, "actor")
     if not hasattr(adapter, "name"):
         raise ValueError("adapter must expose a provider name")
     provider_name = _text(adapter.name, "adapter.name")
-
     authorize(aios_dir, contract_id, permit_id)
     contract = load_contract(aios_dir, contract_id)
     permit = load_permit(aios_dir, permit_id)
@@ -221,12 +208,14 @@ def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapt
         raise PermissionError("provider capability is not authorized by contract")
     if "external_effect" not in contract["allowed_effects"]:
         raise PermissionError("external effect is not authorized by contract")
-
     effect = create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id, "external_effect")
     if effect["state"] != "PLANNED":
         raise RuntimeError("logical operation already has a non-planned effect")
     attempt_id = f"{effect['effect_id']}:attempt:1"
-    effect = dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name)
+    effect = dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name,
+                      target_sha=target_sha, evidence_ref=evidence_ref,
+                      lineage_ref=lineage_ref, idempotency_key=idempotency_key,
+                      attempt_fence=attempt_fence)
     _submit_runtime(durable_runtime, "submit", effect, attempt_id, provider_name)
     return execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id)
 
