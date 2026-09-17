@@ -3,7 +3,7 @@ import pytest
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
-from core.effect_authority import create_effect, dispatch, observe, unknown
+from core.effect_authority import create_effect, dispatch, observe, transition, unknown
 from core.evidence import EvidenceRecord
 from core.mutation import TransitionError
 from core.policy_registry import persist_policy
@@ -61,6 +61,15 @@ def _dispatch(tmp_path, effect, **overrides):
     return dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1", **binding)
 
 
+def _direct_dispatched_fields(effect):
+    return {
+        "attempt": 1,
+        "attempt_id": f"{effect['effect_id']}:attempt:1",
+        "provider": "provider-1",
+        **BINDING,
+    }
+
+
 def test_effect_transition_is_atomic_and_audited(tmp_path):
     effect = _authorized(tmp_path)
     assert effect["state"] == "PLANNED"
@@ -77,6 +86,25 @@ def test_unknown_cannot_return_to_dispatch(tmp_path):
     unknown(str(tmp_path), effect["effect_id"], "agent-1", "timeout")
     with pytest.raises(TransitionError):
         dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:2", "provider-1", **BINDING)
+
+
+def test_direct_transition_to_dispatched_requires_all_gateway_bindings(tmp_path):
+    effect = _authorized(tmp_path)
+    fields = _direct_dispatched_fields(effect)
+    for missing in ("target_sha", "evidence_ref", "lineage_ref", "idempotency_key", "attempt_fence"):
+        candidate = dict(fields)
+        candidate.pop(missing)
+        with pytest.raises(TransitionError, match="complete Gateway bindings"):
+            transition(str(tmp_path), effect["effect_id"], "DISPATCHED", "agent-1", **candidate)
+
+
+def test_direct_transition_to_dispatched_requires_initial_attempt_one_and_canonical_id(tmp_path):
+    effect = _authorized(tmp_path)
+    fields = _direct_dispatched_fields(effect)
+    with pytest.raises(TransitionError, match="attempt 1"):
+        transition(str(tmp_path), effect["effect_id"], "DISPATCHED", "agent-1", **{**fields, "attempt": 2})
+    with pytest.raises(TransitionError, match="initial effect attempt"):
+        transition(str(tmp_path), effect["effect_id"], "DISPATCHED", "agent-1", **{**fields, "attempt_id": "forged"})
 
 
 def test_terminal_state_requires_verified_attempt_bound_evidence(tmp_path):
@@ -109,14 +137,14 @@ def test_direct_observe_rejects_gateway_binding_mismatch(tmp_path):
         "attempt_fence": 2,
     }.items():
         with pytest.raises(ValueError, match=f"{field} binding mismatch"):
-            observe(tmp_path, effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", _observation(effect["effect_id"], **{field: value}))
+            observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", _observation(effect["effect_id"], **{field: value}))
 
 
 def test_direct_observe_rejects_nested_evidence_identity_mismatch(tmp_path):
     effect = _authorized(tmp_path)
     _dispatch(tmp_path, effect)
     with pytest.raises(ValueError, match="evidence identity binding mismatch"):
-        observe(tmp_path, effect["effect_id"], "agent-1", "OBSERVED_SUCCESS",
+        observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS",
                 _observation(effect["effect_id"], evidence=_evidence(evidence_id="EV-OTHER")))
 
 
