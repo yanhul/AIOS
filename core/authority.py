@@ -49,7 +49,15 @@ def persist_attestation(aios_dir,contract,permit,secret):
   return existing
  commit_batch(aios_dir,[(os.path.join(AUTHORITY_DIR,ATTESTATIONS_DIR,permit["permit_id"]+".json"),attestation)]); return attestation
 def load_contract(aios_dir,contract_id):
- _require_id(contract_id,"contract_id"); record=_load(_path(aios_dir,CONTRACTS_DIR,contract_id)); contract={k:record[k] for k in _CONTRACT_FIELDS}
+ _require_id(contract_id,"contract_id")
+ try:
+  record=_load(_path(aios_dir,CONTRACTS_DIR,contract_id))
+ except (OSError, ValueError, TypeError) as exc:
+  raise TransitionError(f"authority contract record unavailable: {contract_id}") from exc
+ try:
+  contract={k:record[k] for k in _CONTRACT_FIELDS}
+ except (KeyError, TypeError) as exc:
+  raise TransitionError(f"authority contract record malformed: {contract_id}") from exc
  if contract_identity(contract)!=contract_id: raise TransitionError("stored contract identity mismatch")
  validate_contract(contract); _resolve_policy(aios_dir,contract); return contract
 def load_permit(aios_dir,permit_id):
