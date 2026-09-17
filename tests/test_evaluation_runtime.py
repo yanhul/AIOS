@@ -1,18 +1,20 @@
+import json
+import os
 import tempfile
 
 import pytest
 
 from core.authority import persist_contract, persist_permit
-from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
-from core.effect_authority import create_effect, dispatch, observe
+from core.effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
 from core.evidence import EvidenceRecord
-from core.evaluation import evaluate, make_receipt
+from core.evaluation import evaluate
 from core.mutation import TransitionError
 from core.policy_registry import persist_policy
 
 
 def make_authorized(td):
+    from core.capabilities import Capability, CapabilityRegistry
     registry = CapabilityRegistry()
     registry.register(Capability("research_is_validation", "1", "test-fixture", "research", status="ACTIVE"))
     registry.persist(td, "test-fixture")
@@ -26,31 +28,41 @@ def make_authorized(td):
     }
     persist_contract(td, contract)
     permit = persist_permit(td, contract, "AIOS_AUTHORITY")
-    effect = create_effect(td, contract_identity(contract), "evaluation-runtime", "bc-controller",
-                           permit["permit_id"], "process_execution")
-    return effect
+    return create_effect(td, contract_identity(contract), "evaluation-runtime", "bc-controller",
+                         permit["permit_id"], "process_execution")
+
+
+def evidence(evidence_id, run_id, provider):
+    return EvidenceRecord(
+        evidence_id=evidence_id, level="OBSERVED", source_ref=f"runtime/{provider}",
+        claim="execution completed", run_id=run_id, provider=provider,
+    ).as_record()
 
 
 def execute_observed(td):
     effect = make_authorized(td)
     attempt_id = f"{effect['effect_id']}:attempt:1"
     dispatch(td, effect["effect_id"], "bc-controller", attempt_id, "provider-a")
-    evidence = EvidenceRecord(
-        evidence_id="EV-eval-1", level="OBSERVED", source_ref="runtime/provider-a",
-        claim="execution completed", run_id="run-eval-1", provider="provider-a",
-    ).as_record()
     observed = observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS",
-                       {"attempt_id": attempt_id, "provider": "provider-a", "evidence": evidence})
-    receipt = make_receipt(td, observed, observed["provider_observation"])
+                       {"attempt_id": attempt_id, "provider": "provider-a",
+                        "evidence": evidence("EV-eval-1", "run-eval-1", "provider-a")})
+    receipt_path = f"{td}/receipts/{observed['receipt_id']}.json"
+    with open(receipt_path, "r", encoding="utf-8") as fh:
+        receipt = json.load(fh)
     return effect, observed, receipt
 
 
-def test_observation_can_be_promoted_only_to_exact_execution_receipt():
+def test_observe_is_the_authoritative_receipt_boundary():
     with tempfile.TemporaryDirectory() as td:
         effect, observed, receipt = execute_observed(td)
         assert receipt["effect_id"] == effect["effect_id"]
         assert receipt["attempt_id"] == observed["attempt_id"]
         assert receipt["provider"] == observed["provider"]
+        assert os.path.exists(f"{td}/attempts/{observed['attempt_id'].replace('/', '_')}.json")
+
+        with pytest.raises(TransitionError):
+            observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS",
+                    observed["provider_observation"])
 
         result = evaluate(td, effect["effect_id"], receipt["receipt_id"],
                           "evaluator-test", "1", "rubric-1", "PASS",
@@ -80,7 +92,6 @@ def test_evaluation_rejects_tampered_receipt_digest():
     with tempfile.TemporaryDirectory() as td:
         effect, _observed, receipt = execute_observed(td)
         path = f"{td}/receipts/{receipt['receipt_id']}.json"
-        import json
         with open(path, "r", encoding="utf-8") as fh:
             rec = json.load(fh)
         rec["attempt_id"] = "forged-attempt"
@@ -88,6 +99,42 @@ def test_evaluation_rejects_tampered_receipt_digest():
             json.dump(rec, fh)
         with pytest.raises(TransitionError):
             evaluate(td, effect["effect_id"], receipt["receipt_id"], "evaluator-test", "1", "rubric-1", "PASS")
+
+
+def test_old_attempt_receipt_remains_evaluable_after_retry():
+    with tempfile.TemporaryDirectory() as td:
+        effect, observed1, receipt1 = execute_observed(td)
+        unknown(td, effect["effect_id"], "bc-controller", "provider timeout")
+        attempt2 = f"{effect['effect_id']}:attempt:2"
+        retry_dispatch(td, effect["effect_id"], "bc-controller", attempt2, "provider-b", 2)
+        observed2 = observe(td, effect["effect_id"], "bc-controller", "OBSERVED_FAILURE",
+                            {"attempt_id": attempt2, "provider": "provider-b",
+                             "evidence": evidence("EV-eval-2", "run-eval-2", "provider-b")})
+        assert observed2["attempt"] == 2
+        assert receipt1["attempt_id"] == observed1["attempt_id"]
+        result1 = evaluate(td, effect["effect_id"], receipt1["receipt_id"],
+                           "evaluator-test", "1", "rubric-1", "PASS")
+        assert result1["attempt_id"] == observed1["attempt_id"]
+
+        with open(f"{td}/receipts/{observed2['receipt_id']}.json", "r", encoding="utf-8") as fh:
+            receipt2 = json.load(fh)
+        result2 = evaluate(td, effect["effect_id"], receipt2["receipt_id"],
+                           "evaluator-test", "1", "rubric-1", "FAIL")
+        assert result2["attempt_id"] == attempt2
+
+
+def test_observation_rejects_cross_attempt_evidence():
+    with tempfile.TemporaryDirectory() as td:
+        effect = make_authorized(td)
+        attempt1 = f"{effect['effect_id']}:attempt:1"
+        dispatch(td, effect["effect_id"], "bc-controller", attempt1, "provider-a")
+        unknown(td, effect["effect_id"], "bc-controller", "timeout")
+        attempt2 = f"{effect['effect_id']}:attempt:2"
+        retry_dispatch(td, effect["effect_id"], "bc-controller", attempt2, "provider-b", 2)
+        with pytest.raises(TransitionError):
+            observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS",
+                    {"attempt_id": attempt2, "provider": "provider-b",
+                     "evidence": evidence("EV-wrong", "run-1", "provider-a")})
 
 
 def test_evaluation_is_derived_and_carries_no_execution_authority():
