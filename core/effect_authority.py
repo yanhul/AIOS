@@ -123,6 +123,24 @@ def transition(aios_dir, effect_id, target, actor, **fields):
         raise TransitionError("effect transition actor does not match effect owner")
     if current.get("state") not in _ALLOWED or target not in _ALLOWED[current["state"]]:
         raise TransitionError(f"undefined external-effect transition: {current.get('state')} -> {target}")
+
+    if target == "DISPATCHED":
+        required = ("attempt", "attempt_id", "provider", "target_sha", "evidence_ref",
+                    "lineage_ref", "idempotency_key", "attempt_fence")
+        if any(field not in fields for field in required):
+            raise TransitionError("DISPATCHED transition requires complete Gateway bindings")
+        if current.get("state") != "PLANNED":
+            raise TransitionError("direct DISPATCHED transition is only valid for initial dispatch")
+        if fields["attempt"] != 1:
+            raise TransitionError("initial DISPATCHED transition requires attempt 1")
+        if fields["attempt_id"] != _attempt_id(effect_id, 1):
+            raise TransitionError("attempt_id does not match initial effect attempt")
+        _validate_strings(("attempt_id", fields["attempt_id"]), ("provider", fields["provider"]),
+                          ("target_sha", fields["target_sha"]), ("evidence_ref", fields["evidence_ref"]),
+                          ("lineage_ref", fields["lineage_ref"]), ("idempotency_key", fields["idempotency_key"]))
+        if not isinstance(fields["attempt_fence"], int) or isinstance(fields["attempt_fence"], bool) or fields["attempt_fence"] < 0:
+            raise ValueError("attempt_fence must be a non-negative integer")
+
     updated = dict(current)
     updated.update(fields)
     updated["state"] = target
