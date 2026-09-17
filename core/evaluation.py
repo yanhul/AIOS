@@ -1,9 +1,8 @@
 """Executable evaluation-plane boundary.
 
 Evaluation consumes immutable execution evidence; it never creates authority.
-Receipts are created at observation time and bind one effect to one attempt and
-one evidence record. Evaluation must resolve that exact lineage before it can
-be persisted.
+Execution receipts are materialized by the authoritative observation
+transition, not by a caller-owned post-observation helper.
 """
 from __future__ import annotations
 
@@ -21,12 +20,16 @@ def _digest(value: Mapping[str, Any]) -> str:
     return hashlib.sha256(canonical_json(dict(value)).encode("utf-8")).hexdigest()
 
 
-def _receipt_path(aios_dir: str, receipt_id: str) -> str:
+def receipt_path(aios_dir: str, receipt_id: str) -> str:
     return os.path.join(aios_dir, "receipts", receipt_id + ".json")
 
 
-def _evaluation_path(aios_dir: str, evaluation_id: str) -> str:
+def evaluation_path(aios_dir: str, evaluation_id: str) -> str:
     return os.path.join(aios_dir, "evaluations", evaluation_id + ".json")
+
+
+def attempt_path(aios_dir: str, attempt_id: str) -> str:
+    return os.path.join(aios_dir, "attempts", attempt_id.replace("/", "_") + ".json")
 
 
 @dataclass(frozen=True)
@@ -55,14 +58,21 @@ class EvaluationReceipt:
         return body
 
 
-def make_receipt(aios_dir: str, effect: Mapping[str, Any], observation: Mapping[str, Any]) -> dict[str, Any]:
-    """Create the authoritative receipt for one observed execution attempt."""
+def build_receipt_record(effect: Mapping[str, Any], provider_observation: Mapping[str, Any]) -> dict[str, Any]:
+    """Build a receipt record without performing storage mutation.
+
+    Only the authoritative observation transition may persist this record.
+    """
     effect_id = effect.get("effect_id")
     attempt_id = effect.get("attempt_id")
     provider = effect.get("provider")
-    evidence = observation.get("evidence")
+    observed_attempt = provider_observation.get("attempt_id")
+    observed_provider = provider_observation.get("provider")
+    evidence = provider_observation.get("evidence")
     if not all(isinstance(v, str) and v.strip() for v in (effect_id, attempt_id, provider)):
         raise TransitionError("cannot receipt an effect without exact attempt/provider binding")
+    if observed_attempt != attempt_id or observed_provider != provider:
+        raise TransitionError("receipt observation does not match authoritative attempt/provider")
     if not isinstance(evidence, Mapping) or not verify_evidence(evidence):
         raise ValueError("receipt requires valid evidence")
     if evidence.get("provider") != provider:
@@ -70,20 +80,7 @@ def make_receipt(aios_dir: str, effect: Mapping[str, Any], observation: Mapping[
     seed = {"effect_id": effect_id, "attempt_id": attempt_id,
             "provider": provider, "evidence_digest": evidence["digest"]}
     receipt_id = "RC-" + _digest(seed)
-    rec = EvaluationReceipt(receipt_id, effect_id, attempt_id, provider, evidence).as_record()
-    recover_pending(aios_dir)
-    path = _receipt_path(aios_dir, receipt_id)
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as fh:
-            existing = json.load(fh)
-        if canonical_json(existing) == canonical_json(rec):
-            return existing
-        raise TransitionError("receipt identity collision")
-    event = {"kind": "execution_receipt", "action": "create", "receipt_id": receipt_id,
-             "effect_id": effect_id, "attempt_id": attempt_id, "provider": provider}
-    commit_batch(aios_dir, [(os.path.join("receipts", receipt_id + ".json"), rec),
-                            (os.path.join("events", "receipt-" + receipt_id + ".json"), event)])
-    return rec
+    return EvaluationReceipt(receipt_id, effect_id, attempt_id, provider, evidence).as_record()
 
 
 def _load(path: str) -> dict[str, Any]:
@@ -100,11 +97,21 @@ def _verify_receipt(rec: Mapping[str, Any]) -> None:
     EvaluationReceipt(rec["receipt_id"], rec["effect_id"], rec["attempt_id"], rec["provider"], rec["evidence"])
 
 
+def _verify_attempt(rec: Mapping[str, Any], attempt_id: str) -> None:
+    required = ("record_type", "attempt_id", "effect_id", "attempt", "actor", "provider", "digest")
+    if any(key not in rec for key in required) or rec.get("record_type") != "EXECUTION_ATTEMPT":
+        raise TransitionError("invalid execution attempt schema")
+    if rec["attempt_id"] != attempt_id:
+        raise TransitionError("attempt identity mismatch")
+    if rec["digest"] != _digest({k: rec[k] for k in rec if k != "digest"}):
+        raise TransitionError("execution attempt digest mismatch")
+
+
 def evaluate(aios_dir: str, effect_id: str, receipt_id: str, evaluator: str,
              evaluator_version: str, rubric_version: str, verdict: str,
              test_results: list[Mapping[str, Any]] | None = None,
              rubric_results: list[Mapping[str, Any]] | None = None) -> dict[str, Any]:
-    """Persist a derived evaluation only after exact execution lineage resolves."""
+    """Persist derived evaluation only after exact immutable lineage resolves."""
     for name, value in (("effect_id", effect_id), ("receipt_id", receipt_id),
                         ("evaluator", evaluator), ("evaluator_version", evaluator_version),
                         ("rubric_version", rubric_version), ("verdict", verdict)):
@@ -114,21 +121,30 @@ def evaluate(aios_dir: str, effect_id: str, receipt_id: str, evaluator: str,
         raise ValueError("invalid evaluation verdict")
     recover_pending(aios_dir)
     effect_path = os.path.join(aios_dir, "effects", effect_id + ".json")
-    receipt_path = _receipt_path(aios_dir, receipt_id)
-    if not os.path.exists(effect_path) or not os.path.exists(receipt_path):
+    receipt_file = receipt_path(aios_dir, receipt_id)
+    if not os.path.exists(effect_path) or not os.path.exists(receipt_file):
         raise TransitionError("evaluation requires resolvable effect and execution receipt")
     effect = _load(effect_path)
-    receipt = _load(receipt_path)
+    receipt = _load(receipt_file)
     _verify_receipt(receipt)
     if receipt["effect_id"] != effect_id:
         raise TransitionError("receipt effect binding mismatch")
-    if receipt["attempt_id"] != effect.get("attempt_id"):
-        raise TransitionError("receipt attempt does not match current effect attempt")
-    if receipt["provider"] != effect.get("provider"):
+
+    attempt_file = attempt_path(aios_dir, receipt["attempt_id"])
+    if not os.path.exists(attempt_file):
+        raise TransitionError("evaluation requires immutable attempt record")
+    attempt = _load(attempt_file)
+    _verify_attempt(attempt, receipt["attempt_id"])
+    if attempt["effect_id"] != effect_id:
+        raise TransitionError("attempt effect binding mismatch")
+    if receipt["provider"] != attempt["provider"]:
         raise TransitionError("receipt provider binding mismatch")
+    if receipt["attempt_id"] != attempt["attempt_id"]:
+        raise TransitionError("receipt attempt binding mismatch")
     evidence = receipt["evidence"]
     if not verify_evidence(evidence):
         raise TransitionError("evaluation evidence is invalid")
+
     evaluation_body = {
         "record_type": "EVALUATION", "effect_id": effect_id,
         "attempt_id": receipt["attempt_id"], "receipt_id": receipt_id,
@@ -140,7 +156,7 @@ def evaluate(aios_dir: str, effect_id: str, receipt_id: str, evaluator: str,
     evaluation_id = "EVL-" + _digest(evaluation_body)
     rec = dict(evaluation_body, evaluation_id=evaluation_id)
     rec["digest"] = _digest(rec)
-    path = _evaluation_path(aios_dir, evaluation_id)
+    path = evaluation_path(aios_dir, evaluation_id)
     if os.path.exists(path):
         existing = _load(path)
         if canonical_json(existing) == canonical_json(rec):
@@ -154,4 +170,4 @@ def evaluate(aios_dir: str, effect_id: str, receipt_id: str, evaluator: str,
     return rec
 
 
-__all__ = ["EvaluationReceipt", "make_receipt", "evaluate"]
+__all__ = ["EvaluationReceipt", "build_receipt_record", "evaluate", "receipt_path", "attempt_path"]
