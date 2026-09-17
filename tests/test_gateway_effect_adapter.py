@@ -112,7 +112,7 @@ def test_forged_authority_ref_and_effect_binding_are_rejected(tmp_path):
     with pytest.raises(ValueError, match="persisted effect permit"):
         _build(tmp_path, contract, permit, attestation, effect, authority_ref="PT-forged")
     forged = dict(effect, effect_id="effect-forged")
-    with pytest.raises(ValueError, match="effect_id"):
+    with pytest.raises(ValueError, match="authoritative persisted effect"):
         _build(tmp_path, contract, permit, attestation, forged)
 
 
@@ -120,5 +120,5 @@ def test_missing_or_undeclared_capability_and_effect_remain_fail_closed(tmp_path
     contract, permit, attestation, effect = _authority(tmp_path)
     with pytest.raises(ValueError, match="not granted"):
         _build(tmp_path, contract, permit, attestation, effect, capability_ref="try.research@2")
-    with pytest.raises(ValueError, match="not allowed"):
+    with pytest.raises(ValueError, match="(not allowed|does not match persisted effect)"):
         _build(tmp_path, contract, permit, attestation, effect, action="push_to_github")
