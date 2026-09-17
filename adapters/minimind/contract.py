@@ -10,6 +10,7 @@ _REQUIRED_ARTIFACTS = {"workload_revision", "dataset_digest", "tokenizer_digest"
 _REQUIRED_EVIDENCE = {"training_receipt", "evaluation_receipt", "provenance"}
 _TERMINAL_STATES = {"PROMOTE", "REJECT", "INCONCLUSIVE", "BLOCKED"}
 _BINDINGS = ("workload_revision", "dataset_digest", "tokenizer_digest", "model_digest", "environment_digest")
+_GATEWAY_BINDINGS = {"target_sha", "evidence_ref", "lineage_ref", "idempotency_key", "attempt_fence"}
 
 def _nonempty(value, name):
     if not isinstance(value, str) or not value.strip(): raise ValueError(f"{name} must be a non-empty string")
@@ -21,12 +22,17 @@ def _require_artifact_bindings(evidence, artifacts, name):
             raise ValueError(f"evidence.{name}.{field} does not match declared artifact lineage")
 
 def validate_receipt(receipt: dict) -> dict:
-    """Fail closed unless lineage and every material evidence record are bound."""
+    """Fail closed unless workload lineage and Gateway bindings are present."""
     if not isinstance(receipt, dict): raise ValueError("receipt must be a dict")
-    if set(receipt) != {"capability", "task_id", "terminal_state", "artifacts", "evidence"}: raise ValueError("MiniMind receipt schema mismatch")
+    required = {"capability", "task_id", "terminal_state", "artifacts", "evidence"} | _GATEWAY_BINDINGS
+    if set(receipt) != required: raise ValueError("MiniMind receipt schema mismatch")
     if receipt["capability"] != MINIMIND_CAPABILITY: raise ValueError("MiniMind capability mismatch")
     _nonempty(receipt["task_id"], "task_id")
     if receipt["terminal_state"] not in _TERMINAL_STATES: raise ValueError("invalid terminal_state")
+    for field in ("target_sha", "evidence_ref", "lineage_ref", "idempotency_key"):
+        _nonempty(receipt[field], field)
+    if not isinstance(receipt["attempt_fence"], int) or isinstance(receipt["attempt_fence"], bool) or receipt["attempt_fence"] < 0:
+        raise ValueError("attempt_fence must be a non-negative integer")
     artifacts = receipt["artifacts"]
     if not isinstance(artifacts, dict) or set(artifacts) != _REQUIRED_ARTIFACTS: raise ValueError("complete artifact lineage is required")
     for name, value in artifacts.items(): _nonempty(value, f"artifacts.{name}")
