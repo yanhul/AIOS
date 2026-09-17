@@ -106,3 +106,11 @@ def test_tampered_evidence_digest_is_rejected(tmp_path):
             "provider": "provider-1",
             "evidence": evidence,
         })
+
+
+def test_late_receipt_can_reconcile_unknown_attempt(tmp_path):
+    effect = _authorized(tmp_path)
+    _dispatch(tmp_path, effect)
+    unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
+    done = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_FAILURE", _observation(effect["effect_id"]))
+    assert done["state"] == "OBSERVED_FAILURE"
