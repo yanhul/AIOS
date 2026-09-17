@@ -3,7 +3,7 @@ import pytest
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
-from core.effect_authority import create_effect, dispatch, observe, transition, unknown
+from core.effect_authority import create_effect, dispatch, observe, retry_dispatch, transition, unknown
 from core.evidence import EvidenceRecord
 from core.mutation import TransitionError
 from core.policy_registry import persist_policy
@@ -88,6 +88,35 @@ def test_unknown_cannot_return_to_dispatch(tmp_path):
         dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:2", "provider-1", **BINDING)
 
 
+def test_retry_is_blocked_after_capability_revocation(tmp_path):
+    effect = _authorized(tmp_path)
+    _dispatch(tmp_path, effect)
+    unknown(str(tmp_path), effect["effect_id"], "agent-1", "timeout")
+    registry = CapabilityRegistry()
+    registry.register(Capability("research_is_validation", "1", "test-fixture", "research", status="DEPRECATED"))
+    registry.persist(str(tmp_path), "revoker")
+    with pytest.raises(TransitionError, match="capability authority rejected"):
+        retry_dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:2", "provider-1", 2,
+                       target_sha="sha256:worker-v2", attempt_fence=2)
+
+
+def test_retry_is_blocked_after_policy_tamper(tmp_path):
+    effect = _authorized(tmp_path)
+    _dispatch(tmp_path, effect)
+    unknown(str(tmp_path), effect["effect_id"], "agent-1", "timeout")
+    import json
+    import os
+    effect_path = tmp_path / "effects" / f"{effect['effect_id']}.json"
+    current = json.loads(effect_path.read_text())
+    policy_path = tmp_path / "policies" / f"{current['policy_digest']}.json"
+    policy = json.loads(policy_path.read_text())
+    policy["name"] = "tampered-policy"
+    policy_path.write_text(json.dumps(policy))
+    with pytest.raises(TransitionError, match="policy authority rejected"):
+        retry_dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:2", "provider-1", 2,
+                       target_sha="sha256:worker-v2", attempt_fence=2)
+
+
 def test_direct_transition_to_dispatched_requires_all_gateway_bindings(tmp_path):
     effect = _authorized(tmp_path)
     fields = _direct_dispatched_fields(effect)
@@ -112,7 +141,6 @@ def test_terminal_state_requires_verified_attempt_bound_evidence(tmp_path):
     _dispatch(tmp_path, effect)
     with pytest.raises(ValueError):
         observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", {})
-
     with pytest.raises(TransitionError):
         observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", {
             **_observation(effect["effect_id"]), "attempt_id": "forged-attempt"
@@ -129,13 +157,7 @@ def test_observation_provider_must_match_effect(tmp_path):
 def test_direct_observe_rejects_gateway_binding_mismatch(tmp_path):
     effect = _authorized(tmp_path)
     _dispatch(tmp_path, effect)
-    for field, value in {
-        "target_sha": "wrong-sha",
-        "evidence_ref": "EV-wrong",
-        "lineage_ref": "LIN-wrong",
-        "idempotency_key": "idem-wrong",
-        "attempt_fence": 2,
-    }.items():
+    for field, value in {"target_sha": "wrong-sha", "evidence_ref": "EV-wrong", "lineage_ref": "LIN-wrong", "idempotency_key": "idem-wrong", "attempt_fence": 2}.items():
         with pytest.raises(ValueError, match=f"{field} binding mismatch"):
             observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", _observation(effect["effect_id"], **{field: value}))
 
@@ -154,9 +176,7 @@ def test_tampered_evidence_digest_is_rejected(tmp_path):
     evidence = _evidence()
     evidence["claim"] = "tampered"
     with pytest.raises(ValueError):
-        observe(tmp_path, effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", {
-            **_observation(effect["effect_id"]), "evidence": evidence,
-        })
+        observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", {**_observation(effect["effect_id"]), "evidence": evidence})
 
 
 def test_late_receipt_can_reconcile_unknown_attempt(tmp_path):
