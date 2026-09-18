@@ -17,34 +17,57 @@ class EvidenceRecord:
     provider: str
     artifact_ref: str | None = None
     parent_evidence_id: str | None = None
+    receipt_id: str | None = None
+    effect_id: str | None = None
+    attempt_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.level not in LEVELS:
             raise ValueError("invalid evidence level")
-        if not all(isinstance(v, str) and v.strip() for v in (self.evidence_id, self.source_ref, self.claim, self.run_id, self.provider)):
+        if not all(isinstance(v, str) and v.strip() for v in
+                   (self.evidence_id, self.source_ref, self.claim, self.run_id, self.provider)):
             raise ValueError("evidence identity/source/claim/run/provider are required")
+        for name, value in (("receipt_id", self.receipt_id), ("effect_id", self.effect_id),
+                            ("attempt_id", self.attempt_id)):
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ValueError(f"{name} must be a non-empty string when supplied")
 
     @property
     def digest(self) -> str:
-        data = {"evidence_id": self.evidence_id, "level": self.level, "source_ref": self.source_ref,
-                "claim": self.claim, "run_id": self.run_id, "provider": self.provider,
-                "artifact_ref": self.artifact_ref, "parent_evidence_id": self.parent_evidence_id}
+        data = {
+            "evidence_id": self.evidence_id, "level": self.level,
+            "source_ref": self.source_ref, "claim": self.claim,
+            "run_id": self.run_id, "provider": self.provider,
+            "artifact_ref": self.artifact_ref,
+            "parent_evidence_id": self.parent_evidence_id,
+            "receipt_id": self.receipt_id, "effect_id": self.effect_id,
+            "attempt_id": self.attempt_id,
+        }
         return sha256(json.dumps(data, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
     def as_record(self) -> dict[str, Any]:
-        return {"evidence_id": self.evidence_id, "level": self.level, "source_ref": self.source_ref,
-                "claim": self.claim, "run_id": self.run_id, "provider": self.provider,
-                "artifact_ref": self.artifact_ref, "parent_evidence_id": self.parent_evidence_id,
-                "digest": self.digest}
+        return {
+            "evidence_id": self.evidence_id, "level": self.level,
+            "source_ref": self.source_ref, "claim": self.claim,
+            "run_id": self.run_id, "provider": self.provider,
+            "artifact_ref": self.artifact_ref,
+            "parent_evidence_id": self.parent_evidence_id,
+            "receipt_id": self.receipt_id, "effect_id": self.effect_id,
+            "attempt_id": self.attempt_id, "digest": self.digest,
+        }
 
 
 def verify_evidence(record: Mapping[str, Any]) -> bool:
     try:
-        obj = EvidenceRecord(str(record["evidence_id"]), str(record["level"]), str(record["source_ref"]),
-                             str(record["claim"]), str(record["run_id"]), str(record["provider"]),
-                             record.get("artifact_ref"), record.get("parent_evidence_id"))
+        obj = EvidenceRecord(
+            str(record["evidence_id"]), str(record["level"]), str(record["source_ref"]),
+            str(record["claim"]), str(record["run_id"]), str(record["provider"]),
+            record.get("artifact_ref"), record.get("parent_evidence_id"),
+            record.get("receipt_id"), record.get("effect_id"), record.get("attempt_id"),
+        )
     except (KeyError, TypeError, ValueError):
         return False
     return obj.digest == record.get("digest")
+
 
 __all__ = ["LEVELS", "EvidenceRecord", "verify_evidence"]
