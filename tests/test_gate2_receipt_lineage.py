@@ -195,7 +195,7 @@ def test_evaluation_rejects_wrong_receipt_or_stale_attempt(tmp_path):
     unknown(str(tmp_path / "second"), effect2["effect_id"], "agent-1", "timeout")
     retry_dispatch(str(tmp_path / "second"), effect2["effect_id"], "agent-1",
                    f"{effect2['effect_id']}:attempt:2", "provider-1", 2)
-    with pytest.raises(TransitionError, match="attempt"):
+    with pytest.raises(TransitionError, match="accepted terminal observation"):
         evaluate(str(tmp_path / "second"), effect2["effect_id"], effect2["attempt_id"],
                  rec2["receipt_id"], ev2, "grader", "1.0", "rubric-1", "PASS")
 
