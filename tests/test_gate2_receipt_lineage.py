@@ -208,3 +208,17 @@ def test_evaluation_is_derived_and_does_not_create_authority(tmp_path):
     after = json.loads((tmp_path / "effects" / (effect["effect_id"] + ".json")).read_text())
     assert after == before
     assert after["state"] == "OBSERVED_SUCCESS"
+
+
+def test_evaluation_tamper_is_detected_on_reload(tmp_path):
+    effect, rec, ev = accepted_observation(tmp_path)
+    evaluation = evaluate(
+        str(tmp_path), effect["effect_id"], effect["attempt_id"], rec["receipt_id"],
+        ev, "grader", "1.0", "rubric-1", "PASS",
+    )
+    path = tmp_path / "evaluations" / (evaluation["evaluation_id"] + ".json")
+    raw = json.loads(path.read_text())
+    raw["verdict"] = "BLOCKED"
+    path.write_text(json.dumps(raw))
+    with pytest.raises(TransitionError, match="identity mismatch"):
+        load_evaluation(str(tmp_path), evaluation["evaluation_id"])
