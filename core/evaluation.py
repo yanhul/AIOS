@@ -199,6 +199,7 @@ def load_evaluation(aios_dir: str, evaluation_id: str) -> dict[str, Any]:
         raise TransitionError("persisted evaluation verdict is invalid")
     logical = dict(rec)
     logical.pop("evaluation_id", None)
+    logical.pop("record_type", None)
     logical.pop("identity", None)
     logical.pop("timestamp_utc", None)
     expected_identity = sha256(canonical_json(logical).encode("utf-8")).hexdigest()
