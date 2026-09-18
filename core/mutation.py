@@ -21,8 +21,8 @@ Enforcement provided by this module (and nothing more):
   at the start of every mutation.
 
 Not provided by this module (explicitly out of scope for M1.5): agents,
-policy, gates, verification, contradiction resolution, concurrency control
-beyond single-process atomic commit, OS-level protection of the RX50 tree.
+policy, gates, verification, contradiction resolution. Concurrency control
+is provided at the shared mutation boundary by a cross-process mutation lock.
 
 Stdlib only. Never writes outside ``<aios_dir>``.
 """
@@ -393,8 +393,8 @@ def _require_committed_event(aios_dir, entity):
         f"M1.5")
 
 
-def commit_batch(aios_dir, payloads):
-    """Single shared atomic commit engine: stage -> journal -> rename.
+def _commit_batch_unlocked(aios_dir, payloads):
+    """Atomic commit kernel; caller MUST already own the mutation lock.
 
     Internal-stable API. The only authorized front-doors are
     ``apply_mutations`` (imported entities + events) and
@@ -405,39 +405,44 @@ def commit_batch(aios_dir, payloads):
     payloads: list of (relative_dest_under_aios_dir, json_object).
     Returns the list of committed absolute dest paths.
     """
+    state_layout.ensure_state_dirs(aios_dir)
+    staging_root = os.path.join(aios_dir, ".staging")
+    batch_id = uuid.uuid4().hex
+    batch_dir = os.path.join(staging_root, f"batch-{batch_id}")
+    os.makedirs(batch_dir, exist_ok=True)
+
+    ops = []
+    for rel_dest, obj in payloads:
+        payload = (canonical_json(obj) + "\n").encode("utf-8")
+        tmp = os.path.join(batch_dir, f"{uuid.uuid4().hex}.tmp")
+        _write_staged(tmp, payload)
+        ops.append({
+            "tmp": tmp,
+            "dest": os.path.join(aios_dir, rel_dest),
+            "digest": _digest_bytes(payload),
+        })
+
+    # Write-ahead journal marks the point after which an interruption is
+    # recoverable; before it, leftovers are invisible temps swept on next run.
+    journal_path = os.path.join(batch_dir, _JOURNAL_NAME)
+    _write_staged(journal_path, canonical_json({"batch_id": batch_id, "ops": ops}).encode("utf-8"))
+    _fsync_dir(batch_dir)
+
+    for op in ops:
+        os.makedirs(os.path.dirname(op["dest"]), exist_ok=True)
+        _replace(op["tmp"], op["dest"])
+        _fsync_dir(os.path.dirname(op["dest"]))
+
+    os.unlink(journal_path)
+    shutil.rmtree(batch_dir, ignore_errors=True)
+    return [op["dest"] for op in ops]
+
+
+
+def commit_batch(aios_dir, payloads):
+    """Shared atomic commit front-door; serializes the commit kernel."""
     with _MutationLock(aios_dir):
-        state_layout.ensure_state_dirs(aios_dir)
-        staging_root = os.path.join(aios_dir, ".staging")
-        batch_id = uuid.uuid4().hex
-        batch_dir = os.path.join(staging_root, f"batch-{batch_id}")
-        os.makedirs(batch_dir, exist_ok=True)
-
-        ops = []
-        for rel_dest, obj in payloads:
-            payload = (canonical_json(obj) + "\n").encode("utf-8")
-            tmp = os.path.join(batch_dir, f"{uuid.uuid4().hex}.tmp")
-            _write_staged(tmp, payload)
-            ops.append({
-                "tmp": tmp,
-                "dest": os.path.join(aios_dir, rel_dest),
-                "digest": _digest_bytes(payload),
-            })
-
-        # Write-ahead journal marks the point after which an interruption is
-        # recoverable; before it, leftovers are invisible temps swept on next run.
-        journal_path = os.path.join(batch_dir, _JOURNAL_NAME)
-        _write_staged(journal_path, canonical_json({"batch_id": batch_id, "ops": ops}).encode("utf-8"))
-        _fsync_dir(batch_dir)
-
-        for op in ops:
-            os.makedirs(os.path.dirname(op["dest"]), exist_ok=True)
-            _replace(op["tmp"], op["dest"])
-            _fsync_dir(os.path.dirname(op["dest"]))
-
-        os.unlink(journal_path)
-        shutil.rmtree(batch_dir, ignore_errors=True)
-        return [op["dest"] for op in ops]
-
+        return _commit_batch_unlocked(aios_dir, payloads)
 
 def apply_mutations(aios_dir, entities, actor, notice_factory=None):
     """Apply a validated batch of entity mutations atomically.
@@ -453,8 +458,15 @@ def apply_mutations(aios_dir, entities, actor, notice_factory=None):
              "event_files": [...], "notice_file": str|None}.
     """
     _require_actor(actor)
-    recover_pending(aios_dir)
 
+    # One serialization domain covers recovery, validation, state inspection,
+    # staging, journaling, and commit. This prevents TOCTOU same-entity races.
+    with _MutationLock(aios_dir):
+        _recover_pending_unlocked(aios_dir)
+        return _apply_mutations_unlocked(aios_dir, entities, actor, notice_factory)
+
+
+def _apply_mutations_unlocked(aios_dir, entities, actor, notice_factory=None):
     # ---- Phase 1: validate everything before touching disk -----------------
     seen = set()
     for pos, ent in enumerate(entities):
@@ -524,7 +536,7 @@ def apply_mutations(aios_dir, entities, actor, notice_factory=None):
         payloads.append((rel, {**notice_event, "timestamp_utc": _utc_iso(),
                                "event_id": event_identity(notice_event)}))
 
-    commit_batch(aios_dir, payloads)
+    _commit_batch_unlocked(aios_dir, payloads)
 
     return {
         "applied": [[t, i] for t, i in ((e["entity_type"], e["entity_id"]) for e in applied)],
