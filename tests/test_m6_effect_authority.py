@@ -1,8 +1,28 @@
 import pytest
 
+from core.authority import persist_contract, persist_permit
+from core.capabilities import Capability, CapabilityRegistry
+from core.contract import contract_identity
+from core.policy_registry import persist_policy
 from core.effect_authority import create_effect, dispatch, observe, unknown
 from core.evidence import EvidenceRecord
 from core.mutation import TransitionError
+
+
+def _setup(tmp_path):
+    registry = CapabilityRegistry()
+    registry.register(Capability("provider-1", "1", "test-fixture", "test", status="ACTIVE"))
+    registry.persist(str(tmp_path), "test-fixture")
+    policy = persist_policy(str(tmp_path), {"policy_type": "GOVERNING_POLICY", "name": "effect-authority-fixture"})
+    contract = {
+        "contract_type": "EXECUTION_CONTRACT", "task_id": "task-effect", "scope": "test",
+        "actor": "agent-1", "capabilities": ["provider-1@1"], "input_digest": "input",
+        "allowed_effects": ["external_effect"], "evidence_required": ["provider_receipt"],
+        "max_attempts": 2, "terminal_states": ["SUCCESS", "FAILURE"], "policy_digest": policy,
+    }
+    persist_contract(str(tmp_path), contract)
+    permit = persist_permit(str(tmp_path), contract, "root")
+    return create_effect(str(tmp_path), contract_identity(contract), "op-1", "agent-1", permit["permit_id"], "external_effect")
 
 
 def _evidence(provider="provider-1"):
@@ -25,7 +45,7 @@ def _observation(effect_id, provider="provider-1"):
 
 
 def test_effect_transition_is_atomic_and_audited(tmp_path):
-    effect = create_effect(str(tmp_path), "CT-1", "op-1", "agent-1")
+    effect = _setup(tmp_path)
     assert effect["state"] == "PLANNED"
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1")
     unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
@@ -35,7 +55,7 @@ def test_effect_transition_is_atomic_and_audited(tmp_path):
 
 
 def test_unknown_cannot_return_to_dispatch(tmp_path):
-    effect = create_effect(str(tmp_path), "CT-1", "op-1", "agent-1")
+    effect = _setup(tmp_path)
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1")
     unknown(str(tmp_path), effect["effect_id"], "agent-1", "timeout")
     with pytest.raises(TransitionError):
@@ -43,7 +63,7 @@ def test_unknown_cannot_return_to_dispatch(tmp_path):
 
 
 def test_terminal_state_requires_verified_attempt_bound_evidence(tmp_path):
-    effect = create_effect(str(tmp_path), "CT-1", "op-1", "agent-1")
+    effect = _setup(tmp_path)
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1")
     with pytest.raises(ValueError):
         observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", {})
@@ -55,14 +75,14 @@ def test_terminal_state_requires_verified_attempt_bound_evidence(tmp_path):
 
 
 def test_observation_provider_must_match_effect(tmp_path):
-    effect = create_effect(str(tmp_path), "CT-1", "op-1", "agent-1")
+    effect = _setup(tmp_path)
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1")
     with pytest.raises(TransitionError):
         observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", _observation(effect["effect_id"], "provider-2"))
 
 
 def test_tampered_evidence_digest_is_rejected(tmp_path):
-    effect = create_effect(str(tmp_path), "CT-1", "op-1", "agent-1")
+    effect = _setup(tmp_path)
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1")
     evidence = _evidence()
     evidence["claim"] = "tampered"
