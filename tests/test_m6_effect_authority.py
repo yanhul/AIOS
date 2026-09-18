@@ -33,7 +33,7 @@ def test_effect_transition_is_atomic_and_audited(tmp_path):
     retried = retry_dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect["effect_id"]}:attempt:2", "provider-1", 2)
     done = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", {**_observation(effect["effect_id"]), "attempt_id": retried["attempt_id"]})
     assert done["state"] == "OBSERVED_SUCCESS"
-    assert any(name.startswith("effect-" + effect["effect_id"] + "-OBSERVED_SUCCESS-") for name in (tmp_path / "events").iterdir())
+    assert any(name.name.startswith("effect-" + effect["effect_id"] + "-OBSERVED_SUCCESS-") for name in (tmp_path / "events").iterdir())
 
 
 def test_unknown_cannot_return_to_dispatch(tmp_path):
