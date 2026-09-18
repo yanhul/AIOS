@@ -12,6 +12,8 @@ import json
 import os
 from typing import Any, Mapping
 
+from .authority import authorize, load_contract, load_permit
+from .contract import verify_permit
 from .mutation import TransitionError, canonical_json, commit_batch, recover_pending
 
 
@@ -92,25 +94,62 @@ def _validate(record: Mapping[str, Any]) -> bool:
 def persist_receipt(aios_dir: str, effect: Mapping[str, Any], attempt_id: str,
                     provider: str, provider_operation_id: str, outcome: str,
                     observation: dict[str, Any]) -> dict[str, Any]:
-    """Persist exactly one validated receipt for the current effect attempt."""
-    effect_id = effect.get("effect_id")
+    """Persist a receipt only for the authoritative durable current attempt.
+
+    The caller-supplied effect is treated as a hint for identity only. The
+    durable effect record is reloaded and its authorization/attempt/provider
+    binding is verified before a receipt can be created.
+    """
+    effect_id = effect.get("effect_id") if isinstance(effect, Mapping) else None
     if not all(isinstance(v, str) and v.strip() for v in
                (effect_id, attempt_id, provider, provider_operation_id)):
         raise ValueError("receipt identity fields are required")
-    if attempt_id != effect.get("attempt_id"):
-        raise TransitionError("receipt attempt does not match effect attempt")
-    if provider != effect.get("provider"):
-        raise TransitionError("receipt provider does not match effect provider")
     if outcome not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
         raise ValueError("receipt outcome must be an observed terminal outcome")
     if not isinstance(observation, dict) or not observation:
         raise ValueError("receipt observation must be a non-empty dict")
 
+    recover_pending(aios_dir)
+    effect_path = os.path.join(aios_dir, "effects", effect_id + ".json")
+    if not os.path.exists(effect_path):
+        raise KeyError(f"unknown effect: {effect_id}")
+    with open(effect_path, "r", encoding="utf-8") as fh:
+        authoritative = json.load(fh)
+    if not isinstance(authoritative, dict):
+        raise TransitionError("persisted effect is invalid")
+    required = ("effect_id", "contract_id", "permit_id", "actor", "effect_type",
+                "policy_digest", "max_attempts", "state", "attempt",
+                "attempt_id", "provider")
+    if any(key not in authoritative for key in required):
+        raise TransitionError("persisted effect schema is incomplete")
+    if authoritative["effect_id"] != effect_id:
+        raise TransitionError("persisted effect identity mismatch")
+    authorize(aios_dir, authoritative["contract_id"], authoritative["permit_id"])
+    contract = load_contract(aios_dir, authoritative["contract_id"])
+    permit = load_permit(aios_dir, authoritative["permit_id"])
+    verify_permit(contract, permit)
+    if authoritative["actor"] != contract["actor"]:
+        raise TransitionError("persisted effect actor is not authorized by contract")
+    if authoritative["effect_type"] not in contract["allowed_effects"]:
+        raise TransitionError("persisted effect type is not authorized by contract")
+    if authoritative["policy_digest"] != contract["policy_digest"]:
+        raise TransitionError("effect policy digest differs from authorized contract")
+    if authoritative["max_attempts"] != contract["max_attempts"]:
+        raise TransitionError("effect attempt budget differs from authorized contract")
+    if authoritative["state"] not in ("DISPATCHED", "UNKNOWN"):
+        raise TransitionError("receipt requires a currently DISPATCHED or UNKNOWN effect")
+    if authoritative["attempt_id"] != attempt_id:
+        raise TransitionError("receipt attempt does not match authoritative effect attempt")
+    if authoritative["provider"] != provider:
+        raise TransitionError("receipt provider does not match authoritative effect provider")
+    if not any(isinstance(ref, str) and ref.split("@", 1)[0] == provider
+               for ref in contract.get("capabilities", [])):
+        raise TransitionError("provider capability is not authorized by contract")
+
     rec = ReceiptRecord(
         _receipt_id(effect_id, attempt_id, provider, provider_operation_id),
         effect_id, attempt_id, provider, provider_operation_id, outcome, observation,
     ).as_record()
-    recover_pending(aios_dir)
     path = os.path.join(aios_dir, "receipts", rec["receipt_id"] + ".json")
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as fh:
