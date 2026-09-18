@@ -145,8 +145,8 @@ def test_retry_dispatch_requires_unknown_and_increments_attempt(tmp_path):
 
 
 def test_generic_transition_cannot_turn_unknown_into_dispatched(tmp_path):
-    _, cid, _ = setup_authority(tmp_path, max_attempts=3)
-    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test")
+    _, cid, pid = setup_authority(tmp_path, max_attempts=3)
+    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
