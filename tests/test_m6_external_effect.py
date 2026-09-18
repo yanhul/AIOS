@@ -8,6 +8,7 @@ from core.contract import contract_identity
 from core.evidence import EvidenceRecord
 from core.external_effect import ExternalEffectError, create_effect, load_effects, record_dispatch, record_observation, record_unknown
 from core.policy_registry import persist_policy
+from core.receipt import persist_receipt
 
 class TestExternalEffect(unittest.TestCase):
     def setUp(self):
@@ -39,11 +40,20 @@ class TestExternalEffect(unittest.TestCase):
         attempt = f"{e['effect_id']}:attempt:1"
         return record_dispatch(self.aios, e["effect_id"], "agent:a", attempt, "provider:test")
 
-    def evidence(self):
+    def evidence(self, effect):
+        attempt_id = f"{effect['effect_id']}:attempt:1"
+        receipt = persist_receipt(
+            self.aios, {"effect_id": effect["effect_id"], "attempt_id": attempt_id,
+                         "provider": "provider:test"},
+            attempt_id, "provider:test", "provider-op-1",
+            "OBSERVED_SUCCESS", {"status": "ok"},
+        )
         return EvidenceRecord(
             evidence_id="EV-1", level="OBSERVED", source_ref="provider://receipt/1",
             claim="provider completed operation", run_id="run-1", provider="provider:test",
-        ).as_record()
+            artifact_ref="provider-op-1", receipt_id=receipt["receipt_id"],
+            effect_id=effect["effect_id"], attempt_id=attempt_id,
+        ).as_record(), receipt["receipt_id"]
 
     def test_requires_observation_for_success(self):
         e = self.effect()
@@ -58,7 +68,7 @@ class TestExternalEffect(unittest.TestCase):
         self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "UNKNOWN")
         record_observation(self.aios, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {
             "attempt_id": f"{e['effect_id']}:attempt:1", "provider":"provider:test",
-            "evidence":self.evidence()
+            "receipt_id": self.evidence(e)[1], "evidence":self.evidence(e)[0]
         })
         self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "OBSERVED_SUCCESS")
 
@@ -67,7 +77,7 @@ class TestExternalEffect(unittest.TestCase):
         self.dispatch(e)
         with self.assertRaises(ExternalEffectError):
             record_observation(self.aios, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {
-                "attempt_id":"different", "provider":"provider:test", "evidence":self.evidence()
+                "attempt_id":"different", "provider":"provider:test", "evidence":self.evidence(e)[0]
             })
 
     def test_illegal_transition_rejected(self):
