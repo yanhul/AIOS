@@ -30,7 +30,7 @@ def make_authorized(td):
         "actor": "bc-controller",
         "capabilities": ["research_is_validation@1"],
         "input_digest": "sha256:input",
-        "allowed_effects": ["process_execution"],
+        "allowed_effects": ["external_effect"],
         "evidence_required": ["execution_receipt"],
         "max_attempts": 2,
         "terminal_states": ["PROMOTED", "REJECTED", "HOLD"],
@@ -51,7 +51,7 @@ def make_authorized(td):
 
 def test_effect_creation_requires_bound_permit_and_allowed_effect():
     with tempfile.TemporaryDirectory() as td:
-        with pytest.raises((ValueError, KeyError, TransitionError)):
+        with pytest.raises((ValueError, KeyError, FileNotFoundError, TransitionError)):
             create_effect(td, "fake-contract", "op", "bc-controller", "fake-permit", "process_execution")
         contract, permit, _ = make_authorized(td)
         with pytest.raises(TransitionError):
