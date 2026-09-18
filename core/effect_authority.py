@@ -238,8 +238,8 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
     attempt_id = provider_observation.get("attempt_id")
     provider = provider_observation.get("provider")
     evidence = provider_observation.get("evidence")
-    if current.get("state") != "DISPATCHED":
-        raise TransitionError("observation requires a currently DISPATCHED attempt")
+    if current.get("state") not in ("DISPATCHED", "UNKNOWN"):
+        raise TransitionError("observation requires a currently DISPATCHED or UNKNOWN attempt")
     if attempt_id != current.get("attempt_id"):
         raise TransitionError("observation attempt does not match dispatched attempt")
     if provider != current.get("provider"):
