@@ -44,7 +44,7 @@ def make_authorized(td):
         "research-oos",
         "bc-controller",
         permit["permit_id"],
-        "process_execution",
+        "external_effect",
     )
     return contract, permit, effect
 
@@ -106,8 +106,6 @@ def test_retry_public_boundary_self_authorizes_provider_and_preserves_history():
             current = __import__("json").load(fh)
         assert current["state"] == "UNKNOWN"
         assert current["attempt"] == 1
-        # The initial DISPATCHED event remains intact; a retry event is only
-        # created after the canonical retry transition is authorized.
         initial_event = f"{td}/events/effect-{effect['effect_id']}-DISPATCHED.json"
         retry_event = f"{td}/events/effect-{effect['effect_id']}-DISPATCHED-attempt-2.json"
         assert __import__("os").path.exists(initial_event)
