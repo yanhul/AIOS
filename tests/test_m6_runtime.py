@@ -176,3 +176,17 @@ def test_execute_retry_attempt_rejects_over_max_before_dispatch(tmp_path):
         execute_retry_attempt(str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
                               f"{effect['effect_id']}:attempt:2", 2)
     assert effect["state"] == "UNKNOWN"
+
+
+def test_receipt_durability_failure_cannot_observe_success(tmp_path, monkeypatch):
+    _, cid, pid = setup_authority(tmp_path)
+
+    def fail_persist(*args, **kwargs):
+        raise OSError("injected receipt store failure")
+
+    monkeypatch.setattr("core.runtime.persist_receipt", fail_persist)
+    result = execute(str(tmp_path), cid, pid, "op-1", "agent:test", GoodAdapter())
+
+    assert result["state"] == "UNKNOWN"
+    assert "receipt durability failure" in result["unknown_reason"]
+    assert not os.path.exists(os.path.join(str(tmp_path), "receipts"))
