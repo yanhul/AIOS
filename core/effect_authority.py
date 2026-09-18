@@ -64,9 +64,23 @@ def _authorized_contract(aios_dir, contract_id, permit_id, actor, effect_type):
     return contract, permit
 
 
+def _effect_integrity_digest(effect):
+    immutable = {
+        "effect_id": effect["effect_id"],
+        "contract_id": effect["contract_id"],
+        "logical_operation_id": effect["logical_operation_id"],
+        "actor": effect["actor"],
+        "effect_type": effect["effect_type"],
+        "permit_id": effect["permit_id"],
+        "policy_digest": effect["policy_digest"],
+        "max_attempts": effect["max_attempts"],
+    }
+    return hashlib.sha256(canonical_json(immutable).encode("utf-8")).hexdigest()
+
+
 def _validate_persisted_effect(aios_dir, effect):
-    required = ("effect_id", "contract_id", "permit_id", "actor", "effect_type",
-                "policy_digest", "max_attempts", "state", "attempt")
+    required = ("effect_id", "contract_id", "logical_operation_id", "permit_id", "actor", "effect_type",
+                "policy_digest", "max_attempts", "integrity_digest", "state", "attempt")
     if any(key not in effect for key in required):
         raise TransitionError("persisted effect schema is incomplete")
     contract, permit = _authorized_contract(
@@ -76,6 +90,8 @@ def _validate_persisted_effect(aios_dir, effect):
         raise TransitionError("effect policy digest differs from authorized contract")
     if effect["max_attempts"] != contract["max_attempts"]:
         raise TransitionError("effect attempt budget differs from authorized contract")
+    if effect["integrity_digest"] != _effect_integrity_digest(effect):
+        raise TransitionError("persisted effect integrity digest mismatch")
     if not isinstance(effect["attempt"], int) or isinstance(effect["attempt"], bool) or effect["attempt"] < 0:
         raise TransitionError("persisted effect attempt is invalid")
     return contract, permit
@@ -126,6 +142,7 @@ def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id,
         "policy_digest": contract["policy_digest"], "max_attempts": contract["max_attempts"],
         "state": "PLANNED", "attempt": 0,
     }
+    rec["integrity_digest"] = _effect_integrity_digest(rec)
     path = _path(aios_dir, effect_id)
     if os.path.exists(path):
         existing = _load(path)
