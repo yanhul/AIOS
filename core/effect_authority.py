@@ -12,12 +12,13 @@ import hashlib
 import json
 import os
 import re
+from functools import wraps
 
 from .authority import authorize, load_contract, load_permit
 from .contract import verify_permit
 from .evidence import verify_evidence
 from .evaluation import attempt_path, build_receipt_record, receipt_path
-from .mutation import TransitionError, canonical_json, commit_batch, recover_pending
+from .mutation import TransitionError, canonical_json, commit_batch, mutation_lock, recover_pending
 
 STATES = ("PLANNED", "DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE")
 _ALLOWED = {
@@ -103,6 +104,15 @@ def _commit_attempt(aios_dir, effect, attempt_id, attempt, actor, provider):
     return rec
 
 
+def _serialized_mutation(func):
+    @wraps(func)
+    def wrapper(aios_dir, *args, **kwargs):
+        with mutation_lock(aios_dir):
+            return func(aios_dir, *args, **kwargs)
+    return wrapper
+
+
+@_serialized_mutation
 def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id, effect_type):
     _validate_strings(("contract_id", contract_id), ("logical_operation_id", logical_operation_id),
                       ("actor", actor), ("permit_id", permit_id), ("effect_type", effect_type))
@@ -130,6 +140,7 @@ def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id,
     return rec
 
 
+@_serialized_mutation
 def transition(aios_dir, effect_id, target, actor, **fields):
     """Apply only non-authoritative state changes.
 
@@ -171,6 +182,7 @@ def transition(aios_dir, effect_id, target, actor, **fields):
     return updated
 
 
+@_serialized_mutation
 def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
     _validate_strings(("actor", actor), ("attempt_id", attempt_id), ("provider", provider))
     recover_pending(aios_dir)
@@ -201,6 +213,7 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
     return updated
 
 
+@_serialized_mutation
 def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
     """Explicitly dispatch the next attempt for an UNKNOWN effect."""
     _validate_strings(("effect_id", effect_id), ("actor", actor),
@@ -242,6 +255,7 @@ def unknown(aios_dir, effect_id, actor, reason):
     return transition(aios_dir, effect_id, "UNKNOWN", actor, unknown_reason=reason)
 
 
+@_serialized_mutation
 def observe(aios_dir, effect_id, actor, outcome, provider_observation):
     """Authoritatively observe an attempt and atomically persist its receipt."""
     if outcome not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
