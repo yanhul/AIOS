@@ -18,6 +18,7 @@ import os
 from .authority import authorize, load_contract, load_permit
 from .contract import verify_permit
 from .evidence import verify_evidence
+from .receipt import verify_receipt_binding
 from .mutation import TransitionError, canonical_json, commit_batch, recover_pending
 
 STATES = ("PLANNED", "DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE")
@@ -245,6 +246,7 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
         raise TransitionError("observation actor does not match effect owner")
     attempt_id = provider_observation.get("attempt_id")
     provider = provider_observation.get("provider")
+    receipt_id = provider_observation.get("receipt_id")
     evidence = provider_observation.get("evidence")
     if current.get("state") not in ("DISPATCHED", "UNKNOWN"):
         raise TransitionError("observation requires a currently DISPATCHED or UNKNOWN attempt")
@@ -252,10 +254,23 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
         raise TransitionError("observation attempt does not match dispatched attempt")
     if provider != current.get("provider"):
         raise TransitionError("observation provider does not match dispatched provider")
+    if not isinstance(receipt_id, str) or not receipt_id.strip():
+        raise ValueError("observation requires a durable receipt_id")
+    receipt = verify_receipt_binding(aios_dir, receipt_id, current, attempt_id, provider)
+    if receipt["outcome"] != outcome:
+        raise TransitionError("receipt outcome does not match observation outcome")
     if not isinstance(evidence, dict) or not verify_evidence(evidence):
         raise ValueError("observation requires a valid AIOS evidence record")
     if evidence.get("provider") != provider:
         raise ValueError("evidence provider does not match effect provider")
+    if evidence.get("receipt_id") != receipt_id:
+        raise TransitionError("evidence receipt binding mismatch")
+    if evidence.get("effect_id") != effect_id:
+        raise TransitionError("evidence effect binding mismatch")
+    if evidence.get("attempt_id") != attempt_id:
+        raise TransitionError("evidence attempt binding mismatch")
+    if evidence.get("artifact_ref") != receipt["provider_operation_id"]:
+        raise TransitionError("evidence artifact does not match receipt operation")
     return transition(aios_dir, effect_id, outcome, actor, provider_observation=provider_observation)
 
 
