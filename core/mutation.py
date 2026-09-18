@@ -21,8 +21,8 @@ Enforcement provided by this module (and nothing more):
   at the start of every mutation.
 
 Not provided by this module (explicitly out of scope for M1.5): agents,
-policy, gates, verification, contradiction resolution, concurrency control
-beyond single-process atomic commit, OS-level protection of the RX50 tree.
+policy, gates, verification, contradiction resolution. Concurrency control
+is provided at the shared mutation boundary by a cross-process mutation lock.
 
 Stdlib only. Never writes outside ``<aios_dir>``.
 """
@@ -239,6 +239,47 @@ def _fsync_dir(path):
         os.close(fd)
 
 
+def _mutation_lock_path(aios_dir):
+    return os.path.join(aios_dir, ".mutation.lock")
+
+
+class _MutationLock:
+    """Cross-platform exclusive lock for one AIOS state tree."""
+    def __init__(self, aios_dir):
+        self.aios_dir = aios_dir
+        self.fh = None
+
+    def __enter__(self):
+        state_layout.ensure_state_dirs(self.aios_dir)
+        self.fh = open(_mutation_lock_path(self.aios_dir), "a+b")
+        self.fh.seek(0)
+        if os.name == "nt":
+            import msvcrt
+            while True:
+                try:
+                    msvcrt.locking(self.fh.fileno(), msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    continue
+        else:
+            import fcntl
+            fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            if os.name == "nt":
+                import msvcrt
+                self.fh.seek(0)
+                msvcrt.locking(self.fh.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(self.fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            self.fh.close()
+        return False
+
+
 def _write_staged(path, payload_bytes):
     with open(path, "wb") as fh:
         fh.write(payload_bytes)
@@ -267,14 +308,8 @@ def _event_relpath(event):
 _JOURNAL_NAME = "journal.json"
 
 
-def recover_pending(aios_dir):
-    """Complete or discard interrupted mutations.
-
-    Called automatically at the start of ``apply_mutations``. For every
-    staging batch with a journal, re-drives the remaining renames
-    (roll-forward). Batches without a journal never reached the commit
-    point and contain nothing visible; they are discarded.
-    """
+def _recover_pending_unlocked(aios_dir):
+    """Roll forward journaled batches; caller owns the mutation lock."""
     staging = os.path.join(aios_dir, ".staging")
     if not os.path.isdir(staging):
         return
@@ -294,8 +329,8 @@ def recover_pending(aios_dir):
                         raise StateConflictError(
                             f"committed file diverges from journal: {dest}"
                         )
-                    # already committed -> clean up its temp below
                 elif os.path.exists(tmp):
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
                     _replace(tmp, dest)
                     _fsync_dir(os.path.dirname(dest))
                 else:
@@ -304,6 +339,12 @@ def recover_pending(aios_dir):
                     )
             os.unlink(journal_path)
         shutil.rmtree(batch_dir, ignore_errors=True)
+
+
+def recover_pending(aios_dir):
+    """Recover pending journal batches under the shared mutation lock."""
+    with _MutationLock(aios_dir):
+        _recover_pending_unlocked(aios_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -352,8 +393,8 @@ def _require_committed_event(aios_dir, entity):
         f"M1.5")
 
 
-def commit_batch(aios_dir, payloads):
-    """Single shared atomic commit engine: stage -> journal -> rename.
+def _commit_batch_unlocked(aios_dir, payloads):
+    """Atomic commit kernel; caller MUST already own the mutation lock.
 
     Internal-stable API. The only authorized front-doors are
     ``apply_mutations`` (imported entities + events) and
@@ -397,6 +438,12 @@ def commit_batch(aios_dir, payloads):
     return [op["dest"] for op in ops]
 
 
+
+def commit_batch(aios_dir, payloads):
+    """Shared atomic commit front-door; serializes the commit kernel."""
+    with _MutationLock(aios_dir):
+        return _commit_batch_unlocked(aios_dir, payloads)
+
 def apply_mutations(aios_dir, entities, actor, notice_factory=None):
     """Apply a validated batch of entity mutations atomically.
 
@@ -411,8 +458,15 @@ def apply_mutations(aios_dir, entities, actor, notice_factory=None):
              "event_files": [...], "notice_file": str|None}.
     """
     _require_actor(actor)
-    recover_pending(aios_dir)
 
+    # One serialization domain covers recovery, validation, state inspection,
+    # staging, journaling, and commit. This prevents TOCTOU same-entity races.
+    with _MutationLock(aios_dir):
+        _recover_pending_unlocked(aios_dir)
+        return _apply_mutations_unlocked(aios_dir, entities, actor, notice_factory)
+
+
+def _apply_mutations_unlocked(aios_dir, entities, actor, notice_factory=None):
     # ---- Phase 1: validate everything before touching disk -----------------
     seen = set()
     for pos, ent in enumerate(entities):
@@ -482,7 +536,7 @@ def apply_mutations(aios_dir, entities, actor, notice_factory=None):
         payloads.append((rel, {**notice_event, "timestamp_utc": _utc_iso(),
                                "event_id": event_identity(notice_event)}))
 
-    commit_batch(aios_dir, payloads)
+    _commit_batch_unlocked(aios_dir, payloads)
 
     return {
         "applied": [[t, i] for t, i in ((e["entity_type"], e["entity_id"]) for e in applied)],

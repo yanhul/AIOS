@@ -10,6 +10,8 @@ from typing import Protocol
 from .authority import authorize, load_contract, load_permit
 from .durable_runtime import DurableRuntime, validate_submission
 from .effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
+from .evidence import EvidenceRecord
+from .receipt import persist_receipt
 
 
 @dataclass(frozen=True)
@@ -103,12 +105,34 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
         return unknown(aios_dir, effect["effect_id"], actor,
                        f"provider ambiguity: {type(exc).__name__}: {exc}")
 
+    try:
+        durable_receipt = persist_receipt(
+            aios_dir, effect, receipt.attempt_id, receipt.provider,
+            receipt.provider_operation_id, receipt.outcome, receipt.observation,
+        )
+    except Exception as exc:
+        return unknown(aios_dir, effect["effect_id"], actor,
+                       f"receipt durability failure: {type(exc).__name__}: {exc}")
+    evidence = EvidenceRecord(
+        evidence_id="EV-" + durable_receipt["receipt_id"],
+        level="OBSERVED",
+        source_ref="provider://" + receipt.provider_operation_id,
+        claim="provider returned a bound execution receipt",
+        run_id=receipt.attempt_id,
+        provider=receipt.provider,
+        artifact_ref=receipt.provider_operation_id,
+        receipt_id=durable_receipt["receipt_id"],
+        effect_id=receipt.effect_id,
+        attempt_id=receipt.attempt_id,
+    ).as_record()
     return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, {
         "provider": receipt.provider,
         "provider_operation_id": receipt.provider_operation_id,
         "effect_id": receipt.effect_id,
         "attempt_id": receipt.attempt_id,
+        "receipt_id": durable_receipt["receipt_id"],
         "observation": receipt.observation,
+        "evidence": evidence,
     })
 
 
@@ -172,7 +196,7 @@ def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapt
     if "external_effect" not in contract["allowed_effects"]:
         raise PermissionError("external effect is not authorized by contract")
 
-    effect = create_effect(aios_dir, contract_id, logical_operation_id, actor)
+    effect = create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id, "external_effect")
     if effect["state"] != "PLANNED":
         raise RuntimeError("logical operation already has a non-planned effect")
     attempt_id = f"{effect['effect_id']}:attempt:1"
