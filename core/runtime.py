@@ -4,6 +4,7 @@ AIOS owns authority and evidence semantics. Durable scheduling, retries,
 resume, planning and agent loops belong to an external execution substrate.
 """
 
+import hashlib
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -104,7 +105,7 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
         return unknown(aios_dir, effect["effect_id"], actor,
                        f"provider ambiguity: {type(exc).__name__}: {exc}")
 
-    evidence_id = "EV-" + __import__("hashlib").sha256(
+    evidence_id = "EV-" + hashlib.sha256(
         f"{receipt.effect_id}:{receipt.attempt_id}:{receipt.provider_operation_id}".encode("utf-8")
     ).hexdigest()
     evidence = EvidenceRecord(
