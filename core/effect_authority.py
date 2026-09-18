@@ -50,6 +50,22 @@ def _validate_strings(*pairs):
             raise ValueError(f"{name} must be a non-empty string")
 
 
+def _provider_authorized(contract, provider):
+    """Return whether a provider is explicitly named by an authorized capability.
+
+    Provider identity is the namespace before the versioned capability suffix:
+    provider-x@1 authorizes provider provider-x. This is the existing
+    capability/provider contract used by the runtime; the check lives here so
+    direct authoritative dispatch cannot bypass it.
+    """
+    capabilities = contract.get("capabilities", [])
+    return any(
+        isinstance(ref, str)
+        and ref.split("@", 1)[0] == provider
+        for ref in capabilities
+    )
+
+
 def _authorized_contract(aios_dir, contract_id, permit_id, actor, effect_type):
     _validate_strings(("contract_id", contract_id), ("permit_id", permit_id),
                       ("actor", actor), ("effect_type", effect_type))
@@ -217,6 +233,8 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
         raise ValueError("attempt_id does not match initial effect attempt")
     if int(current.get("max_attempts", 0)) < 1:
         raise TransitionError("effect has no authorized execution attempts")
+    if not _provider_authorized(contract, provider):
+        raise TransitionError("provider is not authorized by contract capabilities")
     updated = dict(current, state="DISPATCHED", attempt=1, attempt_id=attempt_id, provider=provider)
     event = {"kind": "external_effect", "action": "dispatch", "effect_id": effect_id,
              "from_state": "PLANNED", "to_state": "DISPATCHED", "actor": actor,
@@ -254,6 +272,8 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
         raise TransitionError("retry exceeds contract attempt budget")
     if attempt_id != _attempt_id(effect_id, attempt):
         raise ValueError("attempt_id does not match retry attempt")
+    if not _provider_authorized(contract, provider):
+        raise TransitionError("provider is not authorized by contract capabilities")
     updated = dict(current, state="DISPATCHED", attempt=attempt, attempt_id=attempt_id, provider=provider)
     event = {"kind": "external_effect", "action": "retry_dispatch", "effect_id": effect_id,
              "from_state": "UNKNOWN", "to_state": "DISPATCHED", "actor": actor,
