@@ -37,6 +37,7 @@ class EvaluationRecord:
     verdict: str
     components: dict[str, Any]
     provenance: dict[str, Any]
+    timestamp_utc: str
 
     @property
     def identity(self) -> str:
@@ -70,6 +71,7 @@ class EvaluationRecord:
             "verdict": self.verdict,
             "components": dict(self.components),
             "provenance": dict(self.provenance),
+            "timestamp_utc": self.timestamp_utc,
             "identity": self.identity,
         }
 
@@ -187,6 +189,21 @@ def load_evaluation(aios_dir: str, evaluation_id: str) -> dict[str, Any]:
         rec = json.load(fh)
     if rec.get("record_type") != "EVALUATION":
         raise TransitionError("persisted evaluation is invalid")
+    required = ("evaluation_id", "effect_id", "attempt_id", "receipt_id",
+                "evidence_id", "evidence_digest", "evaluator", "evaluator_version",
+                "rubric_version", "verdict", "components", "provenance",
+                "timestamp_utc", "identity")
+    if any(key not in rec for key in required):
+        raise TransitionError("persisted evaluation schema is incomplete")
+    if rec["verdict"] not in VERDICTS:
+        raise TransitionError("persisted evaluation verdict is invalid")
+    logical = dict(rec)
+    logical.pop("evaluation_id", None)
+    logical.pop("identity", None)
+    logical.pop("timestamp_utc", None)
+    expected_identity = sha256(canonical_json(logical).encode("utf-8")).hexdigest()
+    if rec["identity"] != expected_identity or rec["evaluation_id"] != "EVL-" + expected_identity:
+        raise TransitionError("persisted evaluation identity mismatch")
     return rec
 
 
