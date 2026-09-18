@@ -203,6 +203,14 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
         raise ValueError("attempt_id does not match initial effect attempt")
     if int(current.get("max_attempts", 0)) < 1:
         raise TransitionError("effect has no authorized execution attempts")
+    contract, _permit = _validate_persisted_effect(aios_dir, current)
+    if not any(
+        isinstance(ref, str) and ref.split("@", 1)[0] == provider
+        for ref in contract.get("capabilities", [])
+    ):
+        raise TransitionError("provider capability is not authorized by contract")
+    if "external_effect" not in contract.get("allowed_effects", []):
+        raise TransitionError("external effect is not authorized by contract")
     return transition(aios_dir, effect_id, "DISPATCHED", actor,
                       attempt=1, attempt_id=attempt_id, provider=provider)
 
