@@ -140,27 +140,28 @@ def test_evaluation_rejects_tampered_receipt_digest():
             evaluate(td, effect["effect_id"], receipt["receipt_id"], "evaluator-test", "1", "rubric-1", "PASS")
 
 
-def test_old_attempt_receipt_remains_evaluable_after_retry():
+def test_old_attempt_record_remains_immutable_after_retry():
     with tempfile.TemporaryDirectory() as td:
-        effect, observed1, receipt1 = execute_observed(td)
+        effect = make_authorized(td)
+        attempt1 = f"{effect['effect_id']}:attempt:1"
+        dispatch(td, effect["effect_id"], "bc-controller", attempt1, "provider-a")
         unknown(td, effect["effect_id"], "bc-controller", "provider timeout")
         attempt2 = f"{effect['effect_id']}:attempt:2"
         retry_dispatch(td, effect["effect_id"], "bc-controller", attempt2, "provider-b", 2)
-        observed2 = observe(td, effect["effect_id"], "bc-controller", "OBSERVED_FAILURE",
-                            {"attempt_id": attempt2, "provider": "provider-b",
-                             "evidence": evidence("EV-eval-2", "run-eval-2", "provider-b")})
+        observed2 = observe(td, effect["effect_id"], "bc-controller", "OBSERVED_FAILURE", {
+            "attempt_id": attempt2, "provider": "provider-b",
+            "evidence": evidence("EV-eval-2", "run-eval-2", "provider-b"),
+        })
         assert observed2["attempt"] == 2
-        assert receipt1["attempt_id"] == observed1["attempt_id"]
-        result1 = evaluate(td, effect["effect_id"], receipt1["receipt_id"],
-                           "evaluator-test", "1", "rubric-1", "PASS")
-        assert result1["attempt_id"] == observed1["attempt_id"]
-
+        with open(attempt_path(td, attempt1), "r", encoding="utf-8") as fh:
+            attempt1_record = json.load(fh)
+        assert attempt1_record["attempt_id"] == attempt1
+        assert attempt1_record["attempt"] == 1
         with open(f"{td}/receipts/{observed2['receipt_id']}.json", "r", encoding="utf-8") as fh:
             receipt2 = json.load(fh)
         result2 = evaluate(td, effect["effect_id"], receipt2["receipt_id"],
                            "evaluator-test", "1", "rubric-1", "FAIL")
         assert result2["attempt_id"] == attempt2
-
 
 def test_observation_rejects_cross_attempt_evidence():
     with tempfile.TemporaryDirectory() as td:
@@ -170,7 +171,7 @@ def test_observation_rejects_cross_attempt_evidence():
         unknown(td, effect["effect_id"], "bc-controller", "timeout")
         attempt2 = f"{effect['effect_id']}:attempt:2"
         retry_dispatch(td, effect["effect_id"], "bc-controller", attempt2, "provider-b", 2)
-        with pytest.raises(TransitionError):
+        with pytest.raises(ValueError, match="evidence provider does not match effect provider"):
             observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS",
                     {"attempt_id": attempt2, "provider": "provider-b",
                      "evidence": evidence("EV-wrong", "run-1", "provider-a")})
