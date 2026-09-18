@@ -150,7 +150,7 @@ def test_generic_transition_cannot_turn_unknown_into_dispatched(tmp_path):
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
-    with pytest.raises(Exception, match="undefined external-effect transition"):
+    with pytest.raises(Exception, match="authoritative execution transition must use dispatch/retry_dispatch/observe"):
         transition(str(tmp_path), effect["effect_id"], "DISPATCHED", "agent:test",
                    attempt=2, attempt_id=f"{effect['effect_id']}:attempt:2", provider="fake-provider")
 
