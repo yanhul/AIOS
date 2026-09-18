@@ -1,0 +1,231 @@
+import json
+import os
+import tempfile
+
+import pytest
+
+from core.authority import persist_contract, persist_permit
+from core.contract import contract_identity
+from core.effect_authority import create_effect, dispatch, observe, retry_dispatch, transition, unknown
+from core.evidence import EvidenceRecord
+from core.evaluation import attempt_filename, attempt_path, evaluate
+from core.mutation import TransitionError
+from core.policy_registry import persist_policy
+
+
+def make_authorized(td):
+    from core.capabilities import Capability, CapabilityRegistry
+    registry = CapabilityRegistry()
+    registry.register(Capability("research_is_validation", "1", "test-fixture", "research", status="ACTIVE"))
+    registry.persist(td, "test-fixture")
+    policy = persist_policy(td, {"policy_type": "GOVERNING_POLICY", "name": "evaluation-runtime"})
+    contract = {
+        "contract_type": "EXECUTION_CONTRACT", "task_id": "RESEARCH_BC7", "scope": "research",
+        "actor": "bc-controller", "capabilities": ["research_is_validation@1"],
+        "input_digest": "sha256:input", "allowed_effects": ["process_execution"],
+        "evidence_required": ["execution_receipt"], "max_attempts": 2,
+        "terminal_states": ["PROMOTED", "REJECTED", "HOLD"], "policy_digest": policy,
+    }
+    persist_contract(td, contract)
+    permit = persist_permit(td, contract, "AIOS_AUTHORITY")
+    return create_effect(td, contract_identity(contract), "evaluation-runtime", "bc-controller",
+                         permit["permit_id"], "process_execution")
+
+
+def evidence(evidence_id, run_id, provider):
+    return EvidenceRecord(
+        evidence_id=evidence_id, level="OBSERVED", source_ref=f"runtime/{provider}",
+        claim="execution completed", run_id=run_id, provider=provider,
+    ).as_record()
+
+
+def execute_observed(td):
+    effect = make_authorized(td)
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    dispatch(td, effect["effect_id"], "bc-controller", attempt_id, "provider-a")
+    observed = observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS",
+                       {"attempt_id": attempt_id, "provider": "provider-a",
+                        "evidence": evidence("EV-eval-1", "run-eval-1", "provider-a")})
+    receipt_path = f"{td}/receipts/{observed['receipt_id']}.json"
+    with open(receipt_path, "r", encoding="utf-8") as fh:
+        receipt = json.load(fh)
+    return effect, observed, receipt
+
+
+def test_observe_is_the_authoritative_receipt_boundary():
+    with tempfile.TemporaryDirectory() as td:
+        effect, observed, receipt = execute_observed(td)
+        assert receipt["effect_id"] == effect["effect_id"]
+        assert receipt["attempt_id"] == observed["attempt_id"]
+        assert receipt["provider"] == observed["provider"]
+        assert os.path.exists(attempt_path(td, observed["attempt_id"]))
+        assert ":" not in os.path.basename(attempt_path(td, observed["attempt_id"]))
+
+        with pytest.raises(TransitionError):
+            observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS",
+                    observed["provider_observation"])
+
+        result = evaluate(td, effect["effect_id"], receipt["receipt_id"],
+                          "evaluator-test", "1", "rubric-1", "PASS",
+                          [{"case": "completion", "passed": True}],
+                          [{"criterion": "execution", "passed": True}])
+        assert result["effect_id"] == effect["effect_id"]
+        assert result["attempt_id"] == receipt["attempt_id"]
+        assert result["receipt_id"] == receipt["receipt_id"]
+        assert result["verdict"] == "PASS"
+
+
+def test_dispatch_rejects_wrong_actor():
+    with tempfile.TemporaryDirectory() as td:
+        effect = make_authorized(td)
+        attempt_id = f"{effect['effect_id']}:attempt:1"
+        with pytest.raises(TransitionError):
+            dispatch(td, effect["effect_id"], "attacker", attempt_id, "provider-a")
+        assert not os.path.exists(attempt_path(td, attempt_id))
+
+
+def test_attempt_filename_is_filesystem_safe_and_collision_resistant():
+    attempt_a = "EF-abc:def/ghi:attempt:1"
+    attempt_b = "EF-abc/def:ghi:attempt:1"
+    filename_a = attempt_filename(attempt_a)
+    filename_b = attempt_filename(attempt_b)
+    assert filename_a.endswith(".json")
+    assert filename_b.endswith(".json")
+    assert all(ch not in filename_a for ch in ("/", "\\", ":"))
+    assert all(ch not in filename_b for ch in ("/", "\\", ":"))
+    assert filename_a != filename_b
+    assert attempt_path("/tmp/aios", attempt_a).endswith(os.path.join("attempts", filename_a))
+
+
+def test_generic_transition_cannot_forge_dispatch_or_observation():
+    with tempfile.TemporaryDirectory() as td:
+        effect = make_authorized(td)
+        with pytest.raises(TransitionError):
+            transition(td, effect["effect_id"], "DISPATCHED", "bc-controller",
+                       attempt=1, attempt_id=f"{effect['effect_id']}:attempt:1", provider="provider-a")
+
+        attempt_id = f"{effect['effect_id']}:attempt:1"
+        dispatch(td, effect["effect_id"], "bc-controller", attempt_id, "provider-a")
+        provider_observation = {"attempt_id": attempt_id, "provider": "provider-a",
+                                "evidence": evidence("EV-generic", "run-generic", "provider-a")}
+        with pytest.raises(TransitionError):
+            transition(td, effect["effect_id"], "OBSERVED_SUCCESS", "bc-controller",
+                       provider_observation=provider_observation, receipt_id="RC-forged")
+
+
+def test_evaluation_rejects_missing_receipt():
+    with tempfile.TemporaryDirectory() as td:
+        effect = make_authorized(td)
+        with pytest.raises(TransitionError):
+            evaluate(td, effect["effect_id"], "RC-does-not-exist", "evaluator-test", "1", "rubric-1", "PASS")
+
+
+def test_evaluation_rejects_receipt_bound_to_another_effect():
+    with tempfile.TemporaryDirectory() as td:
+        effect, _observed, receipt = execute_observed(td)
+        with pytest.raises(TransitionError):
+            evaluate(td, "EF-forged", receipt["receipt_id"], "evaluator-test", "1", "rubric-1", "PASS")
+
+
+def test_evaluation_rejects_tampered_receipt_digest():
+    with tempfile.TemporaryDirectory() as td:
+        effect, _observed, receipt = execute_observed(td)
+        path = f"{td}/receipts/{receipt['receipt_id']}.json"
+        with open(path, "r", encoding="utf-8") as fh:
+            rec = json.load(fh)
+        rec["attempt_id"] = "forged-attempt"
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(rec, fh)
+        with pytest.raises(TransitionError):
+            evaluate(td, effect["effect_id"], receipt["receipt_id"], "evaluator-test", "1", "rubric-1", "PASS")
+
+
+def test_old_attempt_record_remains_immutable_after_retry():
+    with tempfile.TemporaryDirectory() as td:
+        effect = make_authorized(td)
+        attempt1 = f"{effect['effect_id']}:attempt:1"
+        dispatch(td, effect["effect_id"], "bc-controller", attempt1, "provider-a")
+        unknown(td, effect["effect_id"], "bc-controller", "provider timeout")
+        attempt2 = f"{effect['effect_id']}:attempt:2"
+        retry_dispatch(td, effect["effect_id"], "bc-controller", attempt2, "provider-b", 2)
+        observed2 = observe(td, effect["effect_id"], "bc-controller", "OBSERVED_FAILURE", {
+            "attempt_id": attempt2, "provider": "provider-b",
+            "evidence": evidence("EV-eval-2", "run-eval-2", "provider-b"),
+        })
+        assert observed2["attempt"] == 2
+        with open(attempt_path(td, attempt1), "r", encoding="utf-8") as fh:
+            attempt1_record = json.load(fh)
+        assert attempt1_record["attempt_id"] == attempt1
+        assert attempt1_record["attempt"] == 1
+        with open(f"{td}/receipts/{observed2['receipt_id']}.json", "r", encoding="utf-8") as fh:
+            receipt2 = json.load(fh)
+        result2 = evaluate(td, effect["effect_id"], receipt2["receipt_id"],
+                           "evaluator-test", "1", "rubric-1", "FAIL")
+        assert result2["attempt_id"] == attempt2
+
+def test_observation_rejects_cross_attempt_evidence():
+    with tempfile.TemporaryDirectory() as td:
+        effect = make_authorized(td)
+        attempt1 = f"{effect['effect_id']}:attempt:1"
+        dispatch(td, effect["effect_id"], "bc-controller", attempt1, "provider-a")
+        unknown(td, effect["effect_id"], "bc-controller", "timeout")
+        attempt2 = f"{effect['effect_id']}:attempt:2"
+        retry_dispatch(td, effect["effect_id"], "bc-controller", attempt2, "provider-b", 2)
+        with pytest.raises(ValueError, match="evidence provider does not match effect provider"):
+            observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS",
+                    {"attempt_id": attempt2, "provider": "provider-b",
+                     "evidence": evidence("EV-wrong", "run-1", "provider-a")})
+
+
+def test_concurrent_dispatch_serializes_authority_boundary():
+    from concurrent.futures import ThreadPoolExecutor
+
+    with tempfile.TemporaryDirectory() as td:
+        effect = make_authorized(td)
+        attempt_id = f"{effect['effect_id']}:attempt:1"
+
+        def attempt():
+            try:
+                dispatch(td, effect["effect_id"], "bc-controller", attempt_id, "provider-a")
+                return "PASS"
+            except TransitionError:
+                return "BLOCKED"
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _: attempt(), range(2)))
+        assert sorted(results) == ["BLOCKED", "PASS"]
+
+
+def test_concurrent_observe_cannot_create_two_terminal_receipts():
+    from concurrent.futures import ThreadPoolExecutor
+
+    with tempfile.TemporaryDirectory() as td:
+        effect = make_authorized(td)
+        attempt_id = f"{effect['effect_id']}:attempt:1"
+        dispatch(td, effect["effect_id"], "bc-controller", attempt_id, "provider-a")
+        observation = {
+            "attempt_id": attempt_id,
+            "provider": "provider-a",
+            "evidence": evidence("EV-concurrent", "run-concurrent", "provider-a"),
+        }
+
+        def attempt():
+            try:
+                observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS", observation)
+                return "PASS"
+            except TransitionError:
+                return "BLOCKED"
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _: attempt(), range(2)))
+        assert sorted(results) == ["BLOCKED", "PASS"]
+
+def test_evaluation_is_derived_and_carries_no_execution_authority():
+    with tempfile.TemporaryDirectory() as td:
+        effect, _observed, receipt = execute_observed(td)
+        result = evaluate(td, effect["effect_id"], receipt["receipt_id"],
+                          "evaluator-test", "1", "rubric-1", "PASS")
+        assert "permit_id" not in result
+        assert "capability" not in result
+        assert "provider" not in result
+        assert "dispatch" not in result

@@ -129,3 +129,17 @@ def test_tampered_persisted_authority_blocks_future_transition():
             json.dump(rec, fh)
         with pytest.raises(TransitionError):
             unknown(td, effect["effect_id"], "bc-controller", "should be blocked")
+
+
+def test_tampered_effect_immutable_fields_fail_integrity_check():
+    with tempfile.TemporaryDirectory() as td:
+        _contract, _permit, effect = make_authorized(td)
+        path = f"{td}/effects/{effect['effect_id']}.json"
+        import json
+        with open(path, "r", encoding="utf-8") as fh:
+            rec = json.load(fh)
+        rec["logical_operation_id"] = "attacker-operation"
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(rec, fh)
+        with pytest.raises(TransitionError, match="integrity digest"):
+            unknown(td, effect["effect_id"], "bc-controller", "should be blocked")
