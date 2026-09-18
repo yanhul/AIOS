@@ -75,7 +75,7 @@ def test_terminal_state_requires_verified_attempt_bound_evidence(tmp_path):
 
     with pytest.raises(TransitionError):
         observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", {
-            **_observation(effect["effect_id"]), "attempt_id": "forged-attempt"
+            **_observation(tmp_path, effect["effect_id"]), "attempt_id": "forged-attempt"
         })
 
 
