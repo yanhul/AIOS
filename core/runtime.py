@@ -105,10 +105,14 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
         return unknown(aios_dir, effect["effect_id"], actor,
                        f"provider ambiguity: {type(exc).__name__}: {exc}")
 
-    durable_receipt = persist_receipt(
-        aios_dir, effect, receipt.attempt_id, receipt.provider,
-        receipt.provider_operation_id, receipt.outcome, receipt.observation,
-    )
+    try:
+        durable_receipt = persist_receipt(
+            aios_dir, effect, receipt.attempt_id, receipt.provider,
+            receipt.provider_operation_id, receipt.outcome, receipt.observation,
+        )
+    except Exception as exc:
+        return unknown(aios_dir, effect["effect_id"], actor,
+                       f"receipt durability failure: {type(exc).__name__}: {exc}")
     evidence = EvidenceRecord(
         evidence_id="EV-" + durable_receipt["receipt_id"],
         level="OBSERVED",
