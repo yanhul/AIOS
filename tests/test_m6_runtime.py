@@ -4,7 +4,7 @@ import pytest
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
-from core.effect_authority import dispatch, retry_dispatch, transition
+from core.effect_authority import create_effect, dispatch, retry_dispatch, transition
 from tests.m6_fixtures import make_effect
 from core.policy_registry import persist_policy
 from core.runtime import ProviderReceipt, execute, execute_attempt, execute_retry_attempt
@@ -98,7 +98,7 @@ def test_mismatched_receipt_becomes_unknown(tmp_path):
 
 def test_execute_attempt_runs_only_a_dispatched_attempt(tmp_path):
     c, cid, _ = setup_authority(tmp_path)
-    effect = make_effect(tmp_path, provider="fake-provider", actor="agent:test", max_attempts=3)
+    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     attempt_id = f"{effect['effect_id']}:attempt:1"
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")
     result = execute_attempt(str(tmp_path), c, effect, "agent:test", GoodAdapter(), attempt_id)
