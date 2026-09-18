@@ -386,7 +386,7 @@ def reconcile(aios_dir, source_root=None):
     # ---- G: unexpected top-level entries ------------------------------------
     if os.path.isdir(aios_dir):
         for entry in sorted(os.listdir(aios_dir)):
-            if entry not in _MANAGED_DIRS and entry != ".staging":
+            if entry not in _MANAGED_DIRS and entry not in {".staging", ".mutation.lock"}:
                 add("G.unexpected_entry", "UNSUPPORTED",
                     f"unrecognized entry under .aios/: {entry}")
 
