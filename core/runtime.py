@@ -172,7 +172,7 @@ def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapt
     if "external_effect" not in contract["allowed_effects"]:
         raise PermissionError("external effect is not authorized by contract")
 
-    effect = create_effect(aios_dir, contract_id, logical_operation_id, actor)
+    effect = create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id, "external_effect")
     if effect["state"] != "PLANNED":
         raise RuntimeError("logical operation already has a non-planned effect")
     attempt_id = f"{effect['effect_id']}:attempt:1"
