@@ -94,7 +94,7 @@ def test_retry_public_boundary_self_authorizes_provider_and_preserves_history():
     with tempfile.TemporaryDirectory() as td:
         contract, _permit, effect = make_authorized(td)
         attempt1 = f"{effect['effect_id']}:attempt:1"
-        dispatch(td, effect["effect_id"], "bc-controller", attempt1, "provider-a")
+        dispatch(td, effect["effect_id"], "bc-controller", attempt1, "research_is_validation")
         unknown(td, effect["effect_id"], "bc-controller", "provider timeout")
 
         with pytest.raises(TransitionError):
