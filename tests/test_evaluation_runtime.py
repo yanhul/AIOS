@@ -177,6 +177,49 @@ def test_observation_rejects_cross_attempt_evidence():
                      "evidence": evidence("EV-wrong", "run-1", "provider-a")})
 
 
+def test_concurrent_dispatch_serializes_authority_boundary():
+    from concurrent.futures import ThreadPoolExecutor
+
+    with tempfile.TemporaryDirectory() as td:
+        effect = make_authorized(td)
+        attempt_id = f"{effect['effect_id']}:attempt:1"
+
+        def attempt():
+            try:
+                dispatch(td, effect["effect_id"], "bc-controller", attempt_id, "provider-a")
+                return "PASS"
+            except TransitionError:
+                return "BLOCKED"
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _: attempt(), range(2)))
+        assert sorted(results) == ["BLOCKED", "PASS"]
+
+
+def test_concurrent_observe_cannot_create_two_terminal_receipts():
+    from concurrent.futures import ThreadPoolExecutor
+
+    with tempfile.TemporaryDirectory() as td:
+        effect = make_authorized(td)
+        attempt_id = f"{effect['effect_id']}:attempt:1"
+        dispatch(td, effect["effect_id"], "bc-controller", attempt_id, "provider-a")
+        observation = {
+            "attempt_id": attempt_id,
+            "provider": "provider-a",
+            "evidence": evidence("EV-concurrent", "run-concurrent", "provider-a"),
+        }
+
+        def attempt():
+            try:
+                observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS", observation)
+                return "PASS"
+            except TransitionError:
+                return "BLOCKED"
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _: attempt(), range(2)))
+        assert sorted(results) == ["BLOCKED", "PASS"]
+
 def test_evaluation_is_derived_and_carries_no_execution_authority():
     with tempfile.TemporaryDirectory() as td:
         effect, _observed, receipt = execute_observed(td)
