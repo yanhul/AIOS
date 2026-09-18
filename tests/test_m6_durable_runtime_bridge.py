@@ -4,8 +4,7 @@ from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.durable_runtime import RuntimeSubmission
-from core.effect_authority import dispatch, transition
-from tests.m6_fixtures import make_effect
+from core.effect_authority import create_effect, dispatch, transition
 from core.policy_registry import persist_policy
 from core.runtime import ProviderReceipt, execute, execute_retry_attempt
 
@@ -86,7 +85,7 @@ def test_runtime_binding_mismatch_fails_closed_before_provider(tmp_path):
 
 def test_retry_bridges_explicit_bounded_retry(tmp_path):
     cid, pid = setup(tmp_path, max_attempts=2)
-    effect = make_effect(tmp_path, provider="fake-provider", actor="agent:test", max_attempts=2)
+    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test",
@@ -101,7 +100,7 @@ def test_retry_bridges_explicit_bounded_retry(tmp_path):
 
 def test_retry_runtime_cannot_override_contract_bounds(tmp_path):
     cid, pid = setup(tmp_path, max_attempts=1)
-    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test")
+    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test",
