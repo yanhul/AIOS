@@ -10,6 +10,7 @@ from core.evidence import EvidenceRecord
 from core.policy_registry import persist_policy
 from core.receipt import persist_receipt, load_receipt
 from core.mutation import TransitionError
+from core.evaluation import evaluate, load_evaluation
 
 
 def setup(tmp_path):
@@ -137,3 +138,73 @@ def test_receipt_persistence_rejects_terminal_authoritative_effect(tmp_path):
             str(tmp_path), effect, effect["attempt_id"], effect["provider"],
             "op-after-terminal", "OBSERVED_SUCCESS", {"status": "ok"},
         )
+
+
+def accepted_observation(tmp_path):
+    effect = setup(tmp_path)
+    rec = receipt(tmp_path, effect)
+    ev = evidence(effect, rec)
+    observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", {
+        "attempt_id": effect["attempt_id"], "provider": effect["provider"],
+        "receipt_id": rec["receipt_id"], "evidence": ev,
+    })
+    return effect, rec, ev
+
+
+def test_evaluation_requires_bound_accepted_lineage(tmp_path):
+    effect, rec, ev = accepted_observation(tmp_path)
+    before = json.loads((tmp_path / "effects" / (effect["effect_id"] + ".json")).read_text())
+    evaluation = evaluate(
+        str(tmp_path), effect["effect_id"], effect["attempt_id"], rec["receipt_id"],
+        ev, "grader", "1.0", "rubric-1", "PASS",
+        components={"tests": {"passed": 1}},
+        provenance={"source": "gate2-test"},
+    )
+    assert evaluation["effect_id"] == effect["effect_id"]
+    assert evaluation["attempt_id"] == effect["attempt_id"]
+    assert evaluation["receipt_id"] == rec["receipt_id"]
+    assert evaluation["evidence_digest"] == ev["digest"]
+    assert load_evaluation(str(tmp_path), evaluation["evaluation_id"]) == evaluation
+    after = json.loads((tmp_path / "effects" / (effect["effect_id"] + ".json")).read_text())
+    assert after == before
+
+
+def test_evaluation_rejects_missing_or_tampered_evidence(tmp_path):
+    effect, rec, ev = accepted_observation(tmp_path)
+    with pytest.raises(ValueError, match="valid evidence"):
+        evaluate(str(tmp_path), effect["effect_id"], effect["attempt_id"],
+                 rec["receipt_id"], {}, "grader", "1.0", "rubric-1", "PASS")
+    tampered = dict(ev)
+    tampered["claim"] = "forged"
+    with pytest.raises(ValueError, match="valid evidence"):
+        evaluate(str(tmp_path), effect["effect_id"], effect["attempt_id"],
+                 rec["receipt_id"], tampered, "grader", "1.0", "rubric-1", "PASS")
+
+
+def test_evaluation_rejects_wrong_receipt_or_stale_attempt(tmp_path):
+    effect, rec, ev = accepted_observation(tmp_path)
+    with pytest.raises(TransitionError, match="receipt binding"):
+        evaluate(str(tmp_path), effect["effect_id"], effect["attempt_id"],
+                 "RC-wrong", ev, "grader", "1.0", "rubric-1", "PASS")
+
+    from core.effect_authority import unknown, retry_dispatch
+    # Move a fresh effect through retry so the old attempt is no longer current.
+    effect2 = setup(tmp_path / "second")
+    rec2 = receipt(tmp_path / "second", effect2)
+    ev2 = evidence(effect2, rec2)
+    unknown(str(tmp_path / "second"), effect2["effect_id"], "agent-1", "timeout")
+    retry_dispatch(str(tmp_path / "second"), effect2["effect_id"], "agent-1",
+                   f"{effect2['effect_id']}:attempt:2", "provider-1", 2)
+    with pytest.raises(TransitionError, match="attempt"):
+        evaluate(str(tmp_path / "second"), effect2["effect_id"], effect2["attempt_id"],
+                 rec2["receipt_id"], ev2, "grader", "1.0", "rubric-1", "PASS")
+
+
+def test_evaluation_is_derived_and_does_not_create_authority(tmp_path):
+    effect, rec, ev = accepted_observation(tmp_path)
+    before = json.loads((tmp_path / "effects" / (effect["effect_id"] + ".json")).read_text())
+    evaluate(str(tmp_path), effect["effect_id"], effect["attempt_id"], rec["receipt_id"],
+             ev, "grader", "1.0", "rubric-1", "PASS")
+    after = json.loads((tmp_path / "effects" / (effect["effect_id"] + ".json")).read_text())
+    assert after == before
+    assert after["state"] == "OBSERVED_SUCCESS"
