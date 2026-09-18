@@ -223,7 +223,7 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
     if not os.path.exists(path):
         raise KeyError(f"unknown effect: {effect_id}")
     current = _load(path)
-    _validate_persisted_effect(aios_dir, current)
+    contract, _permit = _validate_persisted_effect(aios_dir, current)
     if current.get("actor") != actor:
         raise TransitionError("dispatch actor does not match effect owner")
     if current.get("state") != "PLANNED":
@@ -260,7 +260,7 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
     if not os.path.exists(path):
         raise KeyError(f"unknown effect: {effect_id}")
     current = _load(path)
-    _validate_persisted_effect(aios_dir, current)
+    contract, _permit = _validate_persisted_effect(aios_dir, current)
     if current.get("actor") != actor:
         raise TransitionError("retry actor does not match effect owner")
     if current.get("state") != "UNKNOWN":
