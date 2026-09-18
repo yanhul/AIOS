@@ -4,12 +4,14 @@ AIOS owns authority and evidence semantics. Durable scheduling, retries,
 resume, planning and agent loops belong to an external execution substrate.
 """
 
+import hashlib
 from dataclasses import dataclass
 from typing import Protocol
 
 from .authority import authorize, load_contract, load_permit
 from .durable_runtime import DurableRuntime, validate_submission
-from .effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
+from .evidence import EvidenceRecord
+from .effect_authority import _provider_authorized, create_effect, dispatch, observe, retry_dispatch, unknown
 
 
 @dataclass(frozen=True)
@@ -34,13 +36,6 @@ def _text(value, name):
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be a non-empty string")
     return value
-
-
-def _provider_authorized(contract, provider_name):
-    return any(
-        isinstance(ref, str) and ref.split("@", 1)[0] == provider_name
-        for ref in contract.get("capabilities", [])
-    )
 
 
 def _submit_runtime(runtime, method, effect, attempt_id, provider_name, **kwargs):
@@ -103,11 +98,23 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
         return unknown(aios_dir, effect["effect_id"], actor,
                        f"provider ambiguity: {type(exc).__name__}: {exc}")
 
+    evidence_id = "EV-" + hashlib.sha256(
+        f"{receipt.effect_id}:{receipt.attempt_id}:{receipt.provider_operation_id}".encode("utf-8")
+    ).hexdigest()
+    evidence = EvidenceRecord(
+        evidence_id=evidence_id,
+        level="OBSERVED",
+        source_ref=f"provider://{receipt.provider_operation_id}",
+        claim=f"provider observed {receipt.outcome}",
+        run_id=receipt.provider_operation_id,
+        provider=receipt.provider,
+    ).as_record()
     return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, {
         "provider": receipt.provider,
         "provider_operation_id": receipt.provider_operation_id,
         "effect_id": receipt.effect_id,
         "attempt_id": receipt.attempt_id,
+        "evidence": evidence,
         "observation": receipt.observation,
     })
 
@@ -169,10 +176,10 @@ def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapt
         raise PermissionError("actor does not match authorized contract")
     if not _provider_authorized(contract, provider_name):
         raise PermissionError("provider capability is not authorized by contract")
-    if "external_effect" not in contract["allowed_effects"]:
+    if "external_effect" not in contract.get("allowed_effects", []):
         raise PermissionError("external effect is not authorized by contract")
 
-    effect = create_effect(aios_dir, contract_id, logical_operation_id, actor)
+    effect = create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id, "external_effect")
     if effect["state"] != "PLANNED":
         raise RuntimeError("logical operation already has a non-planned effect")
     attempt_id = f"{effect['effect_id']}:attempt:1"

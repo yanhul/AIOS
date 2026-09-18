@@ -20,7 +20,7 @@ from core.policy_registry import persist_policy
 
 def make_authorized(td):
     registry = CapabilityRegistry()
-    registry.register(Capability("research_is_validation", "1", "test-fixture", "research", status="ACTIVE"))
+    registry.register(Capability("provider-a", "1", "test-fixture", "research", status="ACTIVE"))
     registry.persist(td, "test-fixture")
     policy = persist_policy(td, {"policy_type": "GOVERNING_POLICY", "name": "effect-hardening"})
     contract = {
@@ -28,7 +28,7 @@ def make_authorized(td):
         "task_id": "RESEARCH_BC7",
         "scope": "research",
         "actor": "bc-controller",
-        "capabilities": ["research_is_validation@1"],
+        "capabilities": ["provider-a@1"],
         "input_digest": "sha256:input",
         "allowed_effects": ["process_execution"],
         "evidence_required": ["execution_receipt"],
@@ -56,6 +56,14 @@ def test_effect_creation_requires_bound_permit_and_allowed_effect():
         contract, permit, _ = make_authorized(td)
         with pytest.raises(TransitionError):
             create_effect(td, contract_identity(contract), "other", "bc-controller", permit["permit_id"], "forbidden")
+
+
+def test_initial_dispatch_rejects_provider_not_granted_by_contract():
+    with tempfile.TemporaryDirectory() as td:
+        _contract, _permit, effect = make_authorized(td)
+        with pytest.raises(TransitionError, match="provider is not authorized"):
+            dispatch(td, effect["effect_id"], "bc-controller",
+                     f"{effect['effect_id']}:attempt:1", "not-authorized")
 
 
 def test_initial_dispatch_is_bound_to_effect_attempt_identity():
@@ -88,6 +96,17 @@ def test_unknown_can_only_return_to_dispatch_through_bounded_retry():
         assert retried["state"] == "DISPATCHED"
         with pytest.raises(TransitionError):
             retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:3", "provider-a", 3)
+
+
+def test_retry_dispatch_rejects_provider_not_granted_by_contract():
+    with tempfile.TemporaryDirectory() as td:
+        _contract, _permit, effect = make_authorized(td)
+        dispatch(td, effect["effect_id"], "bc-controller",
+                 f"{effect['effect_id']}:attempt:1", "provider-a")
+        unknown(td, effect["effect_id"], "bc-controller", "provider timeout")
+        with pytest.raises(TransitionError, match="provider is not authorized"):
+            retry_dispatch(td, effect["effect_id"], "bc-controller",
+                           f"{effect['effect_id']}:attempt:2", "not-authorized", 2)
 
 
 def test_observation_requires_current_attempt_and_valid_aios_evidence():
@@ -128,4 +147,18 @@ def test_tampered_persisted_authority_blocks_future_transition():
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(rec, fh)
         with pytest.raises(TransitionError):
+            unknown(td, effect["effect_id"], "bc-controller", "should be blocked")
+
+
+def test_tampered_effect_immutable_fields_fail_integrity_check():
+    with tempfile.TemporaryDirectory() as td:
+        _contract, _permit, effect = make_authorized(td)
+        path = f"{td}/effects/{effect['effect_id']}.json"
+        import json
+        with open(path, "r", encoding="utf-8") as fh:
+            rec = json.load(fh)
+        rec["logical_operation_id"] = "attacker-operation"
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(rec, fh)
+        with pytest.raises(TransitionError, match="integrity digest"):
             unknown(td, effect["effect_id"], "bc-controller", "should be blocked")

@@ -54,7 +54,7 @@ class LoopPolicy:
             raise ValueError("execution_receipt_validator must be callable")
         if not isinstance(self.fix_success_state, str) or not self.fix_success_state.strip():
             raise ValueError("fix_success_state must be a non-empty string")
-        if self.fix_success_state not in self.terminal_states:
+        if self.fix_plan is not None and self.fix_success_state not in self.terminal_states:
             raise ValueError("fix_success_state must be an authorized terminal state")
         if self.fix_plan is not None:
             require_fix_plan(self.fix_plan)
