@@ -9,6 +9,7 @@ from typing import Protocol
 
 from .authority import authorize, load_contract, load_permit
 from .durable_runtime import DurableRuntime, validate_submission
+from .evidence import EvidenceRecord
 from .effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
 
 
@@ -103,11 +104,23 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
         return unknown(aios_dir, effect["effect_id"], actor,
                        f"provider ambiguity: {type(exc).__name__}: {exc}")
 
+    evidence_id = "EV-" + __import__("hashlib").sha256(
+        f"{receipt.effect_id}:{receipt.attempt_id}:{receipt.provider_operation_id}".encode("utf-8")
+    ).hexdigest()
+    evidence = EvidenceRecord(
+        evidence_id=evidence_id,
+        level="OBSERVED",
+        source_ref=f"provider://{receipt.provider_operation_id}",
+        claim=f"provider observed {receipt.outcome}",
+        run_id=receipt.provider_operation_id,
+        provider=receipt.provider,
+    ).as_record()
     return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, {
         "provider": receipt.provider,
         "provider_operation_id": receipt.provider_operation_id,
         "effect_id": receipt.effect_id,
         "attempt_id": receipt.attempt_id,
+        "evidence": evidence,
         "observation": receipt.observation,
     })
 
