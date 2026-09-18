@@ -34,6 +34,7 @@ import os
 import re
 import shutil
 import uuid
+from contextlib import contextmanager
 
 from . import state as state_layout
 
@@ -48,6 +49,7 @@ __all__ = [
     "event_identity",
     "apply_mutations",
     "recover_pending",
+    "mutation_lock",
 ]
 
 # ---------------------------------------------------------------------------
@@ -209,6 +211,36 @@ def _utc_ts():
 def _utc_iso():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+
+# ---------------------------------------------------------------------------
+# Cross-process mutation lock
+# ---------------------------------------------------------------------------
+
+@contextmanager
+def mutation_lock(aios_dir):
+    """Serialize authoritative state transitions for one AIOS state tree."""
+    state_layout.ensure_state_dirs(aios_dir)
+    lock_path = os.path.join(aios_dir, ".mutation.lock")
+    with open(lock_path, "a+b") as fh:
+        if os.path.getsize(lock_path) == 0:
+            fh.write(b"0")
+            fh.flush()
+        if os.name == "nt":
+            import msvcrt
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 # ---------------------------------------------------------------------------
 # Staging / atomic commit helpers
