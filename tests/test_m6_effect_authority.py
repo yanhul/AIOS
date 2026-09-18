@@ -1,6 +1,7 @@
 import pytest
 
-from core.effect_authority import create_effect, dispatch, observe, unknown
+from core.effect_authority import dispatch, observe, unknown
+from tests.m6_fixtures import make_effect
 from core.evidence import EvidenceRecord
 from core.mutation import TransitionError
 
@@ -25,7 +26,7 @@ def _observation(effect_id, provider="provider-1"):
 
 
 def test_effect_transition_is_atomic_and_audited(tmp_path):
-    effect = create_effect(str(tmp_path), "CT-1", "op-1", "agent-1")
+    effect = make_effect(tmp_path)
     assert effect["state"] == "PLANNED"
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1")
     unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
