@@ -97,7 +97,7 @@ def test_mismatched_receipt_becomes_unknown(tmp_path):
 
 def test_execute_attempt_runs_only_a_dispatched_attempt(tmp_path):
     c, cid, _ = setup_authority(tmp_path)
-    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test")
+    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     attempt_id = f"{effect['effect_id']}:attempt:1"
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")
     result = execute_attempt(str(tmp_path), c, effect, "agent:test", GoodAdapter(), attempt_id)
@@ -106,15 +106,15 @@ def test_execute_attempt_runs_only_a_dispatched_attempt(tmp_path):
 
 def test_execute_attempt_rejects_non_dispatched_effect(tmp_path):
     c, cid, _ = setup_authority(tmp_path)
-    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test")
+    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     with pytest.raises(RuntimeError, match="DISPATCHED"):
         execute_attempt(str(tmp_path), c, effect, "agent:test", GoodAdapter(),
                         f"{effect['effect_id']}:attempt:1")
 
 
 def test_execute_attempt_does_not_authorize_or_create_effect(tmp_path):
-    c, _, _ = setup_authority(tmp_path)
-    effect = create_effect(str(tmp_path), "CT-unrelated", "op-1", "agent:test")
+    c, cid, pid = setup_authority(tmp_path)
+    effect = create_effect(str(tmp_path), cid, "op-unrelated", "agent:test", pid, "external_effect")
     attempt_id = f"{effect['effect_id']}:attempt:1"
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")
 
@@ -132,7 +132,7 @@ def test_execute_attempt_does_not_authorize_or_create_effect(tmp_path):
 
 def test_retry_dispatch_requires_unknown_and_increments_attempt(tmp_path):
     _, cid, _ = setup_authority(tmp_path, max_attempts=3)
-    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test")
+    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     first = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                      f"{effect['effect_id']}:attempt:1", "fake-provider")
     unknown_effect = transition(str(tmp_path), first["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
@@ -145,7 +145,7 @@ def test_retry_dispatch_requires_unknown_and_increments_attempt(tmp_path):
 
 def test_generic_transition_cannot_turn_unknown_into_dispatched(tmp_path):
     _, cid, _ = setup_authority(tmp_path, max_attempts=3)
-    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test")
+    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
@@ -156,7 +156,7 @@ def test_generic_transition_cannot_turn_unknown_into_dispatched(tmp_path):
 
 def test_execute_retry_attempt_is_bounded_by_contract(tmp_path):
     c, cid, pid = setup_authority(tmp_path, max_attempts=2)
-    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test")
+    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
@@ -168,7 +168,7 @@ def test_execute_retry_attempt_is_bounded_by_contract(tmp_path):
 
 def test_execute_retry_attempt_rejects_over_max_before_dispatch(tmp_path):
     _, cid, pid = setup_authority(tmp_path, max_attempts=1)
-    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test")
+    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
