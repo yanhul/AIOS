@@ -16,6 +16,7 @@ from core.effect_authority import (
 from core.evidence import EvidenceRecord
 from core.mutation import TransitionError
 from core.policy_registry import persist_policy
+from core.receipt import persist_receipt
 
 
 def make_authorized(td):
@@ -130,6 +131,13 @@ def test_observation_requires_current_attempt_and_valid_aios_evidence():
         _contract, _permit, effect = make_authorized(td)
         attempt_id = f"{effect['effect_id']}:attempt:1"
         dispatch(td, effect["effect_id"], "bc-controller", attempt_id, "research_is_validation")
+        receipt = persist_receipt(
+            td,
+            {"effect_id": effect["effect_id"], "attempt_id": attempt_id,
+             "provider": "research_is_validation"},
+            attempt_id, "research_is_validation", "provider-op-1",
+            "OBSERVED_SUCCESS", {"status": "ok"},
+        )
         evidence = EvidenceRecord(
             evidence_id="EV-effect-1",
             level="OBSERVED",
@@ -137,13 +145,18 @@ def test_observation_requires_current_attempt_and_valid_aios_evidence():
             claim="execution completed",
             run_id="run-1",
             provider="research_is_validation",
+            artifact_ref="provider-op-1",
+            receipt_id=receipt["receipt_id"],
+            effect_id=effect["effect_id"],
+            attempt_id=attempt_id,
         ).as_record()
         observed = observe(
             td,
             effect["effect_id"],
             "bc-controller",
             "OBSERVED_SUCCESS",
-            {"attempt_id": attempt_id, "provider": "research_is_validation", "evidence": evidence},
+            {"attempt_id": attempt_id, "provider": "research_is_validation",
+             "receipt_id": receipt["receipt_id"], "evidence": evidence},
         )
         assert observed["state"] == "OBSERVED_SUCCESS"
         with pytest.raises(TransitionError):
