@@ -11,7 +11,7 @@ from typing import Protocol
 from .authority import authorize, load_contract, load_permit
 from .durable_runtime import DurableRuntime, validate_submission
 from .evidence import EvidenceRecord
-from .effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
+from .effect_authority import _provider_authorized, create_effect, dispatch, observe, retry_dispatch, unknown
 
 
 @dataclass(frozen=True)
@@ -36,13 +36,6 @@ def _text(value, name):
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be a non-empty string")
     return value
-
-
-def _provider_authorized(contract, provider_name):
-    return any(
-        isinstance(ref, str) and ref.split("@", 1)[0] == provider_name
-        for ref in contract.get("capabilities", [])
-    )
 
 
 def _submit_runtime(runtime, method, effect, attempt_id, provider_name, **kwargs):
