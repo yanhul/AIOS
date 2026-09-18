@@ -9,6 +9,7 @@ from core.effect_authority import create_effect, dispatch, observe
 from core.evidence import EvidenceRecord
 from core.policy_registry import persist_policy
 from core.receipt import persist_receipt, load_receipt
+from core.mutation import TransitionError
 
 
 def setup(tmp_path):
@@ -65,7 +66,7 @@ def test_receipt_is_durable_and_immutable(tmp_path):
     raw = json.loads(path.read_text())
     raw["observation"] = {"status": "tampered"}
     path.write_text(json.dumps(raw))
-    with pytest.raises(Exception):
+    with pytest.raises(TransitionError):
         load_receipt(str(tmp_path), rec["receipt_id"])
 
 
@@ -77,7 +78,7 @@ def test_wrong_receipt_effect_cannot_satisfy_observation(tmp_path):
     forged["digest"] = rec["digest"]
     (tmp_path / "receipts" / (rec["receipt_id"] + ".json")).write_text(json.dumps(forged))
     ev = evidence(effect, rec)
-    with pytest.raises(Exception):
+    with pytest.raises(TransitionError):
         observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", {
             "attempt_id": effect["attempt_id"], "provider": effect["provider"],
             "receipt_id": rec["receipt_id"], "evidence": ev,
@@ -108,3 +109,31 @@ def test_evidence_from_stale_attempt_cannot_satisfy_retry(tmp_path):
             "attempt_id": effect2["attempt_id"], "provider": effect2["provider"],
             "receipt_id": rec1["receipt_id"], "evidence": ev1,
         })
+
+
+def test_receipt_persistence_reloads_authoritative_effect(tmp_path):
+    effect = setup(tmp_path)
+    forged = dict(effect)
+    forged["attempt_id"] = effect["effect_id"] + ":attempt:999"
+    with pytest.raises(TransitionError, match="authoritative effect attempt"):
+        persist_receipt(
+            str(tmp_path), forged, forged["attempt_id"], effect["provider"],
+            "op-forged", "OBSERVED_SUCCESS", {"status": "ok"},
+        )
+    assert not list((tmp_path / "receipts").glob("*.json"))
+
+
+def test_receipt_persistence_rejects_terminal_authoritative_effect(tmp_path):
+    effect = setup(tmp_path)
+    from core.effect_authority import observe
+    rec = receipt(tmp_path, effect)
+    ev = evidence(effect, rec)
+    observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", {
+        "attempt_id": effect["attempt_id"], "provider": effect["provider"],
+        "receipt_id": rec["receipt_id"], "evidence": ev,
+    })
+    with pytest.raises(TransitionError, match="currently DISPATCHED or UNKNOWN"):
+        persist_receipt(
+            str(tmp_path), effect, effect["attempt_id"], effect["provider"],
+            "op-after-terminal", "OBSERVED_SUCCESS", {"status": "ok"},
+        )
