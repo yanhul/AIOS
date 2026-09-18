@@ -16,7 +16,7 @@ from core.policy_registry import persist_policy
 def make_authorized(td):
     from core.capabilities import Capability, CapabilityRegistry
     registry = CapabilityRegistry()
-    registry.register(Capability("research_is_validation", "1", "test-fixture", "research", status="ACTIVE"))
+    registry.register(Capability("provider-a", "1", "test-fixture", "research", status="ACTIVE"))
     registry.persist(td, "test-fixture")
     policy = persist_policy(td, {"policy_type": "GOVERNING_POLICY", "name": "evaluation-runtime"})
     contract = {
