@@ -91,7 +91,7 @@ def test_concurrent_same_entity_mutation_cannot_overwrite(tmp_path):
         try:
             barrier.wait(timeout=5)
             result = mutation.apply_mutations(
-                aios_dir, [_entity("EV-RACE-1", statement)], "race-test"
+                aios_dir, [_entity("EV-9001", statement)], "race-test"
             )
             results.append(result)
         except Exception as exc:
@@ -111,7 +111,7 @@ def test_concurrent_same_entity_mutation_cannot_overwrite(tmp_path):
     assert len(errors) == 1
     assert isinstance(errors[0], mutation.TransitionError)
 
-    path = Path(aios_dir) / "evidence" / "EV-RACE-1.json"
+    path = Path(aios_dir) / "evidence" / "EV-9001.json"
     assert path.exists()
     with path.open("r", encoding="utf-8") as fh:
         persisted = __import__("json").load(fh)
@@ -136,7 +136,7 @@ def test_semantic_mutation_failure_recovers_without_partial_same_entity_state(
     with pytest.raises(OSError, match="injected semantic mutation failure"):
         mutation.apply_mutations(
             aios_dir,
-            [_entity("EV-FAIL-1", "entity payload")],
+            [_entity("EV-9002", "entity payload")],
             "failure-test",
         )
 
@@ -146,7 +146,7 @@ def test_semantic_mutation_failure_recovers_without_partial_same_entity_state(
     monkeypatch.setattr(mutation, "_replace", original_replace)
     mutation.recover_pending(aios_dir)
 
-    entity_path = Path(aios_dir) / "evidence" / "EV-FAIL-1.json"
+    entity_path = Path(aios_dir) / "evidence" / "EV-9002.json"
     event_files = list((Path(aios_dir) / "events").glob("*.json"))
     assert entity_path.exists()
     assert event_files
@@ -154,4 +154,4 @@ def test_semantic_mutation_failure_recovers_without_partial_same_entity_state(
 
     with entity_path.open("r", encoding="utf-8") as fh:
         persisted = __import__("json").load(fh)
-    assert persisted["entity_id"] == "EV-FAIL-1"
+    assert persisted["entity_id"] == "EV-9002"
