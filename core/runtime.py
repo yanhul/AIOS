@@ -10,6 +10,7 @@ from typing import Protocol
 from .authority import authorize, load_contract, load_permit
 from .durable_runtime import DurableRuntime, validate_submission
 from .effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
+from .evidence import EvidenceRecord
 
 
 @dataclass(frozen=True)
@@ -103,12 +104,22 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
         return unknown(aios_dir, effect["effect_id"], actor,
                        f"provider ambiguity: {type(exc).__name__}: {exc}")
 
+    evidence = EvidenceRecord(
+        evidence_id="EV-" + receipt.effect_id + "-" + receipt.attempt_id.split(":")[-1],
+        level="OBSERVED",
+        source_ref="provider://" + receipt.provider_operation_id,
+        claim="provider returned a bound execution receipt",
+        run_id=receipt.attempt_id,
+        provider=receipt.provider,
+        artifact_ref=receipt.provider_operation_id,
+    ).as_record()
     return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, {
         "provider": receipt.provider,
         "provider_operation_id": receipt.provider_operation_id,
         "effect_id": receipt.effect_id,
         "attempt_id": receipt.attempt_id,
         "observation": receipt.observation,
+        "evidence": evidence,
     })
 
 
