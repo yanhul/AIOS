@@ -7,6 +7,7 @@ from core.policy_registry import persist_policy
 from core.effect_authority import create_effect, dispatch, observe, unknown
 from core.evidence import EvidenceRecord
 from core.mutation import TransitionError
+from core.receipt import persist_receipt
 
 
 def _setup(tmp_path):
@@ -25,23 +26,27 @@ def _setup(tmp_path):
     return create_effect(str(tmp_path), contract_identity(contract), "op-1", "agent-1", permit["permit_id"], "external_effect")
 
 
-def _evidence(provider="provider-1"):
-    return EvidenceRecord(
+def _observation(tmp_path, effect_id, provider="provider-1"):
+    attempt_id = f"{effect_id}:attempt:1"
+    receipt = persist_receipt(
+        str(tmp_path),
+        {"effect_id": effect_id, "attempt_id": attempt_id, "provider": provider},
+        attempt_id, provider, "provider-op-1", "OBSERVED_SUCCESS", {"status": "ok"},
+    )
+    evidence = EvidenceRecord(
         evidence_id="EV-1",
         level="OBSERVED",
         source_ref="provider://receipt/1",
         claim="provider completed operation",
         run_id="run-1",
         provider=provider,
+        artifact_ref="provider-op-1",
+        receipt_id=receipt["receipt_id"],
+        effect_id=effect_id,
+        attempt_id=attempt_id,
     ).as_record()
-
-
-def _observation(effect_id, provider="provider-1"):
-    return {
-        "attempt_id": f"{effect_id}:attempt:1",
-        "provider": provider,
-        "evidence": _evidence(provider),
-    }
+    return {"attempt_id": attempt_id, "provider": provider,
+            "receipt_id": receipt["receipt_id"], "evidence": evidence}
 
 
 def test_effect_transition_is_atomic_and_audited(tmp_path):
@@ -49,7 +54,7 @@ def test_effect_transition_is_atomic_and_audited(tmp_path):
     assert effect["state"] == "PLANNED"
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1")
     unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
-    done = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", _observation(effect["effect_id"]))
+    done = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", _observation(tmp_path, effect["effect_id"]))
     assert done["state"] == "OBSERVED_SUCCESS"
     assert (tmp_path / "events" / ("effect-" + effect["effect_id"] + "-OBSERVED_SUCCESS.json")).exists()
 
@@ -78,17 +83,13 @@ def test_observation_provider_must_match_effect(tmp_path):
     effect = _setup(tmp_path)
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1")
     with pytest.raises(TransitionError):
-        observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", _observation(effect["effect_id"], "provider-2"))
+        observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", _observation(tmp_path, effect["effect_id"], "provider-2"))
 
 
 def test_tampered_evidence_digest_is_rejected(tmp_path):
     effect = _setup(tmp_path)
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1")
-    evidence = _evidence()
-    evidence["claim"] = "tampered"
+    observation = _observation(tmp_path, effect["effect_id"])
+    observation["evidence"]["claim"] = "tampered"
     with pytest.raises(ValueError):
-        observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", {
-            "attempt_id": f"{effect['effect_id']}:attempt:1",
-            "provider": "provider-1",
-            "evidence": evidence,
-        })
+        observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", observation)
