@@ -5,7 +5,7 @@ from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.policy_registry import persist_policy
 
-from core.effect_authority import create_effect, dispatch, observe, unknown
+from core.effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
 from core.evidence import EvidenceRecord
 from core.mutation import TransitionError
 
@@ -37,9 +37,9 @@ def _evidence(provider="provider-1"):
     ).as_record()
 
 
-def _observation(effect_id, provider="provider-1"):
+def _observation(effect_id, provider="provider-1", attempt=1):
     return {
-        "attempt_id": f"{effect_id}:attempt:1",
+        "attempt_id": f"{effect_id}:attempt:{attempt}",
         "provider": provider,
         "evidence": _evidence(provider),
     }
@@ -50,7 +50,8 @@ def test_effect_transition_is_atomic_and_audited(tmp_path):
     assert effect["state"] == "PLANNED"
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1")
     unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
-    done = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", _observation(effect["effect_id"]))
+    retry_dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:2", "provider-1", 2)
+    done = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", _observation(effect["effect_id"], attempt=2))
     assert done["state"] == "OBSERVED_SUCCESS"
     assert (tmp_path / "events" / ("effect-" + effect["effect_id"] + "-OBSERVED_SUCCESS.json")).exists()
 
