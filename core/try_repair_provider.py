@@ -17,6 +17,10 @@ class TryRepairProviderError(RuntimeError):
     pass
 
 
+_DENIED_PREFIXES = (".github/workflows/", ".aios/", "secrets/")
+_DENIED_NAMES = {".env", ".env.local", ".env.production", "credentials.json"}
+
+
 def health() -> dict[str, Any]:
     url = os.environ.get("TRY_REPAIR_PROVIDER_URL", "").strip()
     token = os.environ.get("TRY_REPAIR_PROVIDER_TOKEN", "")
@@ -78,6 +82,16 @@ def propose(*, request_id: str, repository: str, sha: str, attempt: int,
     for item in payload["files"]:
         if not isinstance(item, dict) or not isinstance(item.get("path"), str) or not isinstance(item.get("content"), str):
             raise TryRepairProviderError("provider returned invalid patch file")
+        path = item["path"].replace("\\", "/")
+        parts = path.split("/")
+        if (
+            path.startswith("/")
+            or ".." in parts
+            or path in _DENIED_NAMES
+            or path.startswith("tests/")
+            or any(path == p.rstrip("/") or path.startswith(p) for p in _DENIED_PREFIXES)
+        ):
+            raise TryRepairProviderError("provider returned protected patch path")
     return payload
 
 
