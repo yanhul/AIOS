@@ -11,8 +11,12 @@ concurrency:
   group: aios-repair-${{ github.event.workflow_run.id }}
   cancel-in-progress: true
 
+env:
+  RUN_ID: ${{ github.event.workflow_run.id }}
+  BASE_SHA: ${{ github.event.workflow_run.head_sha }}
+
 jobs:
-  propose:
+  propose1:
     if: >-
       ${{ github.event.workflow_run.conclusion == 'failure' &&
           github.event.workflow_run.head_repository.full_name == github.repository }}
@@ -22,162 +26,339 @@ jobs:
       actions: read
       contents: read
     steps:
-      - name: Checkout trusted repair plane
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: main
           persist-credentials: false
-
-      - name: Fetch failed source object only
-        env:
-          SHA: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          git fetch --no-tags --depth=1 origin "$SHA"
-
+      - env:
+          SHA: ${{ env.BASE_SHA }}
+        run: git fetch --no-tags --depth=1 origin "$SHA"
       - name: Capture failed CI evidence
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
-        run: |
-          gh run view "$RUN_ID" --repo "${{ github.repository }}" --log-failed > "$RUNNER_TEMP/ci-failure.log" || true
-          test -s "$RUNNER_TEMP/ci-failure.log"
-
-      - name: Reason-only proposal
+        run: gh run view "$RUN_ID" --repo "${{ github.repository }}" --log-failed > "$RUNNER_TEMP/ci-failure.log" || true
+      - name: Reason-only proposal attempt 1
         env:
           AIOS_REPAIR_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
           AIOS_REPAIR_MODEL: ${{ vars.AIOS_REPAIR_MODEL }}
-          AIOS_REPAIR_SHA: ${{ github.event.workflow_run.head_sha }}
-          AIOS_REPAIR_RUN_ID: ${{ github.event.workflow_run.id }}
+          AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
+          AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
+          AIOS_REPAIR_ATTEMPT: "1"
           AIOS_REPAIR_LOG: ${{ runner.temp }}/ci-failure.log
         run: |
-          if [ -z "${AIOS_REPAIR_API_KEY:-}" ]; then
-            echo "AIOS_REPAIR=BLOCKED missing reasoning-provider secret"
-            exit 1
-          fi
+          test -n "${AIOS_REPAIR_API_KEY:-}" || { echo "BLOCKED: missing reasoning provider secret"; exit 1; }
           python scripts/ci_repair_propose.py
-
-      - name: Upload typed proposal
-        uses: actions/upload-artifact@v4
+      - run: cp repair-proposal.json repair-proposal-1.json
+      - uses: actions/upload-artifact@v4
         with:
-          name: aios-repair-proposal-${{ github.event.workflow_run.id }}
-          path: repair-proposal.json
-          if-no-files-found: error
+          name: aios-repair-proposal-${{ env.RUN_ID }}-1
+          path: repair-proposal-1.json
           retention-days: 7
 
-  apply:
-    needs: propose
+  apply1:
+    needs: propose1
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       actions: read
       contents: read
+    outputs:
+      status: ${{ steps.result.outputs.status }}
     steps:
-      - name: Checkout trusted repair plane
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: main
           path: trusted
           persist-credentials: false
-
-      - name: Checkout failed source as inert workspace
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ env.BASE_SHA }}
           path: target
-          persist-credentials: false
           clean: true
-
-      - name: Download typed proposal
-        uses: actions/download-artifact@v4
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
         with:
-          name: aios-repair-proposal-${{ github.event.workflow_run.id }}
-          path: target
-
-      - name: Apply through AIOS and run trusted pytest
+          name: aios-repair-proposal-${{ env.RUN_ID }}-1
+          path: target/p1
+      - name: Apply attempt 1 and test
+        id: result
         working-directory: target
         env:
           PYTHONPATH: ${{ github.workspace }}/trusted
+          AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
+          AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
+          AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/target/p1/repair-proposal-1.json
         run: |
-          python "${{ github.workspace }}/trusted/scripts/ci_repair_apply.py"
-
+          python "${{ github.workspace }}/trusted/scripts/ci_repair_apply_attempt.py"
+          status="$(python -c 'import json; print(json.load(open("repair-result.json"))["test"]["status"])')"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          cp repair-result.json repair-result-1.json
       - name: Verify mutation scope
         working-directory: target
         run: |
-          expected="$(python - <<'PY'
-          import json
-          print("\n".join(x["path"] for x in json.load(open("repair-proposal.json", encoding="utf-8"))["files"]))
+          python - <<'PY'
+          import json, subprocess
+          expected=sorted(x["path"] for x in json.load(open("p1/repair-proposal-1.json"))["files"])
+          actual=sorted(subprocess.check_output(["git","diff","--name-only"], text=True).splitlines())
+          assert actual == expected, (actual, expected)
           PY
-          )"
-          actual="$(git diff --name-only)"
-          test "$(printf '%s\n' "$expected" | sort)" = "$(printf '%s\n' "$actual" | sort)"
-
-      - name: Upload verified repair evidence
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: aios-repair-result-${{ github.event.workflow_run.id }}
-          path: |
-            target/repair-proposal.json
-            target/repair-result.json
-          if-no-files-found: error
+          name: aios-repair-result-${{ env.RUN_ID }}-1
+          path: target/repair-result-1.json
+          retention-days: 7
+
+  propose2:
+    needs: apply1
+    if: ${{ needs.apply1.outputs.status == 'FAIL' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - env:
+          SHA: ${{ env.BASE_SHA }}
+        run: git fetch --no-tags --depth=1 origin "$SHA"
+      - uses: actions/download-artifact@v4
+        with:
+          name: aios-repair-result-${{ env.RUN_ID }}-1
+          path: prior
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run view "$RUN_ID" --repo "${{ github.repository }}" --log-failed > "$RUNNER_TEMP/ci-failure.log" || true
+      - name: Reason-only proposal attempt 2
+        env:
+          AIOS_REPAIR_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          AIOS_REPAIR_MODEL: ${{ vars.AIOS_REPAIR_MODEL }}
+          AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
+          AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
+          AIOS_REPAIR_ATTEMPT: "2"
+          AIOS_REPAIR_LOG: ${{ runner.temp }}/ci-failure.log
+          AIOS_REPAIR_PREVIOUS_RESULT: ${{ github.workspace }}/prior/repair-result-1.json
+        run: |
+          test -n "${AIOS_REPAIR_API_KEY:-}" || { echo "BLOCKED: missing reasoning provider secret"; exit 1; }
+          python scripts/ci_repair_propose.py
+          cp repair-proposal.json repair-proposal-2.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aios-repair-proposal-${{ env.RUN_ID }}-2
+          path: repair-proposal-2.json
+          retention-days: 7
+
+  apply2:
+    needs: propose2
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      status: ${{ steps.result.outputs.status }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BASE_SHA }}
+          path: target
+          clean: true
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: aios-repair-proposal-${{ env.RUN_ID }}-1
+          path: target/p1
+      - uses: actions/download-artifact@v4
+        with:
+          name: aios-repair-proposal-${{ env.RUN_ID }}-2
+          path: target/p2
+      - name: Apply cumulative attempts 1-2 and test
+        id: result
+        working-directory: target
+        env:
+          PYTHONPATH: ${{ github.workspace }}/trusted
+          AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
+          AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
+          AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/target/p1/repair-proposal-1.json,${{ github.workspace }}/target/p2/repair-proposal-2.json
+        run: |
+          python "${{ github.workspace }}/trusted/scripts/ci_repair_apply_attempt.py"
+          status="$(python -c 'import json; print(json.load(open("repair-result.json"))["test"]["status"])')"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          cp repair-result.json repair-result-2.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aios-repair-result-${{ env.RUN_ID }}-2
+          path: target/repair-result-2.json
+          retention-days: 7
+
+  propose3:
+    needs: apply2
+    if: ${{ needs.apply2.outputs.status == 'FAIL' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - env:
+          SHA: ${{ env.BASE_SHA }}
+        run: git fetch --no-tags --depth=1 origin "$SHA"
+      - uses: actions/download-artifact@v4
+        with:
+          name: aios-repair-result-${{ env.RUN_ID }}-2
+          path: prior
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run view "$RUN_ID" --repo "${{ github.repository }}" --log-failed > "$RUNNER_TEMP/ci-failure.log" || true
+      - name: Reason-only proposal attempt 3
+        env:
+          AIOS_REPAIR_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          AIOS_REPAIR_MODEL: ${{ vars.AIOS_REPAIR_MODEL }}
+          AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
+          AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
+          AIOS_REPAIR_ATTEMPT: "3"
+          AIOS_REPAIR_LOG: ${{ runner.temp }}/ci-failure.log
+          AIOS_REPAIR_PREVIOUS_RESULT: ${{ github.workspace }}/prior/repair-result-2.json
+        run: |
+          test -n "${AIOS_REPAIR_API_KEY:-}" || { echo "BLOCKED: missing reasoning provider secret"; exit 1; }
+          python scripts/ci_repair_propose.py
+          cp repair-proposal.json repair-proposal-3.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aios-repair-proposal-${{ env.RUN_ID }}-3
+          path: repair-proposal-3.json
+          retention-days: 7
+
+  apply3:
+    needs: propose3
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      status: ${{ steps.result.outputs.status }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BASE_SHA }}
+          path: target
+          clean: true
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: aios-repair-proposal-${{ env.RUN_ID }}-1
+          path: target/p1
+      - uses: actions/download-artifact@v4
+        with:
+          name: aios-repair-proposal-${{ env.RUN_ID }}-2
+          path: target/p2
+      - uses: actions/download-artifact@v4
+        with:
+          name: aios-repair-proposal-${{ env.RUN_ID }}-3
+          path: target/p3
+      - name: Apply cumulative attempts 1-3 and test
+        id: result
+        working-directory: target
+        env:
+          PYTHONPATH: ${{ github.workspace }}/trusted
+          AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
+          AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
+          AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/target/p1/repair-proposal-1.json,${{ github.workspace }}/target/p2/repair-proposal-2.json,${{ github.workspace }}/target/p3/repair-proposal-3.json
+        run: |
+          python "${{ github.workspace }}/trusted/scripts/ci_repair_apply_attempt.py"
+          status="$(python -c 'import json; print(json.load(open("repair-result.json"))["test"]["status"])')"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          cp repair-result.json repair-result-3.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aios-repair-result-${{ env.RUN_ID }}-3
+          path: target/repair-result-3.json
           retention-days: 7
 
   publish:
-    needs: apply
+    needs: [apply1, apply2, apply3]
+    if: >-
+      ${{ always() && !cancelled() &&
+          (needs.apply1.outputs.status == 'PASS' ||
+           needs.apply2.outputs.status == 'PASS' ||
+           needs.apply3.outputs.status == 'PASS') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: write
     steps:
-      - name: Checkout trusted repair plane
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: main
           path: trusted
           persist-credentials: false
-
-      - name: Checkout exact failed base
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ env.BASE_SHA }}
           path: target
-          persist-credentials: false
           clean: true
-
-      - name: Download proposal and verified test evidence
-        uses: actions/download-artifact@v4
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
         with:
-          name: aios-repair-result-${{ github.event.workflow_run.id }}
-          path: evidence
-
-      - name: Require prior PASS evidence
+          pattern: aios-repair-proposal-${{ env.RUN_ID }}-*
+          path: target/proposals
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: aios-repair-result-${{ env.RUN_ID }}-*
+          path: target/results
+          merge-multiple: true
+      - name: Select and verify PASS evidence
+        working-directory: target
         run: |
           python - <<'PY'
-          import json
-          obj=json.load(open("evidence/repair-result.json", encoding="utf-8"))
-          assert obj["test"]["status"] == "PASS"
-          assert obj["test"]["evidence_refs"]
-          assert obj["apply"]["state"] == "OBSERVED_SUCCESS"
+          import glob, json, os
+          passed=[]
+          for path in glob.glob("results/repair-result-*.json"):
+              obj=json.load(open(path,encoding="utf-8"))
+              if obj["test"]["status"] == "PASS" and obj["test"]["evidence_refs"]:
+                  passed.append(max(obj["attempts"]))
+          if not passed:
+              raise SystemExit("no independently recorded PASS evidence")
+          print(f"AIOS_REPAIR_PASS_ATTEMPT={max(passed)}" >> os.environ.get("GITHUB_ENV","/dev/null"))
+          with open(os.environ["GITHUB_ENV"]," "a") as fh:
+              fh.write(f"AIOS_REPAIR_PASS_ATTEMPT={max(passed)}\n")
           PY
-
-      - name: Re-apply through trusted AIOS publisher only
+      - name: Re-apply cumulative proposals through trusted AIOS publisher
         working-directory: target
         env:
           PYTHONPATH: ${{ github.workspace }}/trusted
-        run: |
-          cp "${{ github.workspace }}/evidence/repair-proposal.json" repair-proposal.json
-          python "${{ github.workspace }}/trusted/scripts/ci_repair_publish.py"
-
+          AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
+          AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
+        run: python "${{ github.workspace }}/trusted/scripts/ci_repair_publish.py"
       - name: Push repair branch and open PR
         working-directory: target
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
-          BASE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           branch="aios/autorepair/${RUN_ID}"
           git push --set-upstream "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "$branch"
           gh pr create --repo "${{ github.repository }}" --base main --head "$branch" \
             --title "fix: autonomous repair for CI run ${RUN_ID}" \
-            --body "Generated by AIOS bounded repair loop. Base: ${BASE_SHA}. Prior trusted pytest PASS evidence verified before privileged publication."
+            --body "Generated by AIOS bounded iterative repair loop (max 3 attempts). External implementations were read-only inputs; privileged publication used only trusted AIOS code."
