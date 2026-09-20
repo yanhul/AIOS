@@ -8,6 +8,7 @@ from core.contract import contract_identity
 from core.policy_registry import persist_policy
 from core.external_effect import ExternalEffectError, create_effect, load_effects, record_dispatch, record_observation, record_unknown
 from core.mutation import TransitionError
+from core.effect_authority import retry_dispatch
 
 
 def evidence(provider="provider:test"):
@@ -57,8 +58,10 @@ class TestExternalEffect(unittest.TestCase):
         record_dispatch(self.aios, e["effect_id"], attempt, "provider:test")
         record_unknown(self.aios, e["effect_id"], "provider timeout")
         self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "UNKNOWN")
+        retry_attempt = f"{e['effect_id']}:attempt:2"
+        retry_dispatch(self.aios, e["effect_id"], "agent:a", retry_attempt, "provider:test", 2)
         record_observation(self.aios, e["effect_id"], "OBSERVED_SUCCESS", {
-            "attempt_id": attempt, "provider": "provider:test", "evidence": evidence()
+            "attempt_id": retry_attempt, "provider": "provider:test", "evidence": evidence()
         })
         self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "OBSERVED_SUCCESS")
 
