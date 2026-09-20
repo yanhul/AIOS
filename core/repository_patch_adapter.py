@@ -122,8 +122,8 @@ def _safe_repo_path(root: Path, raw: str) -> Path:
     p = Path(path)
     if p.is_absolute() or path.startswith("/") or ".." in p.parts:
         raise ValueError("repository patch path escapes root")
-    if p.name in _DENIED_FILES or any(
-        path == prefix[:-1] or path.startswith(prefix) for prefix in _DENIED_PREFIXES
+    if p.name in RepositoryPatchAdapter._DENIED_FILES or any(
+        path == prefix[:-1] or path.startswith(prefix) for prefix in RepositoryPatchAdapter._DENIED_PREFIXES
     ):
         raise ValueError("repository patch path is protected")
     target = (root / p).resolve()
