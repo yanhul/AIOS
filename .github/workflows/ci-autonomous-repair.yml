@@ -44,7 +44,7 @@ jobs:
         env:
           AIOS_REPAIR_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
-          AIOS_REPAIR_MODEL: ${{ vars.AIOS_REPAIR_MODEL }}
+          AIOS_REPAIR_MODEL: ${{ vars.AIOS_REPAIR_MODEL || 'gemini-3.8-flash' }}
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_SOURCE_BRANCH: ${{ env.SOURCE_BRANCH }}
@@ -140,7 +140,7 @@ jobs:
         env:
           AIOS_REPAIR_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
-          AIOS_REPAIR_MODEL: ${{ vars.AIOS_REPAIR_MODEL }}
+          AIOS_REPAIR_MODEL: ${{ vars.AIOS_REPAIR_MODEL || 'gemini-3.8-flash' }}
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_SOURCE_BRANCH: ${{ env.SOURCE_BRANCH }}
@@ -232,7 +232,7 @@ jobs:
         env:
           AIOS_REPAIR_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
-          AIOS_REPAIR_MODEL: ${{ vars.AIOS_REPAIR_MODEL }}
+          AIOS_REPAIR_MODEL: ${{ vars.AIOS_REPAIR_MODEL || 'gemini-3.8-flash' }}
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_SOURCE_BRANCH: ${{ env.SOURCE_BRANCH }}
