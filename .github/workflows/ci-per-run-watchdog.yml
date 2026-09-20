@@ -3,7 +3,7 @@ name: AIOS CI Per-Run Watchdog
 on:
   workflow_run:
     workflows: ["CI"]
-    types: [requested, in_progress, completed]
+    types: [requested]
 
 permissions:
   actions: write
@@ -24,102 +24,106 @@ jobs:
           ref: main
           persist-credentials: false
 
-      - name: Watch bounded queue/execution window
-        if: ${{ github.event.action != 'completed' }}
-        env:
-          ACTION: ${{ github.event.action }}
-        run: |
-          if [ "$ACTION" = "requested" ]; then
-            sleep 600
-          else
-            sleep 1860
-          fi
-
-      - name: Download and independently verify successful CI evidence
-        if: ${{ github.event.action == 'completed' }}
+      - name: Watch queue and execution window
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN_ID: ${{ github.event.workflow_run.id }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          conclusion="$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID" | python -c 'import json,sys; print(json.load(sys.stdin).get("conclusion") or "")')"
-          [ "$conclusion" = "success" ] || exit 0
-          mkdir -p "$RUNNER_TEMP/aios-evidence"
-          gh run download "$RUN_ID" -n "aios-ci-evidence-$RUN_ID" -D "$RUNNER_TEMP/aios-evidence"
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          root = Path(os.environ["RUNNER_TEMP"]) / "aios-evidence"
-          expected = {"yanhul__try.json", "yanhul__android-ai-assistant.json", "yanhul__RX50.json"}
-          files = {p.name for p in root.glob("*.json")}
-          assert files == expected, {"files": sorted(files), "expected": sorted(expected)}
-          for path in root.glob("*.json"):
-              obj = json.loads(path.read_text())
-              assert obj.get("status") in {"PASS","BLOCKED","INCONCLUSIVE","EDGE_FOUND","NO_EDGE_FOUND","REJECT","PROMOTE"}, path.name
-              assert obj.get("evidence_refs"), path.name
-              assert obj.get("verification_refs"), path.name
-          print("EVIDENCE_WATCHDOG=PASS")
-          PY
-
-      - name: Inspect run and enforce retry budget
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
-          EVENT_ACTION: ${{ github.event.action }}
           REPOSITORY: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
-          run_json="$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID")"
-          status="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
-          conclusion="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("conclusion") or "")')"
-          attempt="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin)["run_attempt"])')"
-          echo "run=$RUN_ID action=$EVENT_ACTION status=$status conclusion=$conclusion attempt=$attempt"
-          if [ "$EVENT_ACTION" != "completed" ]; then
-            age="$(printf '%s' "$run_json" | python -c 'import json,sys,datetime; d=json.load(sys.stdin); k="run_started_at" if d["status"]=="in_progress" and d.get("run_started_at") else "created_at"; t=datetime.datetime.fromisoformat(d[k].replace("Z","+00:00")); print(max(0,int((datetime.datetime.now(datetime.timezone.utc)-t).total_seconds())))')"
-            WATCH_STATUS="$status" WATCH_AGE="$age" WATCH_ATTEMPT="$attempt" python - <<'PY'
-            import os
-            from core.ci_watchdog import CIWatch, classify_watch
-            w = CIWatch(
-                repository="yanhul/AIOS",
-                workflow="CI",
-                run_id=int(os.environ["RUN_ID"]),
-                sha=os.environ["HEAD_SHA"],
-                status=os.environ["WATCH_STATUS"],
-                conclusion=None,
-                age_seconds=int(os.environ["WATCH_AGE"]),
-                retry_count=max(0, int(os.environ["WATCH_ATTEMPT"]) - 1),
-            )
-            print("AIOS_WATCHDOG_ACTION="+classify_watch(w))
-            PY
-          fi
+          deadline=$(($(date +%s) + 2040))
 
-          if [ "$EVENT_ACTION" = "completed" ]; then
-            echo "CI_CONCLUSION=$conclusion -> AIOS repair/diagnosis path"
-            exit 0
-          fi
+          while true; do
+            run_json="$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID")"
+            status="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
+            conclusion="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("conclusion") or "")')"
+            attempt="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin)["run_attempt"])')"
+            echo "run=$RUN_ID status=$status conclusion=$conclusion attempt=$attempt"
 
-          if [ "$status" = "queued" ] || [ "$status" = "requested" ] || [ "$status" = "waiting" ] || [ "$status" = "pending" ] || [ "$status" = "in_progress" ]; then
-            if [ "$attempt" -lt 3 ]; then
-              echo "WATCHDOG_TIMEOUT -> cancel + bounded retry (attempt budget: 2 retries)"
-              gh api --method POST "repos/$REPOSITORY/actions/runs/$RUN_ID/cancel" >/dev/null || true
-              for i in 1 2 3 4 5 6 7 8 9 10; do
-                sleep 6
-                now="$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID" | python -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
-                [ "$now" = "completed" ] && break
-              done
-              now="$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID" | python -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
-              if [ "$now" != "completed" ]; then
-                echo "RETRY_BLOCKED: old run did not reach terminal state"
-                exit 1
+            if [ "$status" = "completed" ]; then
+              break
+            fi
+
+            now=$(date +%s)
+            if [ "$now" -ge "$deadline" ]; then
+              echo "WATCHDOG_TIMEOUT status=$status attempt=$attempt"
+
+              WATCH_STATUS="$status" WATCH_ATTEMPT="$attempt" RUN_ID="$RUN_ID" HEAD_SHA="$HEAD_SHA" python - <<'PY'
+          import os
+          from core.ci_watchdog import CIWatch, classify_watch
+
+          status = os.environ["WATCH_STATUS"]
+          attempt = int(os.environ["WATCH_ATTEMPT"])
+          age = 2040
+          watch = CIWatch(
+              repository="yanhul/AIOS",
+              workflow="CI",
+              run_id=int(os.environ["RUN_ID"]),
+              sha=os.environ["HEAD_SHA"],
+              status=status,
+              conclusion=None,
+              age_seconds=age,
+              retry_count=max(0, attempt - 1),
+          )
+          print("AIOS_WATCHDOG_ACTION=" + classify_watch(watch))
+          PY
+
+              if [ "$attempt" -lt 3 ]; then
+                echo "WATCHDOG_TIMEOUT -> cancel + bounded retry"
+                gh api --method POST "repos/$REPOSITORY/actions/runs/$RUN_ID/cancel" >/dev/null || true
+                for i in $(seq 1 10); do
+                  sleep 6
+                  status2="$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID" | python -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
+                  [ "$status2" = "completed" ] && break
+                done
+                status2="$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID" | python -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
+                if [ "$status2" != "completed" ]; then
+                  echo "RETRY_BLOCKED: old run did not reach terminal state"
+                  exit 1
+                fi
+                gh api --method POST "repos/$REPOSITORY/actions/runs/$RUN_ID/rerun" >/dev/null
+                echo "RETRY_SCHEDULED=attempt-$((attempt+1))"
+                exit 0
               fi
-              gh api --method POST "repos/$REPOSITORY/actions/runs/$RUN_ID/rerun" >/dev/null
-              echo "RETRY_SCHEDULED=attempt-$((attempt+1))"
-            else
+
               echo "RETRY_BUDGET_EXHAUSTED=BLOCKED"
               exit 1
             fi
+
+            sleep 60
+          done
+
+          if [ "$conclusion" = "success" ]; then
+            echo "CI_TERMINAL_SUCCESS -> independent evidence verification"
+
+            mkdir -p "$RUNNER_TEMP/aios-evidence"
+            gh run download "$RUN_ID" -n "aios-ci-evidence-$RUN_ID" -D "$RUNNER_TEMP/aios-evidence"
+
+            python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "aios-evidence"
+          expected = {
+              "yanhul__try.json",
+              "yanhul__android-ai-assistant.json",
+              "yanhul__RX50.json",
+          }
+          files = {p.name for p in root.glob("*.json")}
+          assert files == expected, {"files": sorted(files), "expected": sorted(expected)}
+
+          allowed = {
+              "PASS", "BLOCKED", "INCONCLUSIVE",
+              "EDGE_FOUND", "NO_EDGE_FOUND", "REJECT", "PROMOTE",
+          }
+          for path in root.glob("*.json"):
+              obj = json.loads(path.read_text())
+              assert obj.get("status") in allowed, path.name
+              assert obj.get("evidence_refs"), path.name
+              assert obj.get("verification_refs"), path.name
+          print("EVIDENCE_WATCHDOG=PASS")
+          PY
           else
-            echo "RUN_ALREADY_TERMINAL status=$status conclusion=$conclusion"
+            echo "CI_TERMINAL_FAILURE=$conclusion -> repair/diagnosis wake"
           fi
