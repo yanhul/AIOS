@@ -11,6 +11,7 @@ import os
 import urllib.error
 import urllib.request
 from typing import Any, Mapping
+from urllib.parse import urlparse
 
 
 class TryRepairProviderError(RuntimeError):
@@ -19,6 +20,12 @@ class TryRepairProviderError(RuntimeError):
 
 _DENIED_PREFIXES = (".github/workflows/", ".aios/", "secrets/")
 _DENIED_NAMES = {".env", ".env.local", ".env.production", "credentials.json"}
+
+def _open(req: urllib.request.Request, timeout: int):
+    host = (urlparse(req.full_url).hostname or "").lower()
+    if host in {"127.0.0.1", "localhost", "::1"}:
+        return urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=timeout)
+    return urllib.request.urlopen(req, timeout=timeout)
 
 
 def health() -> dict[str, Any]:
@@ -32,7 +39,7 @@ def health() -> dict[str, Any]:
         method="GET",
     )
     try:
-        with urllib.request.urlopen(req, timeout=int(os.environ.get("TRY_REPAIR_PROVIDER_TIMEOUT", "10"))) as response:
+        with _open(req, int(os.environ.get("TRY_REPAIR_PROVIDER_TIMEOUT", "10"))) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except Exception as exc:
         raise TryRepairProviderError(f"provider health failed: {type(exc).__name__}: {exc}") from exc
@@ -69,7 +76,7 @@ def propose(*, request_id: str, repository: str, sha: str, attempt: int,
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=int(os.environ.get("TRY_REPAIR_PROVIDER_TIMEOUT", "120"))) as response:
+        with _open(req, int(os.environ.get("TRY_REPAIR_PROVIDER_TIMEOUT", "120"))) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except Exception as exc:
         raise TryRepairProviderError(f"provider request failed: {type(exc).__name__}: {exc}") from exc
