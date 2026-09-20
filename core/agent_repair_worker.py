@@ -78,6 +78,7 @@ class AgentRepairWorker:
         self.permit_id = permit_id
         self.actor = actor
         self.durable_runtime = durable_runtime
+        self._owned_dirty_paths: set[str] = set()
         if not self.root.is_dir():
             raise RepairWorkerError(f"repository root does not exist: {self.root}")
         if timeout_seconds <= 0:
@@ -150,7 +151,8 @@ class AgentRepairWorker:
         self, *, base_sha: str, files: Sequence[ProposedFile],
         allowed_dirty_paths: frozenset[str] = frozenset(),
     ) -> WorkerEvidence:
-        self._require_base(base_sha, allowed_dirty_paths=allowed_dirty_paths)
+        owned = frozenset(set(allowed_dirty_paths) | self._owned_dirty_paths)
+        self._require_base(base_sha, allowed_dirty_paths=owned)
         if not files:
             raise RepairWorkerError("repair proposal contains no files")
         proposed = tuple(files)
@@ -203,11 +205,13 @@ class AgentRepairWorker:
                 files=proposed,
                 base_sha=base_sha,
                 durable_runtime=self.durable_runtime,
+                allowed_dirty_paths=owned,
             )
         except Exception as exc:
             raise RepairWorkerError(
                 f"AIOS mutation failed: {type(exc).__name__}: {exc}"
             ) from exc
+        self._owned_dirty_paths.update(paths)
 
     def test(self, commands: Sequence[Sequence[str]] | None = None) -> WorkerEvidence:
         selected = tuple(tuple(c) for c in (commands or self.allowed_test_commands))
