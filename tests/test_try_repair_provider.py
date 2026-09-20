@@ -61,3 +61,18 @@ def test_health_accepts_ready(monkeypatch):
     monkeypatch.setenv("TRY_REPAIR_PROVIDER_TOKEN", "x")
     monkeypatch.setattr(try_repair_provider.urllib.request, "urlopen", lambda *a, **k: Resp())
     assert try_repair_provider.health()["status"] == "READY"
+
+def test_provider_rejects_protected_patch_path(monkeypatch):
+    class Resp:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self):
+            return b'{"schema":2,"root_cause":"x","proposed_fix":"y","files":[{"path":".aios/policy.py","content":"x"}]}'
+    monkeypatch.setenv("TRY_REPAIR_PROVIDER_URL", "http://127.0.0.1:8787")
+    monkeypatch.setenv("TRY_REPAIR_PROVIDER_TOKEN", "x")
+    monkeypatch.setattr(try_repair_provider.urllib.request, "urlopen", lambda *a, **k: Resp())
+    with pytest.raises(try_repair_provider.TryRepairProviderError, match="protected patch path"):
+        try_repair_provider.propose(
+            request_id="r", repository="yanhul/AIOS", sha="a" * 40, attempt=1,
+            failure={}, source={"core/x.py": "x=1\n"},
+        )
