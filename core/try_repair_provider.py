@@ -17,6 +17,26 @@ class TryRepairProviderError(RuntimeError):
     pass
 
 
+def health() -> dict[str, Any]:
+    url = os.environ.get("TRY_REPAIR_PROVIDER_URL", "").strip()
+    token = os.environ.get("TRY_REPAIR_PROVIDER_TOKEN", "")
+    if not url or not token:
+        raise TryRepairProviderError("TRY provider endpoint/token not configured")
+    req = urllib.request.Request(
+        url.rstrip("/") + "/healthz",
+        headers={"Authorization": "Bearer " + token},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=int(os.environ.get("TRY_REPAIR_PROVIDER_TIMEOUT", "10"))) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        raise TryRepairProviderError(f"provider health failed: {type(exc).__name__}: {exc}") from exc
+    if not isinstance(payload, dict) or payload.get("status") != "READY":
+        raise TryRepairProviderError("provider health is not READY")
+    return payload
+
+
 def propose(*, request_id: str, repository: str, sha: str, attempt: int,
             failure: Mapping[str, Any], source: Mapping[str, str]) -> dict[str, Any]:
     url = os.environ.get("TRY_REPAIR_PROVIDER_URL", "").strip()
@@ -61,4 +81,4 @@ def propose(*, request_id: str, repository: str, sha: str, attempt: int,
     return payload
 
 
-__all__ = ["TryRepairProviderError", "propose"]
+__all__ = ["TryRepairProviderError", "health", "propose"]
