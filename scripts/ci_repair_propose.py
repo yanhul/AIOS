@@ -9,7 +9,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from core.try_repair_provider import propose as try_propose, TryRepairProviderError
+from core.try_repair_provider import propose as try_propose, health as try_health, TryRepairProviderError
 
 MAX_SOURCE_FILES = 120
 MAX_FILE_BYTES = 120_000
@@ -126,6 +126,13 @@ def main() -> int:
     ][:MAX_SOURCE_FILES]
     source = {p: show(sha, p) for p in names}
     source = {k: v for k, v in source.items() if v}
+    # Fail closed before asking the reasoning provider for a proposal.
+    try:
+        health = try_health()
+        print("TRY_PROVIDER_READY", json.dumps(health, sort_keys=True))
+    except TryRepairProviderError as exc:
+        raise SystemExit(f"TRY_PROVIDER_BLOCKED: {exc}") from exc
+
     failure = {
         "run_id": int(run_id),
         "sha": sha,
