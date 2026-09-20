@@ -341,8 +341,7 @@ jobs:
                   passed.append(max(obj["attempts"]))
           if not passed:
               raise SystemExit("no independently recorded PASS evidence")
-          print(f"AIOS_REPAIR_PASS_ATTEMPT={max(passed)}" >> os.environ.get("GITHUB_ENV","/dev/null"))
-          with open(os.environ["GITHUB_ENV"]," "a") as fh:
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
               fh.write(f"AIOS_REPAIR_PASS_ATTEMPT={max(passed)}\n")
           PY
       - name: Re-apply cumulative proposals through trusted AIOS publisher
