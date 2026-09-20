@@ -140,9 +140,11 @@ def test_adapter_integrates_with_real_aios_runtime(tmp_path):
     )
 
     assert result["state"] == "OBSERVED_SUCCESS"
-    assert result["provider"] == "repo_patch"
-    assert result["evidence"]["provider"] == "repo_patch"
-    assert result["evidence"]["level"] == "OBSERVED"
+    assert result["provider"] == "repo_patch" if "provider" in result else result["provider_observation"]["provider"] == "repo_patch"
+    observation = result.get("provider_observation", {})
+    assert observation["provider"] == "repo_patch"
+    assert observation["evidence"]["provider"] == "repo_patch"
+    assert observation["evidence"]["level"] == "OBSERVED"
     assert (repo / "module.py").read_text(encoding="utf-8") == "VALUE = 2\n"
 
 
