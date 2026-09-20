@@ -1,0 +1,23 @@
+name: G4A CI
+
+on:
+  push:
+    branches:
+      - 'aios/autorepair/g4a-live'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pytest PyYAML
+      - name: Run G4A fixture plus repository tests
+        run: python -m pytest -q
