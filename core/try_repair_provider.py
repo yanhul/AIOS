@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import urllib.error
 import urllib.request
 from typing import Any, Mapping
 from urllib.parse import urlparse
@@ -102,6 +103,14 @@ def propose(*, request_id: str, repository: str, sha: str, attempt: int,
     try:
         with _open(req, int(os.environ.get("TRY_REPAIR_PROVIDER_TIMEOUT", "120"))) as response:
             payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            detail = exc.read().decode("utf-8", errors="replace")[:1000]
+        except Exception:
+            detail = ""
+        raise TryRepairProviderError(
+            f"provider request failed: HTTP {exc.code}: {detail or exc.reason}"
+        ) from exc
     except Exception as exc:
         raise TryRepairProviderError(f"provider request failed: {type(exc).__name__}: {exc}") from exc
     payload = validate_proposal(payload)
