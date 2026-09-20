@@ -6,6 +6,9 @@ resume, planning and agent loops belong to an external execution substrate.
 
 from dataclasses import dataclass
 from typing import Protocol
+import hashlib
+
+from .evidence import EvidenceRecord
 
 from .authority import authorize, load_contract, load_permit
 from .durable_runtime import DurableRuntime, validate_submission
@@ -72,6 +75,8 @@ def validate_receipt(receipt, effect, attempt_id, provider_name):
         raise ValueError("receipt outcome must be an observed terminal outcome")
     if not isinstance(receipt.observation, dict) or not receipt.observation:
         raise ValueError("receipt observation must be a non-empty dict")
+    if not isinstance(receipt.observation.get("evidence"), dict):
+        raise ValueError("receipt observation must carry AIOS evidence")
 
 
 def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
@@ -103,12 +108,25 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
         return unknown(aios_dir, effect["effect_id"], actor,
                        f"provider ambiguity: {type(exc).__name__}: {exc}")
 
+    evidence_id = "EV-" + hashlib.sha256(
+        f"{effect['effect_id']}:{attempt_id}:{receipt.provider_operation_id}".encode("utf-8")
+    ).hexdigest()
+    evidence = EvidenceRecord(
+        evidence_id=evidence_id,
+        level="OBSERVED",
+        source_ref=receipt.provider_operation_id,
+        claim=f"{receipt.outcome} observed from provider receipt",
+        run_id=attempt_id,
+        provider=receipt.provider,
+        artifact_ref=effect["effect_id"],
+    ).as_record()
     return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, {
         "provider": receipt.provider,
         "provider_operation_id": receipt.provider_operation_id,
         "effect_id": receipt.effect_id,
         "attempt_id": receipt.attempt_id,
         "observation": receipt.observation,
+        "evidence": evidence,
     })
 
 
