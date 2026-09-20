@@ -53,7 +53,8 @@ def load_contract(aios_dir,contract_id):
  try:
   record=_load(_path(aios_dir,CONTRACTS_DIR,contract_id))
  except FileNotFoundError as exc:
-  raise TransitionError(f"contract not found: {contract_id}") from exc contract={k:record[k] for k in _CONTRACT_FIELDS}
+  raise TransitionError(f"contract not found: {contract_id}") from exc
+ contract={k:record[k] for k in _CONTRACT_FIELDS}
  if contract_identity(contract)!=contract_id: raise TransitionError("stored contract identity mismatch")
  validate_contract(contract); _resolve_policy(aios_dir,contract); return contract
 def load_permit(aios_dir,permit_id):
