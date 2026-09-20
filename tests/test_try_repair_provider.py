@@ -37,7 +37,7 @@ def test_provider_accepts_hold(monkeypatch):
         def read(self): return json.dumps({"status": "HOLD", "reason": "no safe fix"}).encode()
     monkeypatch.setenv("TRY_REPAIR_PROVIDER_URL", "http://127.0.0.1:8787")
     monkeypatch.setenv("TRY_REPAIR_PROVIDER_TOKEN", "x")
-    monkeypatch.setattr(try_repair_provider.urllib.request, "urlopen", lambda *a, **k: Resp())
+    monkeypatch.setattr(try_repair_provider, "_open", lambda *a, **k: Resp())
     out = try_repair_provider.propose(
         request_id="r", repository="yanhul/AIOS", sha="a" * 40, attempt=1,
         failure={}, source={"core/x.py": "x=1\n"},
