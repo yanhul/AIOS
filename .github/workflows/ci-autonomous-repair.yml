@@ -45,6 +45,7 @@ jobs:
       - name: Reason-only proposal
         env:
           AIOS_REPAIR_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
           AIOS_REPAIR_MODEL: ${{ vars.AIOS_REPAIR_MODEL }}
           AIOS_REPAIR_SHA: ${{ github.event.workflow_run.head_sha }}
           AIOS_REPAIR_RUN_ID: ${{ github.event.workflow_run.id }}
