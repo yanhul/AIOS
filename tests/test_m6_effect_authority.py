@@ -1,6 +1,7 @@
 import pytest
 
 from core.authority import persist_contract, persist_permit
+from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.policy_registry import persist_policy
 
@@ -10,6 +11,9 @@ from core.mutation import TransitionError
 
 
 def _effect(tmp_path):
+    registry = CapabilityRegistry()
+    registry.register(Capability("provider-1", "1", "test-fixture", "external_effect", status="ACTIVE"))
+    registry.persist(str(tmp_path), "test-fixture")
     policy = persist_policy(str(tmp_path), {"policy_type":"GOVERNING_POLICY","name":"effect-authority-test"})
     contract = {
         "contract_type":"EXECUTION_CONTRACT","task_id":"effect-test","scope":"test",
