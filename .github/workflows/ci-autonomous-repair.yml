@@ -8,7 +8,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: aios-repair-${{ github.event.workflow_run.id }}
+  group: aios-repair-branch-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 env:
@@ -363,7 +363,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          branch="aios/autorepair/${RUN_ID}"
+          if [ "$SOURCE_BRANCH" = "main" ]; then
+            branch="aios/autorepair/${RUN_ID}"
+          else
+            branch="$SOURCE_BRANCH"
+          fi
+          case "$branch" in
+            aios/autorepair/*) ;;
+            *) echo "BLOCKED: unauthorized repair branch: $branch"; exit 1 ;;
+          esac
           git push --set-upstream "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "$branch"
           gh workflow run CI --repo "${{ github.repository }}" --ref "$branch"
           if [ "$SOURCE_BRANCH" = "main" ]; then
