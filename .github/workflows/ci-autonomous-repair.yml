@@ -371,12 +371,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: aios-repair-proposal-${{ env.RUN_ID }}-*
-          path: target/proposals
+          path: ${{ github.workspace }}/proposals
           merge-multiple: true
       - uses: actions/download-artifact@v4
         with:
           pattern: aios-repair-result-${{ env.RUN_ID }}-*
-          path: target/results
+          path: ${{ github.workspace }}/results
           merge-multiple: true
       - name: Select and verify PASS evidence
         working-directory: target
@@ -384,7 +384,7 @@ jobs:
           python - <<'PY'
           import glob, json, os
           passed=[]
-          for path in glob.glob("results/repair-result-*.json"):
+          for path in glob.glob(os.path.join(os.environ["GITHUB_WORKSPACE"], "results", "repair-result-*.json")):
               obj=json.load(open(path,encoding="utf-8"))
               if obj["test"]["status"] == "PASS" and obj["test"]["evidence_refs"]:
                   passed.append(max(obj["attempts"]))
