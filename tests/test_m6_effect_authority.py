@@ -52,7 +52,7 @@ def test_effect_transition_is_atomic_and_audited(tmp_path):
 
 
 def test_unknown_cannot_return_to_dispatch(tmp_path):
-    effect = create_effect(str(tmp_path), "CT-1", "op-1", "agent-1")
+    effect = _effect(tmp_path)
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1")
     unknown(str(tmp_path), effect["effect_id"], "agent-1", "timeout")
     with pytest.raises(TransitionError):
