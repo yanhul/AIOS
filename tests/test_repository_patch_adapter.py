@@ -13,7 +13,7 @@ def init_repo(tmp_path: Path) -> str:
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=tmp_path, check=True)
     subprocess.run(["git", "config", "user.name", "AIOS Test"], cwd=tmp_path, check=True)
-    (tmp_path / ".gitignore").write_text("__pycache__/\n*.pyc\n", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text("__pycache__/\n.pytest_cache/\n*.pyc\n", encoding="utf-8")
     (tmp_path / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
     subprocess.run(["git", "add", ".gitignore", "module.py"], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-qm", "base"], cwd=tmp_path, check=True)
