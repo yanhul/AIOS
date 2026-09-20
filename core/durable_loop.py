@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Protocol
 
 from .fix_protocol import FixPlan, require_fix_plan, require_fix_proof, FixProof
+from .cognitive import validate_cognitive_output
 
 TERMINAL = frozenset({"PASS", "BLOCKED", "INCONCLUSIVE"})
 
@@ -153,6 +154,9 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
             store.save(state)
             return state
         try:
+            # Cognitive output is a proposal only. Reject attempts to smuggle
+            # authority/promotion state before the governing authorizer runs.
+            validate_cognitive_output(decision)
             policy.action_authorizer(deepcopy(decision), deepcopy(state))
         except Exception as exc:
             state["status"] = policy.failure_state
