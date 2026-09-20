@@ -1,16 +1,16 @@
-"""Repository mutation adapter bound to the AIOS effect/runtime boundary.
+"""Repository mutation provider bound to the AIOS effect/runtime boundary."""
 
-This is deliberately separate from the coding-agent planner. The planner may
-describe a patch; this adapter is the provider that performs an already
-authorized repository mutation through core.runtime.execute().
-"""
 from __future__ import annotations
 
 import hashlib
+import os
+import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
 
+from .agent_repair_worker import ProposedFile
 from .effect_authority import create_effect
 from .evidence import EvidenceRecord
 from .runtime import ProviderReceipt, execute
@@ -24,56 +24,94 @@ class RepositoryPatch:
 class RepositoryPatchAdapter:
     """Trusted provider for repository patch effects.
 
-    It does not authorize itself. The caller must supply a persisted AIOS
-    contract + permit whose capability names this provider and whose allowed
-    effects contain external_effect.
+    It never grants authority. AIOS runtime.execute() performs contract,
+    permit, capability and effect authorization before this provider mutates.
     """
 
     name = "repo_patch"
+    _DENIED_PREFIXES = (".git/", ".github/workflows/", ".aios/", "secrets/")
+    _DENIED_FILES = frozenset({".env", ".env.local", ".env.production", "credentials.json"})
 
     def __init__(self, repository_root: str | Path):
         self.root = Path(repository_root).resolve()
-        self._plans: dict[str, tuple[ProposedFile, ...]] = {}
+        if not self.root.is_dir():
+            raise ValueError("repository root does not exist")
+        self._plans: dict[str, tuple[tuple[ProposedFile, ...], str]] = {}
 
-    def register(self, effect_id: str, files: Sequence[ProposedFile]) -> None:
-        if not effect_id or effect_id in self._plans:
+    def register(
+        self, effect_id: str, files: Sequence[ProposedFile], *, base_sha: str | None = None
+    ) -> None:
+        if not isinstance(effect_id, str) or not effect_id.strip() or effect_id in self._plans:
             raise ValueError("effect plan must have a unique non-empty effect_id")
         proposed = tuple(files)
         if not proposed:
             raise ValueError("effect plan contains no files")
-        self._plans[effect_id] = proposed
+        paths = tuple(item.path for item in proposed)
+        if len(set(paths)) != len(paths):
+            raise ValueError("effect plan contains duplicate paths")
+        for item in proposed:
+            _safe_repo_path(self.root, item.path)
+            if not isinstance(item.content, str):
+                raise ValueError("patch content must be text")
+        if base_sha is not None:
+            _require_clean_base(self.root, base_sha)
+        self._plans[effect_id] = (proposed, base_sha or "")
 
     def execute(self, *, contract: dict, effect: dict, attempt_id: str) -> ProviderReceipt:
-        files = self._plans.pop(effect["effect_id"], None)
-        if files is None:
+        effect_id = effect["effect_id"]
+        plan = self._plans.get(effect_id)
+        if plan is None:
             raise RuntimeError("no registered repository patch for effect")
+        files, base_sha = plan
+        if base_sha:
+            _require_clean_base(self.root, base_sha)
+
         changed = []
         for item in files:
             target = _safe_repo_path(self.root, item.path)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(item.content, encoding="utf-8")
+            _atomic_write(target, item.content)
             changed.append({
                 "path": item.path,
-                "content_sha256": hashlib.sha256(item.content.encode("utf-8")).hexdigest(),
+                "content_sha256": _sha256_text(item.content),
             })
+
+        self._plans.pop(effect_id, None)
+        patch_digest = _sha256_patch(files)
         evidence = EvidenceRecord(
             evidence_id="EV-" + hashlib.sha256(
-                (effect["effect_id"] + ":" + attempt_id).encode()
+                f"{effect_id}:{attempt_id}:{patch_digest}".encode("utf-8")
             ).hexdigest()[:24],
             level="OBSERVED",
-            source_ref=f"aios://effect/{effect['effect_id']}/{attempt_id}",
+            source_ref=f"aios://effect/{effect_id}/{attempt_id}",
             claim="repository patch provider observed the authorized file mutation",
-            run_id=effect["effect_id"],
+            run_id=attempt_id,
             provider=self.name,
+            artifact_ref=patch_digest,
         ).as_record()
         return ProviderReceipt(
             provider=self.name,
-            effect_id=effect["effect_id"],
+            effect_id=effect_id,
             attempt_id=attempt_id,
-            provider_operation_id=f"{effect['effect_id']}:{attempt_id}",
+            provider_operation_id=f"{effect_id}:{attempt_id}",
             outcome="OBSERVED_SUCCESS",
-            observation={"changed": changed, "evidence": evidence},
+            observation={
+                "changed": changed,
+                "patch_digest": patch_digest,
+                "base_sha": base_sha or None,
+                "evidence": evidence,
+            },
         )
+
+
+def _sha256_text(content: str) -> str:
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _sha256_patch(files: Sequence[ProposedFile]) -> str:
+    payload = "".join(
+        f"{item.path}\0{_sha256_text(item.content)}\0" for item in files
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _safe_repo_path(root: Path, raw: str) -> Path:
@@ -81,8 +119,12 @@ def _safe_repo_path(root: Path, raw: str) -> Path:
         raise ValueError("invalid repository patch path")
     path = raw.replace("\\", "/")
     p = Path(path)
-    if p.is_absolute() or ".." in p.parts or path.startswith("../") or "/../" in path:
+    if p.is_absolute() or path.startswith("/") or ".." in p.parts:
         raise ValueError("repository patch path escapes root")
+    if p.name in _DENIED_FILES or any(
+        path == prefix[:-1] or path.startswith(prefix) for prefix in _DENIED_PREFIXES
+    ):
+        raise ValueError("repository patch path is protected")
     target = (root / p).resolve()
     try:
         target.relative_to(root)
@@ -91,6 +133,39 @@ def _safe_repo_path(root: Path, raw: str) -> Path:
     if target.exists() and target.is_symlink():
         raise ValueError("refusing to overwrite symlink")
     return target
+
+
+def _require_clean_base(root: Path, base_sha: str) -> None:
+    if not isinstance(base_sha, str) or len(base_sha) != 40:
+        raise ValueError("repair base must be a full commit SHA")
+    head = subprocess.run(
+        ("git", "rev-parse", "--verify", "HEAD"),
+        cwd=root, text=True, capture_output=True, check=False,
+    )
+    if head.returncode or head.stdout.strip() != base_sha:
+        raise RuntimeError("stale repair base")
+    status = subprocess.run(
+        ("git", "status", "--porcelain"),
+        cwd=root, text=True, capture_output=True, check=False,
+    )
+    if status.returncode:
+        raise RuntimeError("unable to verify repository status")
+    if status.stdout.strip():
+        raise RuntimeError("repository contains dirty paths before AIOS mutation")
+
+
+def _atomic_write(target: Path, content: str) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{target.name}.repair-", dir=target.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+            fh.write(content)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_name, target)
+    finally:
+        if os.path.exists(tmp_name):
+            os.unlink(tmp_name)
 
 
 def apply_via_aios(
@@ -102,17 +177,20 @@ def apply_via_aios(
     actor: str,
     repository_root: str | Path,
     files: Sequence[ProposedFile],
+    base_sha: str,
+    durable_runtime=None,
 ) -> Mapping[str, object]:
     """Create, dispatch and execute one repository mutation through AIOS."""
-    adapter = RepositoryPatchAdapter(repository_root)
+    root = Path(repository_root).resolve()
+    adapter = RepositoryPatchAdapter(root)
     effect = create_effect(
         str(aios_dir), contract_id, logical_operation_id, actor, permit_id,
         "external_effect",
     )
-    adapter.register(effect["effect_id"], files)
+    adapter.register(effect["effect_id"], files, base_sha=base_sha)
     return execute(
         str(aios_dir), contract_id, permit_id, logical_operation_id,
-        actor, adapter,
+        actor, adapter, durable_runtime=durable_runtime,
     )
 
 
