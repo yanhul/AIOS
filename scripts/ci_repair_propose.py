@@ -9,7 +9,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from core.repair_planner import planner_from_env
+from core.try_repair_provider import propose as try_propose, TryRepairProviderError
 
 MAX_SOURCE_FILES = 120
 MAX_FILE_BYTES = 120_000
@@ -126,7 +126,6 @@ def main() -> int:
     ][:MAX_SOURCE_FILES]
     source = {p: show(sha, p) for p in names}
     source = {k: v for k, v in source.items() if v}
-    planner = planner_from_env(source=source)
     failure = {
         "run_id": int(run_id),
         "sha": sha,
@@ -136,50 +135,22 @@ def main() -> int:
     previous = os.environ.get("AIOS_REPAIR_PREVIOUS_RESULT")
     if previous and Path(previous).exists():
         failure["previous_repair_result"] = json.loads(Path(previous).read_text(encoding="utf-8"))
-    observations = []
-    proposal = None
-    tools = Tools(sha)
-    for turn in range(6):
-        nxt = planner.next_turn(failure=failure, observations=observations)
-        for call in nxt.calls:
-            if call.name == "inspect":
-                observations.append({"turn": turn, "tool": "inspect", "result": tools.inspect(str(call.args.get("path", "")))})
-            elif call.name == "search":
-                observations.append({"turn": turn, "tool": "search", "result": tools.search(str(call.args.get("query", "")))})
-            elif call.name == "inspect_external":
-                observations.append({
-                    "turn": turn, "tool": "inspect_external",
-                    "result": tools.inspect_external(
-                        str(call.args.get("repo", "")),
-                        str(call.args.get("path", "")),
-                        str(call.args.get("ref", "")),
-                    ),
-                })
-            elif call.name == "patch":
-                files = call.args.get("files")
-                if not isinstance(files, list) or not files:
-                    raise SystemExit("invalid empty patch")
-                clean = []
-                for item in files:
-                    path, content = item.get("path"), item.get("content")
-                    if not isinstance(path, str) or not isinstance(content, str):
-                        raise SystemExit("invalid patch file")
-                    norm = path.replace("\\", "/")
-                    if norm.startswith("../") or "/../" in norm or norm.startswith("/") or norm.startswith(DENIED):
-                        raise SystemExit(f"protected/unsafe patch path: {path}")
-                    if norm in DENIED_NAMES or norm.startswith("tests/"):
-                        raise SystemExit(f"repair policy forbids patch path: {path}")
-                    clean.append({"path": norm, "content": content})
-                proposal = {
-                    "schema": 2, "attempt": int(failure["attempt"]), "run_id": int(run_id),
-                    "base_sha": sha, "root_cause": str(call.args.get("root_cause", "")),
-                    "proposed_fix": str(call.args.get("proposed_fix", "")), "files": clean,
-                }
-                break
-        if proposal:
-            break
-    if not proposal:
-        raise SystemExit("planner exhausted without a patch proposal")
+
+    request_id = f"aios-ci-repair:{run_id}:{failure['attempt']}"
+    try:
+        proposal = try_propose(
+            request_id=request_id,
+            repository=os.environ.get("GITHUB_REPOSITORY", "yanhul/AIOS"),
+            sha=sha,
+            attempt=failure["attempt"],
+            failure=failure,
+            source=source,
+        )
+    except TryRepairProviderError as exc:
+        raise SystemExit(f"TRY_PROVIDER_BLOCKED: {exc}") from exc
+    if proposal.get("status") == "HOLD":
+        raise SystemExit(f"TRY_PROVIDER_HOLD: {proposal.get('reason', 'provider hold')}")
+
     Path("repair-proposal.json").write_text(json.dumps(proposal, indent=2, sort_keys=True), encoding="utf-8")
     print(json.dumps({"status": "PROPOSAL_READY", "attempt": proposal["attempt"], "files": [x["path"] for x in proposal["files"]]}))
     return 0
