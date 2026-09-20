@@ -62,7 +62,7 @@ def health() -> dict[str, Any]:
         raise TryRepairProviderError("TRY provider endpoint/token not configured")
     req = urllib.request.Request(
         url.rstrip("/") + "/healthz",
-        headers={"Authorization": "Bearer " + token},
+        headers={"Authorization": "Bearer " + token, "User-Agent": "AIOS-TRY-Repair/1.0"},
         method="GET",
     )
     try:
