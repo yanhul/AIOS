@@ -68,7 +68,10 @@ def test_provider_rejects_protected_patch_path(monkeypatch):
         def __enter__(self): return self
         def __exit__(self, *args): pass
         def read(self):
-            return b'{"schema":2,"root_cause":"x","proposed_fix":"y","files":[{"path":".aios/policy.py","content":"x"}]}'
+            return json.dumps({
+                "schema": 2, "root_cause": "x", "proposed_fix": "y",
+                "files": [{"path": ".aios/policy.py", "content": "x"}],
+            }).encode()
     monkeypatch.setenv("TRY_REPAIR_PROVIDER_URL", "http://127.0.0.1:8787")
     monkeypatch.setenv("TRY_REPAIR_PROVIDER_TOKEN", "x")
     monkeypatch.setattr(try_repair_provider, "_open", lambda *a, **k: Resp())
@@ -84,7 +87,10 @@ def test_provider_adds_repair_identity(monkeypatch):
         def __enter__(self): return self
         def __exit__(self, *args): pass
         def read(self):
-            return b'{"schema":2,"root_cause":"x","proposed_fix":"y","files":[{"path":"core/x.py","content":"x=1\n"}]}'
+            return json.dumps({
+                "schema": 2, "root_cause": "x", "proposed_fix": "y",
+                "files": [{"path": "core/x.py", "content": "x=1\n"}],
+            }).encode()
     monkeypatch.setenv("TRY_REPAIR_PROVIDER_URL", "http://127.0.0.1:8787")
     monkeypatch.setenv("TRY_REPAIR_PROVIDER_TOKEN", "x")
     monkeypatch.setattr(try_repair_provider, "_open", lambda *a, **k: Resp())
