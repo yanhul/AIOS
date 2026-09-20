@@ -127,7 +127,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: aios-repair-proposal-${{ env.RUN_ID }}-1
-          path: target/p1
+          path: ${{ github.workspace }}/p1
       - name: Apply attempt 1 and test
         id: result
         working-directory: target
@@ -135,7 +135,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/trusted
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
-          AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/target/p1/repair-proposal-1.json
+          AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/p1/repair-proposal-1.json
         run: |
           python "${{ github.workspace }}/trusted/scripts/ci_repair_apply_attempt.py"
           status="$(python -c 'import json; print(json.load(open("repair-result.json"))["test"]["status"])')"
@@ -146,7 +146,7 @@ jobs:
         run: |
           python - <<'PY'
           import json, subprocess
-          expected=sorted(x["path"] for x in json.load(open("p1/repair-proposal-1.json"))["files"])
+          expected=sorted(x["path"] for x in json.load(open("${{ github.workspace }}/p1/repair-proposal-1.json"))["files"])
           actual=sorted(subprocess.check_output(["git","diff","--name-only"], text=True).splitlines())
           assert actual == expected, (actual, expected)
           PY
@@ -222,11 +222,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: aios-repair-proposal-${{ env.RUN_ID }}-1
-          path: target/p1
+          path: ${{ github.workspace }}/p1
       - uses: actions/download-artifact@v4
         with:
           name: aios-repair-proposal-${{ env.RUN_ID }}-2
-          path: target/p2
+          path: ${{ github.workspace }}/p2
       - name: Apply cumulative attempts 1-2 and test
         id: result
         working-directory: target
@@ -234,7 +234,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/trusted
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
-          AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/target/p1/repair-proposal-1.json,${{ github.workspace }}/target/p2/repair-proposal-2.json
+          AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/p1/repair-proposal-1.json,${{ github.workspace }}/p2/repair-proposal-2.json
         run: |
           python "${{ github.workspace }}/trusted/scripts/ci_repair_apply_attempt.py"
           status="$(python -c 'import json; print(json.load(open("repair-result.json"))["test"]["status"])')"
@@ -311,15 +311,15 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: aios-repair-proposal-${{ env.RUN_ID }}-1
-          path: target/p1
+          path: ${{ github.workspace }}/p1
       - uses: actions/download-artifact@v4
         with:
           name: aios-repair-proposal-${{ env.RUN_ID }}-2
-          path: target/p2
+          path: ${{ github.workspace }}/p2
       - uses: actions/download-artifact@v4
         with:
           name: aios-repair-proposal-${{ env.RUN_ID }}-3
-          path: target/p3
+          path: ${{ github.workspace }}/p3
       - name: Apply cumulative attempts 1-3 and test
         id: result
         working-directory: target
@@ -327,7 +327,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/trusted
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
-          AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/target/p1/repair-proposal-1.json,${{ github.workspace }}/target/p2/repair-proposal-2.json,${{ github.workspace }}/target/p3/repair-proposal-3.json
+          AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/p1/repair-proposal-1.json,${{ github.workspace }}/p2/repair-proposal-2.json,${{ github.workspace }}/p3/repair-proposal-3.json
         run: |
           python "${{ github.workspace }}/trusted/scripts/ci_repair_apply_attempt.py"
           status="$(python -c 'import json; print(json.load(open("repair-result.json"))["test"]["status"])')"
