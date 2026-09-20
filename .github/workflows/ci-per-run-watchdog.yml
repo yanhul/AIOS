@@ -1,0 +1,73 @@
+name: AIOS CI Per-Run Watchdog
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [requested, in_progress, completed]
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: aios-ci-watch-${{ github.event.workflow_run.id }}
+  cancel-in-progress: true
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Watch bounded queue/execution window
+        if: ${{ github.event.action != 'completed' }}
+        env:
+          ACTION: ${{ github.event.action }}
+        run: |
+          if [ "$ACTION" = "requested" ]; then
+            sleep 600
+          else
+            sleep 1860
+          fi
+
+      - name: Inspect run and enforce retry budget
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          EVENT_ACTION: ${{ github.event.action }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          run_json="$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID")"
+          status="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
+          conclusion="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("conclusion") or "")')"
+          attempt="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin)["run_attempt"])')"
+          echo "run=$RUN_ID action=$EVENT_ACTION status=$status conclusion=$conclusion attempt=$attempt"
+
+          if [ "$EVENT_ACTION" = "completed" ]; then
+            if [ "$conclusion" = "success" ]; then
+              artifacts="$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID/artifacts")"
+              ok="$(printf '%s' "$artifacts" | python -c 'import json,sys; a=json.load(sys.stdin)["artifacts"]; print(any(x.get("name","").startswith("aios-ci-evidence-") and not x.get("expired",False) for x in a))')"
+              if [ "$ok" != "True" ]; then
+                echo "EVIDENCE_MISSING: successful CI run has no durable AIOS evidence artifact"
+                exit 1
+              fi
+              echo "EVIDENCE_WATCHDOG=PASS"
+              exit 0
+            fi
+            echo "CI_CONCLUSION=$conclusion -> AIOS repair/diagnosis path"
+            exit 0
+          fi
+
+          if [ "$status" = "queued" ] || [ "$status" = "requested" ] || [ "$status" = "waiting" ] || [ "$status" = "pending" ] || [ "$status" = "in_progress" ]; then
+            if [ "$attempt" -lt 3 ]; then
+              echo "WATCHDOG_TIMEOUT -> cancel + bounded retry (attempt budget: 2 retries)"
+              gh api --method POST "repos/$REPOSITORY/actions/runs/$RUN_ID/cancel" >/dev/null || true
+              gh api --method POST "repos/$REPOSITORY/actions/runs/$RUN_ID/rerun" >/dev/null
+              echo "RETRY_SCHEDULED=attempt-$((attempt+1))"
+            else
+              echo "RETRY_BUDGET_EXHAUSTED=BLOCKED"
+              exit 1
+            fi
+          else
+            echo "RUN_ALREADY_TERMINAL status=$status conclusion=$conclusion"
+          fi
