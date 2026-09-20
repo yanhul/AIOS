@@ -113,7 +113,7 @@ def test_execute_attempt_rejects_non_dispatched_effect(tmp_path):
 
 
 def test_execute_attempt_does_not_authorize_or_create_effect(tmp_path):
-    c, _, _ = setup_authority(tmp_path)
+    c, cid, pid = setup_authority(tmp_path)
     effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     attempt_id = f"{effect['effect_id']}:attempt:1"
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")
@@ -132,7 +132,7 @@ def test_execute_attempt_does_not_authorize_or_create_effect(tmp_path):
 
 def test_retry_dispatch_requires_unknown_and_increments_attempt(tmp_path):
     _, cid, _ = setup_authority(tmp_path, max_attempts=3)
-    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test")
+    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     first = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                      f"{effect['effect_id']}:attempt:1", "fake-provider")
     unknown_effect = transition(str(tmp_path), first["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
