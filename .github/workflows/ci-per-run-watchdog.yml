@@ -18,6 +18,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
+      - name: Checkout trusted control plane
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
       - name: Watch bounded queue/execution window
         if: ${{ github.event.action != 'completed' }}
         env:
@@ -69,6 +75,24 @@ jobs:
           conclusion="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("conclusion") or "")')"
           attempt="$(printf '%s' "$run_json" | python -c 'import json,sys; print(json.load(sys.stdin)["run_attempt"])')"
           echo "run=$RUN_ID action=$EVENT_ACTION status=$status conclusion=$conclusion attempt=$attempt"
+          if [ "$EVENT_ACTION" != "completed" ]; then
+            age="$(printf '%s' "$run_json" | python -c 'import json,sys,datetime; d=json.load(sys.stdin); k="run_started_at" if d["status"]=="in_progress" and d.get("run_started_at") else "created_at"; t=datetime.datetime.fromisoformat(d[k].replace("Z","+00:00")); print(max(0,int((datetime.datetime.now(datetime.timezone.utc)-t).total_seconds())))')"
+            WATCH_STATUS="$status" WATCH_AGE="$age" WATCH_ATTEMPT="$attempt" python - <<'PY'
+            import os
+            from core.ci_watchdog import CIWatch, classify_watch
+            w = CIWatch(
+                repository="yanhul/AIOS",
+                workflow="CI",
+                run_id=int(os.environ["RUN_ID"]),
+                sha="0"*40,
+                status=os.environ["WATCH_STATUS"],
+                conclusion=None,
+                age_seconds=int(os.environ["WATCH_AGE"]),
+                retry_count=max(0, int(os.environ["WATCH_ATTEMPT"]) - 1),
+            )
+            print("AIOS_WATCHDOG_ACTION="+classify_watch(w))
+            PY
+          fi
 
           if [ "$EVENT_ACTION" = "completed" ]; then
             echo "CI_CONCLUSION=$conclusion -> AIOS repair/diagnosis path"
