@@ -103,13 +103,18 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
         return unknown(aios_dir, effect["effect_id"], actor,
                        f"provider ambiguity: {type(exc).__name__}: {exc}")
 
-    return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, {
+    provider_observation = {
         "provider": receipt.provider,
         "provider_operation_id": receipt.provider_operation_id,
         "effect_id": receipt.effect_id,
         "attempt_id": receipt.attempt_id,
         "observation": receipt.observation,
-    })
+    }
+    # Providers that emit AIOS-owned evidence bind it at the observation
+    # boundary. Legacy providers remain compatible until they are migrated.
+    if isinstance(receipt.observation.get("evidence"), dict):
+        provider_observation["evidence"] = receipt.observation["evidence"]
+    return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, provider_observation)
 
 
 def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapter, attempt_id, attempt,
