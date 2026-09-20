@@ -400,6 +400,7 @@ jobs:
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_SOURCE_BRANCH: ${{ env.SOURCE_BRANCH }}
+          AIOS_REPAIR_PROPOSALS_DIR: ${{ github.workspace }}/proposals
         run: python "${{ github.workspace }}/trusted/scripts/ci_repair_publish.py"
       - name: Push repair branch and open PR
         working-directory: target
