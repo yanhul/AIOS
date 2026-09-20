@@ -176,7 +176,7 @@ def main() -> int:
             source=source,
         )
     except TryRepairProviderError as exc:
-        raise SystemExit(f"TRY_RELAY_BLOCKED: {exc}") from exc
+        raise SystemExit(f"TRY_PROVIDER_BLOCKED: {exc}") from exc
     if proposal.get("status") == "HOLD":
         raise SystemExit(f"TRY_PROVIDER_HOLD: {proposal.get('reason', 'provider hold')}")
 
