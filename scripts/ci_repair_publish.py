@@ -48,7 +48,7 @@ def main() -> int:
     if git("rev-parse", "HEAD") != base:
         raise SystemExit("stale repair publish base")
 
-    proposal_files = sorted(Path(".").glob("repair-proposal-*.json"))
+    proposal_files = sorted(Path("proposals").glob("repair-proposal-*.json"))
     proposals = []
     for path in proposal_files:
         obj = json.loads(path.read_text(encoding="utf-8"))
