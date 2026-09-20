@@ -4,6 +4,7 @@ import unittest
 
 from core.evidence import EvidenceRecord
 from core.authority import persist_contract, persist_permit
+from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.policy_registry import persist_policy
 from core.external_effect import ExternalEffectError, create_effect, load_effects, record_dispatch, record_observation, record_unknown
@@ -28,6 +29,9 @@ class TestExternalEffect(unittest.TestCase):
         self.aios = os.path.join(self.tmp, ".aios")
 
     def _setup_authority(self):
+        registry = CapabilityRegistry()
+        registry.register(Capability("provider:test", "1", "test-fixture", "external_effect", status="ACTIVE"))
+        registry.persist(self.aios, "test-fixture")
         policy = persist_policy(self.aios, {"policy_type":"GOVERNING_POLICY","name":"legacy-effect-test"})
         contract = {
             "contract_type":"EXECUTION_CONTRACT","task_id":"legacy-effect","scope":"test",
