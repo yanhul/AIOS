@@ -9,12 +9,18 @@ import json
 import os
 import urllib.error
 import urllib.request
+import time
 from typing import Any, Mapping
 from urllib.parse import urlparse
 
 
 class TryRepairProviderError(RuntimeError):
     pass
+
+
+_RETRYABLE_HTTP = {429, 500, 502, 503, 504}
+_PROVIDER_RETRY_ATTEMPTS = 3
+_PROVIDER_RETRY_BACKOFF = (1, 2)
 
 
 _DENIED_PREFIXES = (".github/workflows/", ".aios/", "secrets/")
@@ -101,19 +107,27 @@ def propose(*, request_id: str, repository: str, sha: str, attempt: int,
         },
         method="POST",
     )
-    try:
-        with _open(req, int(os.environ.get("TRY_REPAIR_PROVIDER_TIMEOUT", "120"))) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
+    last_error: TryRepairProviderError | None = None
+    for retry_no in range(_PROVIDER_RETRY_ATTEMPTS):
         try:
-            detail = exc.read().decode("utf-8", errors="replace")[:1000]
-        except Exception:
-            detail = ""
-        raise TryRepairProviderError(
-            f"provider request failed: HTTP {exc.code}: {detail or exc.reason}"
-        ) from exc
-    except Exception as exc:
-        raise TryRepairProviderError(f"provider request failed: {type(exc).__name__}: {exc}") from exc
+            with _open(req, int(os.environ.get("TRY_REPAIR_PROVIDER_TIMEOUT", "120"))) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            break
+        except urllib.error.HTTPError as exc:
+            try:
+                detail = exc.read().decode("utf-8", errors="replace")[:1000]
+            except Exception:
+                detail = ""
+            last_error = TryRepairProviderError(
+                f"provider request failed: HTTP {exc.code}: {detail or exc.reason}"
+            )
+            if exc.code not in _RETRYABLE_HTTP or retry_no == _PROVIDER_RETRY_ATTEMPTS - 1:
+                raise last_error from exc
+            time.sleep(_PROVIDER_RETRY_BACKOFF[retry_no])
+        except Exception as exc:
+            raise TryRepairProviderError(f"provider request failed: {type(exc).__name__}: {exc}") from exc
+    else:
+        raise last_error or TryRepairProviderError("provider request failed: retry exhausted")
     payload = validate_proposal(payload)
     if payload.get("status") == "HOLD":
         return payload
