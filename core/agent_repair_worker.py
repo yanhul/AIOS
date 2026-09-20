@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import shlex
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -101,7 +100,7 @@ class AgentRepairWorker:
     def _safe_path(self, raw: str) -> Path:
         if not isinstance(raw, str) or not raw.strip():
             raise RepairWorkerError("patch path must be a non-empty string")
-        if "\\x00" in raw:
+        if "\x00" in raw:
             raise RepairWorkerError("patch path contains NUL")
         path = raw.replace("\\", "/")
         if path.startswith("/") or path.startswith("../") or "/../" in path:
