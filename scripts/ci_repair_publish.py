@@ -48,7 +48,8 @@ def main() -> int:
     if git("rev-parse", "HEAD") != base:
         raise SystemExit("stale repair publish base")
 
-    proposal_files = sorted(Path("proposals").glob("repair-proposal-*.json"))
+    proposal_dir = Path(os.environ.get("AIOS_REPAIR_PROPOSALS_DIR", "proposals"))
+    proposal_files = sorted(proposal_dir.glob("repair-proposal-*.json"))
     proposals = []
     for path in proposal_files:
         obj = json.loads(path.read_text(encoding="utf-8"))
