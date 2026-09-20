@@ -63,11 +63,21 @@ class AgentRepairWorker:
         *,
         allowed_test_commands: Sequence[Sequence[str]] = (),
         timeout_seconds: int = 900,
+        aios_dir: str | os.PathLike[str] | None = None,
+        contract_id: str | None = None,
+        permit_id: str | None = None,
+        actor: str | None = None,
+        durable_runtime=None,
     ) -> None:
         self.root = Path(repository_root).resolve()
         self.authority = authority
         self.allowed_test_commands = tuple(tuple(c) for c in allowed_test_commands)
         self.timeout_seconds = timeout_seconds
+        self.aios_dir = str(aios_dir) if aios_dir is not None else None
+        self.contract_id = contract_id
+        self.permit_id = permit_id
+        self.actor = actor
+        self.durable_runtime = durable_runtime
         if not self.root.is_dir():
             raise RepairWorkerError(f"repository root does not exist: {self.root}")
         if timeout_seconds <= 0:
@@ -160,6 +170,44 @@ class AgentRepairWorker:
         return WorkerEvidence("APPLY_PATCH", "APPLIED",
                               (f"repair:base:{base_sha}", f"repair:permit:{permit_id}"),
                               {"paths": changed, "permit_id": permit_id})
+
+    def apply_via_aios(
+        self, *, base_sha: str, files: Sequence[ProposedFile],
+        logical_operation_id: str, allowed_dirty_paths: frozenset[str] = frozenset(),
+    ) -> Mapping[str, object]:
+        """Perform one repository mutation through the AIOS runtime boundary."""
+        if not all((self.aios_dir, self.contract_id, self.permit_id, self.actor)):
+            raise RepairWorkerError("AIOS mutation context is not configured")
+        self._require_base(base_sha, allowed_dirty_paths=allowed_dirty_paths)
+        if not files:
+            raise RepairWorkerError("repair proposal contains no files")
+        proposed = tuple(files)
+        paths = tuple(item.path for item in proposed)
+        if len(set(paths)) != len(paths):
+            raise RepairWorkerError("repair proposal contains duplicate paths")
+        for item in proposed:
+            self._safe_path(item.path)
+            if not isinstance(item.content, str):
+                raise RepairWorkerError(f"patch content must be text: {item.path!r}")
+
+        from .repository_patch_adapter import apply_via_aios
+
+        try:
+            return apply_via_aios(
+                aios_dir=self.aios_dir,
+                contract_id=self.contract_id,
+                permit_id=self.permit_id,
+                logical_operation_id=logical_operation_id,
+                actor=self.actor,
+                repository_root=self.root,
+                files=proposed,
+                base_sha=base_sha,
+                durable_runtime=self.durable_runtime,
+            )
+        except Exception as exc:
+            raise RepairWorkerError(
+                f"AIOS mutation failed: {type(exc).__name__}: {exc}"
+            ) from exc
 
     def test(self, commands: Sequence[Sequence[str]] | None = None) -> WorkerEvidence:
         selected = tuple(tuple(c) for c in (commands or self.allowed_test_commands))
