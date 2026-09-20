@@ -97,6 +97,7 @@ def propose(*, request_id: str, repository: str, sha: str, attempt: int,
         headers={
             "Authorization": "Bearer " + token,
             "Content-Type": "application/json",
+            "User-Agent": "AIOS-TRY-Repair/1.0",
         },
         method="POST",
     )
