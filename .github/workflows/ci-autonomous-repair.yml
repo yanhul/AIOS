@@ -47,7 +47,8 @@ jobs:
           AIOS_REPAIR_ATTEMPT: "1"
           AIOS_REPAIR_LOG: ${{ runner.temp }}/ci-failure.log
           GITHUB_REPOSITORY: ${{ github.repository }}
-          TRY_GITHUB_TOKEN: ${{ secrets.TRY_GITHUB_TOKEN }}
+          TRY_REPAIR_PROVIDER_URL: ${{ secrets.TRY_REPAIR_PROVIDER_URL }}
+          TRY_REPAIR_PROVIDER_TOKEN: ${{ secrets.TRY_REPAIR_PROVIDER_TOKEN }}
         run: python scripts/ci_repair_propose.py
       - run: cp repair-proposal.json repair-proposal-1.json
       - uses: actions/upload-artifact@v4

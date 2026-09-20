@@ -9,7 +9,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from core.try_repair_relay import propose as try_relay_propose, TryRelayError
+from core.try_repair_provider import propose as try_provider_propose, TryRepairProviderError
 
 MAX_SOURCE_FILES = 40
 MAX_FILE_BYTES = 8_000
@@ -167,7 +167,7 @@ def main() -> int:
 
     request_id = f"aios-ci-repair:{run_id}:{failure['attempt']}"
     try:
-        proposal = try_relay_propose(
+        proposal = try_provider_propose(
             request_id=request_id,
             repository=os.environ.get("GITHUB_REPOSITORY", "yanhul/AIOS"),
             sha=sha,
@@ -175,7 +175,7 @@ def main() -> int:
             failure=failure,
             source=source,
         )
-    except TryRelayError as exc:
+    except TryRepairProviderError as exc:
         raise SystemExit(f"TRY_RELAY_BLOCKED: {exc}") from exc
     if proposal.get("status") == "HOLD":
         raise SystemExit(f"TRY_PROVIDER_HOLD: {proposal.get('reason', 'provider hold')}")
@@ -187,7 +187,7 @@ def main() -> int:
         "status": "PROPOSAL_READY",
         "attempt": proposal["attempt"],
         "files": [x["path"] for x in proposal["files"]],
-        "transport": "github-workflow-dispatch",
+        "transport": "try-http-provider",
     }))
     return 0
 
