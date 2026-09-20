@@ -82,3 +82,65 @@ def test_adapter_executes_atomic_provider_operation_and_emits_evidence(tmp_path)
     assert receipt.observation["evidence"]["provider"] == "repo_patch"
     assert receipt.observation["evidence"]["digest"]
     assert (tmp_path / "module.py").read_text(encoding="utf-8") == "VALUE = 2\n"
+
+
+def test_adapter_integrates_with_real_aios_runtime(tmp_path):
+    from core.authority import persist_contract, persist_permit
+    from core.capabilities import Capability, CapabilityRegistry
+    from core.policy_registry import persist_policy
+    from core.contract import CONTRACT_TYPE
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    base = init_repo(repo)
+    aios = tmp_path / "aios"
+    aios.mkdir()
+
+    registry = CapabilityRegistry()
+    registry.register(Capability(
+        "repo_patch", "1", "AIOS", "external_effect",
+        inputs=("patch",), outputs=("observation",), status="ACTIVE",
+    ))
+    registry.persist(aios, actor="test-suite")
+
+    policy = {
+        "policy_type": "GOVERNING_POLICY",
+        "task": "repair",
+        "allowed_effects": ["external_effect"],
+    }
+    policy_digest = persist_policy(aios, policy)
+
+    contract = {
+        "contract_type": CONTRACT_TYPE,
+        "task_id": "repair-test",
+        "scope": "repository",
+        "actor": "repair-worker",
+        "capabilities": ["repo_patch@1"],
+        "input_digest": "sha256:test-input",
+        "allowed_effects": ["external_effect"],
+        "evidence_required": ["OBSERVED"],
+        "max_attempts": 2,
+        "terminal_states": ["OBSERVED_SUCCESS", "OBSERVED_FAILURE"],
+        "policy_digest": policy_digest,
+    }
+    stored = persist_contract(aios, contract)
+    permit = persist_permit(aios, stored, issuer="test-authority")
+
+    from core.repository_patch_adapter import apply_via_aios
+
+    result = apply_via_aios(
+        aios_dir=aios,
+        contract_id=stored["contract_id"],
+        permit_id=permit["permit_id"],
+        logical_operation_id="repair-integration",
+        actor="repair-worker",
+        repository_root=repo,
+        files=(ProposedFile("module.py", "VALUE = 2\n"),),
+        base_sha=base,
+    )
+
+    assert result["state"] == "OBSERVED_SUCCESS"
+    assert result["provider"] == "repo_patch"
+    assert result["evidence"]["provider"] == "repo_patch"
+    assert result["evidence"]["level"] == "OBSERVED"
+    assert (repo / "module.py").read_text(encoding="utf-8") == "VALUE = 2\n"
