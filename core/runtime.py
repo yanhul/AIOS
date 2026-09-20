@@ -6,7 +6,10 @@ resume, planning and agent loops belong to an external execution substrate.
 
 from dataclasses import dataclass
 from typing import Protocol
+import hashlib
+import json
 
+from .evidence import EvidenceRecord
 from .authority import authorize, load_contract, load_permit
 from .durable_runtime import DurableRuntime, validate_submission
 from .effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
@@ -110,10 +113,32 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
         "attempt_id": receipt.attempt_id,
         "observation": receipt.observation,
     }
-    # Providers that emit AIOS-owned evidence bind it at the observation
-    # boundary. Legacy providers remain compatible until they are migrated.
-    if isinstance(receipt.observation.get("evidence"), dict):
-        provider_observation["evidence"] = receipt.observation["evidence"]
+    supplied = receipt.observation.get("evidence")
+    if isinstance(supplied, dict):
+        provider_observation["evidence"] = supplied
+    else:
+        # The ProviderReceipt is the raw provider observation. Wrap that raw
+        # receipt as OBSERVED evidence at the AIOS observation boundary; do not
+        # derive verification, truth, or PASS from it.
+        raw_digest = hashlib.sha256(
+            json.dumps(
+                receipt.observation,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        provider_observation["evidence"] = EvidenceRecord(
+            evidence_id="EV-" + hashlib.sha256(
+                f"{receipt.effect_id}:{receipt.attempt_id}:{raw_digest}".encode("utf-8")
+            ).hexdigest()[:24],
+            level="OBSERVED",
+            source_ref=f"provider://{receipt.provider}/{receipt.provider_operation_id}",
+            claim="provider returned a bounded execution observation",
+            run_id=receipt.attempt_id,
+            provider=receipt.provider,
+            artifact_ref=raw_digest,
+        ).as_record()
     return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, provider_observation)
 
 
