@@ -49,11 +49,19 @@ def persist_attestation(aios_dir,contract,permit,secret):
   return existing
  commit_batch(aios_dir,[(os.path.join(AUTHORITY_DIR,ATTESTATIONS_DIR,permit["permit_id"]+".json"),attestation)]); return attestation
 def load_contract(aios_dir,contract_id):
- _require_id(contract_id,"contract_id"); record=_load(_path(aios_dir,CONTRACTS_DIR,contract_id)); contract={k:record[k] for k in _CONTRACT_FIELDS}
+ _require_id(contract_id,"contract_id")
+ try:
+  record=_load(_path(aios_dir,CONTRACTS_DIR,contract_id))
+ except FileNotFoundError as exc:
+  raise TransitionError(f"contract not found: {contract_id}") from exc contract={k:record[k] for k in _CONTRACT_FIELDS}
  if contract_identity(contract)!=contract_id: raise TransitionError("stored contract identity mismatch")
  validate_contract(contract); _resolve_policy(aios_dir,contract); return contract
 def load_permit(aios_dir,permit_id):
- _require_id(permit_id,"permit_id"); return _load(_path(aios_dir,PERMITS_DIR,permit_id))
+ _require_id(permit_id,"permit_id")
+ try:
+  return _load(_path(aios_dir,PERMITS_DIR,permit_id))
+ except FileNotFoundError as exc:
+  raise TransitionError(f"permit not found: {permit_id}") from exc
 def load_attestation(aios_dir,permit_id):
  _require_id(permit_id,"permit_id"); return _load(_path(aios_dir,ATTESTATIONS_DIR,permit_id))
 def authorize(aios_dir,contract_id,permit_id):
