@@ -154,7 +154,7 @@ def _require_clean_base(root: Path, base_sha: str, *, allowed_dirty_paths: froze
     dirty = set()
     for line in status.stdout.splitlines():
         if len(line) >= 4:
-            dirty.add(line[3:].replace("\\\\", "/"))
+            dirty.add(line[3:].replace("\\", "/"))
     if dirty and not dirty.issubset(allowed_dirty_paths):
         raise RuntimeError("repository contains unowned dirty paths before AIOS mutation")
 
