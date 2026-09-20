@@ -30,8 +30,8 @@ concurrency:
 
 env:
   RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id || github.run_id }}
-  BASE_SHA: ${{ github.event.workflow_run.head_sha || inputs.base_sha || github.event.pull_request.head.sha }}
-  SOURCE_BRANCH: ${{ github.event.workflow_run.head_branch || inputs.source_branch || github.event.pull_request.head.ref }}
+  BASE_SHA: ${{ github.event.workflow_run.head_sha || inputs.base_sha || github.sha }}
+  SOURCE_BRANCH: ${{ github.event.workflow_run.head_branch || inputs.source_branch || github.ref_name }}
 
 jobs:
   propose1:
