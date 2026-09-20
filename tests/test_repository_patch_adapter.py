@@ -144,3 +144,66 @@ def test_adapter_integrates_with_real_aios_runtime(tmp_path):
     assert result["evidence"]["provider"] == "repo_patch"
     assert result["evidence"]["level"] == "OBSERVED"
     assert (repo / "module.py").read_text(encoding="utf-8") == "VALUE = 2\n"
+
+
+def test_worker_iterative_patches_remain_inside_aios_boundary(tmp_path):
+    from core.authority import persist_contract, persist_permit
+    from core.capabilities import Capability, CapabilityRegistry
+    from core.policy_registry import persist_policy
+    from core.contract import CONTRACT_TYPE
+    from core.agent_repair_worker import AgentRepairWorker
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    base = init_repo(repo)
+    aios = tmp_path / "aios"
+    aios.mkdir()
+
+    registry = CapabilityRegistry()
+    registry.register(Capability(
+        "repo_patch", "1", "AIOS", "external_effect",
+        inputs=("patch",), outputs=("observation",), status="ACTIVE",
+    ))
+    registry.persist(aios, actor="test-suite")
+    policy_digest = persist_policy(aios, {
+        "policy_type": "GOVERNING_POLICY",
+        "task": "repair",
+        "allowed_effects": ["external_effect"],
+    })
+    contract = {
+        "contract_type": CONTRACT_TYPE,
+        "task_id": "repair-worker-test",
+        "scope": "repository",
+        "actor": "repair-worker",
+        "capabilities": ["repo_patch@1"],
+        "input_digest": "sha256:test-input",
+        "allowed_effects": ["external_effect"],
+        "evidence_required": ["OBSERVED"],
+        "max_attempts": 2,
+        "terminal_states": ["OBSERVED_SUCCESS", "OBSERVED_FAILURE"],
+        "policy_digest": policy_digest,
+    }
+    stored = persist_contract(aios, contract)
+    permit = persist_permit(aios, stored, issuer="test-authority")
+
+    worker = AgentRepairWorker(
+        repo, object(),
+        aios_dir=aios,
+        contract_id=stored["contract_id"],
+        permit_id=permit["permit_id"],
+        actor="repair-worker",
+    )
+    first = worker.apply_via_aios(
+        base_sha=base,
+        files=(ProposedFile("module.py", "VALUE = 2\n"),),
+        logical_operation_id="repair-1",
+    )
+    second = worker.apply_via_aios(
+        base_sha=base,
+        files=(ProposedFile("module.py", "VALUE = 3\n"),),
+        logical_operation_id="repair-2",
+    )
+
+    assert first["state"] == "OBSERVED_SUCCESS"
+    assert second["state"] == "OBSERVED_SUCCESS"
+    assert (repo / "module.py").read_text(encoding="utf-8") == "VALUE = 3\n"
