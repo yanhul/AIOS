@@ -189,7 +189,7 @@ jobs:
           TRY_REPAIR_PROVIDER_URL: ${{ secrets.TRY_REPAIR_PROVIDER_URL }}
           TRY_REPAIR_PROVIDER_TOKEN: ${{ secrets.TRY_REPAIR_PROVIDER_TOKEN }}
         run: |
-          export AIOS_REPAIR_RUN_ID="$CI_RUN_ID"
+          export AIOS_REPAIR_RUN_ID="$RUN_ID"
           python scripts/ci_repair_propose.py
           cp repair-proposal.json repair-proposal-2.json
       - uses: actions/upload-artifact@v4
@@ -278,7 +278,7 @@ jobs:
           TRY_REPAIR_PROVIDER_URL: ${{ secrets.TRY_REPAIR_PROVIDER_URL }}
           TRY_REPAIR_PROVIDER_TOKEN: ${{ secrets.TRY_REPAIR_PROVIDER_TOKEN }}
         run: |
-          export AIOS_REPAIR_RUN_ID="$CI_RUN_ID"
+          export AIOS_REPAIR_RUN_ID="$RUN_ID"
           python scripts/ci_repair_propose.py
           cp repair-proposal.json repair-proposal-3.json
       - uses: actions/upload-artifact@v4
