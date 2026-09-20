@@ -114,7 +114,7 @@ def test_execute_attempt_rejects_non_dispatched_effect(tmp_path):
 
 def test_execute_attempt_does_not_authorize_or_create_effect(tmp_path):
     c, _, _ = setup_authority(tmp_path)
-    effect = create_effect(str(tmp_path), "CT-unrelated", "op-1", "agent:test", pid, "external_effect")
+    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     attempt_id = f"{effect['effect_id']}:attempt:1"
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")
 
