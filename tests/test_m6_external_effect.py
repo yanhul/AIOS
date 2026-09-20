@@ -53,7 +53,8 @@ class TestExternalEffect(unittest.TestCase):
             record_observation(self.aios, e["effect_id"], "OBSERVED_SUCCESS", {})
 
     def test_unknown_is_durable_and_needs_verified_observation(self):
-        e = create_effect(self.aios, "CT-1", "LO-1", "agent:a")
+        cid, pid = self._setup_authority()
+        e = create_effect(self.aios, cid, "LO-1", "agent:a", pid, "external_effect")
         attempt = f"{e['effect_id']}:attempt:1"
         record_dispatch(self.aios, e["effect_id"], attempt, "provider:test")
         record_unknown(self.aios, e["effect_id"], "provider timeout")
@@ -80,8 +81,9 @@ class TestExternalEffect(unittest.TestCase):
             record_observation(self.aios, e["effect_id"], "OBSERVED_SUCCESS", {"receipt_id": "R-1"})
 
     def test_effect_identity_is_replayable(self):
-        a = create_effect(self.aios, "CT-1", "LO-1", "agent:a")
-        b = create_effect(self.aios, "CT-1", "LO-1", "agent:a")
+        cid, pid = self._setup_authority()
+        a = create_effect(self.aios, cid, "LO-1", "agent:a", pid, "external_effect")
+        b = create_effect(self.aios, cid, "LO-1", "agent:a", pid, "external_effect")
         self.assertEqual(a["effect_id"], b["effect_id"])
 
 
