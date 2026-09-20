@@ -105,8 +105,8 @@ def test_execute_attempt_runs_only_a_dispatched_attempt(tmp_path):
 
 
 def test_execute_attempt_rejects_non_dispatched_effect(tmp_path):
-    c, cid, _ = setup_authority(tmp_path)
-    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test")
+    c, cid, pid = setup_authority(tmp_path)
+    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     with pytest.raises(RuntimeError, match="DISPATCHED"):
         execute_attempt(str(tmp_path), c, effect, "agent:test", GoodAdapter(),
                         f"{effect['effect_id']}:attempt:1")
