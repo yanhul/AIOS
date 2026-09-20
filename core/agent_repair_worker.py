@@ -180,7 +180,8 @@ class AgentRepairWorker:
         """Perform one repository mutation through the AIOS runtime boundary."""
         if not all((self.aios_dir, self.contract_id, self.permit_id, self.actor)):
             raise RepairWorkerError("AIOS mutation context is not configured")
-        self._require_base(base_sha, allowed_dirty_paths=allowed_dirty_paths)
+        owned = frozenset(set(allowed_dirty_paths) | self._owned_dirty_paths)
+        self._require_base(base_sha, allowed_dirty_paths=owned)
         if not files:
             raise RepairWorkerError("repair proposal contains no files")
         proposed = tuple(files)
@@ -195,7 +196,7 @@ class AgentRepairWorker:
         from .repository_patch_adapter import apply_via_aios
 
         try:
-            return apply_via_aios(
+            result = apply_via_aios(
                 aios_dir=self.aios_dir,
                 contract_id=self.contract_id,
                 permit_id=self.permit_id,
@@ -212,6 +213,7 @@ class AgentRepairWorker:
                 f"AIOS mutation failed: {type(exc).__name__}: {exc}"
             ) from exc
         self._owned_dirty_paths.update(paths)
+        return result
 
     def test(self, commands: Sequence[Sequence[str]] | None = None) -> WorkerEvidence:
         selected = tuple(tuple(c) for c in (commands or self.allowed_test_commands))
