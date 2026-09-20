@@ -8,7 +8,6 @@ from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.policy_registry import persist_policy
 from core.external_effect import ExternalEffectError, create_effect, load_effects, record_dispatch, record_observation, record_unknown
-from core.mutation import TransitionError
 from core.effect_authority import retry_dispatch
 
 
@@ -76,7 +75,7 @@ class TestExternalEffect(unittest.TestCase):
         attempt = f"{e['effect_id']}:attempt:1"
         record_dispatch(self.aios, e["effect_id"], "agent:a", attempt, "provider:test")
         with self.assertRaises(ExternalEffectError):
-            record_observation(self.aios, e["effect_id"], "OBSERVED_SUCCESS", {
+            record_observation(self.aios, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {
                 "attempt_id": "different", "provider": "provider:test", "evidence": evidence()
             })
 
