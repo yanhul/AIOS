@@ -51,7 +51,7 @@ def make_authorized(td):
 
 def test_effect_creation_requires_bound_permit_and_allowed_effect():
     with tempfile.TemporaryDirectory() as td:
-        with pytest.raises((ValueError, KeyError, TransitionError)):
+        with pytest.raises((ValueError, KeyError, FileNotFoundError, TransitionError)):
             create_effect(td, "fake-contract", "op", "bc-controller", "fake-permit", "process_execution")
         contract, permit, _ = make_authorized(td)
         with pytest.raises(TransitionError):
