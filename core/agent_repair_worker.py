@@ -124,15 +124,19 @@ class AgentRepairWorker:
             raise RepairWorkerError("base_sha must be a 40-character commit SHA")
         if self._git("rev-parse", "HEAD") != base_sha:
             raise RepairWorkerError("stale repair base")
-        status = self._git("status", "--porcelain")
-        if not status:
-            return
         dirty = set()
-        for line in status.splitlines():
-            if len(line) >= 4:
-                dirty.add(line[3:].replace("\\", "/"))
-        if not dirty or not dirty.issubset(allowed_dirty_paths):
-            raise RepairWorkerError("repository contains unowned dirty paths")
+        for args in (
+            ("diff", "--name-only"),
+            ("diff", "--cached", "--name-only"),
+            ("ls-files", "--others", "--exclude-standard"),
+        ):
+            output = self._git(*args)
+            dirty.update(line.replace("\\", "/") for line in output.splitlines() if line)
+        if dirty and not dirty.issubset(allowed_dirty_paths):
+            unexpected = sorted(dirty - allowed_dirty_paths)
+            raise RepairWorkerError(
+                "repository contains unowned dirty paths: " + ", ".join(unexpected)
+            )
 
     def _atomic_write(self, target: Path, content: str) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
