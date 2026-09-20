@@ -26,14 +26,14 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
-  BASE_SHA: ${{ github.event.workflow_run.head_sha || inputs.base_sha }}
-  SOURCE_BRANCH: ${{ github.event.workflow_run.head_branch || inputs.source_branch }}
+  RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id || github.run_id }}
+  BASE_SHA: ${{ github.event.workflow_run.head_sha || inputs.base_sha || github.event.pull_request.head.sha }}
+  SOURCE_BRANCH: ${{ github.event.workflow_run.head_branch || inputs.source_branch || github.event.pull_request.head.ref }}
 
 jobs:
   propose1:
     if: >-
-      ${{ (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'failure') &&
+      ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request_target' || github.event.workflow_run.conclusion == 'failure') &&
           github.event.workflow_run.head_repository.full_name == github.repository &&
           (github.event.workflow_run.head_branch == 'main' ||
            startsWith(github.event.workflow_run.head_branch, 'aios/autorepair/')) }}
@@ -47,23 +47,51 @@ jobs:
         with:
           ref: main
           persist-credentials: false
+      - name: Resolve failed CI run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ env.BASE_SHA }}
+          EVENT: ${{ github.event_name }}
+          TRIGGER_RUN_ID: ${{ env.RUN_ID }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_run" ] || [ "$EVENT" = "workflow_dispatch" ]; then
+            ci_run_id="$TRIGGER_RUN_ID"
+            conclusion="failure"
+          else
+            ci_run_id=""
+            conclusion=""
+            for i in $(seq 1 60); do
+              run_json="$(gh run list --repo "$REPO" --workflow CI --commit "$SHA" --limit 1 --json databaseId,status,conclusion)"
+              ci_run_id="$(jq -r '.[0].databaseId // empty' <<<"$run_json")"
+              status="$(jq -r '.[0].status // empty' <<<"$run_json")"
+              conclusion="$(jq -r '.[0].conclusion // empty' <<<"$run_json")"
+              echo "CI run=$ci_run_id status=$status conclusion=$conclusion"
+              if [ "$status" = "completed" ]; then break; fi
+              sleep 10
+            done
+            [ "$conclusion" = "failure" ] || { echo "BLOCKED: latest CI for $SHA did not fail"; exit 1; }
+          fi
+          echo "CI_RUN_ID=$ci_run_id" >> "$GITHUB_ENV"
       - env:
           SHA: ${{ env.BASE_SHA }}
         run: git fetch --no-tags --depth=1 origin "$SHA"
       - name: Capture failed CI evidence
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run view "$RUN_ID" --repo "${{ github.repository }}" --log-failed > "$RUNNER_TEMP/ci-failure.log" || true
+        run: gh run view "$CI_RUN_ID" --repo "${{ github.repository }}" --log-failed > "$RUNNER_TEMP/ci-failure.log" || true
       - name: Dispatch bounded proposal request to TRY
         env:
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
-          AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_ATTEMPT: "1"
           AIOS_REPAIR_LOG: ${{ runner.temp }}/ci-failure.log
           GITHUB_REPOSITORY: ${{ github.repository }}
           TRY_REPAIR_PROVIDER_URL: ${{ secrets.TRY_REPAIR_PROVIDER_URL }}
           TRY_REPAIR_PROVIDER_TOKEN: ${{ secrets.TRY_REPAIR_PROVIDER_TOKEN }}
-        run: PYTHONPATH=. python scripts/ci_repair_propose.py
+        run: |
+          export AIOS_REPAIR_RUN_ID="$CI_RUN_ID"
+          PYTHONPATH=. python scripts/ci_repair_propose.py
       - run: cp repair-proposal.json repair-proposal-1.json
       - uses: actions/upload-artifact@v4
         with:
@@ -150,7 +178,6 @@ jobs:
       - name: Dispatch bounded proposal request to TRY
         env:
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
-          AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_ATTEMPT: "2"
           AIOS_REPAIR_LOG: ${{ runner.temp }}/ci-failure.log
           AIOS_REPAIR_PREVIOUS_RESULT: ${{ github.workspace }}/prior/repair-result-1.json
@@ -158,6 +185,7 @@ jobs:
           TRY_REPAIR_PROVIDER_URL: ${{ secrets.TRY_REPAIR_PROVIDER_URL }}
           TRY_REPAIR_PROVIDER_TOKEN: ${{ secrets.TRY_REPAIR_PROVIDER_TOKEN }}
         run: |
+          export AIOS_REPAIR_RUN_ID="$CI_RUN_ID"
           python scripts/ci_repair_propose.py
           cp repair-proposal.json repair-proposal-2.json
       - uses: actions/upload-artifact@v4
@@ -239,7 +267,6 @@ jobs:
       - name: Dispatch bounded proposal request to TRY
         env:
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
-          AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_ATTEMPT: "3"
           AIOS_REPAIR_LOG: ${{ runner.temp }}/ci-failure.log
           AIOS_REPAIR_PREVIOUS_RESULT: ${{ github.workspace }}/prior/repair-result-2.json
@@ -247,6 +274,7 @@ jobs:
           TRY_REPAIR_PROVIDER_URL: ${{ secrets.TRY_REPAIR_PROVIDER_URL }}
           TRY_REPAIR_PROVIDER_TOKEN: ${{ secrets.TRY_REPAIR_PROVIDER_TOKEN }}
         run: |
+          export AIOS_REPAIR_RUN_ID="$CI_RUN_ID"
           python scripts/ci_repair_propose.py
           cp repair-proposal.json repair-proposal-3.json
       - uses: actions/upload-artifact@v4
