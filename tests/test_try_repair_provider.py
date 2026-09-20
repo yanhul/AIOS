@@ -59,20 +59,45 @@ def test_health_accepts_ready(monkeypatch):
         def read(self): return b'{"status":"READY","provider":"gemini","model":"test-model"}'
     monkeypatch.setenv("TRY_REPAIR_PROVIDER_URL", "http://127.0.0.1:8787")
     monkeypatch.setenv("TRY_REPAIR_PROVIDER_TOKEN", "x")
-    monkeypatch.setattr(try_repair_provider.urllib.request, "urlopen", lambda *a, **k: Resp())
+    monkeypatch.setattr(try_repair_provider, "_open", lambda *a, **k: Resp())
     assert try_repair_provider.health()["status"] == "READY"
+
 
 def test_provider_rejects_protected_patch_path(monkeypatch):
     class Resp:
         def __enter__(self): return self
         def __exit__(self, *args): pass
         def read(self):
-            return b'{"schema":2,"root_cause":"x","proposed_fix":"y","files":[{"path":".aios/policy.py","content":"x"}]}'
+            return json.dumps({
+                "schema": 2, "root_cause": "x", "proposed_fix": "y",
+                "files": [{"path": ".aios/policy.py", "content": "x"}],
+            }).encode()
     monkeypatch.setenv("TRY_REPAIR_PROVIDER_URL", "http://127.0.0.1:8787")
     monkeypatch.setenv("TRY_REPAIR_PROVIDER_TOKEN", "x")
-    monkeypatch.setattr(try_repair_provider.urllib.request, "urlopen", lambda *a, **k: Resp())
+    monkeypatch.setattr(try_repair_provider, "_open", lambda *a, **k: Resp())
     with pytest.raises(try_repair_provider.TryRepairProviderError, match="protected patch path"):
         try_repair_provider.propose(
             request_id="r", repository="yanhul/AIOS", sha="a" * 40, attempt=1,
             failure={}, source={"core/x.py": "x=1\n"},
         )
+
+
+def test_provider_adds_repair_identity(monkeypatch):
+    class Resp:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self):
+            return json.dumps({
+                "schema": 2, "root_cause": "x", "proposed_fix": "y",
+                "files": [{"path": "core/x.py", "content": "x=1\n"}],
+            }).encode()
+    monkeypatch.setenv("TRY_REPAIR_PROVIDER_URL", "http://127.0.0.1:8787")
+    monkeypatch.setenv("TRY_REPAIR_PROVIDER_TOKEN", "x")
+    monkeypatch.setattr(try_repair_provider, "_open", lambda *a, **k: Resp())
+    out = try_repair_provider.propose(
+        request_id="req-1", repository="yanhul/AIOS", sha="a" * 40, attempt=2,
+        failure={}, source={"core/x.py": "x=1\n"},
+    )
+    assert out["request_id"] == "req-1"
+    assert out["base_sha"] == "a" * 40
+    assert out["attempt"] == 2
