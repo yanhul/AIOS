@@ -68,6 +68,7 @@ jobs:
           RUN_ID: ${{ github.event.workflow_run.id }}
           EVENT_ACTION: ${{ github.event.action }}
           REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           run_json="$(gh api "repos/$REPOSITORY/actions/runs/$RUN_ID")"
@@ -84,7 +85,7 @@ jobs:
                 repository="yanhul/AIOS",
                 workflow="CI",
                 run_id=int(os.environ["RUN_ID"]),
-                sha="0"*40,
+                sha=os.environ["HEAD_SHA"],
                 status=os.environ["WATCH_STATUS"],
                 conclusion=None,
                 age_seconds=int(os.environ["WATCH_AGE"]),
