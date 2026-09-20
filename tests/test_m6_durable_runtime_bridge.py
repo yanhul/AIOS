@@ -85,7 +85,7 @@ def test_runtime_binding_mismatch_fails_closed_before_provider(tmp_path):
 
 def test_retry_bridges_explicit_bounded_retry(tmp_path):
     cid, pid = setup(tmp_path, max_attempts=2)
-    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test")
+    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test",

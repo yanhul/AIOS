@@ -48,26 +48,26 @@ class TestExternalEffect(unittest.TestCase):
         cid, pid = self._setup_authority()
         e = create_effect(self.aios, cid, "LO-1", "agent:a", pid, "external_effect")
         attempt = f"{e['effect_id']}:attempt:1"
-        record_dispatch(self.aios, e["effect_id"], attempt, "provider:test")
+        record_dispatch(self.aios, e["effect_id"], "agent:a", attempt, "provider:test")
         with self.assertRaises(ExternalEffectError):
-            record_observation(self.aios, e["effect_id"], "OBSERVED_SUCCESS", {})
+            record_observation(self.aios, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {})
 
     def test_unknown_is_durable_and_needs_verified_observation(self):
         cid, pid = self._setup_authority()
         e = create_effect(self.aios, cid, "LO-1", "agent:a", pid, "external_effect")
         attempt = f"{e['effect_id']}:attempt:1"
         record_dispatch(self.aios, e["effect_id"], attempt, "provider:test")
-        record_unknown(self.aios, e["effect_id"], "provider timeout")
+        record_unknown(self.aios, e["effect_id"], "agent:a", "provider timeout")
         self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "UNKNOWN")
         retry_attempt = f"{e['effect_id']}:attempt:2"
         retry_dispatch(self.aios, e["effect_id"], "agent:a", retry_attempt, "provider:test", 2)
-        record_observation(self.aios, e["effect_id"], "OBSERVED_SUCCESS", {
+        record_observation(self.aios, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {
             "attempt_id": retry_attempt, "provider": "provider:test", "evidence": evidence()
         })
         self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "OBSERVED_SUCCESS")
 
     def test_attempt_mismatch_is_rejected(self):
-        e = create_effect(self.aios, "CT-1", "LO-1", "agent:a")
+        e = create_effect(self.aios, "CT-1", "LO-1", "agent:a", "PT-1", "external_effect")
         attempt = f"{e['effect_id']}:attempt:1"
         record_dispatch(self.aios, e["effect_id"], attempt, "provider:test")
         with self.assertRaises(ExternalEffectError):
