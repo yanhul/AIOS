@@ -152,11 +152,23 @@ def _require_clean_base(root: Path, base_sha: str, *, allowed_dirty_paths: froze
     if status.returncode:
         raise RuntimeError("unable to verify repository status")
     dirty = set()
-    for line in status.stdout.splitlines():
-        if len(line) >= 4:
-            dirty.add(line[3:].replace("\\", "/"))
+    for args in (
+        ("diff", "--name-only"),
+        ("diff", "--cached", "--name-only"),
+        ("ls-files", "--others", "--exclude-standard"),
+    ):
+        proc = subprocess.run(
+            ("git", *args), cwd=root, text=True, capture_output=True, check=False,
+        )
+        if proc.returncode:
+            raise RuntimeError("unable to enumerate repository dirty paths")
+        dirty.update(line.replace("\\", "/") for line in proc.stdout.splitlines() if line)
     if dirty and not dirty.issubset(allowed_dirty_paths):
-        raise RuntimeError("repository contains unowned dirty paths before AIOS mutation")
+        unexpected = sorted(dirty - allowed_dirty_paths)
+        raise RuntimeError(
+            "repository contains unowned dirty paths before AIOS mutation: "
+            + ", ".join(unexpected)
+        )
 
 
 def _atomic_write(target: Path, content: str) -> None:
