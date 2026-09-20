@@ -2,7 +2,7 @@ name: AIOS CI Autonomous Repair
 
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["CI", "G4A CI"]
     types: [completed]
   workflow_dispatch:
     inputs:
