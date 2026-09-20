@@ -51,6 +51,8 @@ jobs:
           AIOS_REPAIR_ATTEMPT: "1"
           AIOS_REPAIR_LOG: ${{ runner.temp }}/ci-failure.log
         run: |
+          echo "repair-model=${AIOS_REPAIR_MODEL:-<unset>}"
+          if [ -n "${AIOS_REPAIR_API_KEY:-}" ]; then echo "repair-key=present"; else echo "repair-key=missing"; fi
           test -n "${AIOS_REPAIR_API_KEY:-}" || { echo "BLOCKED: missing reasoning provider secret"; exit 1; }
           python scripts/ci_repair_propose.py
       - run: cp repair-proposal.json repair-proposal-1.json
