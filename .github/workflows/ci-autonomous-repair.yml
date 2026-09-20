@@ -42,18 +42,15 @@ jobs:
         run: gh run view "$RUN_ID" --repo "${{ github.repository }}" --log-failed > "$RUNNER_TEMP/ci-failure.log" || true
       - name: Reason-only proposal attempt 1
         env:
-          AIOS_REPAIR_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
-          AIOS_REPAIR_MODEL: ${{ vars.AIOS_REPAIR_MODEL || 'gemini-3.8-flash' }}
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_SOURCE_BRANCH: ${{ env.SOURCE_BRANCH }}
           AIOS_REPAIR_ATTEMPT: "1"
+          TRY_REPAIR_PROVIDER_URL: ${{ vars.TRY_REPAIR_PROVIDER_URL }}
+          TRY_REPAIR_PROVIDER_TOKEN: ${{ secrets.TRY_REPAIR_PROVIDER_TOKEN }}
           AIOS_REPAIR_LOG: ${{ runner.temp }}/ci-failure.log
         run: |
-          echo "repair-model=${AIOS_REPAIR_MODEL:-<unset>}"
-          if [ -n "${AIOS_REPAIR_API_KEY:-}" ]; then echo "repair-key=present"; else echo "repair-key=missing"; fi
-          test -n "${AIOS_REPAIR_API_KEY:-}" || { echo "BLOCKED: missing reasoning provider secret"; exit 1; }
           python scripts/ci_repair_propose.py
       - run: cp repair-proposal.json repair-proposal-1.json
       - uses: actions/upload-artifact@v4
@@ -140,17 +137,16 @@ jobs:
         run: gh run view "$RUN_ID" --repo "${{ github.repository }}" --log-failed > "$RUNNER_TEMP/ci-failure.log" || true
       - name: Reason-only proposal attempt 2
         env:
-          AIOS_REPAIR_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
-          AIOS_REPAIR_MODEL: ${{ vars.AIOS_REPAIR_MODEL || 'gemini-3.8-flash' }}
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_SOURCE_BRANCH: ${{ env.SOURCE_BRANCH }}
           AIOS_REPAIR_ATTEMPT: "2"
+          TRY_REPAIR_PROVIDER_URL: ${{ vars.TRY_REPAIR_PROVIDER_URL }}
+          TRY_REPAIR_PROVIDER_TOKEN: ${{ secrets.TRY_REPAIR_PROVIDER_TOKEN }}
           AIOS_REPAIR_LOG: ${{ runner.temp }}/ci-failure.log
           AIOS_REPAIR_PREVIOUS_RESULT: ${{ github.workspace }}/prior/repair-result-1.json
         run: |
-          test -n "${AIOS_REPAIR_API_KEY:-}" || { echo "BLOCKED: missing reasoning provider secret"; exit 1; }
           python scripts/ci_repair_propose.py
           cp repair-proposal.json repair-proposal-2.json
       - uses: actions/upload-artifact@v4
@@ -232,17 +228,16 @@ jobs:
         run: gh run view "$RUN_ID" --repo "${{ github.repository }}" --log-failed > "$RUNNER_TEMP/ci-failure.log" || true
       - name: Reason-only proposal attempt 3
         env:
-          AIOS_REPAIR_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
-          AIOS_REPAIR_MODEL: ${{ vars.AIOS_REPAIR_MODEL || 'gemini-3.8-flash' }}
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_SOURCE_BRANCH: ${{ env.SOURCE_BRANCH }}
           AIOS_REPAIR_ATTEMPT: "3"
+          TRY_REPAIR_PROVIDER_URL: ${{ vars.TRY_REPAIR_PROVIDER_URL }}
+          TRY_REPAIR_PROVIDER_TOKEN: ${{ secrets.TRY_REPAIR_PROVIDER_TOKEN }}
           AIOS_REPAIR_LOG: ${{ runner.temp }}/ci-failure.log
           AIOS_REPAIR_PREVIOUS_RESULT: ${{ github.workspace }}/prior/repair-result-2.json
         run: |
-          test -n "${AIOS_REPAIR_API_KEY:-}" || { echo "BLOCKED: missing reasoning provider secret"; exit 1; }
           python scripts/ci_repair_propose.py
           cp repair-proposal.json repair-proposal-3.json
       - uses: actions/upload-artifact@v4
