@@ -42,16 +42,30 @@ def main() -> int:
 
     class Tools:
         def inspect(self, path: str):
-            return {"path": path, "content": source.get(path, ""), "found": path in source}
+            norm = path.replace("\\", "/")
+            if norm.startswith("/") or ".." in Path(norm).parts:
+                return {"path": path, "found": False, "error": "unsafe path"}
+            content = show(sha, norm)
+            return {"path": norm, "content": content, "found": bool(content)}
 
         def search(self, query: str):
-            q = query.lower()
-            local_hits = [path for path, content in source.items() if q in content.lower()][:20]
+            q = query.strip()
+            if not q:
+                return {"query": query, "local_matches": [], "external_matches": []}
+            local_hits = []
+            for path in git("ls-tree", "-r", "--name-only", sha).splitlines():
+                if not (path.startswith("core/") or path.startswith("scripts/")):
+                    continue
+                content = show(sha, path)
+                if q.lower() in content.lower():
+                    local_hits.append(path)
+                if len(local_hits) >= 30:
+                    break
             external = []
             token = os.environ.get("GITHUB_TOKEN", "")
-            if token and query.strip():
+            if token:
                 params = urllib.parse.urlencode({
-                    "q": f"{query} repo:yanhul/AIOS",
+                    "q": q,
                     "per_page": "8",
                 })
                 req = urllib.request.Request(
