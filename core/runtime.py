@@ -75,6 +75,8 @@ def validate_receipt(receipt, effect, attempt_id, provider_name):
         raise ValueError("receipt outcome must be an observed terminal outcome")
     if not isinstance(receipt.observation, dict) or not receipt.observation:
         raise ValueError("receipt observation must be a non-empty dict")
+    if not isinstance(receipt.observation.get("evidence"), dict):
+        raise ValueError("receipt observation must carry AIOS evidence")
 
 
 def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
