@@ -9,10 +9,12 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from core.try_repair_provider import propose as try_propose, health as try_health, TryRepairProviderError
+from core.try_repair_relay import propose as try_relay_propose, TryRelayError
 
-MAX_SOURCE_FILES = 120
-MAX_FILE_BYTES = 120_000
+MAX_SOURCE_FILES = 40
+MAX_FILE_BYTES = 8_000
+MAX_SOURCE_BYTES = 42_000
+MAX_LOG_BYTES = 12_000
 MAX_EXTERNAL_BYTES = 100_000
 DENIED = (".github/workflows/", ".aios/", "secrets/")
 DENIED_NAMES = {".env", ".env.local", ".env.production", "credentials.json"}
@@ -115,24 +117,42 @@ class Tools:
             return {"repo": repo, "path": path, "ref": ref, "found": False, "error": str(exc)}
 
 
+def bounded_source(sha: str, failure_log: str) -> dict[str, str]:
+    paths = [
+        p for p in git("ls-tree", "-r", "--name-only", sha).splitlines()
+        if (p.startswith("core/") or p.startswith("scripts/"))
+        and p.endswith(".py")
+        and not p.startswith("tests/")
+    ]
+    # Prioritize filenames explicitly mentioned by the failed CI log.
+    tokens = {
+        line.strip().replace(":", "/")
+        for line in failure_log.splitlines()
+        if "/" in line and line.strip()
+    }
+    paths.sort(key=lambda p: (0 if any(t in p for t in tokens) else 1, p))
+    source: dict[str, str] = {}
+    used = 0
+    for path in paths:
+        if len(source) >= MAX_SOURCE_FILES:
+            break
+        content = show(sha, path)
+        if not content:
+            continue
+        remaining = MAX_SOURCE_BYTES - used
+        if remaining <= 0:
+            break
+        content = content[:min(MAX_FILE_BYTES, remaining)]
+        source[path] = content
+        used += len(content.encode("utf-8"))
+    return source
+
+
 def main() -> int:
     sha = os.environ["AIOS_REPAIR_SHA"]
     run_id = os.environ["AIOS_REPAIR_RUN_ID"]
-    log = Path(os.environ["AIOS_REPAIR_LOG"]).read_text(encoding="utf-8", errors="replace")[-80_000:]
-    names = [
-        p for p in git("ls-tree", "-r", "--name-only", sha).splitlines()
-        if (p.startswith("core/") or p.startswith("scripts/"))
-        and p.endswith(".py") and not p.startswith("tests/")
-    ][:MAX_SOURCE_FILES]
-    source = {p: show(sha, p) for p in names}
-    source = {k: v for k, v in source.items() if v}
-    # Fail closed before asking the reasoning provider for a proposal.
-    try:
-        health = try_health()
-        print("TRY_PROVIDER_READY", json.dumps(health, sort_keys=True))
-    except TryRepairProviderError as exc:
-        raise SystemExit(f"TRY_PROVIDER_BLOCKED: {exc}") from exc
-
+    log = Path(os.environ["AIOS_REPAIR_LOG"]).read_text(encoding="utf-8", errors="replace")[-MAX_LOG_BYTES:]
+    source = bounded_source(sha, log)
     failure = {
         "run_id": int(run_id),
         "sha": sha,
@@ -141,11 +161,13 @@ def main() -> int:
     }
     previous = os.environ.get("AIOS_REPAIR_PREVIOUS_RESULT")
     if previous and Path(previous).exists():
-        failure["previous_repair_result"] = json.loads(Path(previous).read_text(encoding="utf-8"))
+        failure["previous_repair_result"] = json.loads(
+            Path(previous).read_text(encoding="utf-8")
+        )
 
     request_id = f"aios-ci-repair:{run_id}:{failure['attempt']}"
     try:
-        proposal = try_propose(
+        proposal = try_relay_propose(
             request_id=request_id,
             repository=os.environ.get("GITHUB_REPOSITORY", "yanhul/AIOS"),
             sha=sha,
@@ -153,13 +175,20 @@ def main() -> int:
             failure=failure,
             source=source,
         )
-    except TryRepairProviderError as exc:
-        raise SystemExit(f"TRY_PROVIDER_BLOCKED: {exc}") from exc
+    except TryRelayError as exc:
+        raise SystemExit(f"TRY_RELAY_BLOCKED: {exc}") from exc
     if proposal.get("status") == "HOLD":
         raise SystemExit(f"TRY_PROVIDER_HOLD: {proposal.get('reason', 'provider hold')}")
 
-    Path("repair-proposal.json").write_text(json.dumps(proposal, indent=2, sort_keys=True), encoding="utf-8")
-    print(json.dumps({"status": "PROPOSAL_READY", "attempt": proposal["attempt"], "files": [x["path"] for x in proposal["files"]]}))
+    Path("repair-proposal.json").write_text(
+        json.dumps(proposal, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    print(json.dumps({
+        "status": "PROPOSAL_READY",
+        "attempt": proposal["attempt"],
+        "files": [x["path"] for x in proposal["files"]],
+        "transport": "github-workflow-dispatch",
+    }))
     return 0
 
 
