@@ -85,12 +85,29 @@ def main() -> int:
     if actual != expected:
         raise SystemExit(f"mutation scope mismatch: actual={sorted(actual)} expected={sorted(expected)}")
 
-    branch = f"aios/autorepair/{run_id}"
+    source_branch = os.environ.get("AIOS_REPAIR_SOURCE_BRANCH", "main")
+    marker = git("show", "-s", "--format=%B", base)
+    previous_cycle = 0
+    for line in marker.splitlines():
+        if line.startswith("AIOS-REPAIR-CYCLE:"):
+            try:
+                previous_cycle = int(line.split(":", 1)[1].strip())
+            except ValueError:
+                raise SystemExit("invalid AIOS-REPAIR-CYCLE marker")
+    cycle = previous_cycle + 1
+    if cycle > 3:
+        raise SystemExit("repair campaign exhausted: maximum 3 full-CI repair cycles")
+    if source_branch == "main":
+        branch = f"aios/autorepair/{run_id}"
+    elif source_branch.startswith("aios/autorepair/"):
+        branch = source_branch
+    else:
+        raise SystemExit(f"unauthorized repair source branch: {source_branch!r}")
     git("config", "user.name", "AIOS Repair Worker")
     git("config", "user.email", "aios-repair-worker@users.noreply.github.com")
     git("switch", "-c", branch)
     git("add", "--", *sorted(expected))
-    git("commit", "-m", f"fix: autonomous repair for CI run {run_id}")
+    git("commit", "-m", f"fix: autonomous repair for CI run {run_id}", "-m", f"AIOS-REPAIR-CYCLE: {cycle}")
     print(branch)
     return 0
 
