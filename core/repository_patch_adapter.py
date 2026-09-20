@@ -36,10 +36,11 @@ class RepositoryPatchAdapter:
         self.root = Path(repository_root).resolve()
         if not self.root.is_dir():
             raise ValueError("repository root does not exist")
-        self._plans: dict[str, tuple[tuple[ProposedFile, ...], str]] = {}
+        self._plans: dict[str, tuple[tuple[ProposedFile, ...], str, frozenset[str]]] = {}
 
     def register(
-        self, effect_id: str, files: Sequence[ProposedFile], *, base_sha: str | None = None
+        self, effect_id: str, files: Sequence[ProposedFile], *, base_sha: str | None = None,
+        allowed_dirty_paths: frozenset[str] = frozenset(),
     ) -> None:
         if not isinstance(effect_id, str) or not effect_id.strip() or effect_id in self._plans:
             raise ValueError("effect plan must have a unique non-empty effect_id")
@@ -54,17 +55,17 @@ class RepositoryPatchAdapter:
             if not isinstance(item.content, str):
                 raise ValueError("patch content must be text")
         if base_sha is not None:
-            _require_clean_base(self.root, base_sha)
-        self._plans[effect_id] = (proposed, base_sha or "")
+            _require_clean_base(self.root, base_sha, allowed_dirty_paths=allowed_dirty_paths)
+        self._plans[effect_id] = (proposed, base_sha or "", frozenset(allowed_dirty_paths))
 
     def execute(self, *, contract: dict, effect: dict, attempt_id: str) -> ProviderReceipt:
         effect_id = effect["effect_id"]
         plan = self._plans.get(effect_id)
         if plan is None:
             raise RuntimeError("no registered repository patch for effect")
-        files, base_sha = plan
+        files, base_sha, allowed_dirty_paths = plan
         if base_sha:
-            _require_clean_base(self.root, base_sha)
+            _require_clean_base(self.root, base_sha, allowed_dirty_paths=allowed_dirty_paths)
 
         changed = []
         for item in files:
@@ -135,7 +136,7 @@ def _safe_repo_path(root: Path, raw: str) -> Path:
     return target
 
 
-def _require_clean_base(root: Path, base_sha: str) -> None:
+def _require_clean_base(root: Path, base_sha: str, *, allowed_dirty_paths: frozenset[str] = frozenset()) -> None:
     if not isinstance(base_sha, str) or len(base_sha) != 40:
         raise ValueError("repair base must be a full commit SHA")
     head = subprocess.run(
@@ -150,8 +151,12 @@ def _require_clean_base(root: Path, base_sha: str) -> None:
     )
     if status.returncode:
         raise RuntimeError("unable to verify repository status")
-    if status.stdout.strip():
-        raise RuntimeError("repository contains dirty paths before AIOS mutation")
+    dirty = set()
+    for line in status.stdout.splitlines():
+        if len(line) >= 4:
+            dirty.add(line[3:].replace("\\\\", "/"))
+    if dirty and not dirty.issubset(allowed_dirty_paths):
+        raise RuntimeError("repository contains unowned dirty paths before AIOS mutation")
 
 
 def _atomic_write(target: Path, content: str) -> None:
@@ -179,6 +184,7 @@ def apply_via_aios(
     files: Sequence[ProposedFile],
     base_sha: str,
     durable_runtime=None,
+    allowed_dirty_paths: frozenset[str] = frozenset(),
 ) -> Mapping[str, object]:
     """Create, dispatch and execute one repository mutation through AIOS."""
     root = Path(repository_root).resolve()
@@ -187,7 +193,7 @@ def apply_via_aios(
         str(aios_dir), contract_id, logical_operation_id, actor, permit_id,
         "external_effect",
     )
-    adapter.register(effect["effect_id"], files, base_sha=base_sha)
+    adapter.register(effect["effect_id"], files, base_sha=base_sha, allowed_dirty_paths=allowed_dirty_paths)
     return execute(
         str(aios_dir), contract_id, permit_id, logical_operation_id,
         actor, adapter, durable_runtime=durable_runtime,
