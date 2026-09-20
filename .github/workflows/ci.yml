@@ -58,6 +58,15 @@ jobs:
           MINIMIND_ROOT: ${{ runner.temp }}/minimind
           MINIMIND_EXPECTED_REV: 6fc918beb68a0d8c40452338df6319fe168014ba
         run: python scripts/check_minimind_capability.py --root "$RUNNER_TEMP/minimind"
+      - name: Publish CI evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-ci-evidence-${{ github.run_id }}
+          path: artifacts/conformance/*.json
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Require product E2E conformance
         run: |
           python - <<'PY'
