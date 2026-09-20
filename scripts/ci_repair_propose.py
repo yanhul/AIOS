@@ -5,6 +5,8 @@ import json
 import os
 import subprocess
 import sys
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 from core.repair_planner import planner_from_env
@@ -44,11 +46,32 @@ def main() -> int:
 
         def search(self, query: str):
             q = query.lower()
-            hits = []
-            for path, content in source.items():
-                if q in content.lower():
-                    hits.append(path)
-            return {"query": query, "matches": hits[:20]}
+            local_hits = [path for path, content in source.items() if q in content.lower()][:20]
+            external = []
+            token = os.environ.get("GITHUB_TOKEN", "")
+            if token and query.strip():
+                params = urllib.parse.urlencode({
+                    "q": f"{query} repo:yanhul/AIOS",
+                    "per_page": "8",
+                })
+                req = urllib.request.Request(
+                    f"https://api.github.com/search/code?{params}",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Accept": "application/vnd.github+json",
+                        "X-GitHub-Api-Version": "2026-03-10",
+                    },
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=15) as response:
+                        payload = json.loads(response.read().decode("utf-8"))
+                    external = [
+                        {"name": item.get("name"), "path": item.get("path"), "url": item.get("html_url")}
+                        for item in payload.get("items", [])
+                    ]
+                except Exception:
+                    external = []
+            return {"query": query, "local_matches": local_hits, "external_matches": external}
 
     planner = planner_from_env(source=source)
     failure = {"run_id": int(run_id), "sha": sha, "ci_failure_log_tail": log}
