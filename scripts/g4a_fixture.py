@@ -1,3 +1,3 @@
-"""G4A autonomous-repair fixture: intentionally broken baseline."""
-VALUE = "BROKEN"
+VALUE = "FIXED"
+
 assert VALUE == "FIXED", f"G4A fixture remains broken: {VALUE}"
