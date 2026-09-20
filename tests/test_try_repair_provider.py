@@ -43,3 +43,21 @@ def test_provider_accepts_hold(monkeypatch):
         failure={}, source={"core/x.py": "x=1\n"},
     )
     assert out["status"] == "HOLD"
+
+
+def test_health_rejects_missing_endpoint(monkeypatch):
+    monkeypatch.delenv("TRY_REPAIR_PROVIDER_URL", raising=False)
+    monkeypatch.setenv("TRY_REPAIR_PROVIDER_TOKEN", "x")
+    with pytest.raises(try_repair_provider.TryRepairProviderError):
+        try_repair_provider.health()
+
+
+def test_health_accepts_ready(monkeypatch):
+    class Resp:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self): return b'{"status":"READY","provider":"gemini","model":"test-model"}'
+    monkeypatch.setenv("TRY_REPAIR_PROVIDER_URL", "http://127.0.0.1:8787")
+    monkeypatch.setenv("TRY_REPAIR_PROVIDER_TOKEN", "x")
+    monkeypatch.setattr(try_repair_provider.urllib.request, "urlopen", lambda *a, **k: Resp())
+    assert try_repair_provider.health()["status"] == "READY"
