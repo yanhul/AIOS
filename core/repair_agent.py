@@ -132,6 +132,22 @@ class RepairAgent:
 
                 if call.name == "patch":
                     proposal = self._proposal(call)
+                    if self.worker.aios_dir:
+                        applied = self.worker.apply_via_aios(
+                            base_sha=self.base_sha,
+                            files=proposal.files,
+                            logical_operation_id=f"repair:{self.base_sha}:{turn_index}",
+                        )
+                        observations.append({
+                            "turn": turn_index,
+                            "tool": "patch",
+                            "result": {
+                                "status": "OBSERVED_SUCCESS",
+                                "aios": True,
+                                "result": dict(applied),
+                            },
+                        })
+                        continue
                     applied = self.worker.apply(
                         base_sha=self.base_sha, files=proposal.files
                     )
