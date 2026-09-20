@@ -49,14 +49,14 @@ def validate_proposal(payload: Mapping[str, Any]) -> dict[str, Any]:
 
 def _open(req: urllib.request.Request, timeout: int):
     host = (urlparse(req.full_url).hostname or "").lower()
-    if host in {"127.0.0.1", "localhost", "::1"}:
+    if host in {"127.0.0.1", "localhost", "::1"} or host.endswith(".workers.dev"):
         return urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=timeout)
     return urllib.request.urlopen(req, timeout=timeout)
 
 
 def health() -> dict[str, Any]:
     url = os.environ.get("TRY_REPAIR_PROVIDER_URL", "").strip()
-    token = os.environ.get("TRY_REPAIR_PROVIDER_TOKEN", "")
+    token = os.environ.get("TRY_REPAIR_PROVIDER_TOKEN", "").strip()
     if not url or not token:
         raise TryRepairProviderError("TRY provider endpoint/token not configured")
     req = urllib.request.Request(
