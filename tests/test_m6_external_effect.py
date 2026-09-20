@@ -3,6 +3,9 @@ import tempfile
 import unittest
 
 from core.evidence import EvidenceRecord
+from core.authority import persist_contract, persist_permit
+from core.contract import contract_identity
+from core.policy_registry import persist_policy
 from core.external_effect import ExternalEffectError, create_effect, load_effects, record_dispatch, record_observation, record_unknown
 from core.mutation import TransitionError
 
@@ -23,12 +26,26 @@ class TestExternalEffect(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.aios = os.path.join(self.tmp, ".aios")
 
+    def _setup_authority(self):
+        policy = persist_policy(self.aios, {"policy_type":"GOVERNING_POLICY","name":"legacy-effect-test"})
+        contract = {
+            "contract_type":"EXECUTION_CONTRACT","task_id":"legacy-effect","scope":"test",
+            "actor":"agent:a","capabilities":["provider:test@1"],"input_digest":"input",
+            "allowed_effects":["external_effect"],"evidence_required":["provider_receipt"],
+            "max_attempts":2,"terminal_states":["OBSERVED_SUCCESS","OBSERVED_FAILURE","UNKNOWN"],
+            "policy_digest":policy,
+        }
+        persist_contract(self.aios, contract)
+        permit = persist_permit(self.aios, contract, "agent:a")
+        return contract_identity(contract), permit["permit_id"]
+
     def tearDown(self):
         import shutil
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_requires_observation_for_success(self):
-        e = create_effect(self.aios, "CT-1", "LO-1", "agent:a")
+        cid, pid = self._setup_authority()
+        e = create_effect(self.aios, cid, "LO-1", "agent:a", pid, "external_effect")
         attempt = f"{e['effect_id']}:attempt:1"
         record_dispatch(self.aios, e["effect_id"], attempt, "provider:test")
         with self.assertRaises(ExternalEffectError):
