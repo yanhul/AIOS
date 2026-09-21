@@ -34,7 +34,7 @@ def run(verification: dict, *, run_id: str):
     failures = verification.get("failures", [])
     obligations = [
         {
-            "obligation_id": "repair-" + _digest(f)[:16],
+            "obligation_id": "reverify-" + _digest(f)[:16],
             "candidate_id": f.get("candidate_id"),
             "errors": f.get("errors", []),
             "attempts": 0,
@@ -49,14 +49,14 @@ def run(verification: dict, *, run_id: str):
             passed, digest = _tests()
             obligation["test_digest"] = digest
             if passed:
-                obligation["status"] = "REPROVED"
+                obligation["status"] = "REVERIFIED"
                 repaired.append(obligation)
                 break
         if obligation["status"] == "OPEN":
             obligation["status"] = "BLOCKED_BUDGET_EXHAUSTED"
     result = {
         "schema_version": 1,
-        "kind": "AIOS_ABSORPTION_REPAIR_PROOF",
+        "kind": "AIOS_ABSORPTION_REVERIFICATION_PROOF",
         "run_id": run_id,
         "max_attempts": MAX_ATTEMPTS,
         "obligation_count": len(obligations),
