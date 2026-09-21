@@ -13,3 +13,5 @@ def test_absorb_blocks_missing_lineage():
     r=absorb({"records":[]},{"records":[]},{"decisions":[{"candidate_id":"c1","allowed":True,"verdict":"PROMOTE"}],"blocked":[]},run_id="r2")
     assert r["overall"]=="BLOCKED" and r["absorbed_count"]==0
 # strict absorb-stage regression coverage
+
+# yaml-fixed retrigger
