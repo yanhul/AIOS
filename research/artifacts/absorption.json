@@ -18,7 +18,7 @@
       "external_code_execution": false,
       "primitive": "durable_execution",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610304583",
+      "run_id": "35611909513",
       "signals": [
         "durable",
         "harness"
@@ -34,20 +34,20 @@
     {
       "absorption_kind": "AIOS_NATIVE_PRIMITIVE_REGISTRY",
       "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-9076b3f70c5da06a",
+      "candidate_id": "cand-1f83abed6de2f139",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "evidence_digest": "2159d8e5f603efe0c46c98523c5f573e2458b5f916772a0dc78b1094cf54a840",
       "external_code_copy": false,
       "external_code_execution": false,
       "primitive": "durable_execution",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610304583",
+      "run_id": "35611909513",
       "signals": [
         "durable",
         "retry",
         "harness"
       ],
-      "source_digest": "0f75df6422a1a28e0b728283a67d76cffd71bae484d1df22229435674214a9ed",
+      "source_digest": "cc5c8c1e03f1862a2f9497dfeb15ca3b6d3e88e74adbbfd00bb818851f74f3ec",
       "source_mutation": false,
       "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
       "status": "ABSORBED",
@@ -65,7 +65,7 @@
       "external_code_execution": false,
       "primitive": "evidence_provenance",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610304583",
+      "run_id": "35611909513",
       "signals": [],
       "source_digest": "b98281fb1bafd5cb4d5812ba2b6ba9854acdec6fdd8afe4af84020d59533705c",
       "source_mutation": false,
@@ -85,7 +85,7 @@
       "external_code_execution": false,
       "primitive": "durable_execution",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610304583",
+      "run_id": "35611909513",
       "signals": [
         "durable",
         "harness"
@@ -108,7 +108,7 @@
       "external_code_execution": false,
       "primitive": "durable_execution",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610304583",
+      "run_id": "35611909513",
       "signals": [
         "durable",
         "retry",
@@ -134,7 +134,7 @@
       "external_code_execution": false,
       "primitive": "research_harness",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610304583",
+      "run_id": "35611909513",
       "signals": [
         "evidence"
       ],
@@ -156,7 +156,7 @@
       "external_code_execution": false,
       "primitive": "research_harness",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610304583",
+      "run_id": "35611909513",
       "signals": [
         "research",
         "memory"
@@ -179,7 +179,7 @@
       "external_code_execution": false,
       "primitive": "research_harness",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610304583",
+      "run_id": "35611909513",
       "signals": [
         "retry",
         "research",
@@ -203,7 +203,7 @@
       "external_code_execution": false,
       "primitive": "research_harness",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610304583",
+      "run_id": "35611909513",
       "signals": [
         "evidence",
         "research",
@@ -227,7 +227,7 @@
       "external_code_execution": false,
       "primitive": "research_harness",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610304583",
+      "run_id": "35611909513",
       "signals": [
         "research"
       ],
@@ -249,7 +249,7 @@
       "external_code_execution": false,
       "primitive": "evidence_provenance",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610304583",
+      "run_id": "35611909513",
       "signals": [
         "provenance",
         "evidence",
@@ -276,7 +276,7 @@
       "external_code_execution": false,
       "primitive": "evidence_provenance",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610304583",
+      "run_id": "35611909513",
       "signals": [
         "provenance"
       ],
@@ -298,7 +298,7 @@
       "external_code_execution": false,
       "primitive": "evidence_provenance",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610304583",
+      "run_id": "35611909513",
       "signals": [
         "provenance",
         "evidence",
@@ -323,7 +323,7 @@
       "external_code_execution": false,
       "primitive": "evidence_provenance",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610304583",
+      "run_id": "35611909513",
       "signals": [
         "provenance",
         "retry",
@@ -348,7 +348,7 @@
       "external_code_execution": false,
       "primitive": "evidence_provenance",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610304583",
+      "run_id": "35611909513",
       "signals": [],
       "source_digest": "605af8e03aa8c238234fd2d3dd3aaf65254e58bbd48e5ff5a8b8c195bd6bb185",
       "source_mutation": false,
@@ -359,7 +359,7 @@
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     }
   ],
-  "run_id": "35610304583",
+  "run_id": "35611909513",
   "schema_version": 1,
   "source_mutation": false
 }

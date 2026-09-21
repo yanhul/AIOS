@@ -19,14 +19,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-9076b3f70c5da06a",
+      "candidate_id": "cand-1f83abed6de2f139",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "0f75df6422a1a28e0b728283a67d76cffd71bae484d1df22229435674214a9ed",
+      "source_digest": "cc5c8c1e03f1862a2f9497dfeb15ca3b6d3e88e74adbbfd00bb818851f74f3ec",
       "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
       "status": "UNTRUSTED_EVIDENCE"
     },
