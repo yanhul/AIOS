@@ -1,14 +1,69 @@
 {
+  "digest": "b5c16bd37dbe1c220df8ff9b1659b1f584b2cfdd7d3ac89cb8f2e4b85920221e",
+  "external_code_copy": false,
   "external_code_execution": false,
+  "implementation": {
+    "implemented_count": 7,
+    "kind": "AIOS_ABSORBED_CAPABILITY_IMPLEMENTATION_PROOF",
+    "overall": "PASS",
+    "results": [
+      {
+        "capability_id": "runtime.background_worker",
+        "implementation": "core.durable_loop.MemoryStateStore + core.durable_runtime",
+        "primitive": "durable_execution",
+        "status": "IMPLEMENTED_AND_CONFORMANT"
+      },
+      {
+        "capability_id": "research.deep",
+        "implementation": "core.research_worker",
+        "primitive": "research_harness",
+        "status": "IMPLEMENTED_AND_CONFORMANT"
+      },
+      {
+        "capability_id": "research.deep",
+        "implementation": "core.evidence.EvidenceRecord",
+        "primitive": "evidence_provenance",
+        "status": "IMPLEMENTED_AND_CONFORMANT"
+      },
+      {
+        "capability_id": "software.audit",
+        "implementation": "core.evidence_gate",
+        "primitive": "governance",
+        "status": "IMPLEMENTED_AND_CONFORMANT"
+      },
+      {
+        "capability_id": "runtime.background_worker",
+        "implementation": "core.durable_runtime.validate_submission",
+        "primitive": "retry",
+        "status": "IMPLEMENTED_AND_CONFORMANT"
+      },
+      {
+        "capability_id": "runtime.background_worker",
+        "implementation": "core.durable_loop.MemoryStateStore",
+        "primitive": "memory",
+        "status": "IMPLEMENTED_AND_CONFORMANT"
+      },
+      {
+        "capability_id": "runtime.background_worker",
+        "implementation": "core.durable_loop",
+        "primitive": "harness",
+        "status": "IMPLEMENTED_AND_CONFORMANT"
+      }
+    ],
+    "schema_version": 1,
+    "total_count": 7
+  },
   "kind": "AIOS_ABSORPTION_RUNTIME_PROOF",
   "overall": "PASS",
-  "passed_count": 3,
+  "passed_count": 4,
   "probes": {
     "durable_execution": true,
     "evidence_provenance": true,
+    "implementation_conformance": true,
     "retry_provider_lineage": true
   },
-  "run_id": "35615805501",
-  "schema_version": 1,
-  "total_count": 3
+  "run_id": "35615855305",
+  "schema_version": 2,
+  "source_mutation": false,
+  "total_count": 4
 }
