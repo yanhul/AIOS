@@ -1,19 +1,36 @@
 {
-  "absorbed_count": 14,
+  "absorbed_count": 15,
   "authority": "AIOS_CONTROL_PLANE",
-  "blocked": [
-    {
-      "candidate_id": "cand-22fe6d9a5f859d0e",
-      "reason": "missing executor or independent-verification lineage",
-      "verdict": "HOLD"
-    }
-  ],
+  "blocked": [],
   "candidate_count": 15,
-  "deferred_count": 1,
+  "deferred_count": 0,
   "external_code_execution": false,
   "kind": "AIOS_ABSORPTION",
-  "overall": "PASS_WITH_HOLDS",
+  "overall": "PASS",
   "records": [
+    {
+      "absorption_kind": "AIOS_NATIVE_PRIMITIVE_REGISTRY",
+      "authority": "AIOS_CONTROL_PLANE",
+      "candidate_id": "cand-468f2eec2c014fd0",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "evidence_digest": "e52d82ecd528e55b49510554d2408d8f9a0fe1b010b29fa7b0a467676513ba6c",
+      "external_code_copy": false,
+      "external_code_execution": false,
+      "primitive": "durable_execution",
+      "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
+      "run_id": "35610238083",
+      "signals": [
+        "durable",
+        "harness"
+      ],
+      "source_digest": "1dc41c2fbf94829a1efe2c5b54e3a0ab176e909f7b54efcf1183fa75c8d945ea",
+      "source_mutation": false,
+      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
+      "status": "ABSORBED",
+      "target_surface": "new AIOS adapter/task only",
+      "test_digest": "53c4aa03b0b6f6b2a6ac0f93947147ce3cb1c9e8dd04e0fdcbede8c46647b817",
+      "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
+    },
     {
       "absorption_kind": "AIOS_NATIVE_PRIMITIVE_REGISTRY",
       "authority": "AIOS_CONTROL_PLANE",
@@ -24,7 +41,7 @@
       "external_code_execution": false,
       "primitive": "durable_execution",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610109169",
+      "run_id": "35610238083",
       "signals": [
         "durable",
         "retry",
@@ -48,7 +65,7 @@
       "external_code_execution": false,
       "primitive": "evidence_provenance",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610109169",
+      "run_id": "35610238083",
       "signals": [],
       "source_digest": "b98281fb1bafd5cb4d5812ba2b6ba9854acdec6fdd8afe4af84020d59533705c",
       "source_mutation": false,
@@ -68,7 +85,7 @@
       "external_code_execution": false,
       "primitive": "durable_execution",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610109169",
+      "run_id": "35610238083",
       "signals": [
         "durable",
         "harness"
@@ -91,7 +108,7 @@
       "external_code_execution": false,
       "primitive": "durable_execution",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610109169",
+      "run_id": "35610238083",
       "signals": [
         "durable",
         "retry",
@@ -117,7 +134,7 @@
       "external_code_execution": false,
       "primitive": "research_harness",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610109169",
+      "run_id": "35610238083",
       "signals": [
         "evidence"
       ],
@@ -139,7 +156,7 @@
       "external_code_execution": false,
       "primitive": "research_harness",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610109169",
+      "run_id": "35610238083",
       "signals": [
         "research",
         "memory"
@@ -162,7 +179,7 @@
       "external_code_execution": false,
       "primitive": "research_harness",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610109169",
+      "run_id": "35610238083",
       "signals": [
         "retry",
         "research",
@@ -186,7 +203,7 @@
       "external_code_execution": false,
       "primitive": "research_harness",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610109169",
+      "run_id": "35610238083",
       "signals": [
         "evidence",
         "research",
@@ -210,7 +227,7 @@
       "external_code_execution": false,
       "primitive": "research_harness",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610109169",
+      "run_id": "35610238083",
       "signals": [
         "research"
       ],
@@ -232,7 +249,7 @@
       "external_code_execution": false,
       "primitive": "evidence_provenance",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610109169",
+      "run_id": "35610238083",
       "signals": [
         "provenance",
         "evidence",
@@ -259,7 +276,7 @@
       "external_code_execution": false,
       "primitive": "evidence_provenance",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610109169",
+      "run_id": "35610238083",
       "signals": [
         "provenance"
       ],
@@ -281,7 +298,7 @@
       "external_code_execution": false,
       "primitive": "evidence_provenance",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610109169",
+      "run_id": "35610238083",
       "signals": [
         "provenance",
         "evidence",
@@ -306,7 +323,7 @@
       "external_code_execution": false,
       "primitive": "evidence_provenance",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610109169",
+      "run_id": "35610238083",
       "signals": [
         "provenance",
         "retry",
@@ -331,7 +348,7 @@
       "external_code_execution": false,
       "primitive": "evidence_provenance",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "35610109169",
+      "run_id": "35610238083",
       "signals": [],
       "source_digest": "605af8e03aa8c238234fd2d3dd3aaf65254e58bbd48e5ff5a8b8c195bd6bb185",
       "source_mutation": false,
@@ -342,7 +359,7 @@
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     }
   ],
-  "run_id": "35610109169",
+  "run_id": "35610238083",
   "schema_version": 1,
   "source_mutation": false
 }
