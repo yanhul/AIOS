@@ -4,27 +4,163 @@
     {
       "action": "HOLD",
       "allowed": false,
-      "candidate_id": null,
+      "candidate_id": "cand-c37c973aa319963d",
       "errors": [
-        "executor intake is not PASS: 'HOLD'"
+        "research/adaptation did not complete",
+        "source evidence not collected",
+        "external code copy is not explicitly disabled",
+        "external code execution is not explicitly disabled",
+        "target surface is not AIOS-native bounded surface",
+        "required verification checks are incomplete",
+        "missing provenance: evidence_digest"
       ],
       "level": "UNKNOWN",
-      "reason": "executor intake is not PASS: 'HOLD'",
-      "run_id": "run-3",
+      "reason": "research/adaptation did not complete; source evidence not collected; external code copy is not explicitly disabled; external code execution is not explicitly disabled; target surface is not AIOS-native bounded surface; required verification checks are incomplete; missing provenance: evidence_digest",
+      "run_id": "35621276233",
       "source_ref": null,
       "verdict": "DEFER"
     }
   ],
-  "candidate_count": 2,
+  "candidate_count": 15,
   "decisions": [
     {
       "action": "PROMOTE_TO_ABSORBED_REGISTRY",
       "allowed": true,
-      "candidate_id": "cand-3",
+      "candidate_id": "cand-54c836d9900e71ea",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
-      "run_id": "run-3",
-      "source_ref": "https://github.com/example/x",
+      "run_id": "35621276233",
+      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
+      "verdict": "PROMOTE"
+    },
+    {
+      "action": "PROMOTE_TO_ABSORBED_REGISTRY",
+      "allowed": true,
+      "candidate_id": "cand-879d52d05a3261e3",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "35621276233",
+      "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
+      "verdict": "PROMOTE"
+    },
+    {
+      "action": "PROMOTE_TO_ABSORBED_REGISTRY",
+      "allowed": true,
+      "candidate_id": "cand-c8cfac5fdba58551",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "35621276233",
+      "source_ref": "https://github.com/BerrySeriousCoder/verity",
+      "verdict": "PROMOTE"
+    },
+    {
+      "action": "PROMOTE_TO_ABSORBED_REGISTRY",
+      "allowed": true,
+      "candidate_id": "cand-9fd2c7b0798f9333",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "35621276233",
+      "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
+      "verdict": "PROMOTE"
+    },
+    {
+      "action": "PROMOTE_TO_ABSORBED_REGISTRY",
+      "allowed": true,
+      "candidate_id": "cand-9ac858e0367c0aa9",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "35621276233",
+      "source_ref": "https://github.com/nikk48/torcs-ai-racing-framework",
+      "verdict": "PROMOTE"
+    },
+    {
+      "action": "PROMOTE_TO_ABSORBED_REGISTRY",
+      "allowed": true,
+      "candidate_id": "cand-cf205bb56d75a71a",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "35621276233",
+      "source_ref": "https://github.com/yethikrishna/Yethanus",
+      "verdict": "PROMOTE"
+    },
+    {
+      "action": "PROMOTE_TO_ABSORBED_REGISTRY",
+      "allowed": true,
+      "candidate_id": "cand-0add7f9b6b6185d4",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "35621276233",
+      "source_ref": "https://github.com/Yash-Kavaiya/auto-cxas-scrapi",
+      "verdict": "PROMOTE"
+    },
+    {
+      "action": "PROMOTE_TO_ABSORBED_REGISTRY",
+      "allowed": true,
+      "candidate_id": "cand-6f7829bdde923e42",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "35621276233",
+      "source_ref": "https://github.com/yanghangAI/MultiAgentAutoResearch",
+      "verdict": "PROMOTE"
+    },
+    {
+      "action": "PROMOTE_TO_ABSORBED_REGISTRY",
+      "allowed": true,
+      "candidate_id": "cand-64ccfaf6076d226c",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "35621276233",
+      "source_ref": "https://github.com/kp-krish/AutoResearch",
+      "verdict": "PROMOTE"
+    },
+    {
+      "action": "PROMOTE_TO_ABSORBED_REGISTRY",
+      "allowed": true,
+      "candidate_id": "cand-24bd2e8be000eebb",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "35621276233",
+      "source_ref": "https://github.com/teolex2020/aura-memory",
+      "verdict": "PROMOTE"
+    },
+    {
+      "action": "PROMOTE_TO_ABSORBED_REGISTRY",
+      "allowed": true,
+      "candidate_id": "cand-1aabcb89ae255743",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "35621276233",
+      "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
+      "verdict": "PROMOTE"
+    },
+    {
+      "action": "PROMOTE_TO_ABSORBED_REGISTRY",
+      "allowed": true,
+      "candidate_id": "cand-1b736c39fe5af409",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "35621276233",
+      "source_ref": "https://github.com/jermayne36/heartwood-memory",
+      "verdict": "PROMOTE"
+    },
+    {
+      "action": "PROMOTE_TO_ABSORBED_REGISTRY",
+      "allowed": true,
+      "candidate_id": "cand-941b5687a3d890e5",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "35621276233",
+      "source_ref": "https://github.com/qingyou0420/trueheart-core",
+      "verdict": "PROMOTE"
+    },
+    {
+      "action": "PROMOTE_TO_ABSORBED_REGISTRY",
+      "allowed": true,
+      "candidate_id": "cand-446f9719f19736c1",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "35621276233",
+      "source_ref": "https://github.com/RasmusMaidenAndersson/MemoryOS",
       "verdict": "PROMOTE"
     }
   ],
@@ -33,8 +169,8 @@
   "implementation_runtime_proof": true,
   "kind": "AIOS_ABSORPTION_PROMOTION",
   "overall": "PASS_WITH_HOLDS",
-  "promoted_count": 1,
-  "run_id": "run-3",
+  "promoted_count": 14,
+  "run_id": "35621276233",
   "schema_version": 2,
   "source_mutation": false
 }
