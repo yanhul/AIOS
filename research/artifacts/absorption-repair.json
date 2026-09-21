@@ -1,26 +1,42 @@
 {
   "authority": "AIOS_CONTROL_PLANE",
   "blocked_count": 0,
-  "digest": "72370e3935b5e3dea1119eec1c6402d0d1dff7b8e7530e2a22ee9f7f8171a1f7",
+  "digest": "88a1817410398f0935ed22572d4e8c9b54040f8e61948203fe4dcef79c6607ab",
   "external_code_execution": false,
   "kind": "AIOS_ABSORPTION_REVERIFICATION_PROOF",
   "max_attempts": 2,
-  "obligation_count": 1,
+  "obligation_count": 2,
   "obligations": [
+    {
+      "attempts": 1,
+      "candidate_id": "cand-c37c973aa319963d",
+      "errors": [
+        "research/adaptation did not complete",
+        "source evidence not collected",
+        "external code copy is not explicitly disabled",
+        "external code execution is not explicitly disabled",
+        "target surface is not AIOS-native bounded surface",
+        "required verification checks are incomplete",
+        "missing provenance: evidence_digest"
+      ],
+      "obligation_id": "reverify-bfaf0c6ae8bd37cf",
+      "status": "REVERIFIED",
+      "test_digest": "219548f739453339bde3b13f235dfa3eddce590e8318f715200b2b75b1008577"
+    },
     {
       "attempts": 1,
       "candidate_id": null,
       "errors": [
-        "executor intake is not PASS: 'HOLD'"
+        "executor intake is not PASS: None"
       ],
-      "obligation_id": "reverify-fab07927f95d99bd",
+      "obligation_id": "reverify-fc892e8bfbcca5e9",
       "status": "REVERIFIED",
-      "test_digest": "dfe68bc094896b0dd704a108978d6869313721474afb75f704275339118894db"
+      "test_digest": "d9c8804236bab992ba7f46fb3910425e764fef5883e2b9b84814e015d2b3a8e6"
     }
   ],
   "overall": "PASS",
-  "reverified_count": 1,
-  "run_id": "35620893853",
+  "reverified_count": 2,
+  "run_id": "35621052949",
   "schema_version": 1,
   "source_mutation": false
 }
