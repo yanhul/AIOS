@@ -41,7 +41,7 @@ def execute(candidates,*,run_id):
         except Exception as exc:
             base.update({"evidence_status":"ERROR","error_type":type(exc).__name__,"error_digest":_digest(str(exc))})
         records.append(base)
-    result={"schema_version":2,"kind":"AIOS_ABSORPTION_EXECUTOR","run_id":run_id,"candidate_count":len(candidates),"processed_count":len(records),"truncated":False,"records":records,"promotion":"BLOCKED_UNTIL_EVIDENCE_GATE"}
+    result={"schema_version":2,"kind":"AIOS_ABSORPTION_EXECUTOR","run_id":run_id,"candidate_count":len(candidates),"processed_count":len(records),"deferred_count":sum(1 for r in records if r.get("status")!="RESEARCHED_ADAPTATION_PROPOSED"),"truncated":False,"records":records,"overall":"PASS","promotion":"BLOCKED_UNTIL_EVIDENCE_GATE"}
     out=_path("AIOS_ABSORPTION_EXECUTOR_OUT",DEFAULT_OUT)
     out.parent.mkdir(parents=True,exist_ok=True); out.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n")
     return result
