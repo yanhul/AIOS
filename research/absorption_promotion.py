@@ -26,7 +26,7 @@ def promote(data: dict) -> dict:
             "level": record.get("level"),
             "allowed": decision.allowed,
             "reason": decision.reason,
-            "action": "PROMOTE_TO_AI0S_REVIEW_QUEUE" if decision.allowed else "HOLD",
+            "action": "PROMOTE_TO_AIOS_REVIEW_QUEUE" if decision.allowed else "HOLD",
         }
         (decisions if decision.allowed else blocked).append(item)
     result = {
