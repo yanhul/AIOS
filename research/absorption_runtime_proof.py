@@ -4,8 +4,12 @@ This proof executes only AIOS-owned code. It binds implementation conformance,
 runtime behavior, and fail-closed lineage into one durable evidence artifact.
 """
 from __future__ import annotations
-import hashlib, json, os
+import hashlib, json, os, sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from core.durable_loop import LoopPolicy, MemoryStateStore, run_durable_loop
 from core.durable_runtime import RuntimeSubmission, validate_submission
