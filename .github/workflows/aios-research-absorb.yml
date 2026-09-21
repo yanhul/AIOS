@@ -34,6 +34,15 @@ jobs:
         env:
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: python research/absorption_verifier.py
+      - name: Publish absorption runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-absorption-runtime-${{ github.run_id }}
+          path: research/artifacts/*.json
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Apply existing evidence promotion gate
         run: python research/absorption_promotion.py
       - name: Persist research and promotion artifacts
