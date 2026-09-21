@@ -16,8 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run bounded ecosystem scan
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+        env: {GITHUB_TOKEN: ${{ github.token }}}
         run: python research/daily_ecosystem_scan.py
       - name: Build governed candidates
         run: python research/absorption_pipeline.py
@@ -31,28 +30,19 @@ jobs:
       - name: Verify intake and executor invariants
         run: python -m pytest tests/test_absorption_*.py -v
       - name: Independently verify adaptation conformance
-        env:
-          GITHUB_RUN_ID: ${{ github.run_id }}
+        env: {GITHUB_RUN_ID: ${{ github.run_id}}}
         run: python research/absorption_verifier.py
-
-      - name: Prove AIOS-native primitive implementation
-        run: python -c "from research.absorbed_capabilities import run_conformance; import json; r=run_conformance(); print(json.dumps(r, indent=2)); raise SystemExit(0 if r['overall']=='PASS' else 1)"
-
-      - name: Prove absorbed primitives at runtime
-        env:
-          GITHUB_RUN_ID: ${{ github.run_id }}
+      - name: Prove AIOS-native implementation and runtime
+        env: {GITHUB_RUN_ID: ${{ github.run_id}}}
         run: python research/absorption_runtime_proof.py
-
-
-      - name: Apply existing evidence promotion gate
+      - name: Apply fail-closed evidence promotion gate
         if: always()
         run: python research/absorption_promotion.py
-      - name: Materialize verified absorption
+      - name: Materialize only proven absorption
         if: always()
-        env:
-          GITHUB_RUN_ID: ${{ github.run_id }}
+        env: {GITHUB_RUN_ID: ${{ github.run_id}}}
         run: python research/absorption_apply.py
-      - name: Publish absorption runtime evidence
+      - name: Publish absorption evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -60,7 +50,6 @@ jobs:
           path: research/artifacts/*.json
           if-no-files-found: warn
           retention-days: 30
-
       - name: Persist research and promotion artifacts
         if: always()
         run: |
