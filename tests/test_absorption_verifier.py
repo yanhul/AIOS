@@ -1,4 +1,3 @@
-import json
 from research.absorption_verifier import verify
 from research.absorption_promotion import promote
 
@@ -34,7 +33,7 @@ def test_independent_verification_and_gate(tmp_path, monkeypatch):
     p = promote(v)
     assert p["overall"] == "PASS"
     assert p["decisions"][0]["allowed"] is True
-    assert p["decisions"][0]["action"] == "PROMOTE_TO_AI0S_REVIEW_QUEUE"
+    assert p["decisions"][0]["action"] == "PROMOTE_TO_AIOS_REVIEW_QUEUE"
 
 def test_verification_blocks_untrusted_record():
     data = {"run_id":"run-2","records":[{
