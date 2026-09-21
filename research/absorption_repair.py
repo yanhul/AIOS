@@ -18,7 +18,7 @@ def _tests():
     return p.returncode==0,_digest((p.stdout or "")+(p.stderr or ""))
 
 def run(verification:dict, *, run_id:str):
-    failures=verification.get("failures",[])
+    failures=verification.get("failures",[])\n    if not failures:\n        # Prove the repair path is executable even on a clean run: no mutation, zero obligations.\n        pass
     obligations=[{"obligation_id":"repair-"+_digest(f)[:16],"candidate_id":f.get("candidate_id"),
                   "errors":f.get("errors",[]),"attempts":0,"status":"OPEN"} for f in failures]
     repaired=[]
