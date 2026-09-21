@@ -27,7 +27,7 @@ jobs:
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: python research/absorption_executor.py
       - name: Verify intake and executor invariants
-        run: python -m unittest discover -s tests -p 'test_absorption_*.py' -v
+        run: python -m pytest tests/test_absorption_*.py -v
       - name: Independently verify adaptation conformance
         env:
           GITHUB_RUN_ID: ${{ github.run_id }}
