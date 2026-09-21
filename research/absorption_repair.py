@@ -1,7 +1,9 @@
-"""Bounded autonomous repair loop for absorption verification failures.
+"""Bounded autonomous re-verification loop for absorption failures.
 
-Repairs are obligations, not authority to mutate source. Each obligation gets a
-bounded attempt budget, re-runs affected local tests, and emits lineage.
+This runner does not mutate source. Each obligation gets a bounded retry budget,
+re-runs only AIOS-owned absorption tests, and emits explicit lineage. A retry
+that passes is REVERIFIED, not REPAIRED; source repair requires a separate,
+authorized mutation stage.
 """
 from __future__ import annotations
 import hashlib, json, os, subprocess, sys
@@ -9,6 +11,8 @@ from pathlib import Path
 
 OUT = Path(os.environ.get("AIOS_ABSORPTION_REPAIR_OUT", "research/artifacts/absorption-repair.json"))
 MAX_ATTEMPTS = int(os.environ.get("AIOS_ABSORPTION_REPAIR_MAX_ATTEMPTS", "2"))
+if MAX_ATTEMPTS < 1:
+    raise ValueError("AIOS_ABSORPTION_REPAIR_MAX_ATTEMPTS must be >= 1")
 TESTS = [
     "tests/test_absorption_executor.py",
     "tests/test_absorption_pipeline.py",
@@ -56,10 +60,10 @@ def run(verification: dict, *, run_id: str):
         "run_id": run_id,
         "max_attempts": MAX_ATTEMPTS,
         "obligation_count": len(obligations),
-        "repaired_count": len(repaired),
+        "reverified_count": len(repaired),
         "blocked_count": sum(x["status"].startswith("BLOCKED") for x in obligations),
         "obligations": obligations,
-        "overall": "PASS" if not obligations or all(x["status"] == "REPROVED" for x in obligations) else "BLOCKED",
+        "overall": "PASS" if not obligations or all(x["status"] == "REVERIFIED" for x in obligations) else "BLOCKED",
         "authority": "AIOS_CONTROL_PLANE",
         "source_mutation": False,
         "external_code_execution": False,
