@@ -33,6 +33,7 @@ def run_independent_tests() -> tuple[bool, str]:
             "tests/test_absorption_executor.py",
             "tests/test_absorption_pipeline.py",
             "tests/test_absorption_verifier.py",
+            "tests/test_absorption_repair.py",
             "-v",
         ],
         capture_output=True, text=True, timeout=120,
