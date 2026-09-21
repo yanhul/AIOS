@@ -26,6 +26,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: python research/absorption_executor.py
+      - name: Install absorption test runner
+        run: python -m pip install pytest
       - name: Verify intake and executor invariants
         run: python -m pytest tests/test_absorption_*.py -v
       - name: Independently verify adaptation conformance
