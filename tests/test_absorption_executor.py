@@ -1,4 +1,5 @@
 from research.absorption_executor import execute
+import pytest
 
 def test_executor_is_fail_closed(tmp_path,monkeypatch):
     monkeypatch.setenv("AIOS_ABSORPTION_EXECUTOR_OUT",str(tmp_path/"e.json"))
@@ -15,3 +16,10 @@ def test_executor_holds_on_fetch_failure(tmp_path,monkeypatch):
     monkeypatch.setattr("research.absorption_executor._get",lambda url: (_ for _ in ()).throw(RuntimeError("network")))
     r=execute([{"candidate_id":"cand-1","source_ref":"https://github.com/example/agent","source_digest":"abc","primitive":"agent_harness"}],run_id="run-2")["records"][0]
     assert r["status"]=="HOLD" and r["evidence_status"]=="ERROR"
+
+def test_executor_never_silently_truncates(tmp_path,monkeypatch):
+    monkeypatch.setenv("AIOS_ABSORPTION_EXECUTOR_OUT",str(tmp_path/"e.json"))
+    monkeypatch.setattr("research.absorption_executor._get",lambda url:"# research\n")
+    candidates=[{"candidate_id":f"cand-{i}","source_ref":f"https://github.com/example/{i}","source_digest":str(i),"primitive":"research_harness"} for i in range(51)]
+    with pytest.raises(ValueError):
+        execute(candidates,run_id="run-cap")
