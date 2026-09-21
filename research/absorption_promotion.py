@@ -7,11 +7,18 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import sys
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 from core.evidence_gate import gate_promotion
 
-INPUT = Path(os.environ.get("AIOS_ABSORPTION_VERIFY_OUT", "research/artifacts/absorption-verification.json"))
-OUT = Path(os.environ.get("AIOS_ABSORPTION_PROMOTION_OUT", "research/artifacts/absorption-promotion.json"))
+def _path(env_name, default):
+    return Path(os.environ.get(env_name, str(default)))
+
+DEFAULT_INPUT = Path("research/artifacts/absorption-verification.json")
+DEFAULT_OUT = Path("research/artifacts/absorption-promotion.json")
 
 def promote(data: dict) -> dict:
     decisions = []
@@ -40,10 +47,11 @@ def promote(data: dict) -> dict:
         "external_code_execution": False,
         "authority": "AIOS_CONTROL_PLANE",
     }
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    out = _path("AIOS_ABSORPTION_PROMOTION_OUT", DEFAULT_OUT)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return result
 
 if __name__ == "__main__":
-    result = promote(json.loads(INPUT.read_text(encoding="utf-8")))
+    result = promote(json.loads(_path("AIOS_ABSORPTION_VERIFY_OUT", DEFAULT_INPUT).read_text(encoding="utf-8")))
     raise SystemExit(0 if result["overall"] == "PASS" else 1)
