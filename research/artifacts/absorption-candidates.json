@@ -4,14 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-bc9bfec1798593ed",
+      "candidate_id": "cand-22fe6d9a5f859d0e",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "8d242195296cf9c3f0692715c555c4331f77cd976b401cd35ee65b1b23bcb981",
+      "source_digest": "7cd115d99a50742e254fdca6b441761457dc385a5ef855a67f14b3287d7134d5",
       "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -19,14 +19,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-3fee4c6e00795628",
+      "candidate_id": "cand-9076b3f70c5da06a",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "aef6857ce557aa676197024d4837123061d804ce2f8e41acdc0791ebaaeaea24",
+      "source_digest": "0f75df6422a1a28e0b728283a67d76cffd71bae484d1df22229435674214a9ed",
       "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
       "status": "UNTRUSTED_EVIDENCE"
     },
