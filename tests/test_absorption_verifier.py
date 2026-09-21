@@ -23,7 +23,8 @@ def test_promotion_blocks_without_runtime_proof():
     p=promote(data,{"overall":"BLOCKED"})
     assert p["overall"]=="PASS_WITH_HOLDS" and p["promoted_count"]==0
 
-def test_verification_blocks_untrusted_record():
+def test_verification_blocks_untrusted_record(tmp_path, monkeypatch):
+    monkeypatch.setenv("AIOS_ABSORPTION_VERIFY_OUT", str(tmp_path / "verify.json"))
     data={"run_id":"run-2","records":[{
         "candidate_id":"cand-2","source_ref":"https://github.com/example/x","source_digest":"src","status":"HOLD",
         "evidence_status":"ERROR","adaptation":{"external_code_copy":False,"external_code_execution":False}}]}
@@ -31,7 +32,8 @@ def test_verification_blocks_untrusted_record():
     assert v["overall"]=="BLOCKED" and not v["records"]
 
 
-def test_verification_blocks_non_pass_executor_intake():
+def test_verification_blocks_non_pass_executor_intake(tmp_path, monkeypatch):
+    monkeypatch.setenv("AIOS_ABSORPTION_VERIFY_OUT", str(tmp_path / "verify.json"))
     data={"run_id":"run-3","overall":"HOLD","records":[{
         "candidate_id":"cand-3","source_ref":"https://github.com/example/x","source_digest":"src",
         "evidence_digest":"ev","run_id":"run-3","status":"RESEARCHED_ADAPTATION_PROPOSED","evidence_status":"COLLECTED",
