@@ -16,7 +16,7 @@
     "passed": true
   },
   "kind": "AIOS_ABSORPTION_INDEPENDENT_VERIFICATION",
-  "overall": "PASS",
+  "overall": "BLOCKED",
   "records": [
     {
       "authority": "AIOS_CONTROL_PLANE",
