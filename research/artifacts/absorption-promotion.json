@@ -4,31 +4,37 @@
     {
       "action": "HOLD",
       "allowed": false,
-      "candidate_id": "cand-2",
+      "candidate_id": null,
       "errors": [
-        "research/adaptation did not complete",
-        "source evidence not collected",
-        "target surface is not AIOS-native bounded surface",
-        "required verification checks are incomplete",
-        "missing provenance: evidence_digest",
-        "missing provenance: run_id"
+        "executor intake is not PASS: 'HOLD'"
       ],
       "level": "UNKNOWN",
-      "reason": "research/adaptation did not complete; source evidence not collected; target surface is not AIOS-native bounded surface; required verification checks are incomplete; missing provenance: evidence_digest; missing provenance: run_id",
-      "run_id": "run-2",
+      "reason": "executor intake is not PASS: 'HOLD'",
+      "run_id": "run-3",
       "source_ref": null,
       "verdict": "DEFER"
     }
   ],
-  "candidate_count": 1,
-  "decisions": [],
+  "candidate_count": 2,
+  "decisions": [
+    {
+      "action": "PROMOTE_TO_ABSORBED_REGISTRY",
+      "allowed": true,
+      "candidate_id": "cand-3",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "run-3",
+      "source_ref": "https://github.com/example/x",
+      "verdict": "PROMOTE"
+    }
+  ],
   "deferred_count": 1,
   "external_code_execution": false,
   "implementation_runtime_proof": true,
   "kind": "AIOS_ABSORPTION_PROMOTION",
   "overall": "PASS_WITH_HOLDS",
-  "promoted_count": 0,
-  "run_id": "run-2",
+  "promoted_count": 1,
+  "run_id": "run-3",
   "schema_version": 2,
   "source_mutation": false
 }

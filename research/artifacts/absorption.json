@@ -3,19 +3,24 @@
   "authority": "AIOS_CONTROL_PLANE",
   "blocked": [
     {
-      "candidate_id": "cand-2",
-      "reason": "research/adaptation did not complete; source evidence not collected; target surface is not AIOS-native bounded surface; required verification checks are incomplete; missing provenance: evidence_digest; missing provenance: run_id",
+      "candidate_id": "cand-3",
+      "reason": "missing executor or independent-verification lineage",
+      "verdict": "HOLD"
+    },
+    {
+      "candidate_id": null,
+      "reason": "executor intake is not PASS: 'HOLD'",
       "verdict": "DEFER"
     }
   ],
-  "candidate_count": 1,
-  "deferred_count": 1,
+  "candidate_count": 2,
+  "deferred_count": 2,
   "external_code_execution": false,
   "implementation_runtime_proof": "PASS",
   "kind": "AIOS_ABSORPTION",
   "overall": "BLOCKED",
   "records": [],
-  "run_id": "35615855305",
+  "run_id": "35620817648",
   "schema_version": 2,
   "source_mutation": false
 }

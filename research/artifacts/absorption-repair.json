@@ -1,0 +1,26 @@
+{
+  "authority": "AIOS_CONTROL_PLANE",
+  "blocked_count": 1,
+  "digest": "001e58f3de4b519b22b7662bd0e7ba4c449da8a490176e8dd489c079a387b031",
+  "external_code_execution": false,
+  "kind": "AIOS_ABSORPTION_REVERIFICATION_PROOF",
+  "max_attempts": 2,
+  "obligation_count": 1,
+  "obligations": [
+    {
+      "attempts": 2,
+      "candidate_id": null,
+      "errors": [
+        "executor intake is not PASS: 'HOLD'"
+      ],
+      "obligation_id": "reverify-fab07927f95d99bd",
+      "status": "BLOCKED_BUDGET_EXHAUSTED",
+      "test_digest": "8e37c8f06227ce2d57de7412cd9c9be27bb2ecb69dc41c80b6bf0d81ba2a0966"
+    }
+  ],
+  "overall": "BLOCKED",
+  "reverified_count": 0,
+  "run_id": "35620817648",
+  "schema_version": 1,
+  "source_mutation": false
+}

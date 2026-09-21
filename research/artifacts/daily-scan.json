@@ -2,21 +2,31 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
+      "description": "MoonBit agent harness with durable tool execution, verified recovery, and version-bound acceptance",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "Hing7/verified-agent-harness",
+      "source_digest": "0615520691db682d7072a4edd10b76b59dfa6d8dabd24d4bb6a56157b3176bce",
+      "source_ref": "https://github.com/Hing7/verified-agent-harness",
+      "stars": 0,
+      "updated_at": "2026-09-21T15:10:43Z"
+    },
+    {
       "description": "An open Agents API for Cloudflare Workers, with durable sessions, pluggable harnesses, and isolated execution.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "inaridiy/CF-Open-Agents-API",
-      "source_digest": "69937575aa47675dc89c57f6e6e2d1b90735264a5a97468510c464bb94c04ae0",
+      "source_digest": "0910f9cf6cdeefeee3daa134fd713e310b908fd346c972cb1689711a313c45bc",
       "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
-      "stars": 1,
-      "updated_at": "2026-09-21T12:49:16Z"
+      "stars": 3,
+      "updated_at": "2026-09-21T15:39:08Z"
     },
     {
       "description": "Open-source Windows agent harness for safe, auditable AI execution with approvals, reversible changes, durable task state, multi-agent coordination, and local/cloud model adapters.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "andrewgodowsky-aoa/diomedes",
-      "source_digest": "7846b225cfd3dd753644c37a314dfbb4bcc8ab78c2c5dc7beba2a37831ee99c5",
+      "source_digest": "7520de09896d36741f899c610e507a3f1b0f9f6b02ef1f04224e5ee4d81f61d4",
       "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
       "stars": 0,
       "updated_at": "2026-09-21T10:40:21Z"
@@ -40,16 +50,6 @@
       "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
       "stars": 1,
       "updated_at": "2026-09-21T06:32:53Z"
-    },
-    {
-      "description": "Agent harness framework for Go \u2014 durable execution, event-sourced conversations, sessions, and HTTP exposure for agents built on resolute-agent-core-go",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "dev-resolute/resolute-harness-go",
-      "source_digest": "73ce46a460cbe7f2d371e74a54cc1a40840647e430f035885d4a1b5e310c6f91",
-      "source_ref": "https://github.com/dev-resolute/resolute-harness-go",
-      "stars": 0,
-      "updated_at": "2026-09-21T02:06:56Z"
     },
     {
       "description": "A TORCS-based autonomous driving experimentation framework for testing rule-based racing agents, logging telemetry, tuning hyperparameters, and analysing performance for dissertation research",

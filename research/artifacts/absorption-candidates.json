@@ -4,14 +4,29 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-d650545ce8a9e2e6",
+      "candidate_id": "cand-c37c973aa319963d",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "69937575aa47675dc89c57f6e6e2d1b90735264a5a97468510c464bb94c04ae0",
+      "source_digest": "0615520691db682d7072a4edd10b76b59dfa6d8dabd24d4bb6a56157b3176bce",
+      "source_ref": "https://github.com/Hing7/verified-agent-harness",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-54c836d9900e71ea",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "0910f9cf6cdeefeee3daa134fd713e310b908fd346c972cb1689711a313c45bc",
       "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -19,14 +34,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-25b20e375728a0ca",
+      "candidate_id": "cand-879d52d05a3261e3",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "7846b225cfd3dd753644c37a314dfbb4bcc8ab78c2c5dc7beba2a37831ee99c5",
+      "source_digest": "7520de09896d36741f899c610e507a3f1b0f9f6b02ef1f04224e5ee4d81f61d4",
       "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -58,21 +73,6 @@
       "ref": "master",
       "source_digest": "5149edbffd955fe65fa3e61e2d64ce82c80458b01ed11e095f1a2dcc2c3980eb",
       "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-8477910dd8fe87a8",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "73ce46a460cbe7f2d371e74a54cc1a40840647e430f035885d4a1b5e310c6f91",
-      "source_ref": "https://github.com/dev-resolute/resolute-harness-go",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {

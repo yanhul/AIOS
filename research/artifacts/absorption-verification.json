@@ -1,17 +1,12 @@
 {
   "candidate_count": 1,
-  "digest": "8023ff2d63aa4216af652dedeee3f900381a5f4edf275307b29cfb70dd2c8180",
+  "digest": "774759d6ab351b0118c51f167988c0baf9e8e6e05900d218cb1eaf117418c518",
   "failure_count": 1,
   "failures": [
     {
-      "candidate_id": "cand-2",
+      "candidate_id": null,
       "errors": [
-        "research/adaptation did not complete",
-        "source evidence not collected",
-        "target surface is not AIOS-native bounded surface",
-        "required verification checks are incomplete",
-        "missing provenance: evidence_digest",
-        "missing provenance: run_id"
+        "executor intake is not PASS: 'HOLD'"
       ],
       "level": "UNKNOWN"
     }
@@ -21,9 +16,24 @@
     "passed": true
   },
   "kind": "AIOS_ABSORPTION_INDEPENDENT_VERIFICATION",
-  "overall": "BLOCKED",
-  "records": [],
-  "run_id": "run-2",
+  "overall": "PASS",
+  "records": [
+    {
+      "authority": "AIOS_CONTROL_PLANE",
+      "candidate_id": "cand-3",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "evidence_digest": "ev",
+      "external_code_copy": false,
+      "external_code_execution": false,
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "run-3",
+      "source_digest": "src",
+      "source_ref": "https://github.com/example/x",
+      "test_digest": "unit-test-fixture",
+      "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
+    }
+  ],
+  "run_id": "run-3",
   "schema_version": 1,
-  "verified_count": 0
+  "verified_count": 1
 }
