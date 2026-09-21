@@ -8,7 +8,7 @@ from pathlib import Path
 
 DEFAULT_CANDIDATES=Path("research/artifacts/absorption-candidates.json")
 DEFAULT_OUT=Path("research/artifacts/absorption-executor.json")
-MAX_CANDIDATES=3
+MAX_CANDIDATES=50  # bounded, but never silently truncates the daily candidate set
 MAX_README=12000
 TIMEOUT=15
 
@@ -39,7 +39,7 @@ def execute(candidates,*,run_id):
         except Exception as exc:
             base.update({"evidence_status":"ERROR","error_type":type(exc).__name__,"error_digest":_digest(str(exc))})
         records.append(base)
-    result={"schema_version":1,"kind":"AIOS_ABSORPTION_EXECUTOR","run_id":run_id,"records":records,"promotion":"BLOCKED_UNTIL_EVIDENCE_GATE"}
+    result={"schema_version":1,"kind":"AIOS_ABSORPTION_EXECUTOR","run_id":run_id,"candidate_count":len(candidates),"processed_count":len(records),"truncated":len(records) < len(candidates),"records":records,"promotion":"BLOCKED_UNTIL_EVIDENCE_GATE"}
     out=_path("AIOS_ABSORPTION_EXECUTOR_OUT",DEFAULT_OUT)
     out.parent.mkdir(parents=True,exist_ok=True); out.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n")
     return result
