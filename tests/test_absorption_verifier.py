@@ -6,7 +6,7 @@ def test_independent_verification_and_gate(tmp_path, monkeypatch):
     promote_out = tmp_path / "promote.json"
     monkeypatch.setenv("AIOS_ABSORPTION_VERIFY_OUT", str(verify_out))
     monkeypatch.setenv("AIOS_ABSORPTION_PROMOTION_OUT", str(promote_out))
-    data = {"run_id":"run-1","records":[{
+    data = {"run_id":"run-1","overall":"PASS","records":[{
         "candidate_id":"cand-1","source_ref":"https://github.com/example/agent","source_digest":"src",
         "evidence_digest":"ev","run_id":"run-1","status":"RESEARCHED_ADAPTATION_PROPOSED","evidence_status":"COLLECTED",
         "adaptation":{"external_code_copy":False,"external_code_execution":False,"target_surface":"new AIOS adapter/task only",
@@ -29,3 +29,14 @@ def test_verification_blocks_untrusted_record():
         "evidence_status":"ERROR","adaptation":{"external_code_copy":False,"external_code_execution":False}}]}
     v=verify(data,run_id="run-2")
     assert v["overall"]=="BLOCKED" and not v["records"]
+
+
+def test_verification_blocks_non_pass_executor_intake():
+    data={"run_id":"run-3","overall":"HOLD","records":[{
+        "candidate_id":"cand-3","source_ref":"https://github.com/example/x","source_digest":"src",
+        "evidence_digest":"ev","run_id":"run-3","status":"RESEARCHED_ADAPTATION_PROPOSED","evidence_status":"COLLECTED",
+        "adaptation":{"external_code_copy":False,"external_code_execution":False,"target_surface":"new AIOS adapter/task only",
+        "required_checks":["source_evidence_digest","AIOS_conformance","independent_tests","evidence_promotion_gate"]}}]}
+    v=verify(data,run_id="run-3")
+    assert v["overall"]=="BLOCKED"
+    assert any("executor intake is not PASS" in e for f in v["failures"] for e in f["errors"])
