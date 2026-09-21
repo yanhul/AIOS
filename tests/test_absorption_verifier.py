@@ -40,14 +40,3 @@ def test_verification_blocks_non_pass_executor_intake():
     v=verify(data,run_id="run-3")
     assert v["overall"]=="BLOCKED"
     assert any("executor intake is not PASS" in e for f in v["failures"] for e in f["errors"])
-
-
-def test_verification_blocks_non_pass_executor_intake():
-    data={"run_id":"run-3","overall":"HOLD","records":[{
-        "candidate_id":"cand-3","source_ref":"https://github.com/example/x","source_digest":"src",
-        "evidence_digest":"ev","run_id":"run-3","status":"RESEARCHED_ADAPTATION_PROPOSED","evidence_status":"COLLECTED",
-        "adaptation":{"external_code_copy":False,"external_code_execution":False,"target_surface":"new AIOS adapter/task only",
-        "required_checks":["source_evidence_digest","AIOS_conformance","independent_tests","evidence_promotion_gate"]}}]}
-    v=verify(data,run_id="run-3")
-    assert v["overall"]=="BLOCKED"
-    assert any("executor intake is not PASS" in e for f in v["failures"] for e in f["errors"])
