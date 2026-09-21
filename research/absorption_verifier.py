@@ -104,7 +104,7 @@ def verify(data: dict, *, run_id: str, tests_passed: bool = True, test_digest: s
         "candidate_count": len(records),
         "verified_count": len(verified),
         "failure_count": len(failures),
-        "overall": "PASS" if records and len(verified) == len(records) else "BLOCKED",
+        "overall": "PASS" if input_overall == "PASS" and records and len(verified) == len(records) and not failures else "BLOCKED",
         "independent_tests": {"passed": tests_passed, "digest": test_digest},
         "digest": _digest({"verified": verified, "failures": failures}),
     }
