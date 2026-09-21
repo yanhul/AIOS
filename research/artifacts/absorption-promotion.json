@@ -6,11 +6,11 @@
     {
       "action": "PROMOTE_TO_AIOS_REVIEW_QUEUE",
       "allowed": true,
-      "candidate_id": "cand-468f2eec2c014fd0",
+      "candidate_id": "cand-d650545ce8a9e2e6",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
       "reason": "evidence satisfies promotion gate",
-      "run_id": "35612966184",
+      "run_id": "35615805501",
       "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
       "verdict": "PROMOTE"
     },
@@ -21,7 +21,7 @@
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
       "reason": "evidence satisfies promotion gate",
-      "run_id": "35612966184",
+      "run_id": "35615805501",
       "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
       "verdict": "PROMOTE"
     },
@@ -32,7 +32,7 @@
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
       "reason": "evidence satisfies promotion gate",
-      "run_id": "35612966184",
+      "run_id": "35615805501",
       "source_ref": "https://github.com/BerrySeriousCoder/verity",
       "verdict": "PROMOTE"
     },
@@ -43,7 +43,7 @@
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
       "reason": "evidence satisfies promotion gate",
-      "run_id": "35612966184",
+      "run_id": "35615805501",
       "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
       "verdict": "PROMOTE"
     },
@@ -54,7 +54,7 @@
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
       "reason": "evidence satisfies promotion gate",
-      "run_id": "35612966184",
+      "run_id": "35615805501",
       "source_ref": "https://github.com/dev-resolute/resolute-harness-go",
       "verdict": "PROMOTE"
     },
@@ -65,7 +65,7 @@
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
       "reason": "evidence satisfies promotion gate",
-      "run_id": "35612966184",
+      "run_id": "35615805501",
       "source_ref": "https://github.com/nikk48/torcs-ai-racing-framework",
       "verdict": "PROMOTE"
     },
@@ -76,7 +76,7 @@
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
       "reason": "evidence satisfies promotion gate",
-      "run_id": "35612966184",
+      "run_id": "35615805501",
       "source_ref": "https://github.com/yethikrishna/Yethanus",
       "verdict": "PROMOTE"
     },
@@ -87,7 +87,7 @@
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
       "reason": "evidence satisfies promotion gate",
-      "run_id": "35612966184",
+      "run_id": "35615805501",
       "source_ref": "https://github.com/Yash-Kavaiya/auto-cxas-scrapi",
       "verdict": "PROMOTE"
     },
@@ -98,7 +98,7 @@
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
       "reason": "evidence satisfies promotion gate",
-      "run_id": "35612966184",
+      "run_id": "35615805501",
       "source_ref": "https://github.com/yanghangAI/MultiAgentAutoResearch",
       "verdict": "PROMOTE"
     },
@@ -109,7 +109,7 @@
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
       "reason": "evidence satisfies promotion gate",
-      "run_id": "35612966184",
+      "run_id": "35615805501",
       "source_ref": "https://github.com/kp-krish/AutoResearch",
       "verdict": "PROMOTE"
     },
@@ -120,7 +120,7 @@
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
       "reason": "evidence satisfies promotion gate",
-      "run_id": "35612966184",
+      "run_id": "35615805501",
       "source_ref": "https://github.com/teolex2020/aura-memory",
       "verdict": "PROMOTE"
     },
@@ -131,7 +131,7 @@
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
       "reason": "evidence satisfies promotion gate",
-      "run_id": "35612966184",
+      "run_id": "35615805501",
       "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
       "verdict": "PROMOTE"
     },
@@ -142,7 +142,7 @@
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
       "reason": "evidence satisfies promotion gate",
-      "run_id": "35612966184",
+      "run_id": "35615805501",
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
       "verdict": "PROMOTE"
     },
@@ -153,7 +153,7 @@
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
       "reason": "evidence satisfies promotion gate",
-      "run_id": "35612966184",
+      "run_id": "35615805501",
       "source_ref": "https://github.com/qingyou0420/trueheart-core",
       "verdict": "PROMOTE"
     },
@@ -164,7 +164,7 @@
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
       "reason": "evidence satisfies promotion gate",
-      "run_id": "35612966184",
+      "run_id": "35615805501",
       "source_ref": "https://github.com/RasmusMaidenAndersson/MemoryOS",
       "verdict": "PROMOTE"
     }
@@ -174,7 +174,7 @@
   "kind": "AIOS_ABSORPTION_PROMOTION",
   "overall": "PASS",
   "promoted_count": 15,
-  "run_id": "35612966184",
+  "run_id": "35615805501",
   "schema_version": 1,
   "source_mutation": false
 }
