@@ -24,7 +24,7 @@ def promote(data: dict, runtime: dict | None = None) -> dict:
         item={"candidate_id":record.get("candidate_id"),"run_id":record.get("run_id"),
               "source_ref":record.get("source_ref"),"claim":record.get("claim"),
               "level":record.get("level"),"allowed":allowed,
-              "action":"PROMOTE_TO_AIOS_REVIEW_QUEUE" if allowed else "HOLD",
+              "action":"PROMOTE_TO_ABSORBED_REGISTRY" if allowed else "HOLD",
               "verdict":"PROMOTE" if allowed else "DEFER"}
         if not decision.allowed: item["reason"]=decision.reason
         elif not runtime_ok: item["reason"]="implementation/runtime proof is not PASS"
