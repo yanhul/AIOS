@@ -38,6 +38,12 @@ jobs:
       - name: Prove AIOS-native primitive implementation
         run: python -c "from research.absorbed_capabilities import run_conformance; import json; r=run_conformance(); print(json.dumps(r, indent=2)); raise SystemExit(0 if r['overall']=='PASS' else 1)"
 
+      - name: Prove absorbed primitives at runtime
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: python research/absorption_runtime_proof.py
+
+
       - name: Apply existing evidence promotion gate
         if: always()
         run: python research/absorption_promotion.py
