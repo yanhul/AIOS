@@ -8,7 +8,7 @@ from pathlib import Path
 
 DEFAULT_CANDIDATES=Path("research/artifacts/absorption-candidates.json")
 DEFAULT_OUT=Path("research/artifacts/absorption-executor.json")
-MAX_CANDIDATES=50  # bounded, but never silently truncates the daily candidate set
+MAX_CANDIDATES=50
 MAX_README=12000
 TIMEOUT=15
 
@@ -29,8 +29,10 @@ def _adapt(candidate,readme):
     signals=[s for s in ("provenance","evidence","durable","retry","research","memory","harness","governance") if s in text]
     return {"adaptation":"AIOS_NATIVE_PROPOSAL_ONLY","primitive":candidate["primitive"],"signals":signals[:8],"target_surface":"new AIOS adapter/task only","external_code_copy":False,"external_code_execution":False,"proposal":"derive an AIOS-native interface from independently verified behavior; do not import source code","required_checks":["source_evidence_digest","AIOS_conformance","independent_tests","evidence_promotion_gate"]}
 def execute(candidates,*,run_id):
+    if len(candidates) > MAX_CANDIDATES:
+        raise ValueError(f"candidate set exceeds bounded executor capacity: {len(candidates)} > {MAX_CANDIDATES}")
     records=[]
-    for c in candidates[:MAX_CANDIDATES]:
+    for c in candidates:
         source=c.get("source_ref",""); url=_readme_url(source,c.get("ref"))
         base={"candidate_id":c["candidate_id"],"source_ref":source,"source_digest":c["source_digest"],"run_id":run_id,"authority":"AIOS_CONTROL_PLANE","status":"HOLD","promotion":"REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE"}
         try:
@@ -39,7 +41,7 @@ def execute(candidates,*,run_id):
         except Exception as exc:
             base.update({"evidence_status":"ERROR","error_type":type(exc).__name__,"error_digest":_digest(str(exc))})
         records.append(base)
-    result={"schema_version":1,"kind":"AIOS_ABSORPTION_EXECUTOR","run_id":run_id,"candidate_count":len(candidates),"processed_count":len(records),"truncated":len(records) < len(candidates),"records":records,"promotion":"BLOCKED_UNTIL_EVIDENCE_GATE"}
+    result={"schema_version":2,"kind":"AIOS_ABSORPTION_EXECUTOR","run_id":run_id,"candidate_count":len(candidates),"processed_count":len(records),"truncated":False,"records":records,"promotion":"BLOCKED_UNTIL_EVIDENCE_GATE"}
     out=_path("AIOS_ABSORPTION_EXECUTOR_OUT",DEFAULT_OUT)
     out.parent.mkdir(parents=True,exist_ok=True); out.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n")
     return result
