@@ -6,12 +6,13 @@ from __future__ import annotations
 import hashlib,json,os,urllib.parse,urllib.request
 from pathlib import Path
 
-CANDIDATES=Path(os.environ.get("AIOS_ABSORPTION_OUT","research/artifacts/absorption-candidates.json"))
-OUT=Path(os.environ.get("AIOS_ABSORPTION_EXECUTOR_OUT","research/artifacts/absorption-executor.json"))
+DEFAULT_CANDIDATES=Path("research/artifacts/absorption-candidates.json")
+DEFAULT_OUT=Path("research/artifacts/absorption-executor.json")
 MAX_CANDIDATES=3
 MAX_README=12000
 TIMEOUT=15
 
+def _path(env_name, default): return Path(os.environ.get(env_name, str(default)))
 def _digest(text): return hashlib.sha256(text.encode("utf-8")).hexdigest()
 def _get(url):
     req=urllib.request.Request(url,headers={"Accept":"application/vnd.github+json","User-Agent":"AIOS-absorption-executor"})
@@ -39,8 +40,10 @@ def execute(candidates,*,run_id):
             base.update({"evidence_status":"ERROR","error_type":type(exc).__name__,"error_digest":_digest(str(exc))})
         records.append(base)
     result={"schema_version":1,"kind":"AIOS_ABSORPTION_EXECUTOR","run_id":run_id,"records":records,"promotion":"BLOCKED_UNTIL_EVIDENCE_GATE"}
-    OUT.parent.mkdir(parents=True,exist_ok=True); OUT.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n")
+    out=_path("AIOS_ABSORPTION_EXECUTOR_OUT",DEFAULT_OUT)
+    out.parent.mkdir(parents=True,exist_ok=True); out.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n")
     return result
 
 if __name__=="__main__":
-    data=json.loads(CANDIDATES.read_text(encoding="utf-8")); execute(data.get("candidates",[]),run_id=os.environ.get("GITHUB_RUN_ID","local"))
+    candidates=_path("AIOS_ABSORPTION_OUT",DEFAULT_CANDIDATES)
+    data=json.loads(candidates.read_text(encoding="utf-8")); execute(data.get("candidates",[]),run_id=os.environ.get("GITHUB_RUN_ID","local"))
