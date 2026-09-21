@@ -1,0 +1,42 @@
+{
+  "authority": "AIOS_CONTROL_PLANE",
+  "blocked": [],
+  "decisions": [
+    {
+      "action": "PROMOTE_TO_AIOS_REVIEW_QUEUE",
+      "allowed": true,
+      "candidate_id": "cand-bc9bfec1798593ed",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "level": "VERIFIED_DIGITAL",
+      "reason": "evidence satisfies promotion gate",
+      "run_id": "35603080915",
+      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API"
+    },
+    {
+      "action": "PROMOTE_TO_AIOS_REVIEW_QUEUE",
+      "allowed": true,
+      "candidate_id": "cand-3fee4c6e00795628",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "level": "VERIFIED_DIGITAL",
+      "reason": "evidence satisfies promotion gate",
+      "run_id": "35603080915",
+      "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes"
+    },
+    {
+      "action": "PROMOTE_TO_AIOS_REVIEW_QUEUE",
+      "allowed": true,
+      "candidate_id": "cand-c8cfac5fdba58551",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "level": "VERIFIED_DIGITAL",
+      "reason": "evidence satisfies promotion gate",
+      "run_id": "35603080915",
+      "source_ref": "https://github.com/BerrySeriousCoder/verity"
+    }
+  ],
+  "external_code_execution": false,
+  "kind": "AIOS_ABSORPTION_PROMOTION",
+  "overall": "PASS",
+  "run_id": "35603080915",
+  "schema_version": 1,
+  "source_mutation": false
+}

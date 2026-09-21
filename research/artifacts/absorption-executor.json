@@ -1,0 +1,96 @@
+{
+  "kind": "AIOS_ABSORPTION_EXECUTOR",
+  "promotion": "BLOCKED_UNTIL_EVIDENCE_GATE",
+  "records": [
+    {
+      "adaptation": {
+        "adaptation": "AIOS_NATIVE_PROPOSAL_ONLY",
+        "external_code_copy": false,
+        "external_code_execution": false,
+        "primitive": "durable_execution",
+        "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
+        "required_checks": [
+          "source_evidence_digest",
+          "AIOS_conformance",
+          "independent_tests",
+          "evidence_promotion_gate"
+        ],
+        "signals": [
+          "durable",
+          "harness"
+        ],
+        "target_surface": "new AIOS adapter/task only"
+      },
+      "authority": "AIOS_CONTROL_PLANE",
+      "candidate_id": "cand-bc9bfec1798593ed",
+      "evidence_digest": "e52d82ecd528e55b49510554d2408d8f9a0fe1b010b29fa7b0a467676513ba6c",
+      "evidence_status": "COLLECTED",
+      "evidence_url": "https://raw.githubusercontent.com/inaridiy/CF-Open-Agents-API/main/README.md",
+      "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
+      "run_id": "35603080915",
+      "source_digest": "8d242195296cf9c3f0692715c555c4331f77cd976b401cd35ee65b1b23bcb981",
+      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
+      "status": "RESEARCHED_ADAPTATION_PROPOSED"
+    },
+    {
+      "adaptation": {
+        "adaptation": "AIOS_NATIVE_PROPOSAL_ONLY",
+        "external_code_copy": false,
+        "external_code_execution": false,
+        "primitive": "durable_execution",
+        "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
+        "required_checks": [
+          "source_evidence_digest",
+          "AIOS_conformance",
+          "independent_tests",
+          "evidence_promotion_gate"
+        ],
+        "signals": [
+          "durable",
+          "retry",
+          "harness"
+        ],
+        "target_surface": "new AIOS adapter/task only"
+      },
+      "authority": "AIOS_CONTROL_PLANE",
+      "candidate_id": "cand-3fee4c6e00795628",
+      "evidence_digest": "2159d8e5f603efe0c46c98523c5f573e2458b5f916772a0dc78b1094cf54a840",
+      "evidence_status": "COLLECTED",
+      "evidence_url": "https://raw.githubusercontent.com/andrewgodowsky-aoa/diomedes/main/README.md",
+      "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
+      "run_id": "35603080915",
+      "source_digest": "aef6857ce557aa676197024d4837123061d804ce2f8e41acdc0791ebaaeaea24",
+      "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
+      "status": "RESEARCHED_ADAPTATION_PROPOSED"
+    },
+    {
+      "adaptation": {
+        "adaptation": "AIOS_NATIVE_PROPOSAL_ONLY",
+        "external_code_copy": false,
+        "external_code_execution": false,
+        "primitive": "evidence_provenance",
+        "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
+        "required_checks": [
+          "source_evidence_digest",
+          "AIOS_conformance",
+          "independent_tests",
+          "evidence_promotion_gate"
+        ],
+        "signals": [],
+        "target_surface": "new AIOS adapter/task only"
+      },
+      "authority": "AIOS_CONTROL_PLANE",
+      "candidate_id": "cand-c8cfac5fdba58551",
+      "evidence_digest": "8f830faf3ac7661fb42e1e76f9a40d595917a6a8f59ce9dd0c5eafc0b3a1e036",
+      "evidence_status": "COLLECTED",
+      "evidence_url": "https://raw.githubusercontent.com/BerrySeriousCoder/verity/main/README.md",
+      "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
+      "run_id": "35603080915",
+      "source_digest": "b98281fb1bafd5cb4d5812ba2b6ba9854acdec6fdd8afe4af84020d59533705c",
+      "source_ref": "https://github.com/BerrySeriousCoder/verity",
+      "status": "RESEARCHED_ADAPTATION_PROPOSED"
+    }
+  ],
+  "run_id": "35603080915",
+  "schema_version": 1
+}

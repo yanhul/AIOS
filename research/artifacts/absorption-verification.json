@@ -1,0 +1,56 @@
+{
+  "digest": "cc81226ba14452386fdb5f017c209f8e530377578dfd5e56f116818fcf081df1",
+  "failures": [],
+  "independent_tests": {
+    "digest": "2caa5928acf6a2f5dee0f2c0126de8a33b6131f98c1a259df5610810a294fe24",
+    "passed": true
+  },
+  "kind": "AIOS_ABSORPTION_INDEPENDENT_VERIFICATION",
+  "overall": "PASS",
+  "records": [
+    {
+      "authority": "AIOS_CONTROL_PLANE",
+      "candidate_id": "cand-bc9bfec1798593ed",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "evidence_digest": "e52d82ecd528e55b49510554d2408d8f9a0fe1b010b29fa7b0a467676513ba6c",
+      "external_code_copy": false,
+      "external_code_execution": false,
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "35603080915",
+      "source_digest": "8d242195296cf9c3f0692715c555c4331f77cd976b401cd35ee65b1b23bcb981",
+      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
+      "test_digest": "2caa5928acf6a2f5dee0f2c0126de8a33b6131f98c1a259df5610810a294fe24",
+      "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
+    },
+    {
+      "authority": "AIOS_CONTROL_PLANE",
+      "candidate_id": "cand-3fee4c6e00795628",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "evidence_digest": "2159d8e5f603efe0c46c98523c5f573e2458b5f916772a0dc78b1094cf54a840",
+      "external_code_copy": false,
+      "external_code_execution": false,
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "35603080915",
+      "source_digest": "aef6857ce557aa676197024d4837123061d804ce2f8e41acdc0791ebaaeaea24",
+      "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
+      "test_digest": "2caa5928acf6a2f5dee0f2c0126de8a33b6131f98c1a259df5610810a294fe24",
+      "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
+    },
+    {
+      "authority": "AIOS_CONTROL_PLANE",
+      "candidate_id": "cand-c8cfac5fdba58551",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "evidence_digest": "8f830faf3ac7661fb42e1e76f9a40d595917a6a8f59ce9dd0c5eafc0b3a1e036",
+      "external_code_copy": false,
+      "external_code_execution": false,
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "35603080915",
+      "source_digest": "b98281fb1bafd5cb4d5812ba2b6ba9854acdec6fdd8afe4af84020d59533705c",
+      "source_ref": "https://github.com/BerrySeriousCoder/verity",
+      "test_digest": "2caa5928acf6a2f5dee0f2c0126de8a33b6131f98c1a259df5610810a294fe24",
+      "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
+    }
+  ],
+  "run_id": "35603080915",
+  "schema_version": 1
+}
