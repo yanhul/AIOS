@@ -29,7 +29,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/inaridiy/CF-Open-Agents-API/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "35611947402",
+      "run_id": "35612966184",
       "source_digest": "1dc41c2fbf94829a1efe2c5b54e3a0ab176e909f7b54efcf1183fa75c8d945ea",
       "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -55,13 +55,13 @@
         "target_surface": "new AIOS adapter/task only"
       },
       "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-1f83abed6de2f139",
+      "candidate_id": "cand-25b20e375728a0ca",
       "evidence_digest": "2159d8e5f603efe0c46c98523c5f573e2458b5f916772a0dc78b1094cf54a840",
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/andrewgodowsky-aoa/diomedes/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "35611947402",
-      "source_digest": "cc5c8c1e03f1862a2f9497dfeb15ca3b6d3e88e74adbbfd00bb818851f74f3ec",
+      "run_id": "35612966184",
+      "source_digest": "7846b225cfd3dd753644c37a314dfbb4bcc8ab78c2c5dc7beba2a37831ee99c5",
       "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
     },
@@ -87,7 +87,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/BerrySeriousCoder/verity/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "35611947402",
+      "run_id": "35612966184",
       "source_digest": "b98281fb1bafd5cb4d5812ba2b6ba9854acdec6fdd8afe4af84020d59533705c",
       "source_ref": "https://github.com/BerrySeriousCoder/verity",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -117,7 +117,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/Ydjin1984/DeepSeek_Kibborg_Harness/master/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "35611947402",
+      "run_id": "35612966184",
       "source_digest": "5149edbffd955fe65fa3e61e2d64ce82c80458b01ed11e095f1a2dcc2c3980eb",
       "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -150,7 +150,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/dev-resolute/resolute-harness-go/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "35611947402",
+      "run_id": "35612966184",
       "source_digest": "73ce46a460cbe7f2d371e74a54cc1a40840647e430f035885d4a1b5e310c6f91",
       "source_ref": "https://github.com/dev-resolute/resolute-harness-go",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -179,7 +179,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/nikk48/torcs-ai-racing-framework/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "35611947402",
+      "run_id": "35612966184",
       "source_digest": "ad14c844d50ba0071c3a971fd70a9d967b47f90ef40d1fe956d0506d864a0baa",
       "source_ref": "https://github.com/nikk48/torcs-ai-racing-framework",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -209,7 +209,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/yethikrishna/Yethanus/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "35611947402",
+      "run_id": "35612966184",
       "source_digest": "ebb09ee5914b6e8bba2fe90a69694aa9e348cfb6f18996e511a084e35ae65165",
       "source_ref": "https://github.com/yethikrishna/Yethanus",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -240,7 +240,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/Yash-Kavaiya/auto-cxas-scrapi/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "35611947402",
+      "run_id": "35612966184",
       "source_digest": "4b3fe2fe2a775115db1a41476b924ba6b5d132ca00a7da67fdf6485fe0b6befc",
       "source_ref": "https://github.com/Yash-Kavaiya/auto-cxas-scrapi",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -271,7 +271,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/yanghangAI/MultiAgentAutoResearch/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "35611947402",
+      "run_id": "35612966184",
       "source_digest": "9716dab55dc592817a54a87bfce7cb244d2713b570d724683a0cfb9cc771cfa3",
       "source_ref": "https://github.com/yanghangAI/MultiAgentAutoResearch",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -300,7 +300,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/kp-krish/AutoResearch/master/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "35611947402",
+      "run_id": "35612966184",
       "source_digest": "65f113e6207c42700139b62edd50a37b5e6227de2a5019fc0102cd845653ee42",
       "source_ref": "https://github.com/kp-krish/AutoResearch",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -334,7 +334,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/teolex2020/aura-memory/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "35611947402",
+      "run_id": "35612966184",
       "source_digest": "68e5d5278d7e3f8d29b8b982c8f3a02acb184a083d7713417233ad3c17aca19a",
       "source_ref": "https://github.com/teolex2020/aura-memory",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -363,7 +363,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/VAIXLNS/VAIXLNS/vaixlns-architecture/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "35611947402",
+      "run_id": "35612966184",
       "source_digest": "d25e5ad65c393c4be96ba2896045999aba211c0b9ed31ff475ec982fff4983ba",
       "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -395,7 +395,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/jermayne36/heartwood-memory/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "35611947402",
+      "run_id": "35612966184",
       "source_digest": "dc85315dd67b9a903d22a6343b1d0502c9b8a8eacedc9cfa8bcffe7cb64a3c3e",
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -427,7 +427,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/qingyou0420/trueheart-core/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "35611947402",
+      "run_id": "35612966184",
       "source_digest": "db19b94407bf746b453216381c5371911ff1d5938d060cf08f99a0f614587115",
       "source_ref": "https://github.com/qingyou0420/trueheart-core",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -454,13 +454,13 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/RasmusMaidenAndersson/MemoryOS/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "35611947402",
+      "run_id": "35612966184",
       "source_digest": "605af8e03aa8c238234fd2d3dd3aaf65254e58bbd48e5ff5a8b8c195bd6bb185",
       "source_ref": "https://github.com/RasmusMaidenAndersson/MemoryOS",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
     }
   ],
-  "run_id": "35611947402",
+  "run_id": "35612966184",
   "schema_version": 1,
   "truncated": false
 }

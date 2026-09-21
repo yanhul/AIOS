@@ -1,0 +1,14 @@
+{
+  "external_code_execution": false,
+  "kind": "AIOS_ABSORPTION_RUNTIME_PROOF",
+  "overall": "PASS",
+  "passed_count": 3,
+  "probes": {
+    "durable_execution": true,
+    "evidence_provenance": true,
+    "retry_provider_lineage": true
+  },
+  "run_id": "35612966184",
+  "schema_version": 1,
+  "total_count": 3
+}
