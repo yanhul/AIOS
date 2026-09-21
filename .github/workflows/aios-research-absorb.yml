@@ -35,7 +35,7 @@ jobs:
       - name: Prove AIOS-native implementation and runtime
         env: {GITHUB_RUN_ID: ${{ github.run_id}}}
         run: python research/absorption_runtime_proof.py
-      - name: Apply fail-closed evidence promotion gate
+      - name: Run bounded autonomous repair obligations\n        if: always()\n        env: {GITHUB_RUN_ID: ${{ github.run_id }}}\n        run: python research/absorption_repair.py\n      - name: Apply fail-closed evidence promotion gate
         if: always()
         run: python research/absorption_promotion.py
       - name: Materialize only proven absorption
