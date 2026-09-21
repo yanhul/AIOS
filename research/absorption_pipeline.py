@@ -19,7 +19,7 @@ def build(scan):
  for r in scan.get("records",[]):
   text=" ".join(str(r.get(k,"")) for k in ("repo","description","query"))
   if any(k in text.lower() for k in ALLOWED):
-   cs.append({"candidate_id":"cand-"+_digest({"source_ref":r["source_ref"],"digest":r["source_digest"]})[:16],"source_ref":r["source_ref"],"source_digest":r["source_digest"],"primitive":_primitive(text),"status":"UNTRUSTED_EVIDENCE","mutation_authority":"AIOS","external_code_copy":False,"next_action":"RESEARCH_AND_VERIFY","bounded_surface":["new AIOS adapter/task only"],"promotion_required":True})
+   cs.append({"candidate_id":"cand-"+_digest({"source_ref":r["source_ref"],"digest":r["source_digest"]})[:16],"source_ref":r["source_ref"],"source_digest":r["source_digest"],"ref":r.get("ref","HEAD"),"primitive":_primitive(text),"status":"UNTRUSTED_EVIDENCE","mutation_authority":"AIOS","external_code_copy":False,"next_action":"RESEARCH_AND_VERIFY","bounded_surface":["new AIOS adapter/task only"],"promotion_required":True})
  result={"schema_version":2,"kind":"AIOS_ABSORPTION_CANDIDATES","candidates":cs}
  OUT.parent.mkdir(parents=True,exist_ok=True); OUT.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n"); return result
 def verify(candidates, *, run_id=None):
