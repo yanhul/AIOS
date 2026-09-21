@@ -26,7 +26,13 @@ def _digest(value: object) -> str:
 
 def run_independent_tests() -> tuple[bool, str]:
     proc = subprocess.run(
-        [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", "test_absorption_*.py", "-v"],
+        [
+            sys.executable, "-m", "pytest",
+            "tests/test_absorption_executor.py",
+            "tests/test_absorption_pipeline.py",
+            "tests/test_absorption_verifier.py",
+            "-v",
+        ],
         capture_output=True, text=True, timeout=120,
     )
     output = (proc.stdout or "") + (proc.stderr or "")
