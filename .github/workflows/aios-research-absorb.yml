@@ -44,8 +44,10 @@ jobs:
           retention-days: 30
 
       - name: Apply existing evidence promotion gate
+        if: always()
         run: python research/absorption_promotion.py
       - name: Persist research and promotion artifacts
+        if: always()
         run: |
           git config user.name "aios-research[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

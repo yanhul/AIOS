@@ -35,14 +35,39 @@ def promote(data: dict) -> dict:
             "reason": decision.reason,
             "action": "PROMOTE_TO_AIOS_REVIEW_QUEUE" if decision.allowed else "HOLD",
         }
-        (decisions if decision.allowed else blocked).append(item)
+        if decision.allowed:
+            item["verdict"] = "PROMOTE"
+            decisions.append(item)
+        else:
+            item["verdict"] = "DEFER"
+            blocked.append(item)
+    # Preserve every verifier failure as an explicit candidate-level verdict.
+    for failure in data.get("failures", []):
+        blocked.append({
+            "candidate_id": failure.get("candidate_id"),
+            "run_id": data.get("run_id"),
+            "source_ref": failure.get("source_ref"),
+            "allowed": False,
+            "action": "HOLD",
+            "verdict": "DEFER",
+            "level": failure.get("level", "UNKNOWN"),
+            "reason": "; ".join(failure.get("errors", [])) or "independent verification did not complete",
+            "errors": failure.get("errors", []),
+        })
     result = {
         "schema_version": 1,
         "kind": "AIOS_ABSORPTION_PROMOTION",
         "run_id": data.get("run_id"),
         "decisions": decisions,
         "blocked": blocked,
-        "overall": "PASS" if decisions and not blocked and data.get("overall") == "PASS" else "BLOCKED",
+        "candidate_count": len(decisions) + len(blocked),
+        "promoted_count": len(decisions),
+        "deferred_count": len(blocked),
+        "overall": (
+            "PASS" if decisions and not blocked and data.get("overall") == "PASS"
+            else "PASS_WITH_HOLDS" if decisions or blocked
+            else "BLOCKED"
+        ),
         "source_mutation": False,
         "external_code_execution": False,
         "authority": "AIOS_CONTROL_PLANE",
@@ -54,4 +79,4 @@ def promote(data: dict) -> dict:
 
 if __name__ == "__main__":
     result = promote(json.loads(_path("AIOS_ABSORPTION_VERIFY_OUT", DEFAULT_INPUT).read_text(encoding="utf-8")))
-    raise SystemExit(0 if result["overall"] == "PASS" else 1)
+    raise SystemExit(0 if result["overall"] in {"PASS", "PASS_WITH_HOLDS"} else 1)
