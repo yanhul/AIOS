@@ -11,8 +11,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-INPUT = Path(os.environ.get("AIOS_ABSORPTION_EXECUTOR_OUT", "research/artifacts/absorption-executor.json"))
-OUT = Path(os.environ.get("AIOS_ABSORPTION_VERIFY_OUT", "research/artifacts/absorption-verification.json"))
+DEFAULT_INPUT = Path("research/artifacts/absorption-executor.json")
+DEFAULT_OUT = Path("research/artifacts/absorption-verification.json")
+
+def _path(env_name, default): return Path(os.environ.get(env_name, str(default)))
 
 REQUIRED_CHECKS = {
     "source_evidence_digest",
@@ -95,12 +97,13 @@ def verify(data: dict, *, run_id: str, tests_passed: bool = True, test_digest: s
         "independent_tests": {"passed": tests_passed, "digest": test_digest},
         "digest": _digest({"verified": verified, "failures": failures}),
     }
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    out = _path("AIOS_ABSORPTION_VERIFY_OUT", DEFAULT_OUT)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return result
 
 if __name__ == "__main__":
-    data = json.loads(INPUT.read_text(encoding="utf-8"))
+    data = json.loads(_path("AIOS_ABSORPTION_EXECUTOR_OUT", DEFAULT_INPUT).read_text(encoding="utf-8"))
     tests_passed, test_digest = run_independent_tests()
     result = verify(data, run_id=os.environ.get("GITHUB_RUN_ID", data.get("run_id", "local")),
                     tests_passed=tests_passed, test_digest=test_digest)
