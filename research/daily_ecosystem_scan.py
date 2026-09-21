@@ -7,6 +7,7 @@ Absorption is a separate governed decision.
 """
 from __future__ import annotations
 
+import base64
 import datetime as dt
 import hashlib
 import json
@@ -96,7 +97,11 @@ def research_metadata(token: str, candidates: list[dict], limit: int = 20) -> li
         try:
             readme = _get(f"{API}/repos/{c['full_name']}/readme", token)
             content = readme.get("content", "")
-            readme_digest = hashlib.sha256(content.encode()).hexdigest()
+            if readme.get("encoding") == "base64":
+                content_bytes = base64.b64decode(content)
+            else:
+                content_bytes = content.encode()
+            readme_digest = hashlib.sha256(content_bytes).hexdigest()
         except Exception:
             pass
         c = dict(c)
@@ -105,7 +110,6 @@ def research_metadata(token: str, candidates: list[dict], limit: int = 20) -> li
             "license": (repo.get("license") or {}).get("spdx_id"),
             "open_issues": repo.get("open_issues_count", 0),
             "source_repo_updated_at": repo.get("updated_at", ""),
-            "source_default_branch_sha": (repo.get("default_branch") or None),
             "readme_digest": readme_digest,
             "research_status": "DISCOVERED_METADATA",
             "absorption_status": "PENDING_GOVERNED_REVIEW",
