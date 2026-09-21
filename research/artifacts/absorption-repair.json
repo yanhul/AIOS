@@ -1,7 +1,7 @@
 {
   "authority": "AIOS_CONTROL_PLANE",
   "blocked_count": 0,
-  "digest": "88a1817410398f0935ed22572d4e8c9b54040f8e61948203fe4dcef79c6607ab",
+  "digest": "0d5cc027152c56f375a6e434ec99054b7e6552ac8e11a2a261169f2b16123a95",
   "external_code_execution": false,
   "kind": "AIOS_ABSORPTION_REVERIFICATION_PROOF",
   "max_attempts": 2,
@@ -21,7 +21,7 @@
       ],
       "obligation_id": "reverify-bfaf0c6ae8bd37cf",
       "status": "REVERIFIED",
-      "test_digest": "219548f739453339bde3b13f235dfa3eddce590e8318f715200b2b75b1008577"
+      "test_digest": "73c7846ecd54decd4d997f75ff2def2a61f131612f1513a064f6389be9e364ba"
     },
     {
       "attempts": 1,
@@ -31,12 +31,12 @@
       ],
       "obligation_id": "reverify-fc892e8bfbcca5e9",
       "status": "REVERIFIED",
-      "test_digest": "d9c8804236bab992ba7f46fb3910425e764fef5883e2b9b84814e015d2b3a8e6"
+      "test_digest": "73c7846ecd54decd4d997f75ff2def2a61f131612f1513a064f6389be9e364ba"
     }
   ],
   "overall": "PASS",
   "reverified_count": 2,
-  "run_id": "35621052949",
+  "run_id": "35621064706",
   "schema_version": 1,
   "source_mutation": false
 }
