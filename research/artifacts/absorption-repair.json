@@ -1,11 +1,11 @@
 {
   "authority": "AIOS_CONTROL_PLANE",
   "blocked_count": 0,
-  "digest": "0d5cc027152c56f375a6e434ec99054b7e6552ac8e11a2a261169f2b16123a95",
+  "digest": "760d539e527bb573a20550d4edd253725de9073bbb6fc2c77add220770175f1f",
   "external_code_execution": false,
   "kind": "AIOS_ABSORPTION_REVERIFICATION_PROOF",
   "max_attempts": 2,
-  "obligation_count": 2,
+  "obligation_count": 1,
   "obligations": [
     {
       "attempts": 1,
@@ -21,22 +21,12 @@
       ],
       "obligation_id": "reverify-bfaf0c6ae8bd37cf",
       "status": "REVERIFIED",
-      "test_digest": "73c7846ecd54decd4d997f75ff2def2a61f131612f1513a064f6389be9e364ba"
-    },
-    {
-      "attempts": 1,
-      "candidate_id": null,
-      "errors": [
-        "executor intake is not PASS: None"
-      ],
-      "obligation_id": "reverify-fc892e8bfbcca5e9",
-      "status": "REVERIFIED",
-      "test_digest": "73c7846ecd54decd4d997f75ff2def2a61f131612f1513a064f6389be9e364ba"
+      "test_digest": "d9c8804236bab992ba7f46fb3910425e764fef5883e2b9b84814e015d2b3a8e6"
     }
   ],
   "overall": "PASS",
-  "reverified_count": 2,
-  "run_id": "35621064706",
+  "reverified_count": 1,
+  "run_id": "35621265791",
   "schema_version": 1,
   "source_mutation": false
 }
