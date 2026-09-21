@@ -67,6 +67,7 @@ def _verify_record(record: dict, tests_passed: bool, test_digest: str) -> tuple[
 
 def verify(data: dict, *, run_id: str, tests_passed: bool = True, test_digest: str = "unit-test-fixture") -> dict:
     records = data.get("records", [])
+    input_overall = data.get("overall")
     verified = []
     failures = []
     for record in records:
@@ -88,6 +89,12 @@ def verify(data: dict, *, run_id: str, tests_passed: bool = True, test_digest: s
             })
         else:
             failures.append({"candidate_id": record.get("candidate_id"), "errors": errors, "level": "UNKNOWN"})
+    if input_overall != "PASS":
+        failures.append({
+            "candidate_id": None,
+            "errors": [f"executor intake is not PASS: {input_overall!r}"],
+            "level": "UNKNOWN",
+        })
     result = {
         "schema_version": 1,
         "kind": "AIOS_ABSORPTION_INDEPENDENT_VERIFICATION",
