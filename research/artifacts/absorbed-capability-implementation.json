@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "kind": "AIOS_ABSORBED_CAPABILITY_IMPLEMENTATION_CATALOG",
+  "status": "CONFORMANCE_REQUIRED",
+  "rule": "ABSORBED does not imply IMPLEMENTED; IMPLEMENTED requires AIOS-owned code plus passing conformance proof.",
+  "primitives": [
+    "durable_execution",
+    "research_harness",
+    "evidence_provenance",
+    "governance",
+    "retry",
+    "memory",
+    "harness"
+  ]
+}
