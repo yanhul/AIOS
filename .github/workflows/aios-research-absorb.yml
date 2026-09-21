@@ -34,11 +34,6 @@ jobs:
         env:
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: python research/absorption_verifier.py
-      - name: Materialize verified absorption
-        if: always()
-        env:
-          GITHUB_RUN_ID: ${{ github.run_id }}
-        run: python research/absorption_apply.py
       - name: Publish absorption runtime evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -51,6 +46,11 @@ jobs:
       - name: Apply existing evidence promotion gate
         if: always()
         run: python research/absorption_promotion.py
+      - name: Materialize verified absorption
+        if: always()
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: python research/absorption_apply.py
       - name: Persist research and promotion artifacts
         if: always()
         run: |
