@@ -1,0 +1,45 @@
+name: AIOS Daily Ecosystem Research
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: aios-daily-ecosystem-research
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  daily-research:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted control plane
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+
+      - name: Run daily ecosystem discovery and research
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          AIOS_DAILY_RESEARCH_OUTPUT: research/daily/latest.json
+          AIOS_DAILY_RESEARCH_LIMIT: "20"
+        run: python research/daily_ecosystem_scan.py
+
+      - name: Verify research contract
+        run: python -m pytest -q tests/test_daily_ecosystem_scan.py
+
+      - name: Persist research artifact
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add research/daily/latest.json
+          if git diff --cached --quiet; then
+            echo "No research-state mutation."
+            exit 0
+          fi
+          git commit -m "research: persist daily ecosystem scan [skip ci]"
+          git push origin HEAD:main
