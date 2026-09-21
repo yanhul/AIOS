@@ -104,6 +104,8 @@ def research_metadata(token: str, candidates: list[dict], limit: int = 20) -> li
             "archived": bool(repo.get("archived", False)),
             "license": (repo.get("license") or {}).get("spdx_id"),
             "open_issues": repo.get("open_issues_count", 0),
+            "source_repo_updated_at": repo.get("updated_at", ""),
+            "source_default_branch_sha": (repo.get("default_branch") or None),
             "readme_digest": readme_digest,
             "research_status": "DISCOVERED_METADATA",
             "absorption_status": "PENDING_GOVERNED_REVIEW",
@@ -120,10 +122,12 @@ def main() -> int:
     limit = int(os.getenv("AIOS_DAILY_RESEARCH_LIMIT", "20"))
     now = dt.datetime.now(dt.timezone.utc)
     rows = research_metadata(token, discover(token, queries), limit)
+
     payload = {
         "schema": "AIOS-DAILY-RESEARCH-V1",
         "generated_at": now.isoformat(),
         "research_date": now.date().isoformat(),
+        "run_id": os.getenv("GITHUB_RUN_ID"),
         "queries": queries,
         "candidate_count": len(rows),
         "governance": {
@@ -135,10 +139,24 @@ def main() -> int:
         },
         "candidates": rows,
     }
-    out = Path(os.getenv("AIOS_DAILY_RESEARCH_OUTPUT", "research/daily/latest.json"))
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps({"AIOS_DAILY_RESEARCH": "PASS", "candidate_count": len(rows), "output": str(out)}))
+
+    latest = Path(os.getenv("AIOS_DAILY_RESEARCH_OUTPUT", "research/daily/latest.json"))
+    latest.parent.mkdir(parents=True, exist_ok=True)
+    encoded = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    latest.write_text(encoded, encoding="utf-8")
+
+    run_id = os.getenv("GITHUB_RUN_ID")
+    if run_id:
+        history = latest.parent / "history" / f"{now.date().isoformat()}-run-{run_id}.json"
+        history.parent.mkdir(parents=True, exist_ok=True)
+        history.write_text(encoded, encoding="utf-8")
+
+    print(json.dumps({
+        "AIOS_DAILY_RESEARCH": "PASS",
+        "candidate_count": len(rows),
+        "output": str(latest),
+        "history_written": bool(run_id),
+    }))
     return 0
 
 
