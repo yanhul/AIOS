@@ -209,8 +209,6 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
     if attempt_id != _attempt_id(effect_id, attempt):
         raise ValueError("attempt_id does not match retry attempt")
     contract, _permit = _validate_persisted_effect(aios_dir, current)
-    if not any(isinstance(ref, str) and ref.split("@", 1)[0] == provider for ref in contract.get("capabilities", [])):
-        raise TransitionError("provider is not authorized by contract capability")
     return _transition_dispatch(aios_dir, effect_id, actor,
                                 attempt=attempt, attempt_id=attempt_id, provider=provider)
 
