@@ -124,6 +124,8 @@ def transition(aios_dir, effect_id, target, actor, **fields):
     }.get(target, set())
     if set(fields) - allowed_fields:
         raise TransitionError("effect transition attempted to mutate protected or unsupported fields")
+    if target == "DISPATCHED":
+        raise TransitionError("DISPATCHED may only be entered through dispatch/retry_dispatch")
     recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
     if not os.path.exists(path):
@@ -147,6 +149,23 @@ def transition(aios_dir, effect_id, target, actor, **fields):
     return updated
 
 
+def _transition_dispatch(aios_dir, effect_id, actor, *, attempt, attempt_id, provider):
+    """Internal dispatch mutation after authority checks."""
+    path = _path(aios_dir, effect_id)
+    current = _load(path)
+    updated = dict(current)
+    updated.update({"state": "DISPATCHED", "attempt": attempt,
+                    "attempt_id": attempt_id, "provider": provider})
+    event = {
+        "kind": "external_effect", "action": "dispatch", "effect_id": effect_id,
+        "from_state": current["state"], "to_state": "DISPATCHED", "actor": actor,
+        "attempt": attempt, "attempt_id": attempt_id, "provider": provider,
+    }
+    commit_batch(aios_dir, [(os.path.join("effects", effect_id + ".json"), updated),
+                            (os.path.join("events", "effect-" + effect_id + "-DISPATCHED-attempt-" + str(attempt) + ".json"), event)])
+    return updated
+
+
 def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
     _validate_strings(("attempt_id", attempt_id), ("provider", provider))
     recover_pending(aios_dir)
@@ -162,8 +181,11 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
         raise ValueError("attempt_id does not match initial effect attempt")
     if int(current.get("max_attempts", 0)) < 1:
         raise TransitionError("effect has no authorized execution attempts")
-    return transition(aios_dir, effect_id, "DISPATCHED", actor,
-                      attempt=1, attempt_id=attempt_id, provider=provider)
+    contract, _permit = _validate_persisted_effect(aios_dir, current)
+    if not any(isinstance(ref, str) and ref.split("@", 1)[0] == provider for ref in contract.get("capabilities", [])):
+        raise TransitionError("provider is not authorized by contract capability")
+    return _transition_dispatch(aios_dir, effect_id, actor,
+                                attempt=1, attempt_id=attempt_id, provider=provider)
 
 
 def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
@@ -189,17 +211,11 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
         raise TransitionError("retry exceeds contract attempt budget")
     if attempt_id != _attempt_id(effect_id, attempt):
         raise ValueError("attempt_id does not match retry attempt")
-    updated = dict(current)
-    updated.update({"state": "DISPATCHED", "attempt": attempt,
-                    "attempt_id": attempt_id, "provider": provider})
-    event = {
-        "kind": "external_effect", "action": "retry_dispatch", "effect_id": effect_id,
-        "from_state": "UNKNOWN", "to_state": "DISPATCHED", "actor": actor,
-        "attempt": attempt, "attempt_id": attempt_id, "provider": provider,
-    }
-    commit_batch(aios_dir, [(os.path.join("effects", effect_id + ".json"), updated),
-                            (os.path.join("events", "effect-" + effect_id + "-DISPATCHED-attempt-" + str(attempt) + ".json"), event)])
-    return updated
+    contract, _permit = _validate_persisted_effect(aios_dir, current)
+    if not any(isinstance(ref, str) and ref.split("@", 1)[0] == provider for ref in contract.get("capabilities", [])):
+        raise TransitionError("provider is not authorized by contract capability")
+    return _transition_dispatch(aios_dir, effect_id, actor,
+                                attempt=attempt, attempt_id=attempt_id, provider=provider)
 
 
 def unknown(aios_dir, effect_id, actor, reason):
