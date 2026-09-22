@@ -33,6 +33,36 @@ Those belong to the AIOS control plane.
 
 Persistence occurs after each meaningful iteration, not only at the end. A crash, timeout, interruption, or process restart therefore resumes from a recorded state rather than relying on conversational context.
 
+## Async/event-driven execution rule
+
+Long-running asynchronous work must be event-driven whenever the runtime/provider exposes a completion event or callback.
+
+Preferred flow:
+
+`LLM -> DISPATCH ASYNC EFFECT -> PERSIST -> SUSPEND -> COMPLETION EVENT -> RESUME -> VERIFY`
+
+Do **not** use an LLM turn as a polling clock:
+
+`LLM -> DISPATCH -> SLEEP/POLL -> LLM -> SLEEP/POLL -> ...`
+
+The model-facing policy should explicitly state:
+
+> When an asynchronous tool or job provides a completion event, do not poll it with sleep/status loops. Submit the work, persist its identifiers, yield/suspend, and resume only when the completion event is delivered. Use polling only when no completion event exists, and then use bounded backoff with an explicit timeout/budget.
+
+This is a cost/latency control, not an authority boundary. The runtime must enforce the stronger invariant where possible; prompt guidance alone is not sufficient.
+
+Required durable identifiers for async work:
+
+- effect/task identity;
+- attempt identity;
+- provider/job identity;
+- current lifecycle state;
+- completion-event provenance;
+- timeout/deadline;
+- resume metadata.
+
+An asynchronous completion event must not silently bypass authorization, verification, receipt validation, or terminal-state evidence.
+
 ## State model
 
 Minimum durable state:
@@ -81,6 +111,8 @@ A replayed response is an execution input/result and must carry provenance descr
 | Explicit persisted state | Adopt |
 | Resume after interruption | Adopt |
 | Model/harness separation | Adopt |
+| Async completion events | Adopt |
+| Suspend/resume instead of LLM polling | Adopt |
 | Retrieval-based memory | Adopt, with provenance |
 | Provider replay | Optional adapter only |
 | Agent-controlled policy | Reject |
@@ -91,3 +123,5 @@ A replayed response is an execution input/result and must carry provenance descr
 ## Proof requirement
 
 A harness feature is not considered complete because an agent appears to run for a long time. It must demonstrate restart/resume, bounded execution, evidence preservation, verification, and externally governed terminal behavior.
+
+For async execution, conformance additionally requires evidence that a completion event can wake/resume the durable session without an intervening LLM polling loop when the provider supports such events.
