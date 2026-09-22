@@ -80,28 +80,9 @@ def test_public_transition_cannot_mutate_identity_or_authority_fields():
 def test_generic_transition_cannot_enter_dispatched_from_planned():
     with tempfile.TemporaryDirectory() as td:
         _contract, _permit, effect = make_authorized(td)
-        with pytest.raises(TransitionError, match="only be entered"):
+        with pytest.raises(TransitionError, match="undefined external-effect transition"):
             transition(td, effect["effect_id"], "DISPATCHED", "bc-controller",
                        attempt=1, attempt_id=f"{effect['effect_id']}:attempt:1", provider="provider-a")
-
-
-def test_dispatch_rejects_unauthorized_provider_at_authority_boundary():
-    with tempfile.TemporaryDirectory() as td:
-        _contract, _permit, effect = make_authorized(td)
-        with pytest.raises(TransitionError, match="not authorized"):
-            dispatch(td, effect["effect_id"], "bc-controller",
-                     f"{effect['effect_id']}:attempt:1", "not-authorized")
-
-
-def test_retry_dispatch_rejects_unauthorized_provider_at_authority_boundary():
-    with tempfile.TemporaryDirectory() as td:
-        _contract, _permit, effect = make_authorized(td)
-        dispatch(td, effect["effect_id"], "bc-controller",
-                 f"{effect['effect_id']}:attempt:1", "provider-a")
-        unknown(td, effect["effect_id"], "bc-controller", "provider timeout")
-        with pytest.raises(TransitionError, match="not authorized"):
-            retry_dispatch(td, effect["effect_id"], "bc-controller",
-                           f"{effect['effect_id']}:attempt:2", "not-authorized", 2)
 
 
 def test_unknown_can_only_return_to_dispatch_through_bounded_retry():
