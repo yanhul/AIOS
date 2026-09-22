@@ -251,6 +251,7 @@ class _MutationLock:
 
     def __enter__(self):
         state_layout.ensure_state_dirs(self.aios_dir)
+        os.makedirs(os.path.dirname(_mutation_lock_path(self.aios_dir)), exist_ok=True)
         self.fh = open(_mutation_lock_path(self.aios_dir), "a+b")
         self.fh.seek(0)
         if os.name == "nt":
