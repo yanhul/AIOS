@@ -240,7 +240,7 @@ def _fsync_dir(path):
 
 
 def _mutation_lock_path(aios_dir):
-    return os.path.join(aios_dir, ".mutation.lock")
+    return os.path.join(aios_dir, ".staging", ".mutation.lock")
 
 
 class _MutationLock:
