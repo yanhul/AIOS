@@ -1,32 +1,15 @@
 {
   "authority": "AIOS_CONTROL_PLANE",
   "blocked_count": 0,
-  "digest": "87f46663540ddd427c604778b9954e64fb6a762499de6c6cd568e5601dd3f6df",
+  "digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
   "external_code_execution": false,
   "kind": "AIOS_ABSORPTION_REVERIFICATION_PROOF",
   "max_attempts": 2,
-  "obligation_count": 1,
-  "obligations": [
-    {
-      "attempts": 1,
-      "candidate_id": "cand-c37c973aa319963d",
-      "errors": [
-        "research/adaptation did not complete",
-        "source evidence not collected",
-        "external code copy is not explicitly disabled",
-        "external code execution is not explicitly disabled",
-        "target surface is not AIOS-native bounded surface",
-        "required verification checks are incomplete",
-        "missing provenance: evidence_digest"
-      ],
-      "obligation_id": "reverify-bfaf0c6ae8bd37cf",
-      "status": "REVERIFIED",
-      "test_digest": "73c7846ecd54decd4d997f75ff2def2a61f131612f1513a064f6389be9e364ba"
-    }
-  ],
+  "obligation_count": 0,
+  "obligations": [],
   "overall": "PASS",
-  "reverified_count": 1,
-  "run_id": "35621276233",
+  "reverified_count": 0,
+  "run_id": "35688522635",
   "schema_version": 1,
   "source_mutation": false
 }

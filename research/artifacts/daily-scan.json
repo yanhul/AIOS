@@ -2,34 +2,34 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
-      "description": "MoonBit agent harness with durable tool execution, verified recovery, and version-bound acceptance",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "Hing7/verified-agent-harness",
-      "source_digest": "0615520691db682d7072a4edd10b76b59dfa6d8dabd24d4bb6a56157b3176bce",
-      "source_ref": "https://github.com/Hing7/verified-agent-harness",
-      "stars": 0,
-      "updated_at": "2026-09-21T15:10:43Z"
-    },
-    {
       "description": "An open Agents API for Cloudflare Workers, with durable sessions, pluggable harnesses, and isolated execution.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "inaridiy/CF-Open-Agents-API",
-      "source_digest": "0910f9cf6cdeefeee3daa134fd713e310b908fd346c972cb1689711a313c45bc",
+      "source_digest": "717ee487b9b0f1958eb5514c587c733113c788730692fd8a4e3525603eea2858",
       "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
-      "stars": 3,
-      "updated_at": "2026-09-21T15:39:08Z"
+      "stars": 16,
+      "updated_at": "2026-09-22T04:46:32Z"
+    },
+    {
+      "description": "MoonBit agent harness with durable tool execution, verified recovery, and version-bound acceptance",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "Hing7/verified-agent-harness",
+      "source_digest": "d0687978a3b9b5655f61b5a5d6b28b08c148f489e917c061d6802425f00e7383",
+      "source_ref": "https://github.com/Hing7/verified-agent-harness",
+      "stars": 0,
+      "updated_at": "2026-09-22T01:29:12Z"
     },
     {
       "description": "Open-source Windows agent harness for safe, auditable AI execution with approvals, reversible changes, durable task state, multi-agent coordination, and local/cloud model adapters.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "andrewgodowsky-aoa/diomedes",
-      "source_digest": "7520de09896d36741f899c610e507a3f1b0f9f6b02ef1f04224e5ee4d81f61d4",
+      "source_digest": "d77c4d5047386d8b72fcff35461776f7994791b28f0f8ce351d941988c4cdfb7",
       "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
       "stars": 0,
-      "updated_at": "2026-09-21T10:40:21Z"
+      "updated_at": "2026-09-21T20:39:33Z"
     },
     {
       "description": "A reliability harness for document-review agents, with evidence-grounded verification, parallel execution, durable recovery, and live tool traces across PDFs and spreadsheets.",
@@ -116,10 +116,10 @@
       "query": "agent memory provenance governance",
       "ref": "vaixlns-architecture",
       "repo": "VAIXLNS/VAIXLNS",
-      "source_digest": "d25e5ad65c393c4be96ba2896045999aba211c0b9ed31ff475ec982fff4983ba",
+      "source_digest": "468dd38320f6d0803fd14d8e6fbbf0b10708f11d34dbd0dcc8779f8c7e272b32",
       "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
       "stars": 4,
-      "updated_at": "2026-09-18T11:27:34Z"
+      "updated_at": "2026-09-21T19:16:00Z"
     },
     {
       "description": "Heartwood Memory \u2014 governed memory for AI agents. Provenance-first recall, policy-gated retrieval, tenant isolation.",
