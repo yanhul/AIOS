@@ -6,10 +6,10 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "inaridiy/CF-Open-Agents-API",
-      "source_digest": "5514df48baea12307a548099663313382703500636498e92dd29e010c7cd1fad",
+      "source_digest": "fee93d48f2c02f7681018ee3ee9ff1259d7e9cf6a5c9ce20580dfa684a58af42",
       "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
-      "stars": 19,
-      "updated_at": "2026-09-22T05:53:45Z"
+      "stars": 20,
+      "updated_at": "2026-09-22T12:05:12Z"
     },
     {
       "description": "MoonBit agent harness with durable tool execution, verified recovery, and version-bound acceptance",

@@ -4,14 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-12c1c6c373908b19",
+      "candidate_id": "cand-c525627412f2a390",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "5514df48baea12307a548099663313382703500636498e92dd29e010c7cd1fad",
+      "source_digest": "fee93d48f2c02f7681018ee3ee9ff1259d7e9cf6a5c9ce20580dfa684a58af42",
       "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
       "status": "UNTRUSTED_EVIDENCE"
     },
