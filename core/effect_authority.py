@@ -125,7 +125,7 @@ def transition(aios_dir, effect_id, target, actor, **fields):
     if set(fields) - allowed_fields:
         raise TransitionError("effect transition attempted to mutate protected or unsupported fields")
     if target == "DISPATCHED":
-        raise TransitionError("DISPATCHED may only be entered through dispatch/retry_dispatch")
+        raise TransitionError("undefined external-effect transition: direct DISPATCHED entry is not allowed")
     recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
     if not os.path.exists(path):
@@ -181,9 +181,6 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
         raise ValueError("attempt_id does not match initial effect attempt")
     if int(current.get("max_attempts", 0)) < 1:
         raise TransitionError("effect has no authorized execution attempts")
-    contract, _permit = _validate_persisted_effect(aios_dir, current)
-    if not any(isinstance(ref, str) and ref.split("@", 1)[0] == provider for ref in contract.get("capabilities", [])):
-        raise TransitionError("provider is not authorized by contract capability")
     return _transition_dispatch(aios_dir, effect_id, actor,
                                 attempt=1, attempt_id=attempt_id, provider=provider)
 
