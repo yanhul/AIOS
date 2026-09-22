@@ -239,6 +239,47 @@ def _fsync_dir(path):
         os.close(fd)
 
 
+def _mutation_lock_path(aios_dir):
+    return os.path.join(aios_dir, ".mutation.lock")
+
+
+class _MutationLock:
+    """Cross-platform exclusive lock for one AIOS state tree."""
+    def __init__(self, aios_dir):
+        self.aios_dir = aios_dir
+        self.fh = None
+
+    def __enter__(self):
+        state_layout.ensure_state_dirs(self.aios_dir)
+        self.fh = open(_mutation_lock_path(self.aios_dir), "a+b")
+        self.fh.seek(0)
+        if os.name == "nt":
+            import msvcrt
+            while True:
+                try:
+                    msvcrt.locking(self.fh.fileno(), msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    continue
+        else:
+            import fcntl
+            fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            if os.name == "nt":
+                import msvcrt
+                self.fh.seek(0)
+                msvcrt.locking(self.fh.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(self.fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            self.fh.close()
+        return False
+
+
 def _write_staged(path, payload_bytes):
     with open(path, "wb") as fh:
         fh.write(payload_bytes)
@@ -267,14 +308,8 @@ def _event_relpath(event):
 _JOURNAL_NAME = "journal.json"
 
 
-def recover_pending(aios_dir):
-    """Complete or discard interrupted mutations.
-
-    Called automatically at the start of ``apply_mutations``. For every
-    staging batch with a journal, re-drives the remaining renames
-    (roll-forward). Batches without a journal never reached the commit
-    point and contain nothing visible; they are discarded.
-    """
+def _recover_pending_unlocked(aios_dir):
+    """Roll forward journaled batches; caller owns the mutation lock."""
     staging = os.path.join(aios_dir, ".staging")
     if not os.path.isdir(staging):
         return
@@ -294,8 +329,8 @@ def recover_pending(aios_dir):
                         raise StateConflictError(
                             f"committed file diverges from journal: {dest}"
                         )
-                    # already committed -> clean up its temp below
                 elif os.path.exists(tmp):
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
                     _replace(tmp, dest)
                     _fsync_dir(os.path.dirname(dest))
                 else:
@@ -304,6 +339,12 @@ def recover_pending(aios_dir):
                     )
             os.unlink(journal_path)
         shutil.rmtree(batch_dir, ignore_errors=True)
+
+
+def recover_pending(aios_dir):
+    """Recover pending journal batches under the shared mutation lock."""
+    with _MutationLock(aios_dir):
+        _recover_pending_unlocked(aios_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -353,48 +394,40 @@ def _require_committed_event(aios_dir, entity):
 
 
 def commit_batch(aios_dir, payloads):
-    """Single shared atomic commit engine: stage -> journal -> rename.
+    """Single shared atomic commit engine under the mutation lock."""
+    with _MutationLock(aios_dir):
+        state_layout.ensure_state_dirs(aios_dir)
+        staging_root = os.path.join(aios_dir, ".staging")
+        batch_id = uuid.uuid4().hex
+        batch_dir = os.path.join(staging_root, f"batch-{batch_id}")
+        os.makedirs(batch_dir, exist_ok=True)
 
-    Internal-stable API. The only authorized front-doors are
-    ``apply_mutations`` (imported entities + events) and
-    ``core.verification.apply_verification`` (AIOS-native verification
-    records) — both enforce their own contracts BEFORE calling this.
-    No other component may write AIOS state.
+        ops = []
+        for rel_dest, obj in payloads:
+            payload = (canonical_json(obj) + "\n").encode("utf-8")
+            tmp = os.path.join(batch_dir, f"{uuid.uuid4().hex}.tmp")
+            _write_staged(tmp, payload)
+            ops.append({
+                "tmp": tmp,
+                "dest": os.path.join(aios_dir, rel_dest),
+                "digest": _digest_bytes(payload),
+            })
 
-    payloads: list of (relative_dest_under_aios_dir, json_object).
-    Returns the list of committed absolute dest paths.
-    """
-    state_layout.ensure_state_dirs(aios_dir)
-    staging_root = os.path.join(aios_dir, ".staging")
-    batch_id = uuid.uuid4().hex
-    batch_dir = os.path.join(staging_root, f"batch-{batch_id}")
-    os.makedirs(batch_dir, exist_ok=True)
+        journal_path = os.path.join(batch_dir, _JOURNAL_NAME)
+        _write_staged(
+            journal_path,
+            canonical_json({"batch_id": batch_id, "ops": ops}).encode("utf-8"),
+        )
+        _fsync_dir(batch_dir)
 
-    ops = []
-    for rel_dest, obj in payloads:
-        payload = (canonical_json(obj) + "\n").encode("utf-8")
-        tmp = os.path.join(batch_dir, f"{uuid.uuid4().hex}.tmp")
-        _write_staged(tmp, payload)
-        ops.append({
-            "tmp": tmp,
-            "dest": os.path.join(aios_dir, rel_dest),
-            "digest": _digest_bytes(payload),
-        })
+        for op in ops:
+            os.makedirs(os.path.dirname(op["dest"]), exist_ok=True)
+            _replace(op["tmp"], op["dest"])
+            _fsync_dir(os.path.dirname(op["dest"]))
 
-    # Write-ahead journal marks the point after which an interruption is
-    # recoverable; before it, leftovers are invisible temps swept on next run.
-    journal_path = os.path.join(batch_dir, _JOURNAL_NAME)
-    _write_staged(journal_path, canonical_json({"batch_id": batch_id, "ops": ops}).encode("utf-8"))
-    _fsync_dir(batch_dir)
-
-    for op in ops:
-        os.makedirs(os.path.dirname(op["dest"]), exist_ok=True)
-        _replace(op["tmp"], op["dest"])
-        _fsync_dir(os.path.dirname(op["dest"]))
-
-    os.unlink(journal_path)
-    shutil.rmtree(batch_dir, ignore_errors=True)
-    return [op["dest"] for op in ops]
+        os.unlink(journal_path)
+        shutil.rmtree(batch_dir, ignore_errors=True)
+        return [op["dest"] for op in ops]
 
 
 def apply_mutations(aios_dir, entities, actor, notice_factory=None):
