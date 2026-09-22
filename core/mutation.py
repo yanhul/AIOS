@@ -1,6 +1,6 @@
 """Authoritative AIOS state mutation boundary (M1.5).
 
-Every AIOS state mutation produced by the application MUST pass through
+The operational mutation lock is stored alongside the state tree; every AIOS state mutation produced by the application MUST pass through
 ``apply_mutations``. There is deliberately no other supported way to write
 entity or audit-event files.
 
@@ -240,7 +240,7 @@ def _fsync_dir(path):
 
 
 def _mutation_lock_path(aios_dir):
-    return os.path.join(aios_dir, ".staging", ".mutation.lock")
+    return os.path.join(os.path.dirname(aios_dir), ".aios.mutation.lock")
 
 
 class _MutationLock:
