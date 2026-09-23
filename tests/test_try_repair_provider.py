@@ -101,3 +101,17 @@ def test_provider_adds_repair_identity(monkeypatch):
     assert out["request_id"] == "req-1"
     assert out["base_sha"] == "a" * 40
     assert out["attempt"] == 2
+
+
+def test_provider_does_not_retry_quota_429(monkeypatch):
+    import urllib.error
+    calls = []
+    monkeypatch.setenv("TRY_REPAIR_PROVIDER_URL", "http://127.0.0.1:8787")
+    monkeypatch.setenv("TRY_REPAIR_PROVIDER_TOKEN", "x")
+    def fail(*a, **k):
+        calls.append(1)
+        raise urllib.error.HTTPError("u", 429, "quota", {}, None)
+    monkeypatch.setattr(try_repair_provider, "_open", fail)
+    with pytest.raises(try_repair_provider.TryRepairProviderError, match="HTTP 429"):
+        try_repair_provider.propose(request_id="r", repository="yanhul/AIOS", sha="a"*40, attempt=1, failure={}, source={"core/x.py":"x=1\n"})
+    assert len(calls) == 1
