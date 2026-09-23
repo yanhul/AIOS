@@ -2,14 +2,44 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
+      "description": "Open-source Windows agent harness for safe, auditable AI execution with approvals, reversible changes, durable task state, multi-agent coordination, and local/cloud model adapters.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "andrewgodowsky-aoa/diomedes",
+      "source_digest": "f85ae973409152b88c7e4a06256240f0c4ead82c611f17319b099f66f05fd119",
+      "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
+      "stars": 0,
+      "updated_at": "2026-09-23T06:34:31Z"
+    },
+    {
+      "description": "Golang agent harness & framework. Multi-agent architecture, built on Durable Execution(Dex/Temporal), to build cloud based agents",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "superdurable/superagent",
+      "source_digest": "0d75502efa0bac23e881aab5df33f516bf44fa7d3f527d5a7507970b1139902b",
+      "source_ref": "https://github.com/superdurable/superagent",
+      "stars": 9,
+      "updated_at": "2026-09-23T06:15:22Z"
+    },
+    {
+      "description": "Fork of DeepSeek Harness: plugin-based agent runtime on Cordis with head/executor orchestration, unified execution state machine, durable event journal, skill manager and Web GUI",
+      "query": "agent harness durable execution",
+      "ref": "master",
+      "repo": "Ydjin1984/DeepSeek_Kibborg_Harness",
+      "source_digest": "11cdee2e67965ec92d7d5671b747d0504e0d719c4615acebde93e6d220f3a59e",
+      "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
+      "stars": 1,
+      "updated_at": "2026-09-22T23:11:09Z"
+    },
+    {
       "description": "An open Agents API for Cloudflare Workers, with durable sessions, pluggable harnesses, and isolated execution.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "inaridiy/CF-Open-Agents-API",
-      "source_digest": "fee93d48f2c02f7681018ee3ee9ff1259d7e9cf6a5c9ce20580dfa684a58af42",
+      "source_digest": "4262d92c8be527e1db2909cfe6ecbbbefec1adc80571fd55f93a67527923c0fe",
       "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
-      "stars": 20,
-      "updated_at": "2026-09-22T12:05:12Z"
+      "stars": 22,
+      "updated_at": "2026-09-22T17:26:06Z"
     },
     {
       "description": "MoonBit agent harness with durable tool execution, verified recovery, and version-bound acceptance",
@@ -20,36 +50,6 @@
       "source_ref": "https://github.com/Hing7/verified-agent-harness",
       "stars": 0,
       "updated_at": "2026-09-22T01:29:12Z"
-    },
-    {
-      "description": "Open-source Windows agent harness for safe, auditable AI execution with approvals, reversible changes, durable task state, multi-agent coordination, and local/cloud model adapters.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "andrewgodowsky-aoa/diomedes",
-      "source_digest": "d77c4d5047386d8b72fcff35461776f7994791b28f0f8ce351d941988c4cdfb7",
-      "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
-      "stars": 0,
-      "updated_at": "2026-09-21T20:39:33Z"
-    },
-    {
-      "description": "A reliability harness for document-review agents, with evidence-grounded verification, parallel execution, durable recovery, and live tool traces across PDFs and spreadsheets.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "BerrySeriousCoder/verity",
-      "source_digest": "b98281fb1bafd5cb4d5812ba2b6ba9854acdec6fdd8afe4af84020d59533705c",
-      "source_ref": "https://github.com/BerrySeriousCoder/verity",
-      "stars": 0,
-      "updated_at": "2026-09-21T09:34:47Z"
-    },
-    {
-      "description": "Fork of DeepSeek Harness: plugin-based agent runtime on Cordis with head/executor orchestration, unified execution state machine, durable event journal, skill manager and Web GUI",
-      "query": "agent harness durable execution",
-      "ref": "master",
-      "repo": "Ydjin1984/DeepSeek_Kibborg_Harness",
-      "source_digest": "5149edbffd955fe65fa3e61e2d64ce82c80458b01ed11e095f1a2dcc2c3980eb",
-      "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
-      "stars": 1,
-      "updated_at": "2026-09-21T06:32:53Z"
     },
     {
       "description": "A TORCS-based autonomous driving experimentation framework for testing rule-based racing agents, logging telemetry, tuning hyperparameters, and analysing performance for dissertation research",
@@ -102,6 +102,16 @@
       "updated_at": "2026-09-12T02:35:11Z"
     },
     {
+      "description": "Heartwood Memory \u2014 governed memory for AI agents. Provenance-first recall, policy-gated retrieval, tenant isolation.",
+      "query": "agent memory provenance governance",
+      "ref": "main",
+      "repo": "jermayne36/heartwood-memory",
+      "source_digest": "3c2e7459cd46a43e007e368463d5fdea3f12bd0b450dd4b979f7b01f002399d3",
+      "source_ref": "https://github.com/jermayne36/heartwood-memory",
+      "stars": 0,
+      "updated_at": "2026-09-22T21:04:59Z"
+    },
+    {
       "description": "Local cognitive memory runtime for AI agents \u2014 durable recall, temporal versioning, provenance, contradiction governance, and portable encrypted storage. Pure Rust, offline-first, with no required LLM or cloud. Patent pending.",
       "query": "agent memory provenance governance",
       "ref": "main",
@@ -120,16 +130,6 @@
       "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
       "stars": 4,
       "updated_at": "2026-09-21T19:16:00Z"
-    },
-    {
-      "description": "Heartwood Memory \u2014 governed memory for AI agents. Provenance-first recall, policy-gated retrieval, tenant isolation.",
-      "query": "agent memory provenance governance",
-      "ref": "main",
-      "repo": "jermayne36/heartwood-memory",
-      "source_digest": "dc85315dd67b9a903d22a6343b1d0502c9b8a8eacedc9cfa8bcffe7cb64a3c3e",
-      "source_ref": "https://github.com/jermayne36/heartwood-memory",
-      "stars": 0,
-      "updated_at": "2026-08-24T18:00:42Z"
     },
     {
       "description": "A model-independent memory governance core for AI agents: provenance, scope isolation, retention, lineage, and non-resurrection.",

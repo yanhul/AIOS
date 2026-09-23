@@ -4,14 +4,59 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-c525627412f2a390",
+      "candidate_id": "cand-abd197cb146d22eb",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "fee93d48f2c02f7681018ee3ee9ff1259d7e9cf6a5c9ce20580dfa684a58af42",
+      "source_digest": "f85ae973409152b88c7e4a06256240f0c4ead82c611f17319b099f66f05fd119",
+      "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-7fdb248e40c5dbd5",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "0d75502efa0bac23e881aab5df33f516bf44fa7d3f527d5a7507970b1139902b",
+      "source_ref": "https://github.com/superdurable/superagent",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-1ac3a00cb6463c72",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "master",
+      "source_digest": "11cdee2e67965ec92d7d5671b747d0504e0d719c4615acebde93e6d220f3a59e",
+      "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-a39b71783e36e95f",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "4262d92c8be527e1db2909cfe6ecbbbefec1adc80571fd55f93a67527923c0fe",
       "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -28,51 +73,6 @@
       "ref": "main",
       "source_digest": "d0687978a3b9b5655f61b5a5d6b28b08c148f489e917c061d6802425f00e7383",
       "source_ref": "https://github.com/Hing7/verified-agent-harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-b0790c578ff9c69e",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "d77c4d5047386d8b72fcff35461776f7994791b28f0f8ce351d941988c4cdfb7",
-      "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-c8cfac5fdba58551",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "b98281fb1bafd5cb4d5812ba2b6ba9854acdec6fdd8afe4af84020d59533705c",
-      "source_ref": "https://github.com/BerrySeriousCoder/verity",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-9fd2c7b0798f9333",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "master",
-      "source_digest": "5149edbffd955fe65fa3e61e2d64ce82c80458b01ed11e095f1a2dcc2c3980eb",
-      "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -154,6 +154,21 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
+      "candidate_id": "cand-7a82d93246bcf454",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "3c2e7459cd46a43e007e368463d5fdea3f12bd0b450dd4b979f7b01f002399d3",
+      "source_ref": "https://github.com/jermayne36/heartwood-memory",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
       "candidate_id": "cand-24bd2e8be000eebb",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
@@ -178,21 +193,6 @@
       "ref": "vaixlns-architecture",
       "source_digest": "468dd38320f6d0803fd14d8e6fbbf0b10708f11d34dbd0dcc8779f8c7e272b32",
       "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-1b736c39fe5af409",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "dc85315dd67b9a903d22a6343b1d0502c9b8a8eacedc9cfa8bcffe7cb64a3c3e",
-      "source_ref": "https://github.com/jermayne36/heartwood-memory",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
