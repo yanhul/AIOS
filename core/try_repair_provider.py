@@ -18,7 +18,7 @@ class TryRepairProviderError(RuntimeError):
     pass
 
 
-_RETRYABLE_HTTP = {429, 500, 502, 503, 504}
+_RETRYABLE_HTTP = {500, 502, 503, 504}
 _PROVIDER_RETRY_ATTEMPTS = 3
 _PROVIDER_RETRY_BACKOFF = (1, 2)
 
@@ -121,6 +121,8 @@ def propose(*, request_id: str, repository: str, sha: str, attempt: int,
             last_error = TryRepairProviderError(
                 f"provider request failed: HTTP {exc.code}: {detail or exc.reason}"
             )
+            if exc.code == 429:
+                raise last_error from exc
             if exc.code not in _RETRYABLE_HTTP or retry_no == _PROVIDER_RETRY_ATTEMPTS - 1:
                 raise last_error from exc
             time.sleep(_PROVIDER_RETRY_BACKOFF[retry_no])
