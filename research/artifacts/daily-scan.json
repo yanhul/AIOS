@@ -2,14 +2,44 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
+      "description": "An open Agents API for Cloudflare Workers, with durable sessions, pluggable harnesses, and isolated execution.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "inaridiy/CF-Open-Agents-API",
+      "source_digest": "115117b47b2a75da7c93c44f5e76d2dab43d98bcd3d8be2bed86698372e125fd",
+      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
+      "stars": 22,
+      "updated_at": "2026-09-23T15:33:48Z"
+    },
+    {
       "description": "Open-source Windows agent harness for safe, auditable AI execution with approvals, reversible changes, durable task state, multi-agent coordination, and local/cloud model adapters.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "andrewgodowsky-aoa/diomedes",
-      "source_digest": "f85ae973409152b88c7e4a06256240f0c4ead82c611f17319b099f66f05fd119",
+      "source_digest": "886ac0773d57f4ddedcb4c5c658bd9e61f6dff60453135a966758d21aa8ebcd6",
       "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
       "stars": 0,
-      "updated_at": "2026-09-23T06:34:31Z"
+      "updated_at": "2026-09-23T14:57:03Z"
+    },
+    {
+      "description": "A reliability harness for document-review agents, with evidence-grounded verification, parallel execution, durable recovery, and live tool traces across PDFs and spreadsheets.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "BerrySeriousCoder/verity",
+      "source_digest": "7f5462fdd7fa5e61e99acf052b4170b2d1bf64580cde476219c60e3738595415",
+      "source_ref": "https://github.com/BerrySeriousCoder/verity",
+      "stars": 0,
+      "updated_at": "2026-09-23T12:55:32Z"
+    },
+    {
+      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "Root1V/aeon-agent-harness",
+      "source_digest": "cd618b5d8aa6d49a88c2808eac215c623de87e0b4c6534978f6c079656810a0a",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
+      "stars": 0,
+      "updated_at": "2026-09-23T11:44:20Z"
     },
     {
       "description": "Golang agent harness & framework. Multi-agent architecture, built on Durable Execution(Dex/Temporal), to build cloud based agents",
@@ -20,36 +50,6 @@
       "source_ref": "https://github.com/superdurable/superagent",
       "stars": 9,
       "updated_at": "2026-09-23T06:15:22Z"
-    },
-    {
-      "description": "Fork of DeepSeek Harness: plugin-based agent runtime on Cordis with head/executor orchestration, unified execution state machine, durable event journal, skill manager and Web GUI",
-      "query": "agent harness durable execution",
-      "ref": "master",
-      "repo": "Ydjin1984/DeepSeek_Kibborg_Harness",
-      "source_digest": "11cdee2e67965ec92d7d5671b747d0504e0d719c4615acebde93e6d220f3a59e",
-      "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
-      "stars": 1,
-      "updated_at": "2026-09-22T23:11:09Z"
-    },
-    {
-      "description": "An open Agents API for Cloudflare Workers, with durable sessions, pluggable harnesses, and isolated execution.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "inaridiy/CF-Open-Agents-API",
-      "source_digest": "4262d92c8be527e1db2909cfe6ecbbbefec1adc80571fd55f93a67527923c0fe",
-      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
-      "stars": 22,
-      "updated_at": "2026-09-22T17:26:06Z"
-    },
-    {
-      "description": "MoonBit agent harness with durable tool execution, verified recovery, and version-bound acceptance",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "Hing7/verified-agent-harness",
-      "source_digest": "d0687978a3b9b5655f61b5a5d6b28b08c148f489e917c061d6802425f00e7383",
-      "source_ref": "https://github.com/Hing7/verified-agent-harness",
-      "stars": 0,
-      "updated_at": "2026-09-22T01:29:12Z"
     },
     {
       "description": "A TORCS-based autonomous driving experimentation framework for testing rule-based racing agents, logging telemetry, tuning hyperparameters, and analysing performance for dissertation research",
