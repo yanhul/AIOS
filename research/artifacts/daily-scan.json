@@ -2,14 +2,24 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
+      "description": "An open Agents API for Cloudflare Workers, with durable sessions, pluggable harnesses, and isolated execution.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "inaridiy/CF-Open-Agents-API",
+      "source_digest": "ebce0ca31b02be2c14ee277a5c6026168c5a474a93ebd6ecd032ca0a71871464",
+      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
+      "stars": 22,
+      "updated_at": "2026-09-24T10:00:23Z"
+    },
+    {
       "description": "Open-source Windows agent harness for safe, auditable AI execution with approvals, reversible changes, durable task state, multi-agent coordination, and local/cloud model adapters.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "andrewgodowsky-aoa/diomedes",
-      "source_digest": "e7d55eaa4e26a1b55566c594cd28a0b37e66f825c36226ac59cd3b6d6f3483ef",
+      "source_digest": "92e41485334df342debcb2fe01abe9b48f6b6c78bfd2e9aa381c89155b70cffe",
       "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
       "stars": 0,
-      "updated_at": "2026-09-24T07:25:10Z"
+      "updated_at": "2026-09-24T09:42:22Z"
     },
     {
       "description": "Golang agent harness & framework. Multi-agent architecture, built on Durable Execution(Dex/Temporal), to build cloud based agents",
@@ -20,16 +30,6 @@
       "source_ref": "https://github.com/superdurable/superagent",
       "stars": 9,
       "updated_at": "2026-09-24T07:11:27Z"
-    },
-    {
-      "description": "An open Agents API for Cloudflare Workers, with durable sessions, pluggable harnesses, and isolated execution.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "inaridiy/CF-Open-Agents-API",
-      "source_digest": "86304cad9e2e22bfc5e972ac6f898bfb0e78675f7e81a72b18f63f39dc0d7f69",
-      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
-      "stars": 22,
-      "updated_at": "2026-09-24T04:59:57Z"
     },
     {
       "description": "A reliability harness for document-review agents, with evidence-grounded verification, parallel execution, durable recovery, and live tool traces across PDFs and spreadsheets.",
