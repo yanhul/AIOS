@@ -25,6 +25,7 @@ _PROVIDER_RETRY_BACKOFF = (1, 2)
 
 _DENIED_PREFIXES = (".github/", ".aios/", "secrets/", ".git/")
 _DENIED_NAMES = {".env", ".env.local", ".env.production", "credentials.json"}
+_DENIED_COMPONENTS = {".git", ".github", ".aios", "secrets", "tests"}
 
 
 def _validate_patch_paths(payload: Mapping[str, Any]) -> None:
@@ -43,7 +44,7 @@ def _validate_patch_paths(payload: Mapping[str, Any]) -> None:
             path.startswith("/")
             or ".." in parts
             or path in _DENIED_NAMES
-            or path.startswith("tests/")
+            or any(part in _DENIED_COMPONENTS for part in parts)
             or any(path == p.rstrip("/") or path.startswith(p) for p in _DENIED_PREFIXES)
         ):
             raise TryRepairProviderError("provider returned protected patch path")
