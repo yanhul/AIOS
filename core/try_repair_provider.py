@@ -23,7 +23,7 @@ _PROVIDER_RETRY_ATTEMPTS = 3
 _PROVIDER_RETRY_BACKOFF = (1, 2)
 
 
-_DENIED_PREFIXES = (".github/workflows/", ".aios/", "secrets/")
+_DENIED_PREFIXES = (".github/", ".aios/", "secrets/", ".git/")
 _DENIED_NAMES = {".env", ".env.local", ".env.production", "credentials.json"}
 
 
@@ -87,7 +87,11 @@ def propose(*, request_id: str, repository: str, sha: str, attempt: int,
     token = os.environ.get("TRY_REPAIR_PROVIDER_TOKEN", "")
     if not url or not token:
         raise TryRepairProviderError("TRY provider endpoint/token not configured")
-    if not request_id or len(sha) != 40:
+    if not isinstance(request_id, str) or not request_id.strip() or not isinstance(repository, str) or not repository.strip():
+        raise TryRepairProviderError("invalid provider request identity")
+    if not isinstance(sha, str) or len(sha) != 40 or any(ch not in "0123456789abcdefABCDEF" for ch in sha):
+        raise TryRepairProviderError("invalid provider request identity")
+    if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 1:
         raise TryRepairProviderError("invalid provider request identity")
     body = {
         "request_id": request_id,
