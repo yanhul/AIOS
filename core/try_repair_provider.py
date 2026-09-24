@@ -28,11 +28,17 @@ _DENIED_NAMES = {".env", ".env.local", ".env.production", "credentials.json"}
 
 
 def _validate_patch_paths(payload: Mapping[str, Any]) -> None:
+    seen: set[str] = set()
     for item in payload["files"]:
         if not isinstance(item, dict) or not isinstance(item.get("path"), str) or not isinstance(item.get("content"), str):
             raise TryRepairProviderError("provider returned invalid patch file")
         path = item["path"].replace("\\", "/")
         parts = path.split("/")
+        if not path or any(part in {"", "."} for part in parts) or path.endswith("/"):
+            raise TryRepairProviderError("provider returned ambiguous patch path")
+        if path in seen:
+            raise TryRepairProviderError("provider returned duplicate patch path")
+        seen.add(path)
         if (
             path.startswith("/")
             or ".." in parts
