@@ -155,3 +155,22 @@ def test_provider_rejects_duplicate_normalized_patch_paths(monkeypatch):
             request_id="r", repository="yanhul/AIOS", sha="a"*40, attempt=1,
             failure={}, source={"core/x.py": "x=1\n"},
         )
+
+
+def test_provider_rejects_nested_protected_patch_path(monkeypatch):
+    class Resp:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self):
+            return json.dumps({
+                "schema": 2, "root_cause": "x", "proposed_fix": "y",
+                "files": [{"path": "vendor/.git/config", "content": "x"}],
+            }).encode()
+    monkeypatch.setenv("TRY_REPAIR_PROVIDER_URL", "http://127.0.0.1:8787")
+    monkeypatch.setenv("TRY_REPAIR_PROVIDER_TOKEN", "x")
+    monkeypatch.setattr(try_repair_provider, "_open", lambda *a, **k: Resp())
+    with pytest.raises(try_repair_provider.TryRepairProviderError, match="protected patch path"):
+        try_repair_provider.propose(
+            request_id="r", repository="yanhul/AIOS", sha="a"*40, attempt=1,
+            failure={}, source={"core/x.py": "x=1\n"},
+        )
