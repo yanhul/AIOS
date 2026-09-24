@@ -4,30 +4,45 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-a9d0701aa46bfd86",
+      "candidate_id": "cand-bb3b84db72d6c0a4",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "115117b47b2a75da7c93c44f5e76d2dab43d98bcd3d8be2bed86698372e125fd",
-      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
+      "source_digest": "e7d55eaa4e26a1b55566c594cd28a0b37e66f825c36226ac59cd3b6d6f3483ef",
+      "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-9f22b319e35cfa95",
+      "candidate_id": "cand-872226ea25c7780e",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "886ac0773d57f4ddedcb4c5c658bd9e61f6dff60453135a966758d21aa8ebcd6",
-      "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
+      "source_digest": "c4e76dc0f8e68ac152d4dc5b13f18d1eb0baa601d76e575aaed858f899ab749f",
+      "source_ref": "https://github.com/superdurable/superagent",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-c227814f5296fc8d",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "86304cad9e2e22bfc5e972ac6f898bfb0e78675f7e81a72b18f63f39dc0d7f69",
+      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -58,21 +73,6 @@
       "ref": "main",
       "source_digest": "cd618b5d8aa6d49a88c2808eac215c623de87e0b4c6534978f6c079656810a0a",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-7fdb248e40c5dbd5",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "0d75502efa0bac23e881aab5df33f516bf44fa7d3f527d5a7507970b1139902b",
-      "source_ref": "https://github.com/superdurable/superagent",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -199,14 +199,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-941b5687a3d890e5",
+      "candidate_id": "cand-4d5b3feeec818fb2",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "db19b94407bf746b453216381c5371911ff1d5938d060cf08f99a0f614587115",
+      "source_digest": "ce108a886e1c9d65f623cd980ffe114d93a9ed625b509eebae03552af761a538",
       "source_ref": "https://github.com/qingyou0420/trueheart-core",
       "status": "UNTRUSTED_EVIDENCE"
     },

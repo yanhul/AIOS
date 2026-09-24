@@ -2,24 +2,34 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
-      "description": "An open Agents API for Cloudflare Workers, with durable sessions, pluggable harnesses, and isolated execution.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "inaridiy/CF-Open-Agents-API",
-      "source_digest": "115117b47b2a75da7c93c44f5e76d2dab43d98bcd3d8be2bed86698372e125fd",
-      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
-      "stars": 22,
-      "updated_at": "2026-09-23T15:33:48Z"
-    },
-    {
       "description": "Open-source Windows agent harness for safe, auditable AI execution with approvals, reversible changes, durable task state, multi-agent coordination, and local/cloud model adapters.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "andrewgodowsky-aoa/diomedes",
-      "source_digest": "886ac0773d57f4ddedcb4c5c658bd9e61f6dff60453135a966758d21aa8ebcd6",
+      "source_digest": "e7d55eaa4e26a1b55566c594cd28a0b37e66f825c36226ac59cd3b6d6f3483ef",
       "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
       "stars": 0,
-      "updated_at": "2026-09-23T14:57:03Z"
+      "updated_at": "2026-09-24T07:25:10Z"
+    },
+    {
+      "description": "Golang agent harness & framework. Multi-agent architecture, built on Durable Execution(Dex/Temporal), to build cloud based agents",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "superdurable/superagent",
+      "source_digest": "c4e76dc0f8e68ac152d4dc5b13f18d1eb0baa601d76e575aaed858f899ab749f",
+      "source_ref": "https://github.com/superdurable/superagent",
+      "stars": 9,
+      "updated_at": "2026-09-24T07:11:27Z"
+    },
+    {
+      "description": "An open Agents API for Cloudflare Workers, with durable sessions, pluggable harnesses, and isolated execution.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "inaridiy/CF-Open-Agents-API",
+      "source_digest": "86304cad9e2e22bfc5e972ac6f898bfb0e78675f7e81a72b18f63f39dc0d7f69",
+      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
+      "stars": 22,
+      "updated_at": "2026-09-24T04:59:57Z"
     },
     {
       "description": "A reliability harness for document-review agents, with evidence-grounded verification, parallel execution, durable recovery, and live tool traces across PDFs and spreadsheets.",
@@ -40,16 +50,6 @@
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "stars": 0,
       "updated_at": "2026-09-23T11:44:20Z"
-    },
-    {
-      "description": "Golang agent harness & framework. Multi-agent architecture, built on Durable Execution(Dex/Temporal), to build cloud based agents",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "superdurable/superagent",
-      "source_digest": "0d75502efa0bac23e881aab5df33f516bf44fa7d3f527d5a7507970b1139902b",
-      "source_ref": "https://github.com/superdurable/superagent",
-      "stars": 9,
-      "updated_at": "2026-09-23T06:15:22Z"
     },
     {
       "description": "A TORCS-based autonomous driving experimentation framework for testing rule-based racing agents, logging telemetry, tuning hyperparameters, and analysing performance for dissertation research",
@@ -136,7 +136,7 @@
       "query": "agent memory provenance governance",
       "ref": "main",
       "repo": "qingyou0420/trueheart-core",
-      "source_digest": "db19b94407bf746b453216381c5371911ff1d5938d060cf08f99a0f614587115",
+      "source_digest": "ce108a886e1c9d65f623cd980ffe114d93a9ed625b509eebae03552af761a538",
       "source_ref": "https://github.com/qingyou0420/trueheart-core",
       "stars": 0,
       "updated_at": "2026-08-20T06:38:46Z"
