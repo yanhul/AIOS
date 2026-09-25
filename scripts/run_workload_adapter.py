@@ -255,6 +255,12 @@ def main() -> int:
             "provenance": result["provenance"], "manifest_sha256": "sha256:" + sha256_bytes(manifest_path.read_bytes()),
             "result_sha256": "sha256:" + sha256_bytes(canonical_json(result).encode()),
         }
+        if result.get("reason"):
+            receipt["reason"] = result["reason"]
+        diagnostic_keys = {"validation_passed", "validation_metrics", "oos_present", "oos_metrics", "diagnostic_schema_version"}
+        diagnostics = {k: result[k] for k in diagnostic_keys if k in result}
+        if diagnostics:
+            receipt["diagnostics"] = diagnostics
         receipt["receipt_sha256"] = receipt_digest(receipt)
         if receipt_path:
             persist_receipt(receipt_path, receipt)
