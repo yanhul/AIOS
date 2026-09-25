@@ -29,5 +29,7 @@ jobs:
           else
             python scripts/test_audit_gate.py
           fi
+      - name: Install test runner
+        run: python -m pip install pytest
       - name: Validate the gate itself
         run: python -m pytest -q tests/test_test_audit_gate.py
