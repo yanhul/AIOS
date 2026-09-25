@@ -35,14 +35,17 @@ jobs:
       - name: Checkout registered workloads
         run: |
           git clone --depth 1 --no-checkout https://github.com/yanhul/try.git "$RUNNER_TEMP/try"
-          git -C "$RUNNER_TEMP/try" fetch --depth 1 origin 1acd62fb7f6622a0bbe6e6909599b4606abd90ab1
-          git -C "$RUNNER_TEMP/try" checkout --detach 1acd62fb7f6622a0bbe6e6909599b4606abd90ab1
+          git -C "$RUNNER_TEMP/try" fetch --depth 1 origin main
+          test "$(git -C "$RUNNER_TEMP/try" rev-parse FETCH_HEAD)" = "1acd62fb7f6622a0bbe6e6909599b4606abd90ab1"
+          git -C "$RUNNER_TEMP/try" checkout --detach FETCH_HEAD
           git clone --depth 1 --no-checkout https://github.com/yanhul/android-ai-assistant.git "$RUNNER_TEMP/android-ai-assistant"
-          git -C "$RUNNER_TEMP/android-ai-assistant" fetch --depth 1 origin b3efa8153cb0a595c491829cc9fd9ce200bd170a
-          git -C "$RUNNER_TEMP/android-ai-assistant" checkout --detach b3efa8153cb0a595c491829cc9fd9ce200bd170a
+          git -C "$RUNNER_TEMP/android-ai-assistant" fetch --depth 1 origin main
+          test "$(git -C "$RUNNER_TEMP/android-ai-assistant" rev-parse FETCH_HEAD)" = "b3efa8153cb0a595c491829cc9fd9ce200bd170a"
+          git -C "$RUNNER_TEMP/android-ai-assistant" checkout --detach FETCH_HEAD
           git clone --depth 1 --no-checkout https://github.com/yanhul/RX50.git "$RUNNER_TEMP/RX50"
-          git -C "$RUNNER_TEMP/RX50" fetch --depth 1 origin 1f1abf3df019b2c40a89218f726620e6e3a96e25
-          git -C "$RUNNER_TEMP/RX50" checkout --detach 1f1abf3df019b2c40a89218f726620e6e3a96e25
+          git -C "$RUNNER_TEMP/RX50" fetch --depth 1 origin main
+          test "$(git -C "$RUNNER_TEMP/RX50" rev-parse FETCH_HEAD)" = "1f1abf3df019b2c40a89218f726620e6e3a96e25"
+          git -C "$RUNNER_TEMP/RX50" checkout --detach FETCH_HEAD
       - name: Run live registered-workload conformance
         run: |
           python scripts/run_3_workload_conformance.py \
