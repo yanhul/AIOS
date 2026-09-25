@@ -97,3 +97,9 @@ jobs:
             sleep 2
           done
           exit 1
+
+      - name: Dispatch CI after governed research commit
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref main
