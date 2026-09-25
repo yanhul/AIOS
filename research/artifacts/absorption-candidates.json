@@ -4,45 +4,45 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-1f658f6931a1320c",
+      "candidate_id": "cand-958b4a3484ff7d7a",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "ebce0ca31b02be2c14ee277a5c6026168c5a474a93ebd6ecd032ca0a71871464",
-      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-6381fa59035186de",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "92e41485334df342debcb2fe01abe9b48f6b6c78bfd2e9aa381c89155b70cffe",
-      "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-872226ea25c7780e",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "c4e76dc0f8e68ac152d4dc5b13f18d1eb0baa601d76e575aaed858f899ab749f",
+      "source_digest": "1dbb0bcb5fc6d0accc436000b0e412730a2ed66e560f4dfb77307bf93fc4fc11",
       "source_ref": "https://github.com/superdurable/superagent",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-fa9150a1c862c901",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "559115ef3e168d431505bb1baeab01d95455d93841ff173f53be99b47d853628",
+      "source_ref": "https://github.com/keshav9926/drydock",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-90043ae9f13d5757",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "e1a436e9ff3cc8f68863f376e909346b774d9ee8dbdaa41596b63ba83f8af939",
+      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {

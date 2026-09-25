@@ -2,34 +2,34 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
-      "description": "An open Agents API for Cloudflare Workers, with durable sessions, pluggable harnesses, and isolated execution.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "inaridiy/CF-Open-Agents-API",
-      "source_digest": "ebce0ca31b02be2c14ee277a5c6026168c5a474a93ebd6ecd032ca0a71871464",
-      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
-      "stars": 22,
-      "updated_at": "2026-09-24T10:00:23Z"
-    },
-    {
-      "description": "Open-source Windows agent harness for safe, auditable AI execution with approvals, reversible changes, durable task state, multi-agent coordination, and local/cloud model adapters.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "andrewgodowsky-aoa/diomedes",
-      "source_digest": "92e41485334df342debcb2fe01abe9b48f6b6c78bfd2e9aa381c89155b70cffe",
-      "source_ref": "https://github.com/andrewgodowsky-aoa/diomedes",
-      "stars": 0,
-      "updated_at": "2026-09-24T09:42:22Z"
-    },
-    {
       "description": "Golang agent harness & framework. Multi-agent architecture, built on Durable Execution(Dex/Temporal), to build cloud based agents",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "superdurable/superagent",
-      "source_digest": "c4e76dc0f8e68ac152d4dc5b13f18d1eb0baa601d76e575aaed858f899ab749f",
+      "source_digest": "1dbb0bcb5fc6d0accc436000b0e412730a2ed66e560f4dfb77307bf93fc4fc11",
       "source_ref": "https://github.com/superdurable/superagent",
       "stars": 9,
-      "updated_at": "2026-09-24T07:11:27Z"
+      "updated_at": "2026-09-25T04:17:40Z"
+    },
+    {
+      "description": "Keel, a durable execution runtime for AI agents, and Crashproof, the harness that tries to break it and everyone else's.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "keshav9926/drydock",
+      "source_digest": "559115ef3e168d431505bb1baeab01d95455d93841ff173f53be99b47d853628",
+      "source_ref": "https://github.com/keshav9926/drydock",
+      "stars": 0,
+      "updated_at": "2026-09-25T00:06:42Z"
+    },
+    {
+      "description": "An open Agents API for Cloudflare Workers, with durable sessions, pluggable harnesses, and isolated execution.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "inaridiy/CF-Open-Agents-API",
+      "source_digest": "e1a436e9ff3cc8f68863f376e909346b774d9ee8dbdaa41596b63ba83f8af939",
+      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
+      "stars": 22,
+      "updated_at": "2026-09-24T10:00:23Z"
     },
     {
       "description": "A reliability harness for document-review agents, with evidence-grounded verification, parallel execution, durable recovery, and live tool traces across PDFs and spreadsheets.",
