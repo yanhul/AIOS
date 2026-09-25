@@ -1,0 +1,33 @@
+name: Test Audit Gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  authoring-gate:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch PR base
+        if: github.event_name == 'pull_request'
+        run: git fetch origin "${{ github.base_ref }}":refs/remotes/origin/"${{ github.base_ref }}" --depth=1
+      - name: Run AIOS test authoring gate
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python scripts/test_audit_gate.py --base "origin/${{ github.base_ref }}"
+          else
+            python scripts/test_audit_gate.py
+          fi
+      - name: Validate the gate itself
+        run: python -m pytest -q tests/test_test_audit_gate.py
