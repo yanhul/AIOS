@@ -34,13 +34,13 @@ jobs:
         run: python -m pytest -q
       - name: Checkout registered workloads
         run: |
-          git clone --depth 1 https://github.com/yanhul/try.git "$RUNNER_TEMP/try"
+          git clone --depth 1 --no-checkout https://github.com/yanhul/try.git "$RUNNER_TEMP/try"
           git -C "$RUNNER_TEMP/try" fetch --depth 1 origin 7d9e3787f0c211c3e089e906a149c34ea5e0dc55
           git -C "$RUNNER_TEMP/try" checkout --detach 5202f02971c07020e337078650f398cd1a305e75
-          git clone --depth 1 https://github.com/yanhul/android-ai-assistant.git "$RUNNER_TEMP/android-ai-assistant"
+          git clone --depth 1 --no-checkout https://github.com/yanhul/android-ai-assistant.git "$RUNNER_TEMP/android-ai-assistant"
           git -C "$RUNNER_TEMP/android-ai-assistant" fetch --depth 1 origin b3efa8153cb0a595c491829cc9fd9ce200bd170a
           git -C "$RUNNER_TEMP/android-ai-assistant" checkout --detach b3efa8153cb0a595c491829cc9fd9ce200bd170a
-          git clone --depth 1 https://github.com/yanhul/RX50.git "$RUNNER_TEMP/RX50"
+          git clone --depth 1 --no-checkout https://github.com/yanhul/RX50.git "$RUNNER_TEMP/RX50"
           git -C "$RUNNER_TEMP/RX50" fetch --depth 1 origin 1f1abf3df019b2c40a89218f726620e6e3a96e25
           git -C "$RUNNER_TEMP/RX50" checkout --detach 1f1abf3df019b2c40a89218f726620e6e3a96e25
       - name: Run live registered-workload conformance
@@ -51,7 +51,7 @@ jobs:
             --root yanhul/RX50 "$RUNNER_TEMP/RX50"
       - name: Checkout MiniMind capability provider
         run: |
-          git clone --depth 1 https://github.com/jingyaogong/minimind.git "$RUNNER_TEMP/minimind"
+          git clone --depth 1 --no-checkout https://github.com/jingyaogong/minimind.git "$RUNNER_TEMP/minimind"
           git -C "$RUNNER_TEMP/minimind" fetch --depth 1 origin 6fc918beb68a0d8c40452338df6319fe168014ba
           git -C "$RUNNER_TEMP/minimind" checkout --detach 6fc918beb68a0d8c40452338df6319fe168014ba
       - name: Check MiniMind capability
