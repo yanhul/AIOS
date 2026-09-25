@@ -82,9 +82,9 @@ jobs:
           files = {p.name for p in root.glob("*.json")}
           assert files == expected, (files, expected)
           results = {p.name: json.loads(p.read_text()) for p in root.glob("*.json")}
-          allowed = {"PASS", "BLOCKED", "INCONCLUSIVE", "EDGE_FOUND", "NO_EDGE_FOUND", "REJECT", "PROMOTE"}
+          allowed = {"PASS"}
           invalid = {name: obj.get("status") for name, obj in results.items() if obj.get("status") not in allowed}
-          assert not invalid, f"ungoverned product result: {invalid}"
+          assert not invalid, f"product conformance not PASS: {invalid}"
           missing_evidence = {
               name: obj.get("status") for name, obj in results.items()
               if not obj.get("evidence_refs") or not obj.get("verification_refs")
