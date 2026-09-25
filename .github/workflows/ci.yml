@@ -36,7 +36,7 @@ jobs:
         run: |
           git clone --depth 1 --no-checkout https://github.com/yanhul/try.git "$RUNNER_TEMP/try"
           git -C "$RUNNER_TEMP/try" fetch --depth 1 origin 7d9e3787f0c211c3e089e906a149c34ea5e0dc55
-          git -C "$RUNNER_TEMP/try" checkout --detach 5202f02971c07020e337078650f398cd1a305e75
+          git -C "$RUNNER_TEMP/try" checkout --detach 7d9e3787f0c211c3e089e906a149c34ea5e0dc55
           git clone --depth 1 --no-checkout https://github.com/yanhul/android-ai-assistant.git "$RUNNER_TEMP/android-ai-assistant"
           git -C "$RUNNER_TEMP/android-ai-assistant" fetch --depth 1 origin b3efa8153cb0a595c491829cc9fd9ce200bd170a
           git -C "$RUNNER_TEMP/android-ai-assistant" checkout --detach b3efa8153cb0a595c491829cc9fd9ce200bd170a
