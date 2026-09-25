@@ -36,7 +36,7 @@ def git_files(base: str | None) -> list[str]:
     return [p for p in out if p.endswith(".py")]
 
 def markers(text: str) -> set[str]:
-    return {line.split(":", 1)[0].strip() for line in text.splitlines()
+    return {line.lstrip()[1:].split(":", 1)[0].strip() for line in text.splitlines()
             if line.lstrip().startswith("# AIOS-") and ":" in line}
 
 def assertion_count(tree: ast.AST) -> int:
