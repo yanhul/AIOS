@@ -43,9 +43,9 @@ jobs:
           git -C "$RUNNER_TEMP/android-ai-assistant" checkout --detach refs/remotes/origin/aios-conformance/android
           test "$(git -C "$RUNNER_TEMP/android-ai-assistant" rev-parse HEAD)" = "56b1bcf7fd2d4cede6e151e981a4b9063a464d28"
           git clone --depth 1 --no-checkout https://github.com/yanhul/RX50.git "$RUNNER_TEMP/RX50"
-          git -C "$RUNNER_TEMP/RX50" fetch --depth 1 origin main
-          test "$(git -C "$RUNNER_TEMP/RX50" rev-parse FETCH_HEAD)" = "1f1abf3df019b2c40a89218f726620e6e3a96e25"
-          git -C "$RUNNER_TEMP/RX50" checkout --detach FETCH_HEAD
+          git -C "$RUNNER_TEMP/RX50" fetch --depth 1 origin refs/heads/aios-conformance/rx50:refs/remotes/origin/aios-conformance/rx50
+          git -C "$RUNNER_TEMP/RX50" checkout --detach refs/remotes/origin/aios-conformance/rx50
+          test "$(git -C "$RUNNER_TEMP/RX50" rev-parse HEAD)" = "040e462ef63bc03fe4d5448a6dbf68dde0e4f6eb"
       - name: Run live registered-workload conformance
         run: |
           python scripts/run_3_workload_conformance.py \
