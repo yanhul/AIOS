@@ -4,6 +4,36 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
+      "candidate_id": "cand-b8bdfa9a26a6aa8c",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "master",
+      "source_digest": "0facf6094761d355cc6611bd0ad72e8af1c81eace8f712c0baa4086ea7e222a7",
+      "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-2991e00fc64e2acf",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "0aa82ccc643a8410886b4f659f203b65a75ad7d8f96d264893fae733185961d0",
+      "source_ref": "https://github.com/superdurable/superagent",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
       "candidate_id": "cand-aa8f24310b61c0d2",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
@@ -34,21 +64,6 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-958b4a3484ff7d7a",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "1dbb0bcb5fc6d0accc436000b0e412730a2ed66e560f4dfb77307bf93fc4fc11",
-      "source_ref": "https://github.com/superdurable/superagent",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
       "candidate_id": "cand-a8b15efe8324c20e",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
@@ -58,21 +73,6 @@
       "ref": "main",
       "source_digest": "b611976f753492ce91882962f3079aac5d7265d6b652b08c684923188b67c582",
       "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-b55c719d5c18408c",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "7f5462fdd7fa5e61e99acf052b4170b2d1bf64580cde476219c60e3738595415",
-      "source_ref": "https://github.com/BerrySeriousCoder/verity",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {

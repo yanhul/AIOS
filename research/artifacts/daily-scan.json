@@ -2,6 +2,26 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
+      "description": "Fork of DeepSeek Harness: plugin-based agent runtime on Cordis with head/executor orchestration, unified execution state machine, durable event journal, skill manager and Web GUI",
+      "query": "agent harness durable execution",
+      "ref": "master",
+      "repo": "Ydjin1984/DeepSeek_Kibborg_Harness",
+      "source_digest": "0facf6094761d355cc6611bd0ad72e8af1c81eace8f712c0baa4086ea7e222a7",
+      "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
+      "stars": 1,
+      "updated_at": "2026-09-25T20:02:56Z"
+    },
+    {
+      "description": "Golang agent harness & framework. Multi-agent architecture, built on Durable Execution(Dex/Temporal), to build cloud based agents",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "superdurable/superagent",
+      "source_digest": "0aa82ccc643a8410886b4f659f203b65a75ad7d8f96d264893fae733185961d0",
+      "source_ref": "https://github.com/superdurable/superagent",
+      "stars": 9,
+      "updated_at": "2026-09-25T19:07:32Z"
+    },
+    {
       "description": "Keel, a durable execution runtime for AI agents, and Crashproof, the harness that tries to break it and everyone else's.",
       "query": "agent harness durable execution",
       "ref": "main",
@@ -22,16 +42,6 @@
       "updated_at": "2026-09-25T11:01:53Z"
     },
     {
-      "description": "Golang agent harness & framework. Multi-agent architecture, built on Durable Execution(Dex/Temporal), to build cloud based agents",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "superdurable/superagent",
-      "source_digest": "1dbb0bcb5fc6d0accc436000b0e412730a2ed66e560f4dfb77307bf93fc4fc11",
-      "source_ref": "https://github.com/superdurable/superagent",
-      "stars": 9,
-      "updated_at": "2026-09-25T04:17:40Z"
-    },
-    {
       "description": "An open Agents API for Cloudflare Workers, with durable sessions, pluggable harnesses, and isolated execution.",
       "query": "agent harness durable execution",
       "ref": "main",
@@ -40,16 +50,6 @@
       "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
       "stars": 23,
       "updated_at": "2026-09-25T12:07:48Z"
-    },
-    {
-      "description": "A reliability harness for document-review agents, with evidence-grounded verification, parallel execution, durable recovery, and live tool traces across PDFs and spreadsheets.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "BerrySeriousCoder/verity",
-      "source_digest": "7f5462fdd7fa5e61e99acf052b4170b2d1bf64580cde476219c60e3738595415",
-      "source_ref": "https://github.com/BerrySeriousCoder/verity",
-      "stars": 0,
-      "updated_at": "2026-09-23T12:55:32Z"
     },
     {
       "description": "A TORCS-based autonomous driving experimentation framework for testing rule-based racing agents, logging telemetry, tuning hyperparameters, and analysing performance for dissertation research",
