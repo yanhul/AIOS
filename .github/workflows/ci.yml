@@ -39,9 +39,9 @@ jobs:
           git -C "$RUNNER_TEMP/try" checkout --detach refs/remotes/origin/aios-conformance/try
           test "$(git -C "$RUNNER_TEMP/try" rev-parse HEAD)" = "1acd62fb7f6622a0bbe6e6909599b4606abd90ab"
           git clone --depth 1 --no-checkout https://github.com/yanhul/android-ai-assistant.git "$RUNNER_TEMP/android-ai-assistant"
-          git -C "$RUNNER_TEMP/android-ai-assistant" fetch --depth 1 origin main
-          test "$(git -C "$RUNNER_TEMP/android-ai-assistant" rev-parse FETCH_HEAD)" = "b3efa8153cb0a595c491829cc9fd9ce200bd170a"
-          git -C "$RUNNER_TEMP/android-ai-assistant" checkout --detach FETCH_HEAD
+          git -C "$RUNNER_TEMP/android-ai-assistant" fetch --depth 1 origin refs/heads/aios-conformance/android:refs/remotes/origin/aios-conformance/android
+          git -C "$RUNNER_TEMP/android-ai-assistant" checkout --detach refs/remotes/origin/aios-conformance/android
+          test "$(git -C "$RUNNER_TEMP/android-ai-assistant" rev-parse HEAD)" = "56b1bcf7fd2d4cede6e151e981a4b9063a464d28"
           git clone --depth 1 --no-checkout https://github.com/yanhul/RX50.git "$RUNNER_TEMP/RX50"
           git -C "$RUNNER_TEMP/RX50" fetch --depth 1 origin main
           test "$(git -C "$RUNNER_TEMP/RX50" rev-parse FETCH_HEAD)" = "1f1abf3df019b2c40a89218f726620e6e3a96e25"
