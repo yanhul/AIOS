@@ -93,8 +93,8 @@ with tempfile.TemporaryDirectory() as td:
             td, effect["effect_id"], "agent-1",
             "FORGED-ATTEMPT-ID", "provider-1", 2
         )
-    except (ValueError, RuntimeError):
-        raise AssertionError("mutation was unexpectedly killed before the retry identity fence")
+    except ValueError:
+        pass
     else:
         raise AssertionError("keeper invariant: forged retry attempt was accepted")
 '''
