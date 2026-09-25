@@ -2,6 +2,26 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
+      "description": "Keel, a durable execution runtime for AI agents, and Crashproof, the harness that tries to break it and everyone else's.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "keshav9926/drydock",
+      "source_digest": "bd6314227cc47dee4706051a96d11f94ce27d070ac812ba59522dacaa578c421",
+      "source_ref": "https://github.com/keshav9926/drydock",
+      "stars": 0,
+      "updated_at": "2026-09-25T12:30:16Z"
+    },
+    {
+      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "Root1V/aeon-agent-harness",
+      "source_digest": "3260258a5b9f3cfc2a629b817369d194c122200a1dd974d2f2dc7b738e034456",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
+      "stars": 0,
+      "updated_at": "2026-09-25T11:01:53Z"
+    },
+    {
       "description": "Golang agent harness & framework. Multi-agent architecture, built on Durable Execution(Dex/Temporal), to build cloud based agents",
       "query": "agent harness durable execution",
       "ref": "main",
@@ -12,24 +32,14 @@
       "updated_at": "2026-09-25T04:17:40Z"
     },
     {
-      "description": "Keel, a durable execution runtime for AI agents, and Crashproof, the harness that tries to break it and everyone else's.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "keshav9926/drydock",
-      "source_digest": "559115ef3e168d431505bb1baeab01d95455d93841ff173f53be99b47d853628",
-      "source_ref": "https://github.com/keshav9926/drydock",
-      "stars": 0,
-      "updated_at": "2026-09-25T00:06:42Z"
-    },
-    {
       "description": "An open Agents API for Cloudflare Workers, with durable sessions, pluggable harnesses, and isolated execution.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "inaridiy/CF-Open-Agents-API",
-      "source_digest": "e1a436e9ff3cc8f68863f376e909346b774d9ee8dbdaa41596b63ba83f8af939",
+      "source_digest": "b611976f753492ce91882962f3079aac5d7265d6b652b08c684923188b67c582",
       "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
-      "stars": 22,
-      "updated_at": "2026-09-24T10:00:23Z"
+      "stars": 23,
+      "updated_at": "2026-09-25T12:07:48Z"
     },
     {
       "description": "A reliability harness for document-review agents, with evidence-grounded verification, parallel execution, durable recovery, and live tool traces across PDFs and spreadsheets.",
@@ -40,16 +50,6 @@
       "source_ref": "https://github.com/BerrySeriousCoder/verity",
       "stars": 0,
       "updated_at": "2026-09-23T12:55:32Z"
-    },
-    {
-      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "Root1V/aeon-agent-harness",
-      "source_digest": "cd618b5d8aa6d49a88c2808eac215c623de87e0b4c6534978f6c079656810a0a",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "stars": 0,
-      "updated_at": "2026-09-23T11:44:20Z"
     },
     {
       "description": "A TORCS-based autonomous driving experimentation framework for testing rule-based racing agents, logging telemetry, tuning hyperparameters, and analysing performance for dissertation research",
@@ -126,10 +126,10 @@
       "query": "agent memory provenance governance",
       "ref": "vaixlns-architecture",
       "repo": "VAIXLNS/VAIXLNS",
-      "source_digest": "468dd38320f6d0803fd14d8e6fbbf0b10708f11d34dbd0dcc8779f8c7e272b32",
+      "source_digest": "5ac6b73155d5b695e4c3e8cfbe3a273b387126bb6174ebb9ed1eb05353d16cbf",
       "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
-      "stars": 4,
-      "updated_at": "2026-09-21T19:16:00Z"
+      "stars": 5,
+      "updated_at": "2026-09-25T11:27:18Z"
     },
     {
       "description": "A model-independent memory governance core for AI agents: provenance, scope isolation, retention, lineage, and non-resurrection.",
