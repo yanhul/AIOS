@@ -37,7 +37,7 @@ jobs:
           git clone --depth 1 --no-checkout https://github.com/yanhul/try.git "$RUNNER_TEMP/try"
           git -C "$RUNNER_TEMP/try" fetch --depth 1 origin refs/heads/absorb/verl-strict-outcomes:refs/remotes/origin/absorb/verl-strict-outcomes
           git -C "$RUNNER_TEMP/try" checkout --detach refs/remotes/origin/absorb/verl-strict-outcomes
-          test "$(git -C "$RUNNER_TEMP/try" rev-parse HEAD)" = "24fea225d77394b888bbe5168470d1e965c40e23"
+          test "$(git -C "$RUNNER_TEMP/try" rev-parse HEAD)" = "e5c9b02af502f05e17b933b03e27a3139bb561e9"
           git clone --depth 1 --no-checkout https://github.com/yanhul/android-ai-assistant.git "$RUNNER_TEMP/android-ai-assistant"
           git -C "$RUNNER_TEMP/android-ai-assistant" fetch --depth 1 origin refs/heads/aios-conformance/android:refs/remotes/origin/aios-conformance/android
           git -C "$RUNNER_TEMP/android-ai-assistant" checkout --detach refs/remotes/origin/aios-conformance/android
