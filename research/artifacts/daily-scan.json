@@ -6,10 +6,20 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "omnirexflora-labs/omnicoreagent",
-      "source_digest": "c7831385c643587551662f912e9708a1dbc3c601cc110f87b86db1f9953fdfb2",
+      "source_digest": "9363652d7bd01adc7e480030567abf3096b37bdab7bb925b9304ba141e4bfddb",
       "source_ref": "https://github.com/omnirexflora-labs/omnicoreagent",
       "stars": 247,
-      "updated_at": "2026-09-26T07:28:47Z"
+      "updated_at": "2026-09-26T15:01:22Z"
+    },
+    {
+      "description": "Fork of DeepSeek Harness: plugin-based agent runtime on Cordis with head/executor orchestration, unified execution state machine, durable event journal, skill manager and Web GUI",
+      "query": "agent harness durable execution",
+      "ref": "master",
+      "repo": "Ydjin1984/DeepSeek_Kibborg_Harness",
+      "source_digest": "e56845e5cac0205fec812a3498ae523d9e6248caeb79eb273cbc747dcca28d4b",
+      "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
+      "stars": 1,
+      "updated_at": "2026-09-26T12:39:57Z"
     },
     {
       "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
@@ -20,16 +30,6 @@
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "stars": 0,
       "updated_at": "2026-09-26T01:13:51Z"
-    },
-    {
-      "description": "Fork of DeepSeek Harness: plugin-based agent runtime on Cordis with head/executor orchestration, unified execution state machine, durable event journal, skill manager and Web GUI",
-      "query": "agent harness durable execution",
-      "ref": "master",
-      "repo": "Ydjin1984/DeepSeek_Kibborg_Harness",
-      "source_digest": "0facf6094761d355cc6611bd0ad72e8af1c81eace8f712c0baa4086ea7e222a7",
-      "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
-      "stars": 1,
-      "updated_at": "2026-09-25T20:02:56Z"
     },
     {
       "description": "Golang agent harness & framework. Multi-agent architecture, built on Durable Execution(Dex/Temporal), to build cloud based agents",

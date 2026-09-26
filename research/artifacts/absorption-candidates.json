@@ -4,15 +4,30 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-cbfb6e9c2038b803",
+      "candidate_id": "cand-4b56c505235fa969",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "c7831385c643587551662f912e9708a1dbc3c601cc110f87b86db1f9953fdfb2",
+      "source_digest": "9363652d7bd01adc7e480030567abf3096b37bdab7bb925b9304ba141e4bfddb",
       "source_ref": "https://github.com/omnirexflora-labs/omnicoreagent",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-005053701aacb7fe",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "master",
+      "source_digest": "e56845e5cac0205fec812a3498ae523d9e6248caeb79eb273cbc747dcca28d4b",
+      "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -28,21 +43,6 @@
       "ref": "main",
       "source_digest": "cb67c99eb3c4eb0334ab63293b5c25ab9888758c36140d5acd88e1999e733c57",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-b8bdfa9a26a6aa8c",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "master",
-      "source_digest": "0facf6094761d355cc6611bd0ad72e8af1c81eace8f712c0baa4086ea7e222a7",
-      "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
