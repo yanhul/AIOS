@@ -1,3 +1,8 @@
+# AIOS-CONTRACT: execution lineage context must remain immutable and complete
+# AIOS-REGRESSION: reject tampered or incomplete policy/environment/provider lineage
+# AIOS-OWNER: control-plane execution provenance
+# AIOS-COVERAGE-GAP: provider/environment revision was not previously bound to trajectory
+# AIOS-BASELINE: no pre-existing test covered strict trajectory-context digesting
 from core.execution_lineage import ExecutionLineage, require_lineage_fields, validate_lineage
 import pytest
 
