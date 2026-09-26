@@ -2,6 +2,26 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
+      "description": "Open Python agent runtime and harness for production AI applications, with an SDK for governed tools, durable runs, sandboxes, budgets, execution evidence, and evaluation integrations.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "omnirexflora-labs/omnicoreagent",
+      "source_digest": "c7831385c643587551662f912e9708a1dbc3c601cc110f87b86db1f9953fdfb2",
+      "source_ref": "https://github.com/omnirexflora-labs/omnicoreagent",
+      "stars": 247,
+      "updated_at": "2026-09-26T07:28:47Z"
+    },
+    {
+      "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
+      "source_digest": "cb67c99eb3c4eb0334ab63293b5c25ab9888758c36140d5acd88e1999e733c57",
+      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
+      "stars": 0,
+      "updated_at": "2026-09-26T01:13:51Z"
+    },
+    {
       "description": "Fork of DeepSeek Harness: plugin-based agent runtime on Cordis with head/executor orchestration, unified execution state machine, durable event journal, skill manager and Web GUI",
       "query": "agent harness durable execution",
       "ref": "master",
@@ -30,26 +50,6 @@
       "source_ref": "https://github.com/keshav9926/drydock",
       "stars": 0,
       "updated_at": "2026-09-25T12:30:16Z"
-    },
-    {
-      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "Root1V/aeon-agent-harness",
-      "source_digest": "3260258a5b9f3cfc2a629b817369d194c122200a1dd974d2f2dc7b738e034456",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "stars": 0,
-      "updated_at": "2026-09-25T11:01:53Z"
-    },
-    {
-      "description": "An open Agents API for Cloudflare Workers, with durable sessions, pluggable harnesses, and isolated execution.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "inaridiy/CF-Open-Agents-API",
-      "source_digest": "b611976f753492ce91882962f3079aac5d7265d6b652b08c684923188b67c582",
-      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
-      "stars": 23,
-      "updated_at": "2026-09-25T12:07:48Z"
     },
     {
       "description": "A TORCS-based autonomous driving experimentation framework for testing rule-based racing agents, logging telemetry, tuning hyperparameters, and analysing performance for dissertation research",
