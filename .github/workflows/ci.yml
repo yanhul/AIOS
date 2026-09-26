@@ -35,7 +35,7 @@ jobs:
       - name: Checkout registered workloads
         run: |
           git clone --depth 1 --no-checkout https://github.com/yanhul/try.git "$RUNNER_TEMP/try"
-          git -C "$RUNNER_TEMP/try" fetch --depth 1 origin refs/heads/aios-conformance/try:refs/remotes/origin/aios-conformance/try
+          git -C "$RUNNER_TEMP/try" fetch --depth 1 origin refs/heads/main:refs/remotes/origin/main
           git -C "$RUNNER_TEMP/try" checkout --detach refs/remotes/origin/aios-conformance/try
           test "$(git -C "$RUNNER_TEMP/try" rev-parse HEAD)" = "1acd62fb7f6622a0bbe6e6909599b4606abd90ab"
           git clone --depth 1 --no-checkout https://github.com/yanhul/android-ai-assistant.git "$RUNNER_TEMP/android-ai-assistant"
