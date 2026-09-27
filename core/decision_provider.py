@@ -88,6 +88,8 @@ class DecisionRequest:
             raise ValueError("candidates must contain non-empty strings")
         if len(set(candidates)) != len(candidates):
             raise ValueError("candidates must be unique")
+        if self.decision_type == "boolean" and len(candidates) != 2:
+            raise ValueError("boolean decisions require exactly 2 candidates")
         object.__setattr__(self, "candidates", candidates)
         object.__setattr__(self, "evidence_refs", _refs(self.evidence_refs, "evidence_refs"))
 
