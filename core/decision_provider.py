@@ -15,6 +15,7 @@ import json
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Mapping, Protocol, Sequence
+import math
 
 
 DECIDED = "DECIDED"
@@ -48,7 +49,10 @@ def _mapping(value: Mapping[str, float] | None, name: str) -> Mapping[str, float
             raise ValueError(f"{name} keys must be non-empty strings")
         if not isinstance(item, (int, float)) or isinstance(item, bool):
             raise ValueError(f"{name} values must be numeric")
-        result[key] = float(item)
+        numeric = float(item)
+        if not math.isfinite(numeric):
+            raise ValueError(f"{name} values must be finite")
+        result[key] = numeric
     return MappingProxyType(result)
 
 
@@ -69,6 +73,7 @@ class DecisionRequest:
     evidence_refs: tuple[str, ...]
     policy_ref: str
     provider_ref: str
+    provider_revision: str
 
     def __post_init__(self) -> None:
         for value, name in (
@@ -77,6 +82,7 @@ class DecisionRequest:
             (self.question, "question"),
             (self.policy_ref, "policy_ref"),
             (self.provider_ref, "provider_ref"),
+            (self.provider_revision, "provider_revision"),
         ):
             _nonempty(value, name)
         if self.decision_type not in _DECISION_TYPES:
@@ -105,6 +111,7 @@ class DecisionRequest:
                 "evidence_refs": self.evidence_refs,
                 "policy_ref": self.policy_ref,
                 "provider_ref": self.provider_ref,
+                "provider_revision": self.provider_revision,
             }
         )
 
@@ -165,6 +172,8 @@ def validate_result(request: DecisionRequest, result: DecisionResult) -> None:
         raise ValueError("decision result is bound to a different decision_id")
     if result.provider_ref != request.provider_ref:
         raise ValueError("decision result provider_ref does not match request")
+    if result.provider_revision != request.provider_revision:
+        raise ValueError("decision result provider_revision does not match request")
     if result.input_hash != request.input_hash:
         raise ValueError("decision result input_hash does not match request")
     for name, values in (
@@ -177,10 +186,17 @@ def validate_result(request: DecisionRequest, result: DecisionResult) -> None:
             raise ValueError(f"{name} contains unknown candidates: {sorted(unknown)}")
     if result.selected is not None and result.selected not in request.candidates:
         raise ValueError("selected candidate is outside the request candidate set")
-    if result.status == DECIDED and result.selected is None:
-        raise ValueError("DECIDED result requires selected")
+    if result.calibrated_scores and result.calibration_ref is None:
+        raise ValueError("calibrated_scores require calibration_ref")
+    if request.decision_type in {"choice", "boolean"} and result.status == DECIDED and result.selected is None:
+        raise ValueError("DECIDED choice/boolean result requires selected")
+    if request.decision_type == "score" and result.status == DECIDED and not result.raw_scores:
+        raise ValueError("DECIDED score result requires raw_scores")
     if result.status != DECIDED and result.selected is not None:
         raise ValueError("ABSTAINED/INCONCLUSIVE result cannot select a candidate")
+    expected_output_hash = _digest(result_hash_payload(result))
+    if result.output_hash != expected_output_hash:
+        raise ValueError("decision result output_hash does not match result payload")
 
 
 def result_hash_payload(result: DecisionResult) -> dict:
