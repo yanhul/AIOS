@@ -27,8 +27,11 @@ def test_attestation_requires_exact_revision_and_evidence():
     assert att.digest
 
 
-def test_unknown_or_stale_revision_fails_closed():
+def test_unknown_or_unversioned_revision_fails_closed():
     life = CapabilityLifecycle(registry())
+    with pytest.raises(CapabilityError):
+        life.attest("a", source_refs=("rome",), evidence_refs=("e",),
+                    verification_level="VERIFIED_DIGITAL", authority="control")
     with pytest.raises(CapabilityError):
         life.attest("a@2", source_refs=("rome",), evidence_refs=("e",),
                     verification_level="VERIFIED_DIGITAL", authority="control")
@@ -46,7 +49,7 @@ def test_composition_records_exact_dependency_revisions():
     assert life.verify_composition_current(c)
 
 
-def test_composition_detects_revision_drift_without_mutating_old_record():
+def test_new_revision_does_not_mutate_old_composition():
     life = CapabilityLifecycle(registry())
     c = life.compose(
         "composed@1",
@@ -55,7 +58,12 @@ def test_composition_detects_revision_drift_without_mutating_old_record():
         authority="AIOS_CONTROL_PLANE",
     )
     life.registry.register(Capability("a", "2", "test", "action", status="CANDIDATE"))
-    assert life.verify_composition_current(c) is True
+    assert life.verify_composition_current(c)
+    assert c.dependency_keys == ("a@1",)
+
+
+def test_composition_rejects_unknown_dependency_revision():
+    life = CapabilityLifecycle(registry())
     with pytest.raises(CapabilityError):
         life.compose(
             "composed@2",
