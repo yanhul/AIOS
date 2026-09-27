@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Protocol
 
 from .fix_protocol import FixPlan, require_fix_plan, require_fix_proof, FixProof
+from .execution_supervision import validate_attempt_record, validate_receipt_fence
 
 TERMINAL = frozenset({"PASS", "BLOCKED", "INCONCLUSIVE"})
 
@@ -30,6 +31,8 @@ class LoopPolicy:
     failure_state: str = "BLOCKED"
     require_execution_receipt: bool = False
     execution_receipt_validator: Callable[[Mapping[str, Any], Mapping[str, Any]], None] | None = None
+    require_execution_fence: bool = False
+    attempt_recorder: Callable[[Any, Mapping[str, Any]], Mapping[str, Any]] | None = None
     fix_plan: FixPlan | None = None
     fix_success_state: str = "PASS"
 
@@ -52,6 +55,12 @@ class LoopPolicy:
             raise ValueError("require_execution_receipt must be boolean")
         if self.execution_receipt_validator is not None and not callable(self.execution_receipt_validator):
             raise ValueError("execution_receipt_validator must be callable")
+        if not isinstance(self.require_execution_fence, bool):
+            raise ValueError("require_execution_fence must be boolean")
+        if self.require_execution_fence and self.attempt_recorder is None:
+            raise ValueError("attempt_recorder is required when execution fence is enabled")
+        if self.attempt_recorder is not None and not callable(self.attempt_recorder):
+            raise ValueError("attempt_recorder must be callable")
         if self.fix_plan is not None:
             if not isinstance(self.fix_success_state, str) or not self.fix_success_state.strip():
                 raise ValueError("fix_success_state must be a non-empty string")
@@ -160,11 +169,19 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
             store.save(state)
             return state
         try:
+            active_attempt = None
+            if policy.require_execution_fence:
+                active_attempt = validate_attempt_record(policy.attempt_recorder(deepcopy(decision), deepcopy(state)))
+                state["active_attempt"] = active_attempt.as_dict()
+                state["attempt_started_before_effect"] = True
+                store.save(state)
             action_result = executor.act(deepcopy(decision), deepcopy(state))
             verification = executor.verify(deepcopy(action_result), deepcopy(state))
             receipt = None
             if policy.require_execution_receipt:
                 receipt = _validate_execution_receipt(verification)
+                if policy.require_execution_fence:
+                    validate_receipt_fence(receipt, expected=active_attempt)
                 if policy.execution_receipt_validator is not None:
                     policy.execution_receipt_validator(deepcopy(receipt), deepcopy(state))
         except Exception as exc:

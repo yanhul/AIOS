@@ -125,3 +125,18 @@ A replayed response is an execution input/result and must carry provenance descr
 A harness feature is not considered complete because an agent appears to run for a long time. It must demonstrate restart/resume, bounded execution, evidence preservation, verification, and externally governed terminal behavior.
 
 For async execution, conformance additionally requires evidence that a completion event can wake/resume the durable session without an intervening LLM polling loop when the provider supports such events.
+
+
+## KENSAT-derived execution supervision
+
+KENSAT provides a hardware-system analogue for AIOS fault containment: a small always-on controller retains authority while an unreliable/high-cost compute payload is power-gated and bounded. AIOS absorbs the domain-independent invariants, not the spacecraft implementation.
+
+Required control-plane invariants:
+
+1. Durable attempt before side effect. Persist an attempt identity before invoking the executor. A crash after the side effect begins must not erase the fact that an attempt was started.
+2. Generation fence. Bind effect, attempt, and receipt to the same runtime generation. A completion from an older generation is stale and must block.
+3. External supervision. Worker health or self-reported completion is not authority. The control plane owns timeout, budget, and recovery decisions.
+4. Capability/resource bounds. An authorized action is still constrained by its capability scope, deadline, retry budget, and other declared resources.
+5. E2E closure. Component-level success is insufficient when the mission boundary spans multiple subsystems. The terminal verdict must retain the receipt and evidence chain proving the complete path.
+
+The durable loop exposes require_execution_fence and an attempt_recorder for strict integrations. When enabled, the attempt is persisted before Executor.act, and the receipt must match the active effect/attempt/generation fence and explicitly prove that the attempt was durable before the side effect.
