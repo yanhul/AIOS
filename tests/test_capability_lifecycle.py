@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: Rome-adapted capability lifecycle cannot bypass exact revision, evidence, or authority gates
+# AIOS-REGRESSION: capability promotion/composition must remain fail-closed
+# AIOS-OWNER: AIOS control-plane capability authority
+# AIOS-COVERAGE-GAP: Rome's mutable/self-building semantics are intentionally replaced by immutable revision attestation
+# AIOS-BASELINE: capability registry already provides immutable versioned registration
+
 import pytest
 
 from core.capabilities import Capability, CapabilityRegistry, CapabilityError
