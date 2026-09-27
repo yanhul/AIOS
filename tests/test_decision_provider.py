@@ -20,6 +20,7 @@ def request():
         evidence_refs=("evidence:1",),
         policy_ref="policy:v1",
         provider_ref="julia-1@adapter-v1",
+        provider_revision=req.provider_revision,
     )
 
 
@@ -35,10 +36,16 @@ def result(req, *, status=DECIDED, selected="b", **overrides):
         calibrated_scores={},
         calibration_ref=None,
         input_hash=req.input_hash,
-        output_hash="sha256:provider-output",
+        output_hash="sha256:placeholder",
     )
     payload.update(overrides)
-    return DecisionResult(**payload)
+    value = DecisionResult(**payload)
+    from core.decision_provider import result_hash_payload
+    import hashlib, json
+    digest = "sha256:" + hashlib.sha256(
+        json.dumps(result_hash_payload(value), sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+    return DecisionResult(**{**payload, "output_hash": digest})
 
 
 def test_request_is_bounded_and_hashed():
@@ -92,6 +99,24 @@ def test_calibration_is_metadata_not_assumed():
     value = result(req, calibrated_scores={"a": 0.2, "b": 0.7, "c": 0.1}, calibration_ref="cal:v1")
     validate_result(req, value)
     assert value.calibration_ref == "cal:v1"
+
+def test_provider_revision_is_pinned():
+    req = request()
+    with pytest.raises(ValueError, match="provider_revision"):
+        validate_result(req, result(req, provider_revision="rev-2"))
+
+def test_calibrated_scores_require_explicit_calibration_ref():
+    req = request()
+    with pytest.raises(ValueError, match="calibration_ref"):
+        validate_result(req, result(req, calibrated_scores={"a": 0.2}))
+
+def test_score_mode_preserves_scoring_without_forcing_selection():
+    req = DecisionRequest(
+        decision_id="score-1", state_ref="state:1", question="Rank candidates",
+        decision_type="score", candidates=("a", "b"), evidence_refs=("evidence:1",),
+        policy_ref="policy:v1", provider_ref="julia-1@adapter-v1", provider_revision="rev-1",
+    )
+    validate_result(req, result(req, selected=None, raw_scores={"a": 3.0, "b": 1.0}))
 
 
 def test_boolean_mode_is_binary():
