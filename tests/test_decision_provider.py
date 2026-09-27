@@ -1,3 +1,6 @@
+import hashlib
+import json
+
 import pytest
 
 from core.decision_provider import (
@@ -6,6 +9,7 @@ from core.decision_provider import (
     INCONCLUSIVE,
     DecisionRequest,
     DecisionResult,
+    result_hash_payload,
     validate_result,
 )
 
@@ -20,7 +24,7 @@ def request():
         evidence_refs=("evidence:1",),
         policy_ref="policy:v1",
         provider_ref="julia-1@adapter-v1",
-        provider_revision=req.provider_revision,
+        provider_revision="rev-1",
     )
 
 
@@ -28,7 +32,7 @@ def result(req, *, status=DECIDED, selected="b", **overrides):
     payload = dict(
         decision_id=req.decision_id,
         provider_ref=req.provider_ref,
-        provider_revision="rev-1",
+        provider_revision=req.provider_revision,
         status=status,
         selected=selected,
         distribution={"a": 0.1, "b": 0.7, "c": 0.2},
@@ -40,10 +44,13 @@ def result(req, *, status=DECIDED, selected="b", **overrides):
     )
     payload.update(overrides)
     value = DecisionResult(**payload)
-    from core.decision_provider import result_hash_payload
-    import hashlib, json
     digest = "sha256:" + hashlib.sha256(
-        json.dumps(result_hash_payload(value), sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        json.dumps(
+            result_hash_payload(value),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
     ).hexdigest()
     return DecisionResult(**{**payload, "output_hash": digest})
 
@@ -54,7 +61,8 @@ def test_request_is_bounded_and_hashed():
     with pytest.raises(ValueError, match="2..20"):
         DecisionRequest(
             decision_id="d", state_ref="s", question="q", decision_type="choice",
-            candidates=("only",), evidence_refs=("e",), policy_ref="p", provider_ref="x",
+            candidates=("only",), evidence_refs=("e",), policy_ref="p",
+            provider_ref="x", provider_revision="r",
         )
 
 
@@ -67,13 +75,17 @@ def test_result_is_advisory_not_authority():
     assert not hasattr(value, "authorize")
 
 
-def test_result_binds_request_and_candidate_set():
+def test_result_binds_request_candidate_set_and_output_hash():
     req = request()
     validate_result(req, result(req))
     with pytest.raises(ValueError, match="different decision_id"):
         validate_result(req, result(req, decision_id="other"))
     with pytest.raises(ValueError, match="outside"):
         validate_result(req, result(req, selected="forged"))
+    forged = result(req)
+    object.__setattr__(forged, "selected", "a")
+    with pytest.raises(ValueError, match="output_hash"):
+        validate_result(req, forged)
 
 
 def test_abstention_is_first_class_and_has_no_selection():
@@ -82,7 +94,7 @@ def test_abstention_is_first_class_and_has_no_selection():
     validate_result(req, result(req, status=INCONCLUSIVE, selected=None))
 
 
-def test_decided_requires_selection():
+def test_decided_choice_requires_selection():
     req = request()
     with pytest.raises(ValueError, match="requires selected"):
         validate_result(req, result(req, selected=None))
@@ -94,21 +106,24 @@ def test_unknown_candidate_in_provider_output_blocks():
         validate_result(req, result(req, distribution={"a": 1.0, "forged": 2.0}))
 
 
-def test_calibration_is_metadata_not_assumed():
-    req = request()
-    value = result(req, calibrated_scores={"a": 0.2, "b": 0.7, "c": 0.1}, calibration_ref="cal:v1")
-    validate_result(req, value)
-    assert value.calibration_ref == "cal:v1"
-
 def test_provider_revision_is_pinned():
     req = request()
     with pytest.raises(ValueError, match="provider_revision"):
         validate_result(req, result(req, provider_revision="rev-2"))
 
+
 def test_calibrated_scores_require_explicit_calibration_ref():
     req = request()
     with pytest.raises(ValueError, match="calibration_ref"):
         validate_result(req, result(req, calibrated_scores={"a": 0.2}))
+
+
+def test_calibration_metadata_is_preserved():
+    req = request()
+    value = result(req, calibrated_scores={"a": 0.2, "b": 0.7, "c": 0.1}, calibration_ref="cal:v1")
+    validate_result(req, value)
+    assert value.calibration_ref == "cal:v1"
+
 
 def test_score_mode_preserves_scoring_without_forcing_selection():
     req = DecisionRequest(
@@ -123,8 +138,15 @@ def test_boolean_mode_is_binary():
     with pytest.raises(ValueError, match="exactly 2"):
         DecisionRequest(
             decision_id="d", state_ref="s", question="q", decision_type="boolean",
-            candidates=("a", "b", "c"), evidence_refs=("e",), policy_ref="p", provider_ref="x",
+            candidates=("a", "b", "c"), evidence_refs=("e",), policy_ref="p",
+            provider_ref="x", provider_revision="r",
         )
+
+
+def test_result_rejects_non_finite_scores():
+    req = request()
+    with pytest.raises(ValueError, match="finite"):
+        result(req, raw_scores={"a": float("nan")})
 
 
 def test_result_is_immutable():
