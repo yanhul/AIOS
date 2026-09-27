@@ -1,5 +1,11 @@
+# AIOS-CONTRACT: decision-provider outputs remain advisory and lineage-bound.
+# AIOS-REGRESSION: provider revision, candidate set, hashes, abstention, and calibration fences must fail closed.
+# AIOS-OWNER: core.decision_provider owns the model-neutral provider boundary.
+# AIOS-COVERAGE-GAP: execution/authority integration is intentionally outside this provider-only contract.
+# AIOS-BASELINE: main has no decision-provider primitive; this test establishes the absorbed boundary.
 import hashlib
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -82,8 +88,7 @@ def test_result_binds_request_candidate_set_and_output_hash():
         validate_result(req, result(req, decision_id="other"))
     with pytest.raises(ValueError, match="outside"):
         validate_result(req, result(req, selected="forged"))
-    forged = result(req)
-    object.__setattr__(forged, "selected", "a")
+    forged = replace(result(req), selected="a")
     with pytest.raises(ValueError, match="output_hash"):
         validate_result(req, forged)
 
