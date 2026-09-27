@@ -4,29 +4,44 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-4b56c505235fa969",
+      "candidate_id": "cand-7ede4a6f5bca1daa",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "9363652d7bd01adc7e480030567abf3096b37bdab7bb925b9304ba141e4bfddb",
-      "source_ref": "https://github.com/omnirexflora-labs/omnicoreagent",
+      "source_digest": "558a0de20434acb28ff2230c530c91e3f01d90c680d7e1e945d23b21ff751663",
+      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-005053701aacb7fe",
+      "candidate_id": "cand-20f7adb94bdfcf4f",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "5b1ce39e37fcfd42087f48702259214cba58216e9f8b4c9afd5ca4a5fce6680a",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-f2e4c1dee2bb7021",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "master",
-      "source_digest": "e56845e5cac0205fec812a3498ae523d9e6248caeb79eb273cbc747dcca28d4b",
+      "source_digest": "2e3ffaba449f15ef33a47d3d2235a3944a792247b3c4d935480053b81bcb9536",
       "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -34,15 +49,15 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-446379b16f4e47f1",
+      "candidate_id": "cand-6e89c41b332b84e1",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "cb67c99eb3c4eb0334ab63293b5c25ab9888758c36140d5acd88e1999e733c57",
-      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
+      "source_digest": "54923b9b0290a4893dae5a889d23b769ab6e5f0b5d27f68d85f3d80e8e8c6053",
+      "source_ref": "https://github.com/omnirexflora-labs/omnicoreagent",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -58,36 +73,6 @@
       "ref": "main",
       "source_digest": "0aa82ccc643a8410886b4f659f203b65a75ad7d8f96d264893fae733185961d0",
       "source_ref": "https://github.com/superdurable/superagent",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-aa8f24310b61c0d2",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "bd6314227cc47dee4706051a96d11f94ce27d070ac812ba59522dacaa578c421",
-      "source_ref": "https://github.com/keshav9926/drydock",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-9ac858e0367c0aa9",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "research_harness",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "ad14c844d50ba0071c3a971fd70a9d967b47f90ef40d1fe956d0506d864a0baa",
-      "source_ref": "https://github.com/nikk48/torcs-ai-racing-framework",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -148,6 +133,21 @@
       "ref": "master",
       "source_digest": "65f113e6207c42700139b62edd50a37b5e6227de2a5019fc0102cd845653ee42",
       "source_ref": "https://github.com/kp-krish/AutoResearch",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-628a8afeac8895d9",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "research_harness",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "e89aaa2e3962650ea3a91a651d8a4ceff1be55599574812791a15aaee8bea9df",
+      "source_ref": "https://github.com/ParasKoundal/automl-research",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {

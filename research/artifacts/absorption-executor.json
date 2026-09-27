@@ -20,23 +20,55 @@
           "evidence_promotion_gate"
         ],
         "signals": [
+          "provenance",
           "evidence",
           "durable",
-          "memory",
-          "harness",
-          "governance"
+          "harness"
         ],
         "target_surface": "new AIOS adapter/task only"
       },
       "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-4b56c505235fa969",
-      "evidence_digest": "a507f88edabdcb3ca64d79752c147de4b4e241f9d770477993620d30f5ba9be5",
+      "candidate_id": "cand-7ede4a6f5bca1daa",
+      "evidence_digest": "cad63f91cc1d24f4c70d011ea0bf152132a3a02f5820b9801c23b1ca8eaead7e",
       "evidence_status": "COLLECTED",
-      "evidence_url": "https://raw.githubusercontent.com/omnirexflora-labs/omnicoreagent/main/README.md",
+      "evidence_url": "https://raw.githubusercontent.com/JonSmithTLT/Agentic-Engineering-Workflow/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "36250538211",
-      "source_digest": "9363652d7bd01adc7e480030567abf3096b37bdab7bb925b9304ba141e4bfddb",
-      "source_ref": "https://github.com/omnirexflora-labs/omnicoreagent",
+      "run_id": "36305688497",
+      "source_digest": "558a0de20434acb28ff2230c530c91e3f01d90c680d7e1e945d23b21ff751663",
+      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
+      "status": "RESEARCHED_ADAPTATION_PROPOSED"
+    },
+    {
+      "adaptation": {
+        "adaptation": "AIOS_NATIVE_PROPOSAL_ONLY",
+        "external_code_copy": false,
+        "external_code_execution": false,
+        "primitive": "evidence_provenance",
+        "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
+        "required_checks": [
+          "source_evidence_digest",
+          "AIOS_conformance",
+          "independent_tests",
+          "evidence_promotion_gate"
+        ],
+        "signals": [
+          "evidence",
+          "durable",
+          "research",
+          "memory",
+          "harness"
+        ],
+        "target_surface": "new AIOS adapter/task only"
+      },
+      "authority": "AIOS_CONTROL_PLANE",
+      "candidate_id": "cand-20f7adb94bdfcf4f",
+      "evidence_digest": "8beaa1c089a1353e89d06272aad24c3c0e7b380501ac1f6ff12c01aa441265c7",
+      "evidence_status": "COLLECTED",
+      "evidence_url": "https://raw.githubusercontent.com/Root1V/aeon-agent-harness/main/README.md",
+      "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
+      "run_id": "36305688497",
+      "source_digest": "5b1ce39e37fcfd42087f48702259214cba58216e9f8b4c9afd5ca4a5fce6680a",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
     },
     {
@@ -59,13 +91,13 @@
         "target_surface": "new AIOS adapter/task only"
       },
       "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-005053701aacb7fe",
+      "candidate_id": "cand-f2e4c1dee2bb7021",
       "evidence_digest": "b8b40793a70c9811dd127e39cf9461618f7b73a4575172db6775e6361452a057",
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/Ydjin1984/DeepSeek_Kibborg_Harness/master/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "36250538211",
-      "source_digest": "e56845e5cac0205fec812a3498ae523d9e6248caeb79eb273cbc747dcca28d4b",
+      "run_id": "36305688497",
+      "source_digest": "2e3ffaba449f15ef33a47d3d2235a3944a792247b3c4d935480053b81bcb9536",
       "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
     },
@@ -83,21 +115,23 @@
           "evidence_promotion_gate"
         ],
         "signals": [
-          "provenance",
+          "evidence",
           "durable",
-          "harness"
+          "memory",
+          "harness",
+          "governance"
         ],
         "target_surface": "new AIOS adapter/task only"
       },
       "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-446379b16f4e47f1",
-      "evidence_digest": "f7fce8730354006367dd851d77b64cd4bbdd5c09e968915628e60fba623b708f",
+      "candidate_id": "cand-6e89c41b332b84e1",
+      "evidence_digest": "9ee7835563e3eaab3cf5aa0021b5567fa352d54e70d649bfbfd2dd409bdfb98a",
       "evidence_status": "COLLECTED",
-      "evidence_url": "https://raw.githubusercontent.com/JonSmithTLT/Agentic-Engineering-Workflow/main/README.md",
+      "evidence_url": "https://raw.githubusercontent.com/omnirexflora-labs/omnicoreagent/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "36250538211",
-      "source_digest": "cb67c99eb3c4eb0334ab63293b5c25ab9888758c36140d5acd88e1999e733c57",
-      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
+      "run_id": "36305688497",
+      "source_digest": "54923b9b0290a4893dae5a889d23b769ab6e5f0b5d27f68d85f3d80e8e8c6053",
+      "source_ref": "https://github.com/omnirexflora-labs/omnicoreagent",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
     },
     {
@@ -126,68 +160,9 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/superdurable/superagent/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "36250538211",
+      "run_id": "36305688497",
       "source_digest": "0aa82ccc643a8410886b4f659f203b65a75ad7d8f96d264893fae733185961d0",
       "source_ref": "https://github.com/superdurable/superagent",
-      "status": "RESEARCHED_ADAPTATION_PROPOSED"
-    },
-    {
-      "adaptation": {
-        "adaptation": "AIOS_NATIVE_PROPOSAL_ONLY",
-        "external_code_copy": false,
-        "external_code_execution": false,
-        "primitive": "durable_execution",
-        "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-        "required_checks": [
-          "source_evidence_digest",
-          "AIOS_conformance",
-          "independent_tests",
-          "evidence_promotion_gate"
-        ],
-        "signals": [
-          "durable",
-          "harness"
-        ],
-        "target_surface": "new AIOS adapter/task only"
-      },
-      "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-aa8f24310b61c0d2",
-      "evidence_digest": "3c395132c0f5f6fce5e1616a4c0b15c05c70b1221ae831355592a8f9099ce3dd",
-      "evidence_status": "COLLECTED",
-      "evidence_url": "https://raw.githubusercontent.com/keshav9926/drydock/main/README.md",
-      "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "36250538211",
-      "source_digest": "bd6314227cc47dee4706051a96d11f94ce27d070ac812ba59522dacaa578c421",
-      "source_ref": "https://github.com/keshav9926/drydock",
-      "status": "RESEARCHED_ADAPTATION_PROPOSED"
-    },
-    {
-      "adaptation": {
-        "adaptation": "AIOS_NATIVE_PROPOSAL_ONLY",
-        "external_code_copy": false,
-        "external_code_execution": false,
-        "primitive": "research_harness",
-        "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-        "required_checks": [
-          "source_evidence_digest",
-          "AIOS_conformance",
-          "independent_tests",
-          "evidence_promotion_gate"
-        ],
-        "signals": [
-          "evidence"
-        ],
-        "target_surface": "new AIOS adapter/task only"
-      },
-      "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-9ac858e0367c0aa9",
-      "evidence_digest": "7ebfaa669f44475556c61e55f41950715e3d8450187aaf55571d8f2769c8cfac",
-      "evidence_status": "COLLECTED",
-      "evidence_url": "https://raw.githubusercontent.com/nikk48/torcs-ai-racing-framework/main/README.md",
-      "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "36250538211",
-      "source_digest": "ad14c844d50ba0071c3a971fd70a9d967b47f90ef40d1fe956d0506d864a0baa",
-      "source_ref": "https://github.com/nikk48/torcs-ai-racing-framework",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
     },
     {
@@ -215,7 +190,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/yethikrishna/Yethanus/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "36250538211",
+      "run_id": "36305688497",
       "source_digest": "ebb09ee5914b6e8bba2fe90a69694aa9e348cfb6f18996e511a084e35ae65165",
       "source_ref": "https://github.com/yethikrishna/Yethanus",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -246,7 +221,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/Yash-Kavaiya/auto-cxas-scrapi/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "36250538211",
+      "run_id": "36305688497",
       "source_digest": "4b3fe2fe2a775115db1a41476b924ba6b5d132ca00a7da67fdf6485fe0b6befc",
       "source_ref": "https://github.com/Yash-Kavaiya/auto-cxas-scrapi",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -277,7 +252,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/yanghangAI/MultiAgentAutoResearch/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "36250538211",
+      "run_id": "36305688497",
       "source_digest": "9716dab55dc592817a54a87bfce7cb244d2713b570d724683a0cfb9cc771cfa3",
       "source_ref": "https://github.com/yanghangAI/MultiAgentAutoResearch",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -306,9 +281,38 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/kp-krish/AutoResearch/master/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "36250538211",
+      "run_id": "36305688497",
       "source_digest": "65f113e6207c42700139b62edd50a37b5e6227de2a5019fc0102cd845653ee42",
       "source_ref": "https://github.com/kp-krish/AutoResearch",
+      "status": "RESEARCHED_ADAPTATION_PROPOSED"
+    },
+    {
+      "adaptation": {
+        "adaptation": "AIOS_NATIVE_PROPOSAL_ONLY",
+        "external_code_copy": false,
+        "external_code_execution": false,
+        "primitive": "research_harness",
+        "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
+        "required_checks": [
+          "source_evidence_digest",
+          "AIOS_conformance",
+          "independent_tests",
+          "evidence_promotion_gate"
+        ],
+        "signals": [
+          "research"
+        ],
+        "target_surface": "new AIOS adapter/task only"
+      },
+      "authority": "AIOS_CONTROL_PLANE",
+      "candidate_id": "cand-628a8afeac8895d9",
+      "evidence_digest": "5a6bc980dc180da4ef7f3fea926b729d5be5fd06fd1811b6deef13670d2c08eb",
+      "evidence_status": "COLLECTED",
+      "evidence_url": "https://raw.githubusercontent.com/ParasKoundal/automl-research/main/README.md",
+      "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
+      "run_id": "36305688497",
+      "source_digest": "e89aaa2e3962650ea3a91a651d8a4ceff1be55599574812791a15aaee8bea9df",
+      "source_ref": "https://github.com/ParasKoundal/automl-research",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
     },
     {
@@ -338,7 +342,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/jermayne36/heartwood-memory/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "36250538211",
+      "run_id": "36305688497",
       "source_digest": "3c2e7459cd46a43e007e368463d5fdea3f12bd0b450dd4b979f7b01f002399d3",
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -372,7 +376,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/teolex2020/aura-memory/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "36250538211",
+      "run_id": "36305688497",
       "source_digest": "68e5d5278d7e3f8d29b8b982c8f3a02acb184a083d7713417233ad3c17aca19a",
       "source_ref": "https://github.com/teolex2020/aura-memory",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -401,7 +405,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/VAIXLNS/VAIXLNS/vaixlns-architecture/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "36250538211",
+      "run_id": "36305688497",
       "source_digest": "5ac6b73155d5b695e4c3e8cfbe3a273b387126bb6174ebb9ed1eb05353d16cbf",
       "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -433,7 +437,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/qingyou0420/trueheart-core/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "36250538211",
+      "run_id": "36305688497",
       "source_digest": "ce108a886e1c9d65f623cd980ffe114d93a9ed625b509eebae03552af761a538",
       "source_ref": "https://github.com/qingyou0420/trueheart-core",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -460,13 +464,13 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/RasmusMaidenAndersson/MemoryOS/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "36250538211",
+      "run_id": "36305688497",
       "source_digest": "605af8e03aa8c238234fd2d3dd3aaf65254e58bbd48e5ff5a8b8c195bd6bb185",
       "source_ref": "https://github.com/RasmusMaidenAndersson/MemoryOS",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
     }
   ],
-  "run_id": "36250538211",
+  "run_id": "36305688497",
   "schema_version": 2,
   "truncated": false
 }

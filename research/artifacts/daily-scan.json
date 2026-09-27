@@ -2,34 +2,44 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
-      "description": "Open Python agent runtime and harness for production AI applications, with an SDK for governed tools, durable runs, sandboxes, budgets, execution evidence, and evaluation integrations.",
+      "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
       "query": "agent harness durable execution",
       "ref": "main",
-      "repo": "omnirexflora-labs/omnicoreagent",
-      "source_digest": "9363652d7bd01adc7e480030567abf3096b37bdab7bb925b9304ba141e4bfddb",
-      "source_ref": "https://github.com/omnirexflora-labs/omnicoreagent",
-      "stars": 247,
-      "updated_at": "2026-09-26T15:01:22Z"
+      "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
+      "source_digest": "558a0de20434acb28ff2230c530c91e3f01d90c680d7e1e945d23b21ff751663",
+      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
+      "stars": 0,
+      "updated_at": "2026-09-27T07:13:44Z"
+    },
+    {
+      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "Root1V/aeon-agent-harness",
+      "source_digest": "5b1ce39e37fcfd42087f48702259214cba58216e9f8b4c9afd5ca4a5fce6680a",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
+      "stars": 0,
+      "updated_at": "2026-09-27T02:23:28Z"
     },
     {
       "description": "Fork of DeepSeek Harness: plugin-based agent runtime on Cordis with head/executor orchestration, unified execution state machine, durable event journal, skill manager and Web GUI",
       "query": "agent harness durable execution",
       "ref": "master",
       "repo": "Ydjin1984/DeepSeek_Kibborg_Harness",
-      "source_digest": "e56845e5cac0205fec812a3498ae523d9e6248caeb79eb273cbc747dcca28d4b",
+      "source_digest": "2e3ffaba449f15ef33a47d3d2235a3944a792247b3c4d935480053b81bcb9536",
       "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
       "stars": 1,
-      "updated_at": "2026-09-26T12:39:57Z"
+      "updated_at": "2026-09-26T19:43:52Z"
     },
     {
-      "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
+      "description": "Open Python agent runtime and harness for production AI applications, with an SDK for governed tools, durable runs, sandboxes, budgets, execution evidence, and evaluation integrations.",
       "query": "agent harness durable execution",
       "ref": "main",
-      "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "cb67c99eb3c4eb0334ab63293b5c25ab9888758c36140d5acd88e1999e733c57",
-      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
-      "stars": 0,
-      "updated_at": "2026-09-26T01:13:51Z"
+      "repo": "omnirexflora-labs/omnicoreagent",
+      "source_digest": "54923b9b0290a4893dae5a889d23b769ab6e5f0b5d27f68d85f3d80e8e8c6053",
+      "source_ref": "https://github.com/omnirexflora-labs/omnicoreagent",
+      "stars": 247,
+      "updated_at": "2026-09-26T17:42:15Z"
     },
     {
       "description": "Golang agent harness & framework. Multi-agent architecture, built on Durable Execution(Dex/Temporal), to build cloud based agents",
@@ -40,26 +50,6 @@
       "source_ref": "https://github.com/superdurable/superagent",
       "stars": 9,
       "updated_at": "2026-09-25T19:07:32Z"
-    },
-    {
-      "description": "Keel, a durable execution runtime for AI agents, and Crashproof, the harness that tries to break it and everyone else's.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "keshav9926/drydock",
-      "source_digest": "bd6314227cc47dee4706051a96d11f94ce27d070ac812ba59522dacaa578c421",
-      "source_ref": "https://github.com/keshav9926/drydock",
-      "stars": 0,
-      "updated_at": "2026-09-25T12:30:16Z"
-    },
-    {
-      "description": "A TORCS-based autonomous driving experimentation framework for testing rule-based racing agents, logging telemetry, tuning hyperparameters, and analysing performance for dissertation research",
-      "query": "agent research framework autonomous experimentation",
-      "ref": "main",
-      "repo": "nikk48/torcs-ai-racing-framework",
-      "source_digest": "ad14c844d50ba0071c3a971fd70a9d967b47f90ef40d1fe956d0506d864a0baa",
-      "source_ref": "https://github.com/nikk48/torcs-ai-racing-framework",
-      "stars": 0,
-      "updated_at": "2026-08-30T14:54:27Z"
     },
     {
       "description": "Yethanus \u2014 Python AI agent experimentation framework (anus-ai fork) for exploring autonomous agent architectures.",
@@ -100,6 +90,16 @@
       "source_ref": "https://github.com/kp-krish/AutoResearch",
       "stars": 2,
       "updated_at": "2026-09-12T02:35:11Z"
+    },
+    {
+      "description": "Autonomous ML experimentation for any project. Inspired by Karpathy's autoresearch \u2014 the same constraint-driven experiment loop, adapted to work with any ML project, any framework, any AI agent.",
+      "query": "agent research framework autonomous experimentation",
+      "ref": "main",
+      "repo": "ParasKoundal/automl-research",
+      "source_digest": "e89aaa2e3962650ea3a91a651d8a4ceff1be55599574812791a15aaee8bea9df",
+      "source_ref": "https://github.com/ParasKoundal/automl-research",
+      "stars": 2,
+      "updated_at": "2026-03-11T17:28:12Z"
     },
     {
       "description": "Heartwood Memory \u2014 governed memory for AI agents. Provenance-first recall, policy-gated retrieval, tenant isolation.",
