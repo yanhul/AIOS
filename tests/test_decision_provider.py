@@ -94,6 +94,14 @@ def test_calibration_is_metadata_not_assumed():
     assert value.calibration_ref == "cal:v1"
 
 
+def test_boolean_mode_is_binary():
+    with pytest.raises(ValueError, match="exactly 2"):
+        DecisionRequest(
+            decision_id="d", state_ref="s", question="q", decision_type="boolean",
+            candidates=("a", "b", "c"), evidence_refs=("e",), policy_ref="p", provider_ref="x",
+        )
+
+
 def test_result_is_immutable():
     value = result(request())
     with pytest.raises(Exception):
