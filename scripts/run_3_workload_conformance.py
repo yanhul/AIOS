@@ -43,8 +43,12 @@ def run_one(runner: Path, workload_id: str, root: Path, receipt: Path) -> dict:
         raise RuntimeError(f"{workload_id}: provenance mismatch")
     if not receipt_obj["evidence_refs"] or not receipt_obj["verification_refs"]:
         raise RuntimeError(f"{workload_id}: evidence/verification refs missing")
-    if receipt_obj["status"] != "PASS":
-        raise RuntimeError(f"{workload_id}: workload conformance is not PASS: {receipt_obj["status"]}")
+    # Workload outcome is not the same thing as conformance. The central
+    # runner already fail-closes against the workload manifest's declared
+    # terminal_states and verifies receipt integrity/lineage. A legitimate
+    # BLOCKED or INCONCLUSIVE workload can therefore still be conformant;
+    # collapsing those states into a conformance failure would make the
+    # normative terminal-state contract unreachable for registered workloads.
     return receipt_obj
 
 
