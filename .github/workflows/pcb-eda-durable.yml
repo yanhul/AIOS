@@ -23,6 +23,16 @@ on:
         required: true
         default: "3"
         type: string
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/pcb-eda-durable.yml"
+      - "core/blocked_continuation.py"
+      - "core/durable_loop.py"
+      - "core/orchestrator.py"
+      - "adapters/pcb_eda/**"
+      - "scripts/run_pcb_eda_durable.py"
+      - "capabilities/registry.yaml"
   push:
     branches: [main]
     paths:
@@ -48,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           path: aios
           persist-credentials: false
 
@@ -65,6 +75,10 @@ jobs:
         working-directory: aios
         run: python -m pytest -q tests/test_blocked_continuation.py
 
+      - name: Validate AIOS adapter syntax
+        working-directory: aios
+        run: python -m py_compile adapters/pcb_eda/adapter.py scripts/run_pcb_eda_durable.py
+
       - name: Run AIOS durable PCB loop
         env:
           INPUT_ROOT: $GITHUB_WORKSPACE/kit
@@ -72,6 +86,7 @@ jobs:
           MAX_STEPS: ${{ inputs.max_steps || '4' }}
           KIT_RETRIES: ${{ inputs.kit_retries || '3' }}
         run: |
+          mkdir -p "$GITHUB_WORKSPACE/pcb-output"
           set +e
           PYTHONPATH="$GITHUB_WORKSPACE/aios" python "$GITHUB_WORKSPACE/aios/scripts/run_pcb_eda_durable.py"             --task-id "aios-pcb-$GITHUB_RUN_ID"             --input "$INPUT_ROOT"             --output "$GITHUB_WORKSPACE/pcb-output"             --kit-root "$KIT_ROOT"             --config "$KIT_ROOT/altium-audit.config.json"             --state "$GITHUB_WORKSPACE/pcb-output/state.json"             --max-steps "$MAX_STEPS"             --kit-retries "$KIT_RETRIES"             | tee "$GITHUB_WORKSPACE/pcb-output/durable-result.json"
           rc=${PIPESTATUS[0]}
