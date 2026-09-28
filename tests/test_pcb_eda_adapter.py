@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: validates the fail-closed PCB/EDA receipt contract.
+# AIOS-REGRESSION: protects capability, closure-gate, optimization, and operation binding.
+# AIOS-OWNER: PCB/EDA domain adapter boundary.
+# AIOS-COVERAGE-GAP: subprocess execution and full durable-runtime E2E are covered separately.
+# AIOS-BASELINE: existing contract-test conventions; no source inspection required.
+
 import pytest
 
 from adapters.pcb_eda.contract import PCB_CAPABILITY, validate_receipt
