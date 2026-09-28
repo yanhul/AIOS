@@ -23,6 +23,16 @@ on:
         required: true
         default: "3"
         type: string
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/pcb-eda-durable.yml"
+      - "core/blocked_continuation.py"
+      - "core/durable_loop.py"
+      - "core/orchestrator.py"
+      - "adapters/pcb_eda/**"
+      - "scripts/run_pcb_eda_durable.py"
+      - "capabilities/registry.yaml"
   push:
     branches: [main]
     paths:
