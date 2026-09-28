@@ -26,6 +26,7 @@ on:
   push:
     branches: [main]
     paths:
+      - ".github/workflows/pcb-eda-durable.yml"
       - "core/blocked_continuation.py"
       - "core/durable_loop.py"
       - "core/orchestrator.py"
@@ -72,16 +73,7 @@ jobs:
           KIT_RETRIES: ${{ inputs.kit_retries || '3' }}
         run: |
           set +e
-          PYTHONPATH="$GITHUB_WORKSPACE/aios" python "$GITHUB_WORKSPACE/aios/scripts/run_pcb_eda_durable.py" \
-            --task-id "aios-pcb-$GITHUB_RUN_ID" \
-            --input "$INPUT_ROOT" \
-            --output "$GITHUB_WORKSPACE/pcb-output" \
-            --kit-root "$KIT_ROOT" \
-            --config "$KIT_ROOT/altium-audit.config.json" \
-            --state "$GITHUB_WORKSPACE/pcb-output/state.json" \
-            --max-steps "$MAX_STEPS" \
-            --kit-retries "$KIT_RETRIES" \
-            | tee "$GITHUB_WORKSPACE/pcb-output/durable-result.json"
+          PYTHONPATH="$GITHUB_WORKSPACE/aios" python "$GITHUB_WORKSPACE/aios/scripts/run_pcb_eda_durable.py"             --task-id "aios-pcb-$GITHUB_RUN_ID"             --input "$INPUT_ROOT"             --output "$GITHUB_WORKSPACE/pcb-output"             --kit-root "$KIT_ROOT"             --config "$KIT_ROOT/altium-audit.config.json"             --state "$GITHUB_WORKSPACE/pcb-output/state.json"             --max-steps "$MAX_STEPS"             --kit-retries "$KIT_RETRIES"             | tee "$GITHUB_WORKSPACE/pcb-output/durable-result.json"
           rc=${PIPESTATUS[0]}
           echo "AIOS_DURABLE_RC=$rc"
           exit "$rc"
