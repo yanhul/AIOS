@@ -4,15 +4,45 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-ea692656c86ac396",
+      "candidate_id": "cand-cd99af81a35f7272",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "f0e388fa23dd034f75078a66d71c70053dc27f9f6213847306ca1e560df87351",
+      "source_digest": "4920c4d6af8eedc39fc8c95fd530bd994947bed0b2ff5bae647d90a7293f994c",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-1fb35a65f2d5e265",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "709b7b5c30397d032b3b1e0569c32adc69c460a9eea0e638e4f707ed5bf2a4c4",
       "source_ref": "https://github.com/omnirexflora-labs/omnicoreagent",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-34f71b5291f5e4c0",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "5e7192801d7473c68c2812d78ec0e8da7f5cb90c7222636af1d5a725a9a866ad",
+      "source_ref": "https://github.com/taituo/acp-runner",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -34,21 +64,6 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-bdd4f113cf125509",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "b614f981f1c4335bc0ef5c9ba579d3107c5da21823cf5593261c1b2d5249aff1",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
       "candidate_id": "cand-7ede4a6f5bca1daa",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
@@ -58,21 +73,6 @@
       "ref": "main",
       "source_digest": "558a0de20434acb28ff2230c530c91e3f01d90c680d7e1e945d23b21ff751663",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-f2e4c1dee2bb7021",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "master",
-      "source_digest": "2e3ffaba449f15ef33a47d3d2235a3944a792247b3c4d935480053b81bcb9536",
-      "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -184,14 +184,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-823a61e25d8c3657",
+      "candidate_id": "cand-8a8a11a9c5886077",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "vaixlns-architecture",
-      "source_digest": "5ac6b73155d5b695e4c3e8cfbe3a273b387126bb6174ebb9ed1eb05353d16cbf",
+      "source_digest": "b2c8871ee134b22587e4b621bb03241db96aea44283448a0c609c0c02bd3f009",
       "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
       "status": "UNTRUSTED_EVIDENCE"
     },

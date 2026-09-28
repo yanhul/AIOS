@@ -2,14 +2,34 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
+      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "Root1V/aeon-agent-harness",
+      "source_digest": "4920c4d6af8eedc39fc8c95fd530bd994947bed0b2ff5bae647d90a7293f994c",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
+      "stars": 0,
+      "updated_at": "2026-09-28T12:40:16Z"
+    },
+    {
       "description": "Open Python agent runtime and harness for production AI applications, with an SDK for governed tools, durable runs, sandboxes, budgets, execution evidence, and evaluation integrations.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "omnirexflora-labs/omnicoreagent",
-      "source_digest": "f0e388fa23dd034f75078a66d71c70053dc27f9f6213847306ca1e560df87351",
+      "source_digest": "709b7b5c30397d032b3b1e0569c32adc69c460a9eea0e638e4f707ed5bf2a4c4",
       "source_ref": "https://github.com/omnirexflora-labs/omnicoreagent",
       "stars": 247,
-      "updated_at": "2026-09-28T06:49:49Z"
+      "updated_at": "2026-09-28T10:20:56Z"
+    },
+    {
+      "description": "acp-runner: durable agent execution environments on Kubernetes (ACP harness runtime)",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "taituo/acp-runner",
+      "source_digest": "5e7192801d7473c68c2812d78ec0e8da7f5cb90c7222636af1d5a725a9a866ad",
+      "source_ref": "https://github.com/taituo/acp-runner",
+      "stars": 0,
+      "updated_at": "2026-09-28T09:50:54Z"
     },
     {
       "description": "Golang agent harness & framework. Multi-agent architecture, built on Durable Execution(Dex/Temporal), to build cloud based agents",
@@ -22,16 +42,6 @@
       "updated_at": "2026-09-28T06:13:00Z"
     },
     {
-      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "Root1V/aeon-agent-harness",
-      "source_digest": "b614f981f1c4335bc0ef5c9ba579d3107c5da21823cf5593261c1b2d5249aff1",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "stars": 0,
-      "updated_at": "2026-09-28T02:14:01Z"
-    },
-    {
       "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
       "query": "agent harness durable execution",
       "ref": "main",
@@ -40,16 +50,6 @@
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "stars": 0,
       "updated_at": "2026-09-27T07:13:44Z"
-    },
-    {
-      "description": "Fork of DeepSeek Harness: plugin-based agent runtime on Cordis with head/executor orchestration, unified execution state machine, durable event journal, skill manager and Web GUI",
-      "query": "agent harness durable execution",
-      "ref": "master",
-      "repo": "Ydjin1984/DeepSeek_Kibborg_Harness",
-      "source_digest": "2e3ffaba449f15ef33a47d3d2235a3944a792247b3c4d935480053b81bcb9536",
-      "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
-      "stars": 1,
-      "updated_at": "2026-09-26T19:43:52Z"
     },
     {
       "description": "Yethanus \u2014 Python AI agent experimentation framework (anus-ai fork) for exploring autonomous agent architectures.",
@@ -126,7 +126,7 @@
       "query": "agent memory provenance governance",
       "ref": "vaixlns-architecture",
       "repo": "VAIXLNS/VAIXLNS",
-      "source_digest": "5ac6b73155d5b695e4c3e8cfbe3a273b387126bb6174ebb9ed1eb05353d16cbf",
+      "source_digest": "b2c8871ee134b22587e4b621bb03241db96aea44283448a0c609c0c02bd3f009",
       "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
       "stars": 5,
       "updated_at": "2026-09-25T11:27:18Z"
