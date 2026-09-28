@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""AIOS adapter for the reusable yanhul/temp Altium Audit Kit.
-
-The adapter is intentionally thin: it invokes the externally owned Kit,
-captures its terminal receipt, and validates that AIOS may consume that
-receipt. It does not invent PCB rules, topology, placement, or routing.
-"""
+"""Thin AIOS adapter for the reusable Altium Audit Kit."""
 from __future__ import annotations
 
 import argparse
@@ -25,8 +20,7 @@ def run_kit(request: PcbEdaRequest) -> tuple[int, dict]:
     if not kit.is_file():
         raise FileNotFoundError(f"Audit Kit entrypoint missing: {kit}")
     command = [
-        sys.executable,
-        str(kit),
+        sys.executable, str(kit),
         "--input", str(Path(request.input_dir).resolve()),
         "--output", str(Path(request.output_dir).resolve()),
         "--max-retries", str(request.max_retries),
@@ -39,7 +33,8 @@ def run_kit(request: PcbEdaRequest) -> tuple[int, dict]:
     summary_path = Path(request.output_dir) / "summary.json"
     if not summary_path.is_file():
         raise RuntimeError(
-            f"Audit Kit produced no terminal receipt; rc={proc.returncode}; stderr={proc.stderr[-2000:]}"
+            f"Audit Kit produced no terminal receipt; rc={proc.returncode}; "
+            f"stderr={proc.stderr[-2000:]}"
         )
     receipt = json.loads(summary_path.read_text(encoding="utf-8"))
     validate_kit_receipt(receipt)
@@ -66,6 +61,7 @@ def main() -> int:
         repair=not args.no_repair,
         max_retries=args.max_retries,
     )
+
     try:
         rc, receipt = run_kit(request)
         result = {
@@ -89,13 +85,14 @@ def main() -> int:
         print(json.dumps(result, sort_keys=True, separators=(",", ":")))
         return 0 if receipt["status"] == "PASS" else 2
     except Exception as exc:
-        print(json.dumps({
+        result = {
             "capability": CAPABILITY,
             "task_id": request.task_id,
             "status": "BLOCKED",
             "reason": f"{type(exc).__name__}: {exc}",
             "provenance": {"adapter": CAPABILITY},
-        }, sort_keys=True, separators=(",", ":"))
+        }
+        print(json.dumps(result, sort_keys=True, separators=(",", ":")))
         return 3
 
 
