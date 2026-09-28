@@ -4,14 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-34135970f4733c09",
+      "candidate_id": "cand-096489d99aaa30cb",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "3f2348affaeb6ed19440dfa23ad3671cac8453ff050922f16693e7ee654d418e",
+      "source_digest": "2b77443f85ba1820f42af5d0cbaa16546296966f3313b68768e73d1f4fa743a1",
       "source_ref": "https://github.com/omnirexflora-labs/omnicoreagent",
       "status": "UNTRUSTED_EVIDENCE"
     },
