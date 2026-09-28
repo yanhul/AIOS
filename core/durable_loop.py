@@ -32,6 +32,7 @@ class LoopPolicy:
     execution_receipt_validator: Callable[[Mapping[str, Any], Mapping[str, Any]], None] | None = None
     fix_plan: FixPlan | None = None
     fix_success_state: str = "PASS"
+    blocked_continuation: Callable[[Any, Mapping[str, Any]], Mapping[str, Any] | None] | None = None
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
@@ -59,6 +60,8 @@ class LoopPolicy:
                 raise ValueError("fix_success_state must be an authorized terminal state")
         if self.fix_plan is not None:
             require_fix_plan(self.fix_plan)
+        if self.blocked_continuation is not None and not callable(self.blocked_continuation):
+            raise ValueError("blocked_continuation must be callable")
 
 def _validate_execution_receipt(verification: Any) -> Mapping[str, Any]:
     """Fail closed unless verification contains a complete execution receipt."""
@@ -188,6 +191,28 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
             store.save(state)
             return state
         if terminal is not None:
+            if terminal == "BLOCKED" and policy.blocked_continuation is not None:
+                continuation = policy.blocked_continuation(deepcopy(verification), deepcopy(state))
+                if continuation is not None:
+                    if not isinstance(continuation, Mapping):
+                        raise ValueError("blocked continuation must be a mapping")
+                    required = ("authority", "evidence_refs", "next_operation_id", "reason")
+                    missing = [k for k in required if k not in continuation]
+                    if missing:
+                        raise ValueError(f"blocked continuation missing fields: {missing}")
+                    if not isinstance(continuation.get("evidence_refs"), list) or not continuation["evidence_refs"]:
+                        raise ValueError("blocked continuation requires verified evidence refs")
+                    if not all(isinstance(x, str) and x.strip() for x in continuation["evidence_refs"]):
+                        raise ValueError("blocked continuation evidence refs are invalid")
+                    if continuation.get("authority") != "AIOS_CONTROL_PLANE":
+                        raise ValueError("blocked continuation authority is not AIOS_CONTROL_PLANE")
+                    if not isinstance(continuation.get("next_operation_id"), str) or not continuation["next_operation_id"].strip():
+                        raise ValueError("blocked continuation next operation is invalid")
+                    state["status"] = "RUNNING"
+                    state["continuation"] = deepcopy(dict(continuation))
+                    state["history"][-1]["continuation"] = deepcopy(dict(continuation))
+                    store.save(state)
+                    continue
             state["status"] = terminal
             state["terminal_evidence"] = {
                 "step": state["step"],
