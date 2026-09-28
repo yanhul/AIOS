@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
-from .contract import PCB_CAPABILITY, validate_receipt
+from core.runtime import ProviderReceipt
+from .contract import PCB_CAPABILITY, validate_receipt as validate_domain_receipt
 
 
 def _tree_digest(root: Path) -> str:
@@ -21,7 +22,7 @@ def _tree_digest(root: Path) -> str:
     for path in files:
         rel = path.relative_to(root).as_posix().encode()
         h.update(rel)
-        h.update(b"\\0")
+        h.update(b"\0")
         h.update(hashlib.sha256(path.read_bytes()).digest())
     return "sha256:" + h.hexdigest()
 
@@ -33,6 +34,7 @@ class PcbEdaAdapter:
     workload_revision: str
     timeout_seconds: float = 600.0
     max_output_bytes: int = 512 * 1024
+    name: str = PCB_CAPABILITY.split("@", 1)[0]
 
     def execute(
         self,
@@ -42,7 +44,7 @@ class PcbEdaAdapter:
         attempt_id: str,
         input_dir: Path,
         output_dir: Path,
-    ) -> dict:
+    ) -> ProviderReceipt:
         capabilities = contract.get("capabilities", [])
         if PCB_CAPABILITY not in capabilities:
             raise PermissionError("PCB/EDA capability is not granted by contract")
@@ -54,10 +56,7 @@ class PcbEdaAdapter:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         input_digest = _tree_digest(input_dir)
-        args = list(self.command) + [
-            "--input", str(input_dir),
-            "--output", str(output_dir),
-        ]
+        args = list(self.command) + ["--input", str(input_dir), "--output", str(output_dir)]
         if operation in {"repair", "optimize"}:
             args.append("--repair")
 
@@ -77,19 +76,12 @@ class PcbEdaAdapter:
         if not summary_path.exists():
             raise ValueError("PCB/EDA workload produced no summary.json")
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
-        evidence = summary.get("evidence", {}) if isinstance(summary.get("evidence"), dict) else {}
         gates = summary.get("gates", {}) if isinstance(summary.get("gates"), dict) else {}
         quality = summary.get("quality", {}) if isinstance(summary.get("quality"), dict) else {}
 
         status = summary.get("status")
-        if status == "PASS":
-            terminal = "PASS"
-        elif status == "BLOCKED":
-            terminal = "BLOCKED"
-        else:
-            terminal = "INCONCLUSIVE"
-
-        receipt = {
+        terminal = status if status in {"PASS", "BLOCKED"} else "INCONCLUSIVE"
+        domain_receipt = {
             "capability": PCB_CAPABILITY,
             "task_id": contract.get("task_id", effect.get("task_id", "pcb-task")),
             "operation": operation,
@@ -114,8 +106,17 @@ class PcbEdaAdapter:
                 },
             },
         }
-        validate_receipt(receipt, expected_operation=operation)
-        return receipt
+        validate_domain_receipt(domain_receipt, expected_operation=operation)
+
+        outcome = "OBSERVED_SUCCESS" if terminal == "PASS" else "OBSERVED_FAILURE"
+        return ProviderReceipt(
+            provider=self.name,
+            effect_id=effect["effect_id"],
+            attempt_id=attempt_id,
+            provider_operation_id=f"{self.name}:{domain_receipt['task_id']}:{attempt_id}",
+            outcome=outcome,
+            observation=domain_receipt,
+        )
 
 
 __all__ = ["PcbEdaAdapter"]
