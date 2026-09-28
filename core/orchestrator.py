@@ -61,6 +61,7 @@ def run_governed_execution(*, executor: GovernedRuntimeExecutor, store: StateSto
         terminal_states=governing_terminal_states,
         budget_exhaustion_state=policy.budget_exhaustion_state,
         failure_state=policy.failure_state,
+        blocked_continuation=policy.blocked_continuation,
     )
     loaded = store.load()
     if loaded is None:
