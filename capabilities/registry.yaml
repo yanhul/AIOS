@@ -98,6 +98,7 @@ capabilities:
     kind: research_worker
     owner: yanhul/AIOS
     source: aios://core/research_worker
+    manifest: core/research_worker.py
     inputs: [research_request, recency_window, source_set]
     outputs: [recent_findings, evidence_refs, artifacts]
     verification: [source_timestamp, source_evidence, provenance]
