@@ -208,6 +208,13 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                         raise ValueError("blocked continuation authority is not AIOS_CONTROL_PLANE")
                     if not isinstance(continuation.get("next_operation_id"), str) or not continuation["next_operation_id"].strip():
                         raise ValueError("blocked continuation next operation is invalid")
+                    next_operation = continuation["next_operation_id"]
+                    if next_operation == "pcb.eda@1":
+                        verified = set(state.get("verified_evidence_refs") or [])
+                        if any(ref not in verified for ref in continuation["evidence_refs"]):
+                            raise ValueError("pcb.eda redispatch requires persisted verified evidence refs")
+                    elif next_operation != "pcb.eda.discover_evidence":
+                        raise ValueError(f"unauthorized blocked continuation operation: {next_operation}")
                     state["status"] = "RUNNING"
                     state["continuation"] = deepcopy(dict(continuation))
                     state["history"][-1]["continuation"] = deepcopy(dict(continuation))
