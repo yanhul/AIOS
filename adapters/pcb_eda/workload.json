@@ -1,0 +1,16 @@
+{
+  "protocol_version": 1,
+  "capability": "pcb.eda@1",
+  "owner": "yanhul/temp",
+  "aios_authority": "yanhul/AIOS",
+  "role": "governed_domain_adapter",
+  "adapter": "external_workload",
+  "entrypoint": "provider-defined",
+  "operations": ["audit", "repair", "optimize"],
+  "terminal_states": ["PASS", "BLOCKED", "INCONCLUSIVE"],
+  "verification_classes": ["connectivity", "placement", "routing", "topology", "constraint_evidence", "provenance"],
+  "durable_loop": ["OBSERVE", "DECIDE", "ACT", "VERIFY", "PERSIST", "RESUME"],
+  "agent_may_modify_policy": false,
+  "agent_may_modify_terminal_conditions": false,
+  "promotion_authority": "AIOS"
+}

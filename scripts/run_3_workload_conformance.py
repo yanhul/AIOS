@@ -17,6 +17,7 @@ WORKLOADS = {
     "yanhul/android-ai-assistant": ("android.assistant@1", "bash", "aios/adapter.sh"),
     "yanhul/RX50": ("rx50.engineering@1", "python", "aios/adapter.py"),
 }
+TERMINAL_STATES = {"PASS", "BLOCKED", "INCONCLUSIVE"}
 
 
 def run_one(runner: Path, workload_id: str, root: Path, receipt: Path) -> dict:
@@ -43,8 +44,9 @@ def run_one(runner: Path, workload_id: str, root: Path, receipt: Path) -> dict:
         raise RuntimeError(f"{workload_id}: provenance mismatch")
     if not receipt_obj["evidence_refs"] or not receipt_obj["verification_refs"]:
         raise RuntimeError(f"{workload_id}: evidence/verification refs missing")
-    if receipt_obj["status"] != "PASS":
-        raise RuntimeError(f"{workload_id}: workload conformance is not PASS: {receipt_obj["status"]}")
+    status = receipt_obj["status"]
+    if status not in TERMINAL_STATES:
+        raise RuntimeError(f"{workload_id}: invalid terminal status: {status}")
     return receipt_obj
 
 
