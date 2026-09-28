@@ -13,8 +13,13 @@ on:
         required: true
         default: "main"
         type: string
-      max_retries:
-        description: "Bounded retry budget"
+      max_steps:
+        description: "Bounded durable-loop steps"
+        required: true
+        default: "4"
+        type: string
+      kit_retries:
+        description: "Audit Kit internal retry budget per attempt"
         required: true
         default: "3"
         type: string
@@ -25,6 +30,7 @@ on:
       - "core/durable_loop.py"
       - "core/orchestrator.py"
       - "adapters/pcb_eda/**"
+      - "scripts/run_pcb_eda_durable.py"
       - "capabilities/registry.yaml"
 
 permissions:
@@ -39,65 +45,49 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Checkout trusted AIOS
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: main
           path: aios
           persist-credentials: false
 
-      - name: Checkout Audit Kit and input
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           repository: ${{ inputs.source_repo || 'yanhul/temp' }}
           ref: ${{ inputs.ref || 'main' }}
           path: kit
           persist-credentials: false
 
-      - name: Install runtime
-        run: python -m pip install pytest PyYAML
+      - run: python -m pip install pytest PyYAML
 
-      - name: Validate continuation contract
+      - name: Validate durable contract
         working-directory: aios
         run: python -m pytest -q tests/test_blocked_continuation.py
 
-      - name: Dispatch pcb.eda@1
-        working-directory: aios
+      - name: Run AIOS durable PCB loop
         env:
           INPUT_ROOT: $GITHUB_WORKSPACE/kit
           KIT_ROOT: $GITHUB_WORKSPACE/kit
-          MAX_RETRIES: ${{ inputs.max_retries || '3' }}
+          MAX_STEPS: ${{ inputs.max_steps || '4' }}
+          KIT_RETRIES: ${{ inputs.kit_retries || '3' }}
         run: |
-          set -euo pipefail
-          mkdir -p "$GITHUB_WORKSPACE/pcb-output"
           set +e
-          PYTHONPATH="$GITHUB_WORKSPACE/aios" python "$GITHUB_WORKSPACE/aios/adapters/pcb_eda/adapter.py" \
+          PYTHONPATH="$GITHUB_WORKSPACE/aios" python "$GITHUB_WORKSPACE/aios/scripts/run_pcb_eda_durable.py" \
             --task-id "aios-pcb-$GITHUB_RUN_ID" \
             --input "$INPUT_ROOT" \
             --output "$GITHUB_WORKSPACE/pcb-output" \
             --kit-root "$KIT_ROOT" \
             --config "$KIT_ROOT/altium-audit.config.json" \
-            --max-retries "$MAX_RETRIES" \
-            | tee "$GITHUB_WORKSPACE/pcb-output/adapter-result.json"
+            --state "$GITHUB_WORKSPACE/pcb-output/state.json" \
+            --max-steps "$MAX_STEPS" \
+            --kit-retries "$KIT_RETRIES" \
+            | tee "$GITHUB_WORKSPACE/pcb-output/durable-result.json"
           rc=${PIPESTATUS[0]}
-          echo "adapter_rc=$rc" >> "$GITHUB_OUTPUT"
-          exit 0
-
-      - name: Require terminal receipt
-        run: |
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          p=Path(os.environ["GITHUB_WORKSPACE"]) / "pcb-output" / "summary.json"
-          if not p.is_file():
-              raise SystemExit("BLOCKED: missing Audit Kit terminal receipt")
-          obj=json.loads(p.read_text())
-          print("KIT_STATUS=", obj.get("status"))
-          if obj.get("status") not in {"PASS","BLOCKED","INCONCLUSIVE"}:
-              raise SystemExit("BLOCKED: invalid terminal status")
-          PY
+          echo "AIOS_DURABLE_RC=$rc"
+          exit "$rc"
 
       - name: Upload E2E evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: aios-pcb-eda-e2e-${{ github.run_id }}
