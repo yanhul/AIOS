@@ -1,3 +1,8 @@
+# AIOS-CONTRACT: pcb.eda@1 integrity manifest and terminal receipt binding
+# AIOS-REGRESSION: preserve exact input snapshot and fail-closed commit authorization
+# AIOS-OWNER: AIOS_CONTROL_PLANE
+# AIOS-COVERAGE-GAP: content-addressed provenance at the adapter boundary
+# AIOS-BASELINE: main
 from pathlib import Path
 import json
 import pytest
