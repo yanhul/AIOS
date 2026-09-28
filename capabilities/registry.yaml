@@ -69,6 +69,18 @@ capabilities:
 
   # AIOS-owned worker contracts. These are worker/capability interfaces, not
   # authority providers. Execution and promotion remain outside worker control.
+  - capability_id: pcb.eda
+    version: "1"
+    kind: eda_capability
+    owner: yanhul/temp
+    source: https://github.com/yanhul/temp
+    manifest: adapters/pcb_eda/workload.json
+    inputs: [SchDoc, PcbDoc, PrjPcb]
+    outputs: [audit_receipt, placement_routing_plan, repair_history]
+    verification: [kit_terminal_receipt, connectivity_closure, placement_lock, routing_closure, provenance]
+    context: [pcb_eda_kit_root, input_revision, policy_digest, run_id]
+    terminal_states: [PASS, BLOCKED, INCONCLUSIVE]
+
   - capability_id: research.deep
     version: "1"
     kind: research_worker
