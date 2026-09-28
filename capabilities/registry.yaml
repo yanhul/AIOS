@@ -67,6 +67,18 @@ capabilities:
     context: [artifact_revision, analysis_environment, authorization_scope]
     terminal_states: [PASS, BLOCKED, INCONCLUSIVE]
 
+  - capability_id: pcb.eda
+    version: "1"
+    kind: domain_workload
+    owner: yanhul/temp
+    source: https://github.com/yanhul/temp
+    manifest: adapters/pcb_eda/workload.json
+    inputs: [schdoc, pcbdoc, prjpcb, pcb_contract]
+    outputs: [audit_artifacts, repaired_artifact, optimization_candidates, verification_receipt]
+    verification: [intake, connectivity, placement, routing, topology, constraint_evidence, provenance]
+    context: [altium_version, kit_revision, board_revision, authority_scope]
+    terminal_states: [PASS, BLOCKED, INCONCLUSIVE]
+
   # AIOS-owned worker contracts. These are worker/capability interfaces, not
   # authority providers. Execution and promotion remain outside worker control.
   - capability_id: research.deep
@@ -129,4 +141,13 @@ capabilities:
     context: [research_worker_state, policy_digest, run_id]
     terminal_states: [PASS, BLOCKED, INCONCLUSIVE]
 
-relationships: []
+relationships:
+  - from: pcb.eda
+    relation: governed_by
+    to: aios.control_plane
+  - from: pcb.eda
+    relation: executed_through
+    to: adapters/pcb_eda
+  - from: pcb.eda
+    relation: owned_by
+    to: yanhul/temp
