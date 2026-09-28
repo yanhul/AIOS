@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "capability_id": "pcb.eda",
+  "version": "1",
+  "kind": "eda_capability",
+  "owner": "yanhul/temp",
+  "source": "https://github.com/yanhul/temp",
+  "entrypoint": "adapters/pcb_eda/adapter.py",
+  "kit_entrypoint": "tools/altium-audit/audit_kit.py",
+  "inputs": ["SchDoc", "PcbDoc", "PrjPcb"],
+  "outputs": ["audit_receipt", "placement_routing_plan", "repair_history"],
+  "verification": ["kit_terminal_receipt", "connectivity_closure", "placement_lock", "routing_closure", "provenance"],
+  "authority": "AIOS_CONTROL_PLANE",
+  "terminal_states": ["PASS", "BLOCKED", "INCONCLUSIVE"]
+}
