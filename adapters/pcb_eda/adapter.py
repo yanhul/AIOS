@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 from core.pcb_eda import PcbEdaRequest, validate_kit_receipt
+from core.pcb_eda_integrity import build_integrity_manifest, verify_commit_manifest
 
 CAPABILITY = "pcb.eda@1"
 KIT_ENTRYPOINT = "tools/altium-audit/audit_kit.py"
@@ -25,8 +26,7 @@ def run_kit(request: PcbEdaRequest) -> tuple[int, dict]:
     if not kit.is_file():
         raise FileNotFoundError(f"Audit Kit entrypoint missing: {kit}")
     command = [
-        sys.executable,
-        str(kit),
+        sys.executable, str(kit),
         "--input", str(Path(request.input_dir).resolve()),
         "--output", str(Path(request.output_dir).resolve()),
         "--max-retries", str(request.max_retries),
@@ -67,7 +67,21 @@ def main() -> int:
         max_retries=args.max_retries,
     )
     try:
+        input_root = Path(request.input_dir).resolve()
+        output_root = Path(request.output_dir).resolve()
+        output_root.mkdir(parents=True, exist_ok=True)
+
+        integrity = build_integrity_manifest(input_root, output_root)
+        (output_root / "integrity-manifest.json").write_text(
+            json.dumps(integrity, indent=2, sort_keys=True), encoding="utf-8"
+        )
+
         rc, receipt = run_kit(request)
+        committed_integrity = verify_commit_manifest(integrity, receipt)
+        (output_root / "integrity-manifest.json").write_text(
+            json.dumps(committed_integrity, indent=2, sort_keys=True), encoding="utf-8"
+        )
+
         result = {
             "capability": CAPABILITY,
             "task_id": request.task_id,
@@ -76,13 +90,16 @@ def main() -> int:
             "attempt": {"max_retries": request.max_retries},
             "receipt": receipt,
             "evidence_refs": [
-                str(Path(request.output_dir) / "summary.json"),
-                str(Path(request.output_dir) / "placement-routing-plan.json"),
+                str(output_root / "summary.json"),
+                str(output_root / "placement-routing-plan.json"),
+                str(output_root / "integrity-manifest.json"),
             ],
             "provenance": {
                 "adapter": CAPABILITY,
                 "kit_root": request.kit_root,
                 "kit_entrypoint": KIT_ENTRYPOINT,
+                "integrity_schema": "aios-pcb-eda-integrity.v1",
+                "input_manifest_sha256": committed_integrity["input_manifest_sha256"],
             },
             "provider_returncode": rc,
         }
