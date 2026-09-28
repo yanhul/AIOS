@@ -49,7 +49,11 @@ def test_durable_loop_can_redispatch_only_after_verified_evidence():
         require_execution_receipt=True,
         blocked_continuation=continuation,
     )
-    result = run_durable_loop(Executor(), MemoryStateStore(), policy)
+    result = run_durable_loop(
+        Executor(),
+        MemoryStateStore({"verified_evidence_refs": ["evidence://verified/topology"]}),
+        policy,
+    )
     assert result["status"] == "PASS"
     assert calls == ["pcb.eda@1", "pcb.eda@1"]
     assert result["history"][0]["continuation"]["evidence_refs"] == ["evidence://verified/topology"]
