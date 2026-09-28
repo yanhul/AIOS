@@ -142,12 +142,12 @@ capabilities:
     terminal_states: [PASS, BLOCKED, INCONCLUSIVE]
 
 relationships:
-  - from: pcb.eda
+  - source: pcb.eda
     relation: governed_by
-    to: aios.control_plane
-  - from: pcb.eda
+    target: aios.control_plane
+  - source: pcb.eda
     relation: executed_through
-    to: adapters/pcb_eda
-  - from: pcb.eda
+    target: adapters/pcb_eda
+  - source: pcb.eda
     relation: owned_by
-    to: yanhul/temp
+    target: yanhul/temp
