@@ -2,6 +2,36 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
+      "description": "Open Python agent runtime and harness for production AI applications, with an SDK for governed tools, durable runs, sandboxes, budgets, execution evidence, and evaluation integrations.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "omnirexflora-labs/omnicoreagent",
+      "source_digest": "f0e388fa23dd034f75078a66d71c70053dc27f9f6213847306ca1e560df87351",
+      "source_ref": "https://github.com/omnirexflora-labs/omnicoreagent",
+      "stars": 247,
+      "updated_at": "2026-09-28T06:49:49Z"
+    },
+    {
+      "description": "Golang agent harness & framework. Multi-agent architecture, built on Durable Execution(Dex/Temporal), to build cloud based agents",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "superdurable/superagent",
+      "source_digest": "3baf95026efbfb14c47f1b81898d08e5d3fee76573df8e2092ade81a021fce8d",
+      "source_ref": "https://github.com/superdurable/superagent",
+      "stars": 10,
+      "updated_at": "2026-09-28T06:13:00Z"
+    },
+    {
+      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "Root1V/aeon-agent-harness",
+      "source_digest": "b614f981f1c4335bc0ef5c9ba579d3107c5da21823cf5593261c1b2d5249aff1",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
+      "stars": 0,
+      "updated_at": "2026-09-28T02:14:01Z"
+    },
+    {
       "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
       "query": "agent harness durable execution",
       "ref": "main",
@@ -12,16 +42,6 @@
       "updated_at": "2026-09-27T07:13:44Z"
     },
     {
-      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "Root1V/aeon-agent-harness",
-      "source_digest": "5b1ce39e37fcfd42087f48702259214cba58216e9f8b4c9afd5ca4a5fce6680a",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "stars": 0,
-      "updated_at": "2026-09-27T02:23:28Z"
-    },
-    {
       "description": "Fork of DeepSeek Harness: plugin-based agent runtime on Cordis with head/executor orchestration, unified execution state machine, durable event journal, skill manager and Web GUI",
       "query": "agent harness durable execution",
       "ref": "master",
@@ -30,26 +50,6 @@
       "source_ref": "https://github.com/Ydjin1984/DeepSeek_Kibborg_Harness",
       "stars": 1,
       "updated_at": "2026-09-26T19:43:52Z"
-    },
-    {
-      "description": "Open Python agent runtime and harness for production AI applications, with an SDK for governed tools, durable runs, sandboxes, budgets, execution evidence, and evaluation integrations.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "omnirexflora-labs/omnicoreagent",
-      "source_digest": "54923b9b0290a4893dae5a889d23b769ab6e5f0b5d27f68d85f3d80e8e8c6053",
-      "source_ref": "https://github.com/omnirexflora-labs/omnicoreagent",
-      "stars": 247,
-      "updated_at": "2026-09-26T17:42:15Z"
-    },
-    {
-      "description": "Golang agent harness & framework. Multi-agent architecture, built on Durable Execution(Dex/Temporal), to build cloud based agents",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "superdurable/superagent",
-      "source_digest": "0aa82ccc643a8410886b4f659f203b65a75ad7d8f96d264893fae733185961d0",
-      "source_ref": "https://github.com/superdurable/superagent",
-      "stars": 9,
-      "updated_at": "2026-09-25T19:07:32Z"
     },
     {
       "description": "Yethanus \u2014 Python AI agent experimentation framework (anus-ai fork) for exploring autonomous agent architectures.",
