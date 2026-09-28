@@ -98,7 +98,6 @@ capabilities:
     kind: research_worker
     owner: yanhul/AIOS
     source: aios://core/research_worker
-    manifest: core/research_worker.py
     inputs: [research_request, recency_window, source_set]
     outputs: [recent_findings, evidence_refs, artifacts]
     verification: [source_timestamp, source_evidence, provenance]
@@ -141,13 +140,7 @@ capabilities:
     context: [research_worker_state, policy_digest, run_id]
     terminal_states: [PASS, BLOCKED, INCONCLUSIVE]
 
-relationships:
-  - source: pcb.eda
-    relation: governed_by
-    target: aios.control_plane
-  - source: pcb.eda
-    relation: executed_through
-    target: adapters/pcb_eda
-  - source: pcb.eda
-    relation: owned_by
-    target: yanhul/temp
+# The capability graph only accepts registered capability-to-capability edges.
+# Governance/execution ownership is enforced by the adapter manifest and AIOS
+# runtime contract, not by synthetic graph nodes.
+relationships: []
