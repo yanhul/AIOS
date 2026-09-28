@@ -112,6 +112,13 @@ class PcbExecutor:
             state["verified_evidence_refs"] = sorted(state_verified)
             state["blocked_requirements"] = result["unresolved_requirements"]
             state["discovery"] = result
+            if result["status"] == "PASS":
+                state["continuation"] = {
+                    "authority": "AIOS_CONTROL_PLANE",
+                    "evidence_refs": sorted(state_verified),
+                    "next_operation_id": "pcb.eda@1",
+                    "reason": "discovery verified required blocker evidence",
+                }
             return {"operation": op, **result}
         if op != "pcb.eda@1":
             raise RuntimeError(f"unauthorized PCB operation: {op}")
@@ -133,7 +140,7 @@ class PcbExecutor:
     def verify(self, result, state):
         if result.get("operation") == "pcb.eda.discover_evidence":
             return {
-                "status": result["status"],
+                "status": "READY" if result["status"] == "PASS" else "BLOCKED",
                 "blockers": [{"id": f"EVIDENCE:{x}", "status": "BLOCKED"} for x in result["unresolved_requirements"]],
                 "receipt": {
                     "effect_id": f"{self.args.task_id}:effect:{state.get('step', 0)+1}",
@@ -186,7 +193,7 @@ def main():
         status = v.get("status")
         if status == "PASS": return "PASS"
         if status == "BLOCKED": return "BLOCKED"
-        return "INCONCLUSIVE"
+        return None
 
     policy = LoopPolicy(
         max_steps=a.max_steps, terminal_evaluator=terminal,
