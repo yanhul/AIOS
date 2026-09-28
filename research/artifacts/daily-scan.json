@@ -2,24 +2,24 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
-      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "Root1V/aeon-agent-harness",
-      "source_digest": "4920c4d6af8eedc39fc8c95fd530bd994947bed0b2ff5bae647d90a7293f994c",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "stars": 0,
-      "updated_at": "2026-09-28T12:40:16Z"
-    },
-    {
       "description": "Open Python agent runtime and harness for production AI applications, with an SDK for governed tools, durable runs, sandboxes, budgets, execution evidence, and evaluation integrations.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "omnirexflora-labs/omnicoreagent",
-      "source_digest": "709b7b5c30397d032b3b1e0569c32adc69c460a9eea0e638e4f707ed5bf2a4c4",
+      "source_digest": "3f2348affaeb6ed19440dfa23ad3671cac8453ff050922f16693e7ee654d418e",
       "source_ref": "https://github.com/omnirexflora-labs/omnicoreagent",
       "stars": 247,
-      "updated_at": "2026-09-28T10:20:56Z"
+      "updated_at": "2026-09-28T13:06:18Z"
+    },
+    {
+      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "Root1V/aeon-agent-harness",
+      "source_digest": "0d1810f6bfc48dd7824cdc5d6483f0dbe5365e990cae23e40b8cb6d49bbe9fb8",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
+      "stars": 0,
+      "updated_at": "2026-09-28T12:40:16Z"
     },
     {
       "description": "acp-runner: durable agent execution environments on Kubernetes (ACP harness runtime)",
