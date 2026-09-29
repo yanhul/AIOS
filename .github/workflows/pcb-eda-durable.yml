@@ -95,3 +95,5 @@ jobs:
 # E2E trigger: atomic stable-main verification.
 
 # E2E trigger: adapter parse + durable output directory closure.
+
+# E2E trigger: minimal parse-safe adapter.
