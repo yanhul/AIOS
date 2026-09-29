@@ -86,3 +86,5 @@ jobs:
           name: aios-pcb-eda-e2e-${{ github.run_id }}
           path: pcb-output
           retention-days: 90
+
+# E2E trigger after durable continuation receipt test fix.
