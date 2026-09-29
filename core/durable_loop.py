@@ -65,7 +65,7 @@ class LoopPolicy:
         if self.blocked_continuation is not None and not callable(self.blocked_continuation):
             raise ValueError("blocked_continuation must be callable")
 
-def _validate_execution_receipt(verification: Any) -> Mapping[str, Any]:
+def _validate_execution_receipt(verification: Any, expected_effect_id: str | None = None, expected_attempt_id: str | None = None) -> Mapping[str, Any]:
     """Fail closed unless verification contains a complete execution receipt."""
     if not isinstance(verification, Mapping):
         raise ValueError("execution receipt missing from verification")
@@ -75,6 +75,10 @@ def _validate_execution_receipt(verification: Any) -> Mapping[str, Any]:
     required = ("effect_id", "attempt_id", "status")
     if any(not isinstance(receipt.get(key), str) or not receipt[key].strip() for key in required):
         raise ValueError("execution receipt lineage is incomplete")
+    if expected_effect_id is not None and receipt["effect_id"] != expected_effect_id:
+        raise ValueError("execution receipt effect_id does not match authorized decision")
+    if expected_attempt_id is not None and receipt["attempt_id"] != expected_attempt_id:
+        raise ValueError("execution receipt attempt_id does not match authorized decision")
     status = receipt.get("status")
     if status not in {"OBSERVED", "UNKNOWN"}:
         raise ValueError("execution receipt has unauthorized status")
@@ -188,7 +192,7 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                         raise ValueError("verification state_patch must be a mapping")
                     state.update(deepcopy(dict(patch)))
             if policy.require_execution_receipt:
-                receipt = _validate_execution_receipt(verification)
+                receipt = _validate_execution_receipt(verification, effect_id, attempt_id)
                 if policy.execution_receipt_validator is not None:
                     policy.execution_receipt_validator(deepcopy(receipt), deepcopy(state))
                 if policy.execution_events is not None:
@@ -203,15 +207,15 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         state["history"].append({"step": state["step"], "observation": deepcopy(observation), "decision": deepcopy(decision), "action": deepcopy(action_result), "verification": deepcopy(verification)})
         try:
             terminal = policy.terminal_evaluator(deepcopy(verification), deepcopy(state))
-            if policy.execution_events is not None and receipt is not None and receipt["status"] == "OBSERVED":
-                policy.execution_events.emit(effect_id=receipt["effect_id"], attempt_id=receipt["attempt_id"],
-                                            status="VERIFIED", evidence={"step": state["step"], "source": "terminal_evaluator"})
             if terminal is not None and terminal not in policy.terminal_states:
                 raise ValueError(f"invalid terminal status: {terminal}")
             if policy.require_execution_receipt and receipt is not None and receipt["status"] == "UNKNOWN" and terminal is not None:
                 raise ValueError("UNKNOWN execution receipt cannot authorize a terminal verdict")
             if policy.fix_plan is not None and terminal == policy.fix_success_state:
                 _validate_fix_success(verification, terminal)
+            if policy.execution_events is not None and receipt is not None and receipt["status"] == "OBSERVED" and terminal == "PASS":
+                policy.execution_events.emit(effect_id=receipt["effect_id"], attempt_id=receipt["attempt_id"],
+                                            status="VERIFIED", evidence={"step": state["step"], "source": "terminal_evaluator"})
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"terminal evaluation failed: {type(exc).__name__}: {exc}"
