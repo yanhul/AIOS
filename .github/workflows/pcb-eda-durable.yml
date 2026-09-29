@@ -68,8 +68,8 @@ jobs:
 
       - name: Run AIOS durable PCB loop
         env:
-          INPUT_ROOT: $GITHUB_WORKSPACE/kit
-          KIT_ROOT: $GITHUB_WORKSPACE/kit
+          INPUT_ROOT: ${{ github.workspace }}/kit
+          KIT_ROOT: ${{ github.workspace }}/kit
           MAX_STEPS: ${{ inputs.max_steps || '4' }}
           KIT_RETRIES: ${{ inputs.kit_retries || '3' }}
         run: |
@@ -97,3 +97,5 @@ jobs:
 # E2E trigger: adapter parse + durable output directory closure.
 
 # E2E trigger: minimal parse-safe adapter.
+
+# E2E trigger: expand GitHub workspace paths correctly.
