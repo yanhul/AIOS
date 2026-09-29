@@ -4,14 +4,29 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-7f5961027614f082",
+      "candidate_id": "cand-34fbb734ceda5276",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "3dfb2972dabd07e39e03ce4096ee1c9ba3195d782b6b0f536dc68dbe8f3b9c8c",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-feeea1e068a8befe",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "research_harness",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "576dbd9420ef0e086aac391b475bd6533c5be260d4fa5fb3af6e943b27913571",
+      "source_digest": "cff1d21c75cab96c0039f4b77a0350a2239151c201841079c175ddd0b43c64c1",
       "source_ref": "https://github.com/chiragborse1/deep-research-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -43,21 +58,6 @@
       "ref": "main",
       "source_digest": "97a16861f5120ef4cffcf98d49eab30bd48cea6425f409df71eb6c72a0c43f22",
       "source_ref": "https://github.com/tomazb/multi-agent-software-engineer",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-aad12c345ba79834",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "0d1810f6bfc48dd7824cdc5d6483f0dbe5365e990cae23e40b8cb6d49bbe9fb8",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
