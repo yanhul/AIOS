@@ -80,18 +80,14 @@ def test_unknown_cannot_be_promoted_to_terminal():
     ]
 
 
-def test_event_stream_rejects_cross_lineage():
+def test_event_stream_scopes_sequence_per_lineage():
     stream = ExecutionEventStream()
-    stream.emit(
-        effect_id="e1", attempt_id="a1", status="PERMITTED",
-        evidence={"source": "test"},
-    )
-    try:
-        stream.emit(
-            effect_id="e2", attempt_id="a2", status="DISPATCHED",
-            evidence={"source": "test"},
-        )
-    except ValueError as exc:
-        assert "switch lineage" in str(exc)
-    else:
-        raise AssertionError("cross-lineage event was accepted")
+    stream.emit(effect_id="e1", attempt_id="a1", status="PERMITTED", evidence={"source": "test"})
+    stream.emit(effect_id="e2", attempt_id="a2", status="PERMITTED", evidence={"source": "test"})
+    stream.emit(effect_id="e1", attempt_id="a1", status="DISPATCHED", evidence={"source": "test"})
+
+    events = stream.events()
+    assert [event.sequence for event in events] == [0, 0, 1]
+    assert [(event.effect_id, event.attempt_id) for event in events] == [
+        ("e1", "a1"), ("e2", "a2"), ("e1", "a1")
+    ]
