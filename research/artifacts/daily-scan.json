@@ -6,10 +6,10 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "Root1V/aeon-agent-harness",
-      "source_digest": "3dfb2972dabd07e39e03ce4096ee1c9ba3195d782b6b0f536dc68dbe8f3b9c8c",
+      "source_digest": "c53f0fa08295a80ebf3c82662d2904cf85298f81354018c5fc65d84ea44b8892",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "stars": 0,
-      "updated_at": "2026-09-29T09:42:57Z"
+      "updated_at": "2026-09-29T11:10:22Z"
     },
     {
       "description": "A long-horizon research agent harness: crash-consistent durable state, sandboxed tool execution, and a veracity ledger for every claim.",

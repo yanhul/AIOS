@@ -4,14 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-34fbb734ceda5276",
+      "candidate_id": "cand-e206ee1ff2eed66c",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "3dfb2972dabd07e39e03ce4096ee1c9ba3195d782b6b0f536dc68dbe8f3b9c8c",
+      "source_digest": "c53f0fa08295a80ebf3c82662d2904cf85298f81354018c5fc65d84ea44b8892",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
