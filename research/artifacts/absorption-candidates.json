@@ -4,15 +4,45 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-096489d99aaa30cb",
+      "candidate_id": "cand-7f5961027614f082",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "research_harness",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "576dbd9420ef0e086aac391b475bd6533c5be260d4fa5fb3af6e943b27913571",
+      "source_ref": "https://github.com/chiragborse1/deep-research-harness",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-bad2df98146a8c0f",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "a077e268b7c226cf9fe220a69a2db76470b8ddc4176ec8856b22489ac5ea804e",
+      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-140d1c80b9b0443d",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "2b77443f85ba1820f42af5d0cbaa16546296966f3313b68768e73d1f4fa743a1",
-      "source_ref": "https://github.com/omnirexflora-labs/omnicoreagent",
+      "source_digest": "97a16861f5120ef4cffcf98d49eab30bd48cea6425f409df71eb6c72a0c43f22",
+      "source_ref": "https://github.com/tomazb/multi-agent-software-engineer",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -43,36 +73,6 @@
       "ref": "main",
       "source_digest": "5e7192801d7473c68c2812d78ec0e8da7f5cb90c7222636af1d5a725a9a866ad",
       "source_ref": "https://github.com/taituo/acp-runner",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-472f198feeefea8a",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "3baf95026efbfb14c47f1b81898d08e5d3fee76573df8e2092ade81a021fce8d",
-      "source_ref": "https://github.com/superdurable/superagent",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-7ede4a6f5bca1daa",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "558a0de20434acb28ff2230c530c91e3f01d90c680d7e1e945d23b21ff751663",
-      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {

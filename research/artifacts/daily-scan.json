@@ -2,14 +2,34 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
-      "description": "Open Python agent runtime and harness for production AI applications, with an SDK for governed tools, durable runs, sandboxes, budgets, execution evidence, and evaluation integrations.",
+      "description": "A long-horizon research agent harness: crash-consistent durable state, sandboxed tool execution, and a veracity ledger for every claim.",
       "query": "agent harness durable execution",
       "ref": "main",
-      "repo": "omnirexflora-labs/omnicoreagent",
-      "source_digest": "2b77443f85ba1820f42af5d0cbaa16546296966f3313b68768e73d1f4fa743a1",
-      "source_ref": "https://github.com/omnirexflora-labs/omnicoreagent",
-      "stars": 247,
-      "updated_at": "2026-09-28T13:06:18Z"
+      "repo": "chiragborse1/deep-research-harness",
+      "source_digest": "576dbd9420ef0e086aac391b475bd6533c5be260d4fa5fb3af6e943b27913571",
+      "source_ref": "https://github.com/chiragborse1/deep-research-harness",
+      "stars": 0,
+      "updated_at": "2026-09-29T08:27:43Z"
+    },
+    {
+      "description": "An open Agents API for Cloudflare Workers, with durable sessions, pluggable harnesses, and isolated execution.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "inaridiy/CF-Open-Agents-API",
+      "source_digest": "a077e268b7c226cf9fe220a69a2db76470b8ddc4176ec8856b22489ac5ea804e",
+      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
+      "stars": 26,
+      "updated_at": "2026-09-29T06:20:46Z"
+    },
+    {
+      "description": "Deterministic multi-agent software-delivery orchestrator with durable workflows, exact-head evidence, and a Cursor-first path to multi-harness execution.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "tomazb/multi-agent-software-engineer",
+      "source_digest": "97a16861f5120ef4cffcf98d49eab30bd48cea6425f409df71eb6c72a0c43f22",
+      "source_ref": "https://github.com/tomazb/multi-agent-software-engineer",
+      "stars": 1,
+      "updated_at": "2026-09-28T16:16:32Z"
     },
     {
       "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
@@ -30,26 +50,6 @@
       "source_ref": "https://github.com/taituo/acp-runner",
       "stars": 0,
       "updated_at": "2026-09-28T09:50:54Z"
-    },
-    {
-      "description": "Golang agent harness & framework. Multi-agent architecture, built on Durable Execution(Dex/Temporal), to build cloud based agents",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "superdurable/superagent",
-      "source_digest": "3baf95026efbfb14c47f1b81898d08e5d3fee76573df8e2092ade81a021fce8d",
-      "source_ref": "https://github.com/superdurable/superagent",
-      "stars": 10,
-      "updated_at": "2026-09-28T06:13:00Z"
-    },
-    {
-      "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "558a0de20434acb28ff2230c530c91e3f01d90c680d7e1e945d23b21ff751663",
-      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
-      "stars": 0,
-      "updated_at": "2026-09-27T07:13:44Z"
     },
     {
       "description": "Yethanus \u2014 Python AI agent experimentation framework (anus-ai fork) for exploring autonomous agent architectures.",
