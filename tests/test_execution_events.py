@@ -96,3 +96,49 @@ def test_event_stream_scopes_sequence_per_lineage():
     assert [(event.effect_id, event.attempt_id) for event in events] == [
         ("e1", "a1"), ("e2", "a2"), ("e1", "a1")
     ]
+
+
+def test_observed_receipt_cannot_claim_different_authorized_lineage():
+    class MismatchExecutor(Executor):
+        def verify(self, action_result, state):
+            return {
+                "receipt": {
+                    "effect_id": "effect-other",
+                    "attempt_id": "attempt-other",
+                    "status": "OBSERVED",
+                    "evidence": {"provider": "test-provider"},
+                }
+            }
+
+    stream = ExecutionEventStream()
+    policy = LoopPolicy(
+        max_steps=1,
+        terminal_evaluator=lambda verification, state: "PASS",
+        action_authorizer=lambda decision, state: None,
+        require_execution_receipt=True,
+        execution_events=stream,
+    )
+    state = run_durable_loop(MismatchExecutor(), MemoryStateStore(), policy)
+
+    assert state["status"] == "BLOCKED"
+    assert "lineage" in state["block_reason"]
+    assert [event.status for event in stream.events()] == [
+        "PERMITTED", "DISPATCHED", "EXECUTE_ATTEMPTED"
+    ]
+
+
+def test_blocked_terminal_does_not_emit_verified():
+    stream = ExecutionEventStream()
+    policy = LoopPolicy(
+        max_steps=1,
+        terminal_evaluator=lambda verification, state: "BLOCKED",
+        action_authorizer=lambda decision, state: None,
+        require_execution_receipt=True,
+        execution_events=stream,
+    )
+    state = run_durable_loop(Executor(), MemoryStateStore(), policy)
+
+    assert state["status"] == "BLOCKED"
+    assert [event.status for event in stream.events()] == [
+        "PERMITTED", "DISPATCHED", "EXECUTE_ATTEMPTED", "OBSERVED"
+    ]
