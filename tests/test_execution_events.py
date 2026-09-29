@@ -1,3 +1,8 @@
+# AIOS-CONTRACT: governed execution lifecycle transitions are typed and evidence-bearing
+# AIOS-REGRESSION: UNKNOWN execution receipts cannot become terminal PASS
+# AIOS-OWNER: AIOS control plane owns lifecycle sequencing and durable commit
+# AIOS-COVERAGE-GAP: covers new event lifecycle and lineage isolation not covered by existing durable-loop tests
+# AIOS-BASELINE: main durable_loop receipt/lineage contract
 from core.durable_loop import LoopPolicy, MemoryStateStore, run_durable_loop
 from core.execution_events import ExecutionEventStream
 
