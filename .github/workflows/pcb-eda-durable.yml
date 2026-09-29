@@ -105,3 +105,5 @@ jobs:
 # E2E trigger: point input contract at temp/audit-input.
 
 # E2E trigger: install Audit Kit parser dependencies.
+
+# E2E trigger: preserve attempt evidence through verification.
