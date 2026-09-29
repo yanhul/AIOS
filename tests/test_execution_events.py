@@ -59,8 +59,8 @@ def test_unknown_cannot_be_promoted_to_terminal():
         def verify(self, action_result, state):
             return {
                 "receipt": {
-                    "effect_id": "effect-unknown",
-                    "attempt_id": "attempt-unknown",
+                    "effect_id": "effect-1",
+                    "attempt_id": "attempt-1",
                     "status": "UNKNOWN",
                     "evidence": {"provider": "test-provider"},
                 }
@@ -121,7 +121,7 @@ def test_observed_receipt_cannot_claim_different_authorized_lineage():
     state = run_durable_loop(MismatchExecutor(), MemoryStateStore(), policy)
 
     assert state["status"] == "BLOCKED"
-    assert "lineage" in state["block_reason"]
+    assert "does not match authorized decision" in state["block_reason"]
     assert [event.status for event in stream.events()] == [
         "PERMITTED", "DISPATCHED", "EXECUTE_ATTEMPTED"
     ]
