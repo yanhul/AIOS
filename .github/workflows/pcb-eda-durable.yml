@@ -68,7 +68,7 @@ jobs:
 
       - name: Run AIOS durable PCB loop
         env:
-          INPUT_ROOT: ${{ github.workspace }}/kit
+          INPUT_ROOT: ${{ github.workspace }}/kit/audit-input
           KIT_ROOT: ${{ github.workspace }}/kit
           MAX_STEPS: ${{ inputs.max_steps || '4' }}
           KIT_RETRIES: ${{ inputs.kit_retries || '3' }}
@@ -99,3 +99,5 @@ jobs:
 # E2E trigger: minimal parse-safe adapter.
 
 # E2E trigger: expand GitHub workspace paths correctly.
+
+# E2E trigger: point input contract at temp/audit-input.
