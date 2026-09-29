@@ -105,9 +105,9 @@ with tempfile.TemporaryDirectory() as td:
 def test_execution_receipt_gate_mutation_is_killed():
     mutation = (
         '            if policy.require_execution_receipt:\n'
-        '                receipt = _validate_execution_receipt(verification)\n',
+        '                receipt = _validate_execution_receipt(verification, effect_id, attempt_id)\n',
         '            if False:\n'
-        '                receipt = _validate_execution_receipt(verification)\n',
+        '                receipt = _validate_execution_receipt(verification, effect_id, attempt_id)\n',
     )
     harness = r'''
 from core.durable_loop import LoopPolicy, MemoryStateStore, run_durable_loop
