@@ -1,4 +1,5 @@
 name: AIOS PCB EDA Durable Run
+# E2E trigger: execute the current pcb.eda@1 kit against the source repo on main.
 
 on:
   workflow_dispatch:
