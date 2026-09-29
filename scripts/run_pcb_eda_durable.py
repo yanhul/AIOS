@@ -141,6 +141,17 @@ class PcbExecutor:
         if result.get("operation") == "pcb.eda.discover_evidence":
             return {
                 "status": "READY" if result["status"] == "PASS" else "BLOCKED",
+                "state_patch": {
+                    "verified_evidence_refs": result["verified_evidence_refs"],
+                    "blocked_requirements": result["unresolved_requirements"],
+                    "discovery": result,
+                    **({"continuation": {
+                        "authority": "AIOS_CONTROL_PLANE",
+                        "evidence_refs": result["verified_evidence_refs"],
+                        "next_operation_id": "pcb.eda@1",
+                        "reason": "discovery verified required blocker evidence",
+                    }} if result["status"] == "PASS" else {}),
+                },
                 "blockers": [{"id": f"EVIDENCE:{x}", "status": "BLOCKED"} for x in result["unresolved_requirements"]],
                 "receipt": {
                     "effect_id": f"{self.args.task_id}:effect:{state.get('step', 0)+1}",
@@ -161,6 +172,10 @@ class PcbExecutor:
             raise RuntimeError("PCB EDA action result missing attempt_dir")
         return {
             "status": receipt["status"],
+            "state_patch": {
+                "latest_attempt_dir": attempt_dir,
+                "blocked_requirements": list(plan.get("requires_verification", [])) if False else state.get("blocked_requirements", []),
+            },
             "blockers": blockers,
             "classified_blockers": kinds,
             "receipt": {

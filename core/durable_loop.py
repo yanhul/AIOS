@@ -166,6 +166,12 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
             action_result = executor.act(deepcopy(decision), deepcopy(state))
             verification = executor.verify(deepcopy(action_result), deepcopy(state))
             receipt = None
+            if isinstance(verification, Mapping):
+                patch = verification.get("state_patch")
+                if patch is not None:
+                    if not isinstance(patch, Mapping):
+                        raise ValueError("verification state_patch must be a mapping")
+                    state.update(deepcopy(dict(patch)))
             if policy.require_execution_receipt:
                 receipt = _validate_execution_receipt(verification)
                 if policy.execution_receipt_validator is not None:
