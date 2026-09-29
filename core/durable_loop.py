@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Protocol
 
 from .fix_protocol import FixPlan, require_fix_plan, require_fix_proof, FixProof
+from .execution_events import ExecutionEventStream
 
 TERMINAL = frozenset({"PASS", "BLOCKED", "INCONCLUSIVE"})
 
@@ -33,6 +34,7 @@ class LoopPolicy:
     fix_plan: FixPlan | None = None
     fix_success_state: str = "PASS"
     blocked_continuation: Callable[[Any, Mapping[str, Any]], Mapping[str, Any] | None] | None = None
+    execution_events: ExecutionEventStream | None = None
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
@@ -157,12 +159,25 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
             return state
         try:
             policy.action_authorizer(deepcopy(decision), deepcopy(state))
+            if policy.execution_events is not None and isinstance(decision, Mapping):
+                effect_id = decision.get("effect_id")
+                attempt_id = decision.get("attempt_id")
+                if isinstance(effect_id, str) and isinstance(attempt_id, str):
+                    policy.execution_events.emit(effect_id=effect_id, attempt_id=attempt_id, status="PERMITTED",
+                                                evidence={"step": state["step"], "source": "aios.action_authorizer"})
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"action authorization failed: {type(exc).__name__}: {exc}"
             store.save(state)
             return state
         try:
+            effect_id = decision.get("effect_id") if isinstance(decision, Mapping) else None
+            attempt_id = decision.get("attempt_id") if isinstance(decision, Mapping) else None
+            if policy.execution_events is not None and isinstance(effect_id, str) and isinstance(attempt_id, str):
+                policy.execution_events.emit(effect_id=effect_id, attempt_id=attempt_id, status="DISPATCHED",
+                                            evidence={"step": state["step"], "source": "aios.durable_loop"})
+                policy.execution_events.emit(effect_id=effect_id, attempt_id=attempt_id, status="EXECUTE_ATTEMPTED",
+                                            evidence={"step": state["step"], "source": "executor.act"})
             action_result = executor.act(deepcopy(decision), deepcopy(state))
             verification = executor.verify(deepcopy(action_result), deepcopy(state))
             receipt = None
@@ -176,6 +191,9 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                 receipt = _validate_execution_receipt(verification)
                 if policy.execution_receipt_validator is not None:
                     policy.execution_receipt_validator(deepcopy(receipt), deepcopy(state))
+                if policy.execution_events is not None:
+                    policy.execution_events.emit(effect_id=receipt["effect_id"], attempt_id=receipt["attempt_id"],
+                                                status=receipt["status"], evidence=dict(receipt.get("evidence") or {}))
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"execution failed after authorization: {type(exc).__name__}: {exc}"
@@ -185,6 +203,9 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         state["history"].append({"step": state["step"], "observation": deepcopy(observation), "decision": deepcopy(decision), "action": deepcopy(action_result), "verification": deepcopy(verification)})
         try:
             terminal = policy.terminal_evaluator(deepcopy(verification), deepcopy(state))
+            if policy.execution_events is not None and receipt is not None and receipt["status"] == "OBSERVED":
+                policy.execution_events.emit(effect_id=receipt["effect_id"], attempt_id=receipt["attempt_id"],
+                                            status="VERIFIED", evidence={"step": state["step"], "source": "terminal_evaluator"})
             if terminal is not None and terminal not in policy.terminal_states:
                 raise ValueError(f"invalid terminal status: {terminal}")
             if policy.require_execution_receipt and receipt is not None and receipt["status"] == "UNKNOWN" and terminal is not None:
@@ -233,6 +254,9 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                 "verification": deepcopy(verification),
             }
             store.save(state)
+            if policy.execution_events is not None and receipt is not None and terminal == "PASS":
+                policy.execution_events.emit(effect_id=receipt["effect_id"], attempt_id=receipt["attempt_id"],
+                                            status="COMMITTED", evidence={"step": state["step"], "source": "state_store.save"})
             return state
         state["status"] = "RUNNING"
         store.save(state)
