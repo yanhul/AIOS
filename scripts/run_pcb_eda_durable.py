@@ -202,10 +202,14 @@ def main():
     a = ap.parse_args(); a.output.mkdir(parents=True, exist_ok=True)
 
     def continuation(v, s):
+        if v.get("status") == "BLOCKED":
+            raw = v.get("blockers") or []
+            if raw and all(isinstance(x, dict) and str(x.get("id", "")).startswith("EVIDENCE:") for x in raw):
+                return None
         blockers = v.get("classified_blockers") or classify_blockers(v)
-        if not blockers: return None
-        plan = plan_blocked_continuation({"blockers": [x["source"] for x in blockers]}, s)
-        return plan
+        if not blockers:
+            return None
+        return plan_blocked_continuation({"blockers": [x["source"] for x in blockers]}, s)
 
     def terminal(v, s):
         status = v.get("status")

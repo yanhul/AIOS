@@ -109,3 +109,5 @@ jobs:
 # E2E trigger: preserve attempt evidence through verification.
 
 # E2E trigger: persist durable-loop state patches.
+
+# E2E trigger: terminalize unresolved evidence discovery as BLOCKED.
