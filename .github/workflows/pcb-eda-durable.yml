@@ -88,3 +88,5 @@ jobs:
           retention-days: 90
 
 # E2E trigger after durable continuation receipt test fix.
+
+# E2E trigger: rerun against latest AIOS main after adapter syntax closure.
