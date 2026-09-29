@@ -81,6 +81,7 @@ class ExecutionEventStream:
 
     def __init__(self, sink: Callable[[Mapping[str, Any]], None] | None = None) -> None:
         self._events: list[ExecutionEvent] = []
+        self._last_by_lineage: dict[tuple[str, str], ExecutionEvent] = {}
         self._sink = sink
 
     def emit(
@@ -91,13 +92,9 @@ class ExecutionEventStream:
         status: str,
         evidence: Mapping[str, Any],
     ) -> ExecutionEvent:
-        prior = self._events[-1] if self._events else None
-        if prior is not None:
-            if prior.effect_id != effect_id or prior.attempt_id != attempt_id:
-                raise ValueError("execution lifecycle cannot switch lineage")
-            sequence = prior.sequence + 1
-        else:
-            sequence = 0
+        key = (effect_id, attempt_id)
+        prior = self._last_by_lineage.get(key)
+        sequence = prior.sequence + 1 if prior is not None else 0
         event = ExecutionEvent(
             effect_id=effect_id,
             attempt_id=attempt_id,
@@ -107,6 +104,7 @@ class ExecutionEventStream:
             parent_status=prior.status if prior else None,
         )
         self._events.append(event)
+        self._last_by_lineage[key] = event
         if self._sink is not None:
             self._sink(event.as_dict() | {"identity": event.identity})
         return event
