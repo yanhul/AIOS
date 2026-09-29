@@ -60,7 +60,9 @@ jobs:
           path: kit
           persist-credentials: false
 
-      - run: python -m pip install pytest PyYAML
+      - run: |
+          python -m pip install pytest PyYAML
+          python -m pip install -r kit/tools/altium-audit/requirements.txt
 
       - name: Validate durable contract
         working-directory: aios
@@ -101,3 +103,5 @@ jobs:
 # E2E trigger: expand GitHub workspace paths correctly.
 
 # E2E trigger: point input contract at temp/audit-input.
+
+# E2E trigger: install Audit Kit parser dependencies.
