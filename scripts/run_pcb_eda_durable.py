@@ -135,7 +135,7 @@ class PcbExecutor:
         )
         rc, receipt = run_kit(req)
         state["latest_attempt_dir"] = str(attempt_dir.resolve())
-        return {"operation": op, "returncode": rc, "receipt": receipt}
+        return {"operation": op, "returncode": rc, "receipt": receipt, "attempt_dir": str(attempt_dir.resolve())}
 
     def verify(self, result, state):
         if result.get("operation") == "pcb.eda.discover_evidence":
@@ -156,6 +156,9 @@ class PcbExecutor:
         if kinds:
             plan = plan_blocked_continuation({"blockers": blockers}, state)
             state["blocked_requirements"] = list(plan.get("requires_verification", [])) if plan else []
+        attempt_dir = result.get("attempt_dir")
+        if not isinstance(attempt_dir, str) or not attempt_dir.strip():
+            raise RuntimeError("PCB EDA action result missing attempt_dir")
         return {
             "status": receipt["status"],
             "blockers": blockers,
@@ -165,7 +168,7 @@ class PcbExecutor:
                 "attempt_id": f"{self.args.task_id}:attempt:{state.get('step', 0)+1}",
                 "status": "OBSERVED",
                 "evidence": {
-                    "summary": str(Path(state["latest_attempt_dir"]) / "summary.json"),
+                    "summary": str(Path(attempt_dir) / "summary.json"),
                     "receipt_schema": receipt.get("schema"),
                     "terminal_reason": receipt.get("terminal_reason"),
                     "gates": receipt.get("gates"),
