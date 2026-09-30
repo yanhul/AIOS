@@ -4,14 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-e206ee1ff2eed66c",
+      "candidate_id": "cand-445fb1b60246ef0f",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "c53f0fa08295a80ebf3c82662d2904cf85298f81354018c5fc65d84ea44b8892",
+      "source_digest": "1ff1b415968832b5e3af7b566f229dc66afb0f90fcf41c68f3085a67bbb3f314",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -154,14 +154,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-7a82d93246bcf454",
+      "candidate_id": "cand-2ba84878e6040106",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "3c2e7459cd46a43e007e368463d5fdea3f12bd0b450dd4b979f7b01f002399d3",
+      "source_digest": "6b0ea3c3d58ea941b1e3437102874366aa1912d94745e428ab5f522ca5931d44",
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
       "status": "UNTRUSTED_EVIDENCE"
     },
