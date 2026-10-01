@@ -4,14 +4,29 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-445fb1b60246ef0f",
+      "candidate_id": "cand-5d9c458ee8014804",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "9ec03b55fe19949fed9f5ab3509e1f847b45fbd3e663e0cf92a0dd7e0d852a00",
+      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-9200ec6263da45d5",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "1ff1b415968832b5e3af7b566f229dc66afb0f90fcf41c68f3085a67bbb3f314",
+      "source_digest": "2076cebaa8b1c068a04e19adcbbc835c8b5243d07083a29aa69d3c7baf413ada",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -34,29 +49,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-bad2df98146a8c0f",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "a077e268b7c226cf9fe220a69a2db76470b8ddc4176ec8856b22489ac5ea804e",
-      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-140d1c80b9b0443d",
+      "candidate_id": "cand-298275523da1efd5",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "97a16861f5120ef4cffcf98d49eab30bd48cea6425f409df71eb6c72a0c43f22",
+      "source_digest": "8037b7a6eab40dc1a585f939b9e95816e9d8fbff2bc1b64ae4f60783414ec19a",
       "source_ref": "https://github.com/tomazb/multi-agent-software-engineer",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -199,14 +199,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-4d5b3feeec818fb2",
+      "candidate_id": "cand-5880e46e9c31e1ce",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "ce108a886e1c9d65f623cd980ffe114d93a9ed625b509eebae03552af761a538",
+      "source_digest": "20d8fbfbdc7056deb9a1f42d05e647f08db7fd2506f5764b36757d3dcc4e4486",
       "source_ref": "https://github.com/qingyou0420/trueheart-core",
       "status": "UNTRUSTED_EVIDENCE"
     },
