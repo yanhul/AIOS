@@ -60,7 +60,27 @@ def _verified_requirement(requirement: str, summary: Mapping[str, Any], plan: Ma
     if requirement == "net_connectivity_evidence":
         return summary.get("gates", {}).get("G3_CONNECTIVITY") == "VERIFIED"
     if requirement == "routing_authority":
-        return industrial.get("status") == "VERIFIED"
+        # Routing authority is operation-scoped. Do not couple it to the
+        # aggregate industrial-rule authority: placement/assembly and
+        # electrical/current-capacity blockers must not gate routing when the
+        # routing rule set itself is verified.
+        routing_rules = {
+            "trace_width",
+            "trace_clearance",
+            "via_rules",
+            "layer_stack",
+        }
+        for name in routing_rules:
+            v = rules.get(name)
+            if not isinstance(v, Mapping):
+                return False
+            status = v.get("status")
+            if status == "VERIFIED":
+                continue
+            if status == "NOT_APPLICABLE" and bool(v.get("evidence")):
+                continue
+            return False
+        return True
     if requirement == "closure_verification":
         return routing.get("status") == "VERIFIED"
     return False
