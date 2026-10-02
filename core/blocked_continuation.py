@@ -13,6 +13,9 @@ BLOCKER_REQUIREMENTS = {
     "topology": ("net_connectivity_evidence", "routing_authority", "closure_verification"),
 }
 
+BLOCKING_STATUSES = {"FAIL", "BLOCKED", "UNRESOLVED"}
+BLOCKING_SEVERITIES = {"BLOCKER"}
+
 def classify_blockers(verification: Mapping[str, Any]) -> list[dict[str, Any]]:
     raw = verification.get("blockers") or verification.get("findings") or []
     if not isinstance(raw, list):
@@ -20,6 +23,13 @@ def classify_blockers(verification: Mapping[str, Any]) -> list[dict[str, Any]]:
     out = []
     for item in raw:
         if not isinstance(item, Mapping):
+            continue
+        status = str(item.get("status") or "").upper()
+        severity = str(item.get("severity") or "").upper()
+        # Only actual blocking evidence may trigger continuation. INFO/VERIFIED
+        # topology evidence and inferred WARN congestion signals are observations,
+        # not blockers and must never create routing-authority requirements.
+        if status not in BLOCKING_STATUSES and severity not in BLOCKING_SEVERITIES:
             continue
         ident = str(item.get("id") or item.get("code") or item.get("domain") or "").lower()
         if "edge" in ident:
@@ -46,8 +56,6 @@ def plan_blocked_continuation(verification: Mapping[str, Any], state: Mapping[st
             if ref not in required:
                 required.append(ref)
     missing = [x for x in required if x not in completed]
-    # Discovery is allowed to produce a task plan, but redispatch is allowed
-    # only after evidence has been independently verified and persisted.
     if missing:
         return {
             "authority": "AIOS_CONTROL_PLANE",
