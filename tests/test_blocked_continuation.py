@@ -11,6 +11,14 @@ def test_pcb_blockers_are_classified_without_inventing_values():
     kinds = [x["kind"] for x in classify_blockers(verification)]
     assert kinds == ["board_edge_clearance", "assembly_access", "current_capacity", "topology"]
 
+def test_non_blocking_routing_observations_do_not_create_topology_requirements():
+    verification = {"findings": [
+        {"id": "G6-ROUTING-CORRIDOR-J1", "status": "WARN", "severity": "MEDIUM"},
+        {"id": "G7-TOPOLOGY", "status": "VERIFIED", "severity": "INFO"},
+        {"id": "G7-TOPOLOGY-LIMIT", "status": "VERIFIED", "severity": "INFO"},
+    ]}
+    assert classify_blockers(verification) == []
+
 def test_missing_evidence_does_not_authorize_redispatch():
     verification = {"blockers": [{"id": "current_capacity", "status": "BLOCKED"}]}
     plan = plan_blocked_continuation(verification, {"verified_evidence_refs": []})
