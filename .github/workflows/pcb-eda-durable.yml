@@ -112,3 +112,5 @@ jobs:
 
 # E2E trigger: terminalize unresolved evidence discovery as BLOCKED.
 # E2E trigger: execute after strict G7 routing-authority merge in yanhul/temp.
+
+# E2E trigger: strict QI9 benchmark from yanhul/temp main.
