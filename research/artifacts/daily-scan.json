@@ -2,24 +2,44 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
+      "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
+      "source_digest": "efefa1d464808b1c28c88147b82d489376907dda5649bf1dd87de15c7fe70460",
+      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
+      "stars": 0,
+      "updated_at": "2026-10-02T01:15:34Z"
+    },
+    {
+      "description": "Provider-neutral coding-agent harness with deterministic workflow graphs, durable evidence, and fail-closed sandboxed execution",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "synaptiai/flow-harness",
+      "source_digest": "39b6d9a027fd8ccf2f7499ab11204d78e621618d0f7de2abe2571c70afee8a54",
+      "source_ref": "https://github.com/synaptiai/flow-harness",
+      "stars": 0,
+      "updated_at": "2026-10-01T20:58:52Z"
+    },
+    {
       "description": "An open Agents API for Cloudflare Workers, with durable sessions, pluggable harnesses, and isolated execution.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "inaridiy/CF-Open-Agents-API",
-      "source_digest": "9ec03b55fe19949fed9f5ab3509e1f847b45fbd3e663e0cf92a0dd7e0d852a00",
+      "source_digest": "6fee287a90a5e960dec2624e9538a035b535e6cc438f92f59c49695ff03718d7",
       "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
       "stars": 26,
-      "updated_at": "2026-10-01T09:00:56Z"
+      "updated_at": "2026-10-01T13:10:04Z"
     },
     {
       "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "Root1V/aeon-agent-harness",
-      "source_digest": "2076cebaa8b1c068a04e19adcbbc835c8b5243d07083a29aa69d3c7baf413ada",
+      "source_digest": "4a5c551672191615f41795c538b034d33623b394d49149d8dbfc164254487965",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "stars": 0,
-      "updated_at": "2026-10-01T04:56:00Z"
+      "updated_at": "2026-10-01T11:45:49Z"
     },
     {
       "description": "A long-horizon research agent harness: crash-consistent durable state, sandboxed tool execution, and a veracity ledger for every claim.",
@@ -30,26 +50,6 @@
       "source_ref": "https://github.com/chiragborse1/deep-research-harness",
       "stars": 0,
       "updated_at": "2026-09-29T08:53:21Z"
-    },
-    {
-      "description": "Deterministic multi-agent software-delivery orchestrator with durable workflows, exact-head evidence, and a Cursor-first path to multi-harness execution.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "tomazb/multi-agent-software-engineer",
-      "source_digest": "8037b7a6eab40dc1a585f939b9e95816e9d8fbff2bc1b64ae4f60783414ec19a",
-      "source_ref": "https://github.com/tomazb/multi-agent-software-engineer",
-      "stars": 1,
-      "updated_at": "2026-09-28T16:16:32Z"
-    },
-    {
-      "description": "acp-runner: durable agent execution environments on Kubernetes (ACP harness runtime)",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "taituo/acp-runner",
-      "source_digest": "5e7192801d7473c68c2812d78ec0e8da7f5cb90c7222636af1d5a725a9a866ad",
-      "source_ref": "https://github.com/taituo/acp-runner",
-      "stars": 0,
-      "updated_at": "2026-09-28T09:50:54Z"
     },
     {
       "description": "Yethanus \u2014 Python AI agent experimentation framework (anus-ai fork) for exploring autonomous agent architectures.",
@@ -106,10 +106,10 @@
       "query": "agent memory provenance governance",
       "ref": "main",
       "repo": "jermayne36/heartwood-memory",
-      "source_digest": "6b0ea3c3d58ea941b1e3437102874366aa1912d94745e428ab5f522ca5931d44",
+      "source_digest": "63758aa31bc6bd8ddb95e27260bf027f6572184d9e1cbd03a53461286df13fbc",
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
       "stars": 0,
-      "updated_at": "2026-09-30T06:36:39Z"
+      "updated_at": "2026-10-01T21:34:17Z"
     },
     {
       "description": "Local cognitive memory runtime for AI agents \u2014 durable recall, temporal versioning, provenance, contradiction governance, and portable encrypted storage. Pure Rust, offline-first, with no required LLM or cloud. Patent pending.",
