@@ -52,3 +52,44 @@ def test_unknown_or_missing_schema_is_fail_closed():
 def test_request_rejects_negative_retry_budget():
     with pytest.raises(ValueError, match="max_retries"):
         PcbEdaRequest("x", "/i", "/o", "/k", max_retries=-1).validate()
+
+from scripts.run_pcb_eda_durable import _verified_requirement
+
+
+def _authority_plan(aggregate="BLOCKED"):
+    routing_rules = {
+        "trace_width": {"status": "VERIFIED"},
+        "trace_clearance": {"status": "VERIFIED"},
+        "via_rules": {"status": "VERIFIED"},
+        "layer_stack": {"status": "VERIFIED"},
+        "board_edge_clearance": {"status": "BLOCKED"},
+        "assembly_access": {"status": "BLOCKED"},
+        "current_capacity": {"status": "BLOCKED"},
+    }
+    return {
+        "industrial_rule_authority": {
+            "status": aggregate,
+            "rules": routing_rules,
+        },
+        "routing": {"status": "VERIFIED"},
+    }
+
+
+def test_routing_authority_is_independent_of_industrial_aggregate():
+    plan = _authority_plan("BLOCKED")
+    assert _verified_requirement("routing_authority", {}, plan) is True
+
+
+def test_routing_authority_fails_closed_when_required_routing_rule_missing():
+    plan = _authority_plan("BLOCKED")
+    del plan["industrial_rule_authority"]["rules"]["via_rules"]
+    assert _verified_requirement("routing_authority", {}, plan) is False
+
+
+def test_industrial_blockers_do_not_unlock_by_routing_authority():
+    plan = _authority_plan("BLOCKED")
+    summary = {"gates": {"G3_CONNECTIVITY": "VERIFIED"}}
+    assert _verified_requirement("routing_authority", summary, plan) is True
+    assert _verified_requirement("clearance_rule", summary, plan) is False
+    assert _verified_requirement("assembly_constraint", summary, plan) is False
+    assert _verified_requirement("electrical_authority", summary, plan) is False
