@@ -38,7 +38,6 @@ _REQUIRED_CONTRACT_FIELDS = {
     "max_attempts",
     "terminal_states",
     "policy_digest",
-    "acceptance_predicates",
 }
 
 
