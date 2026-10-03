@@ -4,29 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-c0d57feb6b849fd2",
+      "candidate_id": "cand-be053c218607f41f",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "8b0fab56b5b3fe4a6c27e82b0140a59d9b53f264d77c8f1f83cdf78d5c4ead89",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-2a72533f27b3622e",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "e8865be9fb30db57718ce21b2a802153402db40fd573717169ffa6ed9a748bcf",
+      "source_digest": "7c78dc4bbf33f7826ffb4c112eb408a147e283bfbf07b596a2933260595b9099",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -34,15 +19,30 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-696f685373888dd6",
+      "candidate_id": "cand-7c419da3f9ba8380",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "39b6d9a027fd8ccf2f7499ab11204d78e621618d0f7de2abe2571c70afee8a54",
+      "source_digest": "92d909665dc9bf5c77d33a3990dde7a79585b9da864bcdea3adba884f6b2c48c",
       "source_ref": "https://github.com/synaptiai/flow-harness",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-ce751c37d75a85f3",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "d13a568e9155bd2f7897aef905f6c34856e310bb8c63e940f17246517a82eb0f",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -154,14 +154,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-ed374efbedad846c",
+      "candidate_id": "cand-0b3010d74186cf70",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "d2e8940d8b72b66113599e1ac32fdba88f259bdfdd6fafdc7984d2a49273f243",
+      "source_digest": "70fe5efffd7e8b0566438226970bfb9d4e1b692680dec1bbf1492479b3c9a6da",
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -169,14 +169,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-24bd2e8be000eebb",
+      "candidate_id": "cand-c22f7bd485d18a73",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "68e5d5278d7e3f8d29b8b982c8f3a02acb184a083d7713417233ad3c17aca19a",
+      "source_digest": "e9a6b0d6200ada6b9fbecd7aa952bd16b4d54ce83dc84af51667f82a65eb4148",
       "source_ref": "https://github.com/teolex2020/aura-memory",
       "status": "UNTRUSTED_EVIDENCE"
     },
