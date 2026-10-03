@@ -18,6 +18,7 @@ Stdlib only. No filesystem writes and no network calls.
 import hashlib
 
 from .mutation import canonical_json
+from .acceptance import AcceptancePredicate
 
 CONTRACT_TYPE = "EXECUTION_CONTRACT"
 PERMIT_TYPE = "EXECUTION_PERMIT"
@@ -37,6 +38,7 @@ _REQUIRED_CONTRACT_FIELDS = {
     "max_attempts",
     "terminal_states",
     "policy_digest",
+    "acceptance_predicates",
 }
 
 
@@ -64,6 +66,22 @@ def validate_contract(contract):
         if not isinstance(contract[field], list) or not all(
                 isinstance(v, str) and v.strip() for v in contract[field]):
             raise ValueError(f"{field} must be a list of non-empty strings")
+    predicates = contract["acceptance_predicates"]
+    if not isinstance(predicates, list) or not predicates:
+        raise ValueError("acceptance_predicates must be a non-empty list")
+    seen = set()
+    for raw in predicates:
+        if not isinstance(raw, dict):
+            raise ValueError("acceptance_predicates entries must be mappings")
+        try:
+            predicate = AcceptancePredicate(
+                predicate_id=raw["predicate_id"], path=raw["path"],
+                operator=raw["operator"], expected=raw.get("expected"))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"invalid acceptance predicate: {exc}") from exc
+        if predicate.predicate_id in seen:
+            raise ValueError(f"duplicate acceptance predicate id: {predicate.predicate_id}")
+        seen.add(predicate.predicate_id)
     if isinstance(contract["max_attempts"], bool) or not isinstance(
             contract["max_attempts"], int) or contract["max_attempts"] < 1:
         raise ValueError("max_attempts must be a positive integer")
@@ -95,6 +113,7 @@ def issue_permit(contract, issuer):
         "allowed_effects": list(contract["allowed_effects"]),
         "max_attempts": contract["max_attempts"],
         "policy_digest": contract["policy_digest"],
+        "acceptance_predicates": [dict(p) for p in contract["acceptance_predicates"]],
         "issuer": issuer,
     }
     permit["permit_id"] = "PT-" + _sha256(permit)
@@ -122,7 +141,7 @@ def verify_permit(contract, permit):
     if permit["permit_id"] != "PT-" + _sha256(expected):
         raise ValueError("permit identity mismatch")
     for field in ("task_id", "actor", "capabilities", "allowed_effects",
-                  "max_attempts", "policy_digest"):
+                  "max_attempts", "policy_digest", "acceptance_predicates"):
         if permit[field] != contract[field]:
             raise ValueError(f"permit/{field} differs from contract")
     return True
