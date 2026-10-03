@@ -19,14 +19,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-5f728153947d3803",
+      "candidate_id": "cand-abb129e7b1464303",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "3b1f1600a72831ee1d53553c8ffad08a8216fa6c626e6c20d6e7e3dcdfa02408",
+      "source_digest": "a83cad526f3aadf0a42536d751173eb7e46e9bb685f735ed89bc1fcdcf1e5e5c",
       "source_ref": "https://github.com/synaptiai/flow-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -154,14 +154,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-0b3010d74186cf70",
+      "candidate_id": "cand-4f50711e0c9c82c3",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "70fe5efffd7e8b0566438226970bfb9d4e1b692680dec1bbf1492479b3c9a6da",
+      "source_digest": "b09c356bfa0e634430883e25da1e9c32e3dc0cacf81a96db78ea27538deec926",
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
       "status": "UNTRUSTED_EVIDENCE"
     },

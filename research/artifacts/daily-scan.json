@@ -16,7 +16,7 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "synaptiai/flow-harness",
-      "source_digest": "3b1f1600a72831ee1d53553c8ffad08a8216fa6c626e6c20d6e7e3dcdfa02408",
+      "source_digest": "a83cad526f3aadf0a42536d751173eb7e46e9bb685f735ed89bc1fcdcf1e5e5c",
       "source_ref": "https://github.com/synaptiai/flow-harness",
       "stars": 0,
       "updated_at": "2026-10-03T01:06:07Z"
@@ -106,7 +106,7 @@
       "query": "agent memory provenance governance",
       "ref": "main",
       "repo": "jermayne36/heartwood-memory",
-      "source_digest": "70fe5efffd7e8b0566438226970bfb9d4e1b692680dec1bbf1492479b3c9a6da",
+      "source_digest": "b09c356bfa0e634430883e25da1e9c32e3dc0cacf81a96db78ea27538deec926",
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
       "stars": 0,
       "updated_at": "2026-10-02T19:29:28Z"
