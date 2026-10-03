@@ -29,6 +29,7 @@ class TestM6Contract(unittest.TestCase):
             "max_attempts": 3,
             "terminal_states": ["DONE", "HOLD", "BLOCKED"],
             "policy_digest": "sha256:policy",
+            "acceptance_predicates": [{"predicate_id": "status-pass", "path": "verification.status", "operator": "eq", "expected": "FIXED"}],
         }
 
     def test_contract_identity_is_deterministic(self):
