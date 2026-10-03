@@ -38,6 +38,7 @@ _REQUIRED_CONTRACT_FIELDS = {
     "max_attempts",
     "terminal_states",
     "policy_digest",
+    "acceptance_predicates",
 }
 
 
@@ -52,10 +53,10 @@ def validate_contract(contract):
     missing = _REQUIRED_CONTRACT_FIELDS - set(contract)
     if missing:
         raise ValueError(f"contract missing fields: {sorted(missing)}")
-    if set(contract) - _REQUIRED_CONTRACT_FIELDS:
+    if set(contract) - (_REQUIRED_CONTRACT_FIELDS | {"acceptance_predicates"}):
         raise ValueError(
             f"contract contains unsupported fields: "
-            f"{sorted(set(contract) - _REQUIRED_CONTRACT_FIELDS)}")
+            f"{sorted(set(contract) - (_REQUIRED_CONTRACT_FIELDS | {"acceptance_predicates"}))}")
     if contract["contract_type"] != CONTRACT_TYPE:
         raise ValueError("contract_type mismatch")
     for field in ("task_id", "scope", "actor", "input_digest", "policy_digest"):
