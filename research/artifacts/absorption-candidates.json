@@ -19,14 +19,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-7c419da3f9ba8380",
+      "candidate_id": "cand-5f728153947d3803",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "92d909665dc9bf5c77d33a3990dde7a79585b9da864bcdea3adba884f6b2c48c",
+      "source_digest": "3b1f1600a72831ee1d53553c8ffad08a8216fa6c626e6c20d6e7e3dcdfa02408",
       "source_ref": "https://github.com/synaptiai/flow-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
