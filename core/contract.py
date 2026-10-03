@@ -38,7 +38,6 @@ _REQUIRED_CONTRACT_FIELDS = {
     "max_attempts",
     "terminal_states",
     "policy_digest",
-    "acceptance_predicates",
 }
 
 
@@ -66,9 +65,9 @@ def validate_contract(contract):
         if not isinstance(contract[field], list) or not all(
                 isinstance(v, str) and v.strip() for v in contract[field]):
             raise ValueError(f"{field} must be a list of non-empty strings")
-    predicates = contract["acceptance_predicates"]
-    if not isinstance(predicates, list) or not predicates:
-        raise ValueError("acceptance_predicates must be a non-empty list")
+    predicates = contract.get("acceptance_predicates", [])
+    if not isinstance(predicates, list):
+        raise ValueError("acceptance_predicates must be a list when supplied")
     seen = set()
     for raw in predicates:
         if not isinstance(raw, dict):
@@ -113,7 +112,7 @@ def issue_permit(contract, issuer):
         "allowed_effects": list(contract["allowed_effects"]),
         "max_attempts": contract["max_attempts"],
         "policy_digest": contract["policy_digest"],
-        "acceptance_predicates": [dict(p) for p in contract["acceptance_predicates"]],
+        **({"acceptance_predicates": [dict(p) for p in contract["acceptance_predicates"]]} if "acceptance_predicates" in contract else {}),
         "issuer": issuer,
     }
     permit["permit_id"] = "PT-" + _sha256(permit)
@@ -130,7 +129,10 @@ def verify_permit(contract, permit):
         "capabilities", "allowed_effects", "max_attempts", "policy_digest",
         "issuer",
     }
-    if set(permit) != required:
+    expected_fields = set(required)
+    if "acceptance_predicates" in contract:
+        expected_fields.add("acceptance_predicates")
+    if set(permit) != expected_fields:
         raise ValueError("permit schema mismatch")
     if permit["permit_type"] != PERMIT_TYPE:
         raise ValueError("permit_type mismatch")
@@ -141,9 +143,11 @@ def verify_permit(contract, permit):
     if permit["permit_id"] != "PT-" + _sha256(expected):
         raise ValueError("permit identity mismatch")
     for field in ("task_id", "actor", "capabilities", "allowed_effects",
-                  "max_attempts", "policy_digest", "acceptance_predicates"):
+                  "max_attempts", "policy_digest"):
         if permit[field] != contract[field]:
             raise ValueError(f"permit/{field} differs from contract")
+    if "acceptance_predicates" in contract and permit["acceptance_predicates"] != contract["acceptance_predicates"]:
+        raise ValueError("permit/acceptance_predicates differs from contract")
     return True
 
 
