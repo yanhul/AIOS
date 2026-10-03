@@ -4,6 +4,36 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
+      "candidate_id": "cand-20e61e8fd73918e3",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "89b00467a17ca9e369e73912df54d7e5024718ef2464a86902b4fbf36f72f294",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-60e5b4a4799da232",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "6fe38aa3cc2191c9aae99c1673e67222486f57f95b3432f3bb3fa8c7cb4cfb27",
+      "source_ref": "https://github.com/synaptiai/flow-harness",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
       "candidate_id": "cand-f85c4bc31469db09",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
@@ -13,36 +43,6 @@
       "ref": "main",
       "source_digest": "05f28b0f2c297de6f626792d4f63aa091ee12b91afe30663d1871831b10ba92a",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-22ceb9ec83fdda79",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "fdd8783b7f3513901078baea9ff7ad0386dba49b2c74db5fe160101fc4575485",
-      "source_ref": "https://github.com/synaptiai/flow-harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-ce751c37d75a85f3",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "d13a568e9155bd2f7897aef905f6c34856e310bb8c63e940f17246517a82eb0f",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
