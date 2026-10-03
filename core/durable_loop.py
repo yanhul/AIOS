@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Protocol
 
 from .fix_protocol import FixPlan, require_fix_plan, require_fix_proof, FixProof
+from .acceptance import AcceptancePredicate, evaluate_acceptance
 
 TERMINAL = frozenset({"PASS", "BLOCKED", "INCONCLUSIVE"})
 
@@ -33,6 +34,7 @@ class LoopPolicy:
     fix_plan: FixPlan | None = None
     fix_success_state: str = "PASS"
     blocked_continuation: Callable[[Any, Mapping[str, Any]], Mapping[str, Any] | None] | None = None
+    acceptance_predicates: tuple[AcceptancePredicate, ...] = ()
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
@@ -60,6 +62,8 @@ class LoopPolicy:
                 raise ValueError("fix_success_state must be an authorized terminal state")
         if self.fix_plan is not None:
             require_fix_plan(self.fix_plan)
+        if not isinstance(self.acceptance_predicates, tuple) or any(not isinstance(p, AcceptancePredicate) for p in self.acceptance_predicates):
+            raise ValueError("acceptance_predicates must be a tuple of AcceptancePredicate")
         if self.blocked_continuation is not None and not callable(self.blocked_continuation):
             raise ValueError("blocked_continuation must be callable")
 
@@ -185,6 +189,12 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         state["history"].append({"step": state["step"], "observation": deepcopy(observation), "decision": deepcopy(decision), "action": deepcopy(action_result), "verification": deepcopy(verification)})
         try:
             terminal = policy.terminal_evaluator(deepcopy(verification), deepcopy(state))
+            if terminal == "PASS" and policy.acceptance_predicates:
+                acceptance_input = dict(state)
+                acceptance_input["verification"] = deepcopy(verification)
+                acceptance = evaluate_acceptance(policy.acceptance_predicates, acceptance_input)
+                if not acceptance.passed:
+                    raise ValueError("PASS rejected: acceptance predicates failed: " + ", ".join(acceptance.failed_predicates))
             if terminal is not None and terminal not in policy.terminal_states:
                 raise ValueError(f"invalid terminal status: {terminal}")
             if policy.require_execution_receipt and receipt is not None and receipt["status"] == "UNKNOWN" and terminal is not None:
