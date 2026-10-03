@@ -192,9 +192,10 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
             if terminal == "PASS" and policy.acceptance_predicates:
                 acceptance_input = dict(state)
                 acceptance_input["verification"] = deepcopy(verification)
-                acceptance = evaluate_acceptance(policy.acceptance_predicates, acceptance_input)
-                if not acceptance.passed:
-                    raise ValueError("PASS rejected: acceptance predicates failed: " + ", ".join(acceptance.failed_predicates))
+                evaluation = evaluate_acceptance(policy.acceptance_predicates, acceptance_input)
+                failed = tuple(result for result in evaluation if not result.passed)
+                if failed:
+                    raise ValueError("PASS rejected: acceptance predicates failed: " + ", ".join(result.predicate_id for result in failed))
             if terminal is not None and terminal not in policy.terminal_states:
                 raise ValueError(f"invalid terminal status: {terminal}")
             if policy.require_execution_receipt and receipt is not None and receipt["status"] == "UNKNOWN" and terminal is not None:
