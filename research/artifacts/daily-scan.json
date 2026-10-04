@@ -2,14 +2,24 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
+      "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
+      "source_digest": "bc727458e20e29a2ad8b65b561d345c0d13af960eaa1b3104dc739501f15652b",
+      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
+      "stars": 0,
+      "updated_at": "2026-10-04T06:18:45Z"
+    },
+    {
       "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "Root1V/aeon-agent-harness",
-      "source_digest": "89b00467a17ca9e369e73912df54d7e5024718ef2464a86902b4fbf36f72f294",
+      "source_digest": "c83722bfe5f3c8857ca7c0647285827f18c2a19a8830bd9f32c0ac2f043ff95c",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "stars": 0,
-      "updated_at": "2026-10-03T14:19:25Z"
+      "updated_at": "2026-10-03T18:00:21Z"
     },
     {
       "description": "Provider-neutral coding-agent harness with deterministic workflow graphs, durable evidence, and fail-closed sandboxed execution",
@@ -20,16 +30,6 @@
       "source_ref": "https://github.com/synaptiai/flow-harness",
       "stars": 0,
       "updated_at": "2026-10-03T13:49:26Z"
-    },
-    {
-      "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "05f28b0f2c297de6f626792d4f63aa091ee12b91afe30663d1871831b10ba92a",
-      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
-      "stars": 0,
-      "updated_at": "2026-10-03T07:33:01Z"
     },
     {
       "description": "An open Agents API for Cloudflare Workers, with durable sessions, pluggable harnesses, and isolated execution.",
@@ -106,10 +106,10 @@
       "query": "agent memory provenance governance",
       "ref": "main",
       "repo": "jermayne36/heartwood-memory",
-      "source_digest": "cd829a1f91f0f02633834cba435962cdb27fb0541628ee84e47f519592c39bc5",
+      "source_digest": "71afbf0ab3420b450ef18d0155ad783f298e84e5a7d69645eb59990f8ecb71a2",
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
       "stars": 0,
-      "updated_at": "2026-10-03T12:29:25Z"
+      "updated_at": "2026-10-03T16:31:46Z"
     },
     {
       "description": "Local cognitive memory runtime for AI agents \u2014 durable recall, temporal versioning, provenance, contradiction governance, and portable encrypted storage. Pure Rust, offline-first, with no required LLM or cloud. Patent pending.",
