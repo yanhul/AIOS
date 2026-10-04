@@ -176,7 +176,7 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"action authorization failed: {type(exc).__name__}: {exc}"
-            store.save(state)
+            _persist_state(state, store, policy)
             return state
         try:
             action_result = executor.act(deepcopy(decision), deepcopy(state))
@@ -195,7 +195,7 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"execution failed after authorization: {type(exc).__name__}: {exc}"
-            store.save(state)
+            _persist_state(state, store, policy)
             return state
         state["step"] += 1
         state["history"].append({"step": state["step"], "observation": deepcopy(observation), "decision": deepcopy(decision), "action": deepcopy(action_result), "verification": deepcopy(verification)})
@@ -217,7 +217,7 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"terminal evaluation failed: {type(exc).__name__}: {exc}"
-            store.save(state)
+            _persist_state(state, store, policy)
             return state
         if terminal is not None:
             if terminal == "BLOCKED" and policy.blocked_continuation is not None:
@@ -255,7 +255,7 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                 "status": terminal,
                 "verification": deepcopy(verification),
             }
-            store.save(state)
+            _persist_state(state, store, policy)
             return state
         state["status"] = "RUNNING"
         _persist_state(state, store, policy)
