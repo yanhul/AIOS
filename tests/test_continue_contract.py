@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: CONTINUE_CONTRACT schema and legal-action boundary
+# AIOS-REGRESSION: Prevent model drift outside the durable active phase
+# AIOS-OWNER: AIOS control-plane durable execution
+# AIOS-COVERAGE-GAP: Covers deterministic contract projection and fail-closed validation
+# AIOS-BASELINE: Tests target the existing durable-loop contract baseline
+
 from core.continue_contract import (
     build_continue_contract,
     validate_continue_action,
