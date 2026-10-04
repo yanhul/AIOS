@@ -35,6 +35,7 @@ class LoopPolicy:
     fix_success_state: str = "PASS"
     blocked_continuation: Callable[[Any, Mapping[str, Any]], Mapping[str, Any] | None] | None = None
     acceptance_predicates: tuple[AcceptancePredicate, ...] = ()
+    continue_contract_builder: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
@@ -66,6 +67,8 @@ class LoopPolicy:
             raise ValueError("acceptance_predicates must be a tuple of AcceptancePredicate")
         if self.blocked_continuation is not None and not callable(self.blocked_continuation):
             raise ValueError("blocked_continuation must be callable")
+        if self.continue_contract_builder is not None and not callable(self.continue_contract_builder):
+            raise ValueError("continue_contract_builder must be callable")
 
 def _validate_execution_receipt(verification: Any) -> Mapping[str, Any]:
     """Fail closed unless verification contains a complete execution receipt."""
@@ -122,6 +125,15 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
     if state.get("status") in policy.terminal_states:
         _validate_terminal_evidence(state)
 
+def _persist_state(state: dict[str, Any], store: StateStore, policy: LoopPolicy) -> None:
+    """Persist durable state and, when configured, its model-facing continuation contract."""
+    if policy.continue_contract_builder is not None:
+        contract = policy.continue_contract_builder(deepcopy(state))
+        if not isinstance(contract, Mapping):
+            raise ValueError("continue contract builder must return a mapping")
+        state["continue_contract"] = deepcopy(dict(contract))
+    store.save(state)
+
 def _validate_fix_success(verification: Any, expected_state: str) -> None:
     """Require externally verifiable runtime proof before fix promotion."""
     if expected_state == "PASS":
@@ -146,7 +158,7 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
     except Exception as exc:
         state["status"] = policy.failure_state
         state["block_reason"] = f"invalid durable state: {type(exc).__name__}: {exc}"
-        store.save(state)
+        _persist_state(state, store, policy)
         return state
     if state["status"] in policy.terminal_states:
         return state
@@ -157,7 +169,7 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"execution failed before authorization: {type(exc).__name__}: {exc}"
-            store.save(state)
+            _persist_state(state, store, policy)
             return state
         try:
             policy.action_authorizer(deepcopy(decision), deepcopy(state))
@@ -235,7 +247,7 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                     state["status"] = "RUNNING"
                     state["continuation"] = deepcopy(dict(continuation))
                     state["history"][-1]["continuation"] = deepcopy(dict(continuation))
-                    store.save(state)
+                    _persist_state(state, store, policy)
                     continue
             state["status"] = terminal
             state["terminal_evidence"] = {
@@ -246,14 +258,14 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
             store.save(state)
             return state
         state["status"] = "RUNNING"
-        store.save(state)
+        _persist_state(state, store, policy)
     state["status"] = policy.budget_exhaustion_state
     state["terminal_evidence"] = {
         "step": state["step"],
         "status": state["status"],
         "verification": {"reason": "BUDGET_EXHAUSTED"},
     }
-    store.save(state)
+    _persist_state(state, store, policy)
     return state
 
 __all__ = ["TERMINAL", "LoopPolicy", "MemoryStateStore", "run_durable_loop"]
