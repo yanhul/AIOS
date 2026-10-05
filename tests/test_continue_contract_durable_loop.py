@@ -50,3 +50,33 @@ def test_durable_loop_persists_model_facing_continue_contract():
     assert contract["active_phase"] == "SCHEMATIC"
     assert contract["forbidden_actions"] == ["placement", "routing", "claim_pass"]
     assert contract["state_digest"]
+
+def test_resume_blocks_tampered_continue_contract():
+    class Executor:
+        def observe(self, state):
+            raise AssertionError("tampered durable state must not execute")
+        def decide(self, observation, state): return {}
+        def act(self, decision, state): return {}
+        def verify(self, result, state): return {}
+
+    policy = LoopPolicy(
+        max_steps=1,
+        terminal_evaluator=lambda v, s: "PASS",
+        action_authorizer=lambda d, s: None,
+        continue_contract_builder=build_continue_contract,
+    )
+    store = MemoryStateStore(_state())
+    first = run_durable_loop(
+        type("Executor", (), {
+            "observe": lambda self, state: {},
+            "decide": lambda self, observation, state: {},
+            "act": lambda self, decision, state: {},
+            "verify": lambda self, result, state: {"status": "PASS"},
+        })(),
+        store,
+        policy,
+    )
+    store.state["continue_contract"]["active_phase"] = "PLACEMENT"
+    result = run_durable_loop(Executor(), store, policy)
+    assert result["status"] == "BLOCKED"
+    assert "continue contract" in result["block_reason"]
