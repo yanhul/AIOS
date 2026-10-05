@@ -6,6 +6,7 @@ from typing import Any, Callable, Mapping, Protocol
 
 from .fix_protocol import FixPlan, require_fix_plan, require_fix_proof, FixProof
 from .acceptance import AcceptancePredicate, evaluate_acceptance
+from .continue_contract import validate_continue_contract, build_continue_contract
 
 TERMINAL = frozenset({"PASS", "BLOCKED", "INCONCLUSIVE"})
 
@@ -88,7 +89,6 @@ def _validate_execution_receipt(verification: Any) -> Mapping[str, Any]:
         raise ValueError("execution receipt evidence is missing or empty")
     return receipt
 
-
 def _validate_terminal_evidence(state: Mapping[str, Any]) -> None:
     """A terminal state is valid only when its immutable evidence projection exists."""
     evidence = state.get("terminal_evidence")
@@ -122,6 +122,16 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
         raise ValueError("persisted policy digest does not match current policy")
     if policy.resume_validator is not None:
         policy.resume_validator(state)
+    if policy.continue_contract_builder is not None:
+        contract = state.get("continue_contract")
+        if not isinstance(contract, Mapping):
+            raise ValueError("persisted continue contract is missing")
+        validate_continue_contract(contract)
+        source_state = dict(state)
+        source_state.pop("continue_contract", None)
+        expected = policy.continue_contract_builder(source_state)
+        if dict(contract) != dict(expected):
+            raise ValueError("persisted continue contract does not match durable state")
     if state.get("status") in policy.terminal_states:
         _validate_terminal_evidence(state)
 
