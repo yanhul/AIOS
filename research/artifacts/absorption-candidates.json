@@ -4,14 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-662b0251e293217b",
+      "candidate_id": "cand-edfa165ec38653b4",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "bc727458e20e29a2ad8b65b561d345c0d13af960eaa1b3104dc739501f15652b",
+      "source_digest": "7322170ae60ad061ade2836418cd9a1129dca000fad7b1c1529358883ad1fa05",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -79,6 +79,21 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
+      "candidate_id": "cand-b229c78ad4c8802c",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "research_harness",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "a755d4ae6a5b7bd994913e225524ef46882b2e5d1be9cc6e80acf3506a13750b",
+      "source_ref": "https://github.com/abhijeetchaubey/OmniResearch",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
       "candidate_id": "cand-cf205bb56d75a71a",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
@@ -139,15 +154,15 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-628a8afeac8895d9",
+      "candidate_id": "cand-3710b57258764f25",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "research_harness",
+      "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "e89aaa2e3962650ea3a91a651d8a4ceff1be55599574812791a15aaee8bea9df",
-      "source_ref": "https://github.com/ParasKoundal/automl-research",
+      "source_digest": "66d82d25abc4141c5d749bd8ce28debf4093dbbbcea974b79ad43968260d9e6f",
+      "source_ref": "https://github.com/ver-cy/vercy-py",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -169,14 +184,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-c22f7bd485d18a73",
+      "candidate_id": "cand-4f2228aaf6f0a8d9",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "e9a6b0d6200ada6b9fbecd7aa952bd16b4d54ce83dc84af51667f82a65eb4148",
+      "source_digest": "b49cd4a26ae65bb90e2903022d03376c081f43af9c679512ed1737fa10059971",
       "source_ref": "https://github.com/teolex2020/aura-memory",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -208,21 +223,6 @@
       "ref": "main",
       "source_digest": "20d8fbfbdc7056deb9a1f42d05e647f08db7fd2506f5764b36757d3dcc4e4486",
       "source_ref": "https://github.com/qingyou0420/trueheart-core",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-446f9719f19736c1",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "605af8e03aa8c238234fd2d3dd3aaf65254e58bbd48e5ff5a8b8c195bd6bb185",
-      "source_ref": "https://github.com/RasmusMaidenAndersson/MemoryOS",
       "status": "UNTRUSTED_EVIDENCE"
     }
   ],

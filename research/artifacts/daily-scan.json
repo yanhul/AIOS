@@ -6,10 +6,10 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "bc727458e20e29a2ad8b65b561d345c0d13af960eaa1b3104dc739501f15652b",
+      "source_digest": "7322170ae60ad061ade2836418cd9a1129dca000fad7b1c1529358883ad1fa05",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "stars": 0,
-      "updated_at": "2026-10-04T06:18:45Z"
+      "updated_at": "2026-10-05T03:11:34Z"
     },
     {
       "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
@@ -52,6 +52,16 @@
       "updated_at": "2026-09-29T08:53:21Z"
     },
     {
+      "description": "OmniResearch is an autonomous multi-agent AI framework that automates the AI/ML research lifecycle\u2014from planning and literature discovery to dataset selection, experimentation, analysis, verification, and research report generation using LangGraph, multimodal RAG, and research memory.",
+      "query": "agent research framework autonomous experimentation",
+      "ref": "main",
+      "repo": "abhijeetchaubey/OmniResearch",
+      "source_digest": "a755d4ae6a5b7bd994913e225524ef46882b2e5d1be9cc6e80acf3506a13750b",
+      "source_ref": "https://github.com/abhijeetchaubey/OmniResearch",
+      "stars": 0,
+      "updated_at": "2026-10-04T16:30:04Z"
+    },
+    {
       "description": "Yethanus \u2014 Python AI agent experimentation framework (anus-ai fork) for exploring autonomous agent architectures.",
       "query": "agent research framework autonomous experimentation",
       "ref": "main",
@@ -92,14 +102,14 @@
       "updated_at": "2026-09-12T02:35:11Z"
     },
     {
-      "description": "Autonomous ML experimentation for any project. Inspired by Karpathy's autoresearch \u2014 the same constraint-driven experiment loop, adapted to work with any ML project, any framework, any AI agent.",
-      "query": "agent research framework autonomous experimentation",
+      "description": "Check agent memory against the Vercy Governance Overlay, plus a read-only MCP server over the Vercy model catalogue.",
+      "query": "agent memory provenance governance",
       "ref": "main",
-      "repo": "ParasKoundal/automl-research",
-      "source_digest": "e89aaa2e3962650ea3a91a651d8a4ceff1be55599574812791a15aaee8bea9df",
-      "source_ref": "https://github.com/ParasKoundal/automl-research",
-      "stars": 2,
-      "updated_at": "2026-03-11T17:28:12Z"
+      "repo": "ver-cy/vercy-py",
+      "source_digest": "66d82d25abc4141c5d749bd8ce28debf4093dbbbcea974b79ad43968260d9e6f",
+      "source_ref": "https://github.com/ver-cy/vercy-py",
+      "stars": 0,
+      "updated_at": "2026-10-04T11:40:44Z"
     },
     {
       "description": "Heartwood Memory \u2014 governed memory for AI agents. Provenance-first recall, policy-gated retrieval, tenant isolation.",
@@ -116,7 +126,7 @@
       "query": "agent memory provenance governance",
       "ref": "main",
       "repo": "teolex2020/aura-memory",
-      "source_digest": "e9a6b0d6200ada6b9fbecd7aa952bd16b4d54ce83dc84af51667f82a65eb4148",
+      "source_digest": "b49cd4a26ae65bb90e2903022d03376c081f43af9c679512ed1737fa10059971",
       "source_ref": "https://github.com/teolex2020/aura-memory",
       "stars": 77,
       "updated_at": "2026-10-02T19:24:30Z"
@@ -140,16 +150,6 @@
       "source_ref": "https://github.com/qingyou0420/trueheart-core",
       "stars": 0,
       "updated_at": "2026-08-20T06:38:46Z"
-    },
-    {
-      "description": "MOS Operating Systsem is a comprehensive framework for agents to better and more efficently use knowledge, it implement various different methods of storage, relationships, immutablility, provenance & governance. It is at it's core program language agnotic",
-      "query": "agent memory provenance governance",
-      "ref": "main",
-      "repo": "RasmusMaidenAndersson/MemoryOS",
-      "source_digest": "605af8e03aa8c238234fd2d3dd3aaf65254e58bbd48e5ff5a8b8c195bd6bb185",
-      "source_ref": "https://github.com/RasmusMaidenAndersson/MemoryOS",
-      "stars": 0,
-      "updated_at": "2026-08-20T04:07:02Z"
     }
   ],
   "schema_version": 1
