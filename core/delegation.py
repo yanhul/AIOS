@@ -26,6 +26,8 @@ from .mutation import canonical_json, commit_batch
 
 DELEGATION_TYPE = "GOVERNED_DELEGATION"
 DELEGATION_STATE = "PROPOSED"
+AUTHORITY_MODES = frozenset({"caller_bound", "service_bound", "none"})
+MEMORY_SCOPES = frozenset({"private", "shared"})
 
 
 class DelegationError(ValueError):
@@ -54,6 +56,9 @@ class DelegationRequest:
     source_permit_id: str
     source_actor: str
     target_role: str
+    authority_mode: str
+    credential_ref: str | None
+    memory_scope: str
     target_capability: str
     operation_id: str
     input_digest: str
@@ -69,6 +74,9 @@ class DelegationRequest:
             "source_permit_id": self.source_permit_id,
             "source_actor": self.source_actor,
             "target_role": self.target_role,
+            "authority_mode": self.authority_mode,
+            "credential_ref": self.credential_ref,
+            "memory_scope": self.memory_scope,
             "target_capability": self.target_capability,
             "operation_id": self.operation_id,
             "input_digest": self.input_digest,
@@ -84,6 +92,9 @@ def _delegation_id(payload: Mapping[str, Any]) -> str:
         "source_permit_id": payload["source_permit_id"],
         "source_actor": payload["source_actor"],
         "target_role": payload["target_role"],
+        "authority_mode": payload["authority_mode"],
+        "credential_ref": payload["credential_ref"],
+        "memory_scope": payload["memory_scope"],
         "target_capability": payload["target_capability"],
         "operation_id": payload["operation_id"],
         "input_digest": payload["input_digest"],
@@ -98,6 +109,9 @@ def build_delegation(
     permit: Mapping[str, Any],
     source_actor: str,
     target_role: str,
+    authority_mode: str,
+    credential_ref: str | None,
+    memory_scope: str,
     target_capability: str,
     operation_id: str,
     input_digest: str,
@@ -119,6 +133,24 @@ def build_delegation(
         raise DelegationError("source actor does not match governing contract/permit")
 
     _text(target_role, "target_role")
+    if authority_mode not in AUTHORITY_MODES:
+        raise DelegationError(f"unsupported authority_mode: {authority_mode}")
+    if memory_scope not in MEMORY_SCOPES:
+        raise DelegationError(f"unsupported memory_scope: {memory_scope}")
+    if credential_ref is not None:
+        credential_ref = _text(credential_ref, "credential_ref")
+    if authority_mode == "caller_bound" and credential_ref is None:
+        raise DelegationError("caller_bound authority requires credential_ref")
+    if authority_mode == "service_bound" and credential_ref is None:
+        raise DelegationError("service_bound authority requires credential_ref")
+    if authority_mode == "caller_bound" and credential_ref is not None and not credential_ref.startswith("caller:"):
+        raise DelegationError("caller_bound authority requires a caller-scoped credential_ref")
+    if authority_mode == "service_bound" and credential_ref is not None and not credential_ref.startswith("service:"):
+        raise DelegationError("service_bound authority requires a service-scoped credential_ref")
+    if authority_mode == "none" and credential_ref is not None:
+        raise DelegationError("none authority cannot carry credentials")
+    if memory_scope == "shared" and "memory_write" not in permit.get("allowed_effects", []):
+        raise DelegationError("shared memory requires explicit memory_write permit")
     target_capability = _text(target_capability, "target_capability")
     operation_id = _text(operation_id, "operation_id")
     _text(input_digest, "input_digest")
@@ -145,6 +177,9 @@ def build_delegation(
         "source_permit_id": _text(permit.get("permit_id"), "permit_id"),
         "source_actor": _text(source_actor, "source_actor"),
         "target_role": target_role,
+        "authority_mode": authority_mode,
+        "credential_ref": credential_ref,
+        "memory_scope": memory_scope,
         "target_capability": target_capability,
         "operation_id": operation_id,
         "input_digest": input_digest,
@@ -157,6 +192,9 @@ def build_delegation(
         source_permit_id=payload["source_permit_id"],
         source_actor=payload["source_actor"],
         target_role=target_role,
+        authority_mode=authority_mode,
+        credential_ref=credential_ref,
+        memory_scope=memory_scope,
         target_capability=target_capability,
         operation_id=operation_id,
         input_digest=input_digest,
@@ -181,8 +219,26 @@ def validate_delegation(
         raise DelegationError("delegation permit binding mismatch")
     if request.source_actor != contract.get("actor"):
         raise DelegationError("delegation actor mismatch")
+    if request.authority_mode not in AUTHORITY_MODES:
+        raise DelegationError("unsupported authority_mode")
+    if request.memory_scope not in MEMORY_SCOPES:
+        raise DelegationError("unsupported memory_scope")
+    if request.authority_mode == "caller_bound" and not request.credential_ref:
+        raise DelegationError("caller_bound authority requires credential_ref")
+    if request.authority_mode == "service_bound" and not request.credential_ref:
+        raise DelegationError("service_bound authority requires credential_ref")
+    if request.authority_mode == "caller_bound" and request.credential_ref and not request.credential_ref.startswith("caller:"):
+        raise DelegationError("caller_bound authority requires a caller-scoped credential_ref")
+    if request.authority_mode == "service_bound" and request.credential_ref and not request.credential_ref.startswith("service:"):
+        raise DelegationError("service_bound authority requires a service-scoped credential_ref")
+    if request.authority_mode == "none" and request.credential_ref is not None:
+        raise DelegationError("none authority cannot carry credential_ref")
     verify_permit(dict(contract), dict(permit))
-    registry.require(request.target_capability)
+    if request.memory_scope == "shared" and "memory_write" not in permit.get("allowed_effects", []):
+        raise DelegationError("shared memory requires explicit memory_write permit")
+    capability = registry.require(request.target_capability)
+    if capability.status != "ACTIVE":
+        raise DelegationError("target capability must be ACTIVE")
     if request.lineage.attempt_id == "":
         raise DelegationError("delegation lineage attempt is empty")
 
@@ -198,6 +254,8 @@ def persist_delegation(aios_dir: str, request: DelegationRequest) -> str:
         "source_contract_id": request.source_contract_id,
         "source_permit_id": request.source_permit_id,
         "target_role": request.target_role,
+        "authority_mode": request.authority_mode,
+        "memory_scope": request.memory_scope,
         "target_capability": request.target_capability,
         "operation_id": request.operation_id,
     }
@@ -221,6 +279,9 @@ def load_delegation(record: Mapping[str, Any]) -> DelegationRequest:
         "source_permit_id": _text(record.get("source_permit_id"), "source_permit_id"),
         "source_actor": _text(record.get("source_actor"), "source_actor"),
         "target_role": _text(record.get("target_role"), "target_role"),
+        "authority_mode": _text(record.get("authority_mode"), "authority_mode"),
+        "credential_ref": record.get("credential_ref"),
+        "memory_scope": _text(record.get("memory_scope"), "memory_scope"),
         "target_capability": _text(record.get("target_capability"), "target_capability"),
         "operation_id": _text(record.get("operation_id"), "operation_id"),
         "input_digest": _text(record.get("input_digest"), "input_digest"),
@@ -235,6 +296,9 @@ def load_delegation(record: Mapping[str, Any]) -> DelegationRequest:
         "source_permit_id": request.source_permit_id,
         "source_actor": request.source_actor,
         "target_role": request.target_role,
+        "authority_mode": request.authority_mode,
+        "credential_ref": request.credential_ref,
+        "memory_scope": request.memory_scope,
         "target_capability": request.target_capability,
         "operation_id": request.operation_id,
         "input_digest": request.input_digest,
@@ -253,6 +317,8 @@ __all__ = [
     "DELEGATION_STATE",
     "DelegationError",
     "DelegationRequest",
+    "AUTHORITY_MODES",
+    "MEMORY_SCOPES",
     "build_delegation",
     "validate_delegation",
     "persist_delegation",
