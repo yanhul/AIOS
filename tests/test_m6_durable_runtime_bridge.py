@@ -83,6 +83,29 @@ def test_runtime_binding_mismatch_fails_closed_before_provider(tmp_path):
     assert adapter.calls == 0
 
 
+def test_resume_reuses_exact_dispatched_attempt_after_ambiguous_submission(tmp_path):
+    from core.runtime import resume_attempt
+
+    cid, pid = setup(tmp_path)
+    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")
+
+    class RecordingRuntime(GoodRuntime):
+        resumed = None
+        def resume(self, *, effect, attempt_id):
+            self.resumed = (effect["effect_id"], attempt_id)
+            return RuntimeSubmission(effect["effect_id"], attempt_id, "fake-provider")
+
+    runtime = RecordingRuntime()
+    contract = __import__("core.authority", fromlist=["load_contract"]).load_contract(str(tmp_path), cid)
+    result = resume_attempt(
+        str(tmp_path), contract, effect, "agent:test", GoodAdapter(), runtime
+    )
+    assert result["state"] == "OBSERVED_SUCCESS"
+    assert runtime.resumed == (effect["effect_id"], attempt_id)
+
+
 def test_retry_bridges_explicit_bounded_retry(tmp_path):
     cid, pid = setup(tmp_path, max_attempts=2)
     effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
