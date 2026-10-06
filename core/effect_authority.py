@@ -185,7 +185,7 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
                                 attempt=1, attempt_id=attempt_id, provider=provider)
 
 
-def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
+def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, retry_authorization=None):
     """Explicitly dispatch the next attempt for an UNKNOWN effect."""
     _validate_strings(("effect_id", effect_id), ("actor", actor),
                       ("attempt_id", attempt_id), ("provider", provider))
@@ -208,6 +208,12 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
         raise TransitionError("retry exceeds contract attempt budget")
     if attempt_id != _attempt_id(effect_id, attempt):
         raise ValueError("attempt_id does not match retry attempt")
+    if not isinstance(retry_authorization, dict) or retry_authorization.get("mode") != "EXPLICIT":
+        raise TransitionError("UNKNOWN retry requires explicit retry authorization")
+    if retry_authorization.get("effect_id") != effect_id:
+        raise TransitionError("retry authorization effect binding mismatch")
+    if retry_authorization.get("attempt") != attempt:
+        raise TransitionError("retry authorization attempt mismatch")
     contract, _permit = _validate_persisted_effect(aios_dir, current)
     return _transition_dispatch(aios_dir, effect_id, actor,
                                 attempt=attempt, attempt_id=attempt_id, provider=provider)

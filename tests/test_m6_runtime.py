@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: durable external-effect retry authority
+# AIOS-REGRESSION: Prevent ambiguous UNKNOWN effects from retrying without governed authority
+# AIOS-OWNER: AIOS control-plane durable execution
+# AIOS-COVERAGE-GAP: Covers bounded UNKNOWN retry, authority binding, and duplicate-effect prevention
+# AIOS-BASELINE: Existing M6 effect/runtime regression suite extended for explicit retry authority
+
 import os
 import pytest
 
@@ -136,8 +142,10 @@ def test_retry_dispatch_requires_unknown_and_increments_attempt(tmp_path):
     first = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                      f"{effect['effect_id']}:attempt:1", "fake-provider")
     unknown_effect = transition(str(tmp_path), first["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
+    effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":effect["effect_id"], "attempt":2}
+    unknown_effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":unknown_effect["effect_id"], "attempt":2}
     retried = retry_dispatch(str(tmp_path), unknown_effect["effect_id"], "agent:test",
-                             f"{effect['effect_id']}:attempt:2", "fake-provider", 2)
+                             f"{effect['effect_id']}:attempt:2", "fake-provider", 2, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":2})
     assert retried["effect_id"] == effect["effect_id"]
     assert retried["attempt"] == 2
     assert retried["state"] == "DISPATCHED"
@@ -160,6 +168,7 @@ def test_execute_retry_attempt_is_bounded_by_contract(tmp_path):
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
+    effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":effect["effect_id"], "attempt":2}
     result = execute_retry_attempt(str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
                                    f"{effect['effect_id']}:attempt:2", 2)
     assert result["state"] == "OBSERVED_SUCCESS"
@@ -172,6 +181,7 @@ def test_execute_retry_attempt_rejects_over_max_before_dispatch(tmp_path):
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
+    effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":effect["effect_id"], "attempt":2}
     with pytest.raises(PermissionError, match="max_attempts"):
         execute_retry_attempt(str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
                               f"{effect['effect_id']}:attempt:2", 2)

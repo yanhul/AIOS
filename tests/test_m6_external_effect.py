@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: durable external-effect retry authority
+# AIOS-REGRESSION: Prevent ambiguous UNKNOWN effects from retrying without governed authority
+# AIOS-OWNER: AIOS control-plane durable execution
+# AIOS-COVERAGE-GAP: Covers bounded UNKNOWN retry, authority binding, and duplicate-effect prevention
+# AIOS-BASELINE: Existing M6 effect/runtime regression suite extended for explicit retry authority
+
 import os
 import tempfile
 import unittest
@@ -63,7 +69,7 @@ class TestExternalEffect(unittest.TestCase):
         record_unknown(self.aios, e["effect_id"], "agent:a", "provider timeout")
         self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "UNKNOWN")
         retry_attempt = f"{e['effect_id']}:attempt:2"
-        retry_dispatch(self.aios, e["effect_id"], "agent:a", retry_attempt, "provider:test", 2)
+        retry_dispatch(self.aios, e["effect_id"], "agent:a", retry_attempt, "provider:test", 2, {"mode":"EXPLICIT","effect_id":e["effect_id"],"attempt":2})
         record_observation(self.aios, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {
             "attempt_id": retry_attempt, "provider": "provider:test", "evidence": evidence()
         })

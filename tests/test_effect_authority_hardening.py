@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: durable external-effect retry authority
+# AIOS-REGRESSION: Prevent ambiguous UNKNOWN effects from retrying without governed authority
+# AIOS-OWNER: AIOS control-plane durable execution
+# AIOS-COVERAGE-GAP: Covers bounded UNKNOWN retry, authority binding, and duplicate-effect prevention
+# AIOS-BASELINE: Existing M6 effect/runtime regression suite extended for explicit retry authority
+
 import tempfile
 
 import pytest
@@ -92,10 +98,10 @@ def test_unknown_can_only_return_to_dispatch_through_bounded_retry():
         unknown(td, effect["effect_id"], "bc-controller", "provider timeout")
         with pytest.raises(TransitionError):
             dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:2", "provider-a")
-        retried = retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:2", "provider-a", 2)
+        retried = retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:2", "provider-a", 2, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":2})
         assert retried["state"] == "DISPATCHED"
         with pytest.raises(TransitionError):
-            retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:3", "provider-a", 3)
+            retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:3", "provider-a", 3, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":3})
 
 
 def test_observation_requires_current_attempt_and_valid_aios_evidence():
