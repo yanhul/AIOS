@@ -191,7 +191,7 @@ def _persist_raw_state(state: Mapping[str, Any], store: StateStore) -> None:
 def _persist_or_fail_closed(state: dict[str, Any], store: StateStore, policy: LoopPolicy) -> None:
     """Commit a durable snapshot or fail without claiming the state was persisted."""
     try:
-        _persist_or_fail_closed(state, store, policy)
+        _persist_state(state, store, policy)
     except Exception as exc:
         fallback = deepcopy(state)
         fallback["status"] = policy.failure_state
@@ -205,7 +205,6 @@ def _persist_or_fail_closed(state: dict[str, Any], store: StateStore, policy: Lo
             ) from raw_exc
         state.clear()
         state.update(fallback)
-
 
 def _validate_fix_success(verification: Any, expected_state: str) -> None:
     """Require externally verifiable runtime proof before fix promotion."""
