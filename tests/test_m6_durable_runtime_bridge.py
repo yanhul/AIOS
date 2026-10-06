@@ -147,6 +147,7 @@ def test_retry_runtime_cannot_override_contract_bounds(tmp_path):
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test",
                         unknown_reason="timeout")
+    effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":effect["effect_id"], "attempt":2}
     with pytest.raises(PermissionError, match="max_attempts"):
         execute_retry_attempt(
             str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
