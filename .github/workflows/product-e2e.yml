@@ -1,0 +1,80 @@
+name: Product E2E Conformance
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  product-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Checkout registered workloads
+        run: |
+          git clone --depth 1 --no-checkout https://github.com/yanhul/try.git "$RUNNER_TEMP/try"
+          git -C "$RUNNER_TEMP/try" fetch --depth 1 origin refs/heads/absorb/verl-strict-outcomes:refs/remotes/origin/absorb/verl-strict-outcomes
+          git -C "$RUNNER_TEMP/try" checkout --detach refs/remotes/origin/absorb/verl-strict-outcomes
+          TRY_AUTHORITY_SHA="$(git -C "$RUNNER_TEMP/try" rev-parse HEAD)"
+          test -n "$TRY_AUTHORITY_SHA"
+          echo "TRY_AUTHORITY_SHA=$TRY_AUTHORITY_SHA"
+          git clone --depth 1 --no-checkout https://github.com/yanhul/android-ai-assistant.git "$RUNNER_TEMP/android-ai-assistant"
+          git -C "$RUNNER_TEMP/android-ai-assistant" fetch --depth 1 origin refs/heads/aios-conformance/android:refs/remotes/origin/aios-conformance/android
+          git -C "$RUNNER_TEMP/android-ai-assistant" checkout --detach refs/remotes/origin/aios-conformance/android
+          test "$(git -C "$RUNNER_TEMP/android-ai-assistant" rev-parse HEAD)" = "56b1bcf7fd2d4cede6e151e981a4b9063a464d28"
+          git clone --depth 1 --no-checkout https://github.com/yanhul/RX50.git "$RUNNER_TEMP/RX50"
+          git -C "$RUNNER_TEMP/RX50" fetch --depth 1 origin refs/heads/aios-conformance/rx50:refs/remotes/origin/aios-conformance/rx50
+          git -C "$RUNNER_TEMP/RX50" checkout --detach refs/remotes/origin/aios-conformance/rx50
+          test "$(git -C "$RUNNER_TEMP/RX50" rev-parse HEAD)" = "040e462ef63bc03fe4d5448a6dbf68dde0e4f6eb"
+      - name: Run live registered-workload conformance
+        run: |
+          python scripts/run_3_workload_conformance.py             --root yanhul/try "$RUNNER_TEMP/try"             --root yanhul/android-ai-assistant "$RUNNER_TEMP/android-ai-assistant"             --root yanhul/RX50 "$RUNNER_TEMP/RX50"
+      - name: Checkout MiniMind capability provider
+        run: |
+          git clone --depth 1 --no-checkout https://github.com/jingyaogong/minimind.git "$RUNNER_TEMP/minimind"
+          git -C "$RUNNER_TEMP/minimind" fetch --depth 1 origin 6fc918beb68a0d8c40452338df6319fe168014ba
+          git -C "$RUNNER_TEMP/minimind" checkout --detach 6fc918beb68a0d8c40452338df6319fe168014ba
+      - name: Check MiniMind capability
+        env:
+          MINIMIND_ROOT: ${{ runner.temp }}/minimind
+          MINIMIND_EXPECTED_REV: 6fc918beb68a0d8c40452338df6319fe168014ba
+        run: python scripts/check_minimind_capability.py --root "$RUNNER_TEMP/minimind"
+      - name: Publish E2E evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-product-e2e-${{ github.run_id }}
+          path: artifacts/conformance/*.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Require product E2E conformance
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("artifacts/conformance")
+          expected = {
+              "yanhul__try.json",
+              "yanhul__android-ai-assistant.json",
+              "yanhul__RX50.json",
+          }
+          files = {p.name for p in root.glob("*.json")}
+          assert files == expected, (files, expected)
+          results = {p.name: json.loads(p.read_text()) for p in root.glob("*.json")}
+          invalid = {name: obj.get("status") for name, obj in results.items() if obj.get("status") != "PASS"}
+          assert not invalid, f"product conformance not PASS: {invalid}"
+          missing_evidence = {
+              name: obj.get("status") for name, obj in results.items()
+              if not obj.get("evidence_refs") or not obj.get("verification_refs")
+          }
+          assert not missing_evidence, f"product result missing evidence/verification: {missing_evidence}"
+          summary = {name: obj["status"] for name, obj in sorted(results.items())}
+          print(json.dumps({"PRODUCT_E2E_CONFORMANCE_PASS": summary}, sort_keys=True))
+          PY
