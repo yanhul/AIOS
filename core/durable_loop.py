@@ -188,7 +188,7 @@ def _persist_raw_state(state: Mapping[str, Any], store: StateStore) -> None:
     """Persist an invalid durable snapshot without rebuilding governed projections."""
     store.save(deepcopy(dict(state)))
 
-def _persist_or_fail_closed(state: dict[str, Any], store: StateStore, policy: LoopPolicy) -> None:
+def _persist_or_fail_closed(state: dict[str, Any], store: StateStore, policy: LoopPolicy) -> bool:
     """Commit a durable snapshot or fail without claiming the state was persisted."""
     try:
         _persist_state(state, store, policy)
@@ -241,14 +241,18 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"execution failed before authorization: {type(exc).__name__}: {exc}"
-            _persist_or_fail_closed(state, store, policy)
+            if not _persist_or_fail_closed(state, store, policy):
+
+                return state
             return state
         try:
             policy.action_authorizer(deepcopy(decision), deepcopy(state))
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"action authorization failed: {type(exc).__name__}: {exc}"
-            _persist_or_fail_closed(state, store, policy)
+            if not _persist_or_fail_closed(state, store, policy):
+
+                return state
             return state
         try:
             action_result = executor.act(deepcopy(decision), deepcopy(state))
@@ -265,7 +269,9 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"execution failed after authorization: {type(exc).__name__}: {exc}"
-            _persist_or_fail_closed(state, store, policy)
+            if not _persist_or_fail_closed(state, store, policy):
+
+                return state
             return state
         state["step"] += 1
         state["history"].append({"step": state["step"], "observation": deepcopy(observation), "decision": deepcopy(decision), "action": deepcopy(action_result), "verification": deepcopy(verification)})
@@ -287,7 +293,9 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"terminal evaluation failed: {type(exc).__name__}: {exc}"
-            _persist_or_fail_closed(state, store, policy)
+            if not _persist_or_fail_closed(state, store, policy):
+
+                return state
             return state
         if terminal is not None:
             if terminal == "BLOCKED" and policy.blocked_continuation is not None:
@@ -317,7 +325,9 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                     state["status"] = "RUNNING"
                     state["continuation"] = deepcopy(dict(continuation))
                     state["history"][-1]["continuation"] = deepcopy(dict(continuation))
-                    _persist_or_fail_closed(state, store, policy)
+                    if not _persist_or_fail_closed(state, store, policy):
+
+                        return state
                     continue
             state["status"] = terminal
             state["terminal_evidence"] = {
@@ -325,17 +335,23 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                 "status": terminal,
                 "verification": deepcopy(verification),
             }
-            _persist_or_fail_closed(state, store, policy)
+            if not _persist_or_fail_closed(state, store, policy):
+
+                return state
             return state
         state["status"] = "RUNNING"
-        _persist_or_fail_closed(state, store, policy)
+        if not _persist_or_fail_closed(state, store, policy):
+
+            return state
     state["status"] = policy.budget_exhaustion_state
     state["terminal_evidence"] = {
         "step": state["step"],
         "status": state["status"],
         "verification": {"reason": "BUDGET_EXHAUSTED"},
     }
-    _persist_or_fail_closed(state, store, policy)
+    if not _persist_or_fail_closed(state, store, policy):
+
+        return state
     return state
 
 __all__ = ["TERMINAL", "LoopPolicy", "MemoryStateStore", "run_durable_loop"]
