@@ -142,6 +142,33 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
     return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, provider_observation)
 
 
+def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: DurableRuntime):
+    """Resume the exact currently-dispatched attempt without allocating a new attempt ID.
+
+    This is the recovery path for an ambiguous durable-runtime submission. A
+    DISPATCHED effect is never silently converted into a new retry attempt:
+    the runtime must acknowledge/resume the same attempt first.
+    """
+    _text(actor, "actor")
+    if not isinstance(contract, dict) or not contract:
+        raise ValueError("contract must be a non-empty dict")
+    if not isinstance(effect, dict) or not effect:
+        raise ValueError("effect must be a non-empty dict")
+    if effect.get("state") != "DISPATCHED":
+        raise RuntimeError("effect must be DISPATCHED before resume_attempt")
+    attempt_id = effect.get("attempt_id")
+    _text(attempt_id, "effect.attempt_id")
+    if effect.get("actor") != actor:
+        raise PermissionError("effect actor does not match execution actor")
+    provider_name = _text(getattr(adapter, "name", None), "adapter.name")
+    if not _provider_authorized(contract, provider_name):
+        raise PermissionError("provider capability is not authorized by contract")
+    if "external_effect" not in contract.get("allowed_effects", []):
+        raise PermissionError("external effect is not authorized by contract")
+    _submit_runtime(durable_runtime, "resume", effect, attempt_id, provider_name)
+    return execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id)
+
+
 def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapter, attempt_id, attempt,
                           durable_runtime: DurableRuntime | None = None):
     """Authorize, dispatch and execute one explicit retry of an UNKNOWN effect.
@@ -215,5 +242,5 @@ def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapt
 
 __all__ = [
     "ProviderReceipt", "ProviderAdapter", "validate_receipt",
-    "execute_attempt", "execute_retry_attempt", "execute",
+    "execute_attempt", "resume_attempt", "execute_retry_attempt", "execute",
 ]
