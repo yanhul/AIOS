@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: durable external-effect retry authority
+# AIOS-REGRESSION: Prevent ambiguous UNKNOWN effects from retrying without governed authority
+# AIOS-OWNER: AIOS control-plane durable execution
+# AIOS-COVERAGE-GAP: Covers bounded UNKNOWN retry, authority binding, and duplicate-effect prevention
+# AIOS-BASELINE: Existing M6 effect/runtime regression suite extended for explicit retry authority
+
 import tempfile
 
 import pytest
