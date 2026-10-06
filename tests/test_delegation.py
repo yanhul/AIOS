@@ -110,6 +110,17 @@ class GovernedDelegationTests(unittest.TestCase):
                 evidence_required=["receipt"], lineage=lineage, registry=registry,
             )
 
+    def test_service_bound_requires_service_credential_ref(self):
+        contract, permit, registry, lineage = _context()
+        with self.assertRaises(DelegationError):
+            build_delegation(
+                contract=contract, permit=permit, source_actor="AIOS",
+                target_role="worker", authority_mode="service_bound", credential_ref=None,
+                memory_scope="private", target_capability="worker.target@1",
+                operation_id="run-1", input_digest="input-1",
+                evidence_required=["receipt"], lineage=lineage, registry=registry,
+            )
+
     def test_service_bound_cannot_carry_caller_credential(self):
         contract, permit, registry, lineage = _context()
         with self.assertRaises(DelegationError):
