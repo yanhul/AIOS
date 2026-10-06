@@ -141,8 +141,8 @@ def build_delegation(
         credential_ref = _text(credential_ref, "credential_ref")
     if authority_mode == "caller_bound" and credential_ref is None:
         raise DelegationError("caller_bound authority requires credential_ref")
-    if authority_mode != "caller_bound" and credential_ref is not None:
-        raise DelegationError("credential_ref is only valid for caller_bound authority")
+    if authority_mode == "service_bound" and credential_ref is None:
+        raise DelegationError("service_bound authority requires credential_ref")
     if authority_mode == "none" and credential_ref is not None:
         raise DelegationError("none authority cannot carry credentials")
     if memory_scope == "shared" and "memory_write" not in permit.get("allowed_effects", []):
@@ -221,8 +221,10 @@ def validate_delegation(
         raise DelegationError("unsupported memory_scope")
     if request.authority_mode == "caller_bound" and not request.credential_ref:
         raise DelegationError("caller_bound authority requires credential_ref")
-    if request.authority_mode != "caller_bound" and request.credential_ref is not None:
-        raise DelegationError("non-caller authority cannot carry credential_ref")
+    if request.authority_mode == "service_bound" and not request.credential_ref:
+        raise DelegationError("service_bound authority requires credential_ref")
+    if request.authority_mode == "none" and request.credential_ref is not None:
+        raise DelegationError("none authority cannot carry credential_ref")
     verify_permit(dict(contract), dict(permit))
     if request.memory_scope == "shared" and "memory_write" not in permit.get("allowed_effects", []):
         raise DelegationError("shared memory requires explicit memory_write permit")
