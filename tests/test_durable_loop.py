@@ -231,3 +231,71 @@ def test_unknown_receipt_cannot_authorize_terminal_verdict():
     result = run_durable_loop(UnknownReceiptExecutor(), MemoryStateStore(), policy)
     assert result["status"] == "BLOCKED"
     assert "UNKNOWN execution receipt" in result["block_reason"]
+
+
+class StatePatchExecutor(FakeExecutor):
+    def verify(self, action_result, state):
+        return {"value": action_result, "state_patch": {"latest_attempt_dir": "attempt-1", "blocked_requirements": ["G7"]}}
+
+
+def test_state_patch_is_durable_across_resume():
+    store = MemoryStateStore()
+    result = run_durable_loop(
+        StatePatchExecutor(), store,
+        _policy(max_steps=1, terminal_evaluator=lambda v, s: None),
+    )
+    assert result["latest_attempt_dir"] == "attempt-1"
+    assert result["blocked_requirements"] == ["G7"]
+    persisted = store.load()
+    assert persisted["latest_attempt_dir"] == "attempt-1"
+    assert persisted["blocked_requirements"] == ["G7"]
+
+
+def test_continue_contract_is_persisted_and_revalidated_on_resume():
+    from core.continue_contract import build_continue_contract
+
+    base = {
+        "project": "yanhul/temp",
+        "design": "QI9-2605-A01",
+        "authority": "AIOS_CONTROL_PLANE",
+        "pipeline": {
+            "schematic": "VERIFIED",
+            "placement": "BLOCKED_BY_SCHEMATIC",
+            "routing": "BLOCKED_BY_PLACEMENT",
+        },
+        "active_phase": "SCHEMATIC",
+        "active_commit": "abc123",
+        "latest_run": "run-1",
+        "latest_receipt": "receipt-1",
+        "active_blockers": [{"id": "HCPL-0600", "status": "BLOCKED"}],
+        "next_legal_actions": ["inspect_receipt", "patch"],
+        "forbidden_actions": ["placement", "routing", "claim_pass"],
+    }
+
+    class Executor:
+        def observe(self, state):
+            return {}
+
+        def decide(self, observation, state):
+            return {}
+
+        def act(self, decision, state):
+            return {}
+
+        def verify(self, result, state):
+            return {"status": "PASS"}
+
+    policy = LoopPolicy(
+        max_steps=1,
+        terminal_evaluator=lambda v, s: "PASS",
+        action_authorizer=lambda d, s: None,
+        continue_contract_builder=build_continue_contract,
+    )
+    store = MemoryStateStore(base)
+    result = run_durable_loop(Executor(), store, policy)
+    assert "continue_contract" in result
+
+    store.state["continue_contract"]["active_phase"] = "PLACEMENT"
+    resumed = run_durable_loop(Executor(), store, policy)
+    assert resumed["status"] == "BLOCKED"
+    assert "continue contract" in resumed["block_reason"]
