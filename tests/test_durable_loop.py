@@ -6,7 +6,8 @@
 
 import pytest
 
-from core.durable_loop import LoopPolicy, MemoryStateStore, run_durable_loop
+from core.durable_loop import LoopPolicy, MemoryStateStore, run_durable_loop, _persist_state
+from core.continue_contract import build_continue_contract
 
 
 class FakeExecutor:
@@ -266,7 +267,6 @@ def test_continue_contract_is_stable_when_persisted_repeatedly():
     }
     policy = _policy(continue_contract_builder=build_continue_contract)
     store = MemoryStateStore()
-    from core.durable_loop import _persist_state
     _persist_state(state, store, policy)
     first = store.load()["continue_contract"]
     _persist_state(state, store, policy)
