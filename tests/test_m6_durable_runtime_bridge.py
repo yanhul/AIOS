@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: durable runtime attempt identity and retry boundary
+# AIOS-REGRESSION: Prevent duplicate external effects across ambiguous resume
+# AIOS-OWNER: AIOS control-plane durable execution
+# AIOS-COVERAGE-GAP: Covers exact DISPATCHED attempt resume and bounded retry
+# AIOS-BASELINE: Tests target the existing M6 durable runtime bridge baseline
+
 import pytest
 
 from core.authority import persist_contract, persist_permit
@@ -6,7 +12,7 @@ from core.contract import contract_identity
 from core.durable_runtime import RuntimeSubmission
 from core.effect_authority import create_effect, dispatch, transition
 from core.policy_registry import persist_policy
-from core.runtime import ProviderReceipt, execute, execute_retry_attempt
+from core.runtime import ProviderReceipt, execute, execute_retry_attempt, resume_attempt
 
 
 def make_contract(policy_digest, max_attempts=1):
@@ -81,6 +87,28 @@ def test_runtime_binding_mismatch_fails_closed_before_provider(tmp_path):
     with pytest.raises(ValueError, match="effect mismatch"):
         execute(str(tmp_path), cid, pid, "op-1", "agent:test", adapter, BadRuntime())
     assert adapter.calls == 0
+
+
+def test_resume_reuses_exact_dispatched_attempt_after_ambiguous_submission(tmp_path):
+    cid, pid = setup(tmp_path)
+    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")
+
+    class RecordingRuntime(GoodRuntime):
+        def __init__(self):
+            self.resumed = None
+        def resume(self, *, effect, attempt_id):
+            self.resumed = (effect["effect_id"], attempt_id)
+            return RuntimeSubmission(effect["effect_id"], attempt_id, "fake-provider")
+
+    runtime = RecordingRuntime()
+    contract = __import__("core.authority", fromlist=["load_contract"]).load_contract(str(tmp_path), cid)
+    result = resume_attempt(
+        str(tmp_path), contract, effect, "agent:test", GoodAdapter(), runtime
+    )
+    assert result["state"] == "OBSERVED_SUCCESS"
+    assert runtime.resumed == (effect["effect_id"], attempt_id)
 
 
 def test_retry_bridges_explicit_bounded_retry(tmp_path):

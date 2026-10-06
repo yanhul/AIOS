@@ -75,6 +75,9 @@ def build_continue_contract(state: Mapping[str, Any]) -> dict[str, Any]:
     if overlap:
         raise ValueError(f"action cannot be both legal and forbidden: {overlap}")
 
+    source_state = dict(state)
+    source_state.pop("continue_contract", None)
+
     projection = {
         "contract_type": CONTRACT_TYPE,
         "contract_version": CONTRACT_VERSION,
@@ -89,7 +92,7 @@ def build_continue_contract(state: Mapping[str, Any]) -> dict[str, Any]:
         "active_blockers": [dict(x) if isinstance(x, Mapping) else x for x in active_blockers],
         "next_legal_actions": next_legal,
         "forbidden_actions": forbidden,
-        "state_digest": _digest(dict(state)),
+        "state_digest": _digest(source_state),
     }
     projection["contract_id"] = "CC-" + _digest(projection)
     return projection

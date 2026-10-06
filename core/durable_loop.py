@@ -10,6 +10,18 @@ from .continue_contract import validate_continue_contract
 
 TERMINAL = frozenset({"PASS", "BLOCKED", "INCONCLUSIVE"})
 
+# Verifier state patches are data-plane observations only. These fields are
+# owned by the durable control-plane state machine and can never be patched by
+# an executor/verifier.
+_PROTECTED_STATE_FIELDS = frozenset({
+    "step",
+    "status",
+    "history",
+    "terminal_evidence",
+    "continue_contract",
+    "policy_digest",
+})
+
 class StateStore(Protocol):
     def load(self) -> Mapping[str, Any] | None: ...
     def save(self, state: Mapping[str, Any]) -> None: ...
@@ -147,18 +159,54 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
         _validate_terminal_evidence(state)
 
 def _persist_state(state: dict[str, Any], store: StateStore, policy: LoopPolicy) -> None:
-    """Persist durable state and its model-facing continuation projection."""
+    """Persist a complete durable snapshot with its continuation projection."""
+    candidate = deepcopy(state)
     if policy.continue_contract_builder is not None:
-        contract = policy.continue_contract_builder(deepcopy(state))
+        contract = policy.continue_contract_builder(deepcopy(candidate))
         if not isinstance(contract, Mapping):
             raise ValueError("continue contract builder must return a mapping")
-        state["continue_contract"] = deepcopy(dict(contract))
-    store.save(state)
+        candidate["continue_contract"] = deepcopy(dict(contract))
+    store.save(candidate)
+    state.clear()
+    state.update(deepcopy(candidate))
+
+
+def _apply_state_patch(state: dict[str, Any], patch: Mapping[str, Any]) -> None:
+    """Apply verifier-owned data updates without allowing control-plane mutation."""
+    if not isinstance(patch, Mapping):
+        raise ValueError("verification state_patch must be a mapping")
+    protected = sorted(_PROTECTED_STATE_FIELDS.intersection(patch))
+    if protected:
+        raise ValueError(f"verification state_patch attempts protected fields: {protected}")
+    for key, value in patch.items():
+        if not isinstance(key, str) or not key.strip():
+            raise ValueError("verification state_patch keys must be non-empty strings")
+        state[key] = deepcopy(value)
 
 
 def _persist_raw_state(state: Mapping[str, Any], store: StateStore) -> None:
     """Persist an invalid durable snapshot without rebuilding governed projections."""
     store.save(deepcopy(dict(state)))
+
+def _persist_or_fail_closed(state: dict[str, Any], store: StateStore, policy: LoopPolicy) -> bool:
+    """Commit a durable snapshot or fail without claiming the state was persisted."""
+    try:
+        _persist_state(state, store, policy)
+    except Exception as exc:
+        fallback = deepcopy(state)
+        fallback["status"] = policy.failure_state
+        fallback["block_reason"] = f"durable persistence failed: {type(exc).__name__}: {exc}"
+        try:
+            _persist_raw_state(fallback, store)
+        except Exception as raw_exc:
+            raise RuntimeError(
+                "durable persistence is UNKNOWN; governed snapshot could not be committed: "
+                f"{type(raw_exc).__name__}: {raw_exc}"
+            ) from raw_exc
+        state.clear()
+        state.update(fallback)
+        return False
+    return True
 
 def _validate_fix_success(verification: Any, expected_state: str) -> None:
     """Require externally verifiable runtime proof before fix promotion."""
@@ -195,14 +243,18 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"execution failed before authorization: {type(exc).__name__}: {exc}"
-            _persist_state(state, store, policy)
+            if not _persist_or_fail_closed(state, store, policy):
+
+                return state
             return state
         try:
             policy.action_authorizer(deepcopy(decision), deepcopy(state))
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"action authorization failed: {type(exc).__name__}: {exc}"
-            _persist_state(state, store, policy)
+            if not _persist_or_fail_closed(state, store, policy):
+
+                return state
             return state
         try:
             action_result = executor.act(deepcopy(decision), deepcopy(state))
@@ -211,9 +263,7 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
             if isinstance(verification, Mapping):
                 patch = verification.get("state_patch")
                 if patch is not None:
-                    if not isinstance(patch, Mapping):
-                        raise ValueError("verification state_patch must be a mapping")
-                    state.update(deepcopy(dict(patch)))
+                    _apply_state_patch(state, patch)
             if policy.require_execution_receipt:
                 receipt = _validate_execution_receipt(verification)
                 if policy.execution_receipt_validator is not None:
@@ -221,7 +271,9 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"execution failed after authorization: {type(exc).__name__}: {exc}"
-            _persist_state(state, store, policy)
+            if not _persist_or_fail_closed(state, store, policy):
+
+                return state
             return state
         state["step"] += 1
         state["history"].append({"step": state["step"], "observation": deepcopy(observation), "decision": deepcopy(decision), "action": deepcopy(action_result), "verification": deepcopy(verification)})
@@ -243,7 +295,9 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"terminal evaluation failed: {type(exc).__name__}: {exc}"
-            _persist_state(state, store, policy)
+            if not _persist_or_fail_closed(state, store, policy):
+
+                return state
             return state
         if terminal is not None:
             if terminal == "BLOCKED" and policy.blocked_continuation is not None:
@@ -273,7 +327,9 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                     state["status"] = "RUNNING"
                     state["continuation"] = deepcopy(dict(continuation))
                     state["history"][-1]["continuation"] = deepcopy(dict(continuation))
-                    _persist_state(state, store, policy)
+                    if not _persist_or_fail_closed(state, store, policy):
+
+                        return state
                     continue
             state["status"] = terminal
             state["terminal_evidence"] = {
@@ -281,17 +337,23 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                 "status": terminal,
                 "verification": deepcopy(verification),
             }
-            _persist_state(state, store, policy)
+            if not _persist_or_fail_closed(state, store, policy):
+
+                return state
             return state
         state["status"] = "RUNNING"
-        _persist_state(state, store, policy)
+        if not _persist_or_fail_closed(state, store, policy):
+
+            return state
     state["status"] = policy.budget_exhaustion_state
     state["terminal_evidence"] = {
         "step": state["step"],
         "status": state["status"],
         "verification": {"reason": "BUDGET_EXHAUSTED"},
     }
-    _persist_state(state, store, policy)
+    if not _persist_or_fail_closed(state, store, policy):
+
+        return state
     return state
 
 __all__ = ["TERMINAL", "LoopPolicy", "MemoryStateStore", "run_durable_loop"]

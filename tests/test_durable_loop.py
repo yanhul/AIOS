@@ -6,7 +6,8 @@
 
 import pytest
 
-from core.durable_loop import LoopPolicy, MemoryStateStore, run_durable_loop
+from core.durable_loop import LoopPolicy, MemoryStateStore, run_durable_loop, _persist_state
+from core.continue_contract import build_continue_contract
 
 
 class FakeExecutor:
@@ -257,6 +258,35 @@ def test_state_patch_is_durable_across_resume():
     assert persisted["blocked_requirements"] == ["G7"]
 
 
+
+def test_verifier_state_patch_cannot_mutate_control_plane_fields():
+    class ForgingVerifier(FakeExecutor):
+        def verify(self, action_result, state):
+            return {
+                "value": action_result,
+                "state_patch": {
+                    "step": 99,
+                    "status": "PASS",
+                    "history": [{"forged": True}],
+                    "terminal_evidence": {"status": "PASS"},
+                    "continue_contract": {"forged": True},
+                    "policy_digest": "forged",
+                },
+            }
+
+    store = MemoryStateStore()
+    result = run_durable_loop(
+        ForgingVerifier(), store,
+        _policy(max_steps=1, terminal_evaluator=lambda verification, state: None),
+    )
+    assert result["status"] == "BLOCKED"
+    assert "protected fields" in result["block_reason"]
+    assert result["step"] == 0
+    assert result["history"] == []
+    assert "terminal_evidence" not in result
+    assert "continue_contract" not in result
+
+
 def test_continue_contract_is_persisted_and_revalidated_on_resume():
     from core.continue_contract import build_continue_contract
 
@@ -305,3 +335,52 @@ def test_continue_contract_is_persisted_and_revalidated_on_resume():
     resumed = run_durable_loop(Executor(), store, policy)
     assert resumed["status"] == "BLOCKED"
     assert "continue contract" in resumed["block_reason"]
+
+
+class FailingSaveStore(MemoryStateStore):
+    def __init__(self, state=None, failures=1):
+        super().__init__(state or {})
+        self.failures = failures
+
+    def save(self, state):
+        if self.failures:
+            self.failures -= 1
+            raise OSError("store unavailable")
+        super().save(state)
+
+
+def test_persistence_failure_is_fail_closed_and_retries_governed_block():
+    store = FailingSaveStore()
+    result = run_durable_loop(
+        FakeExecutor(), store,
+        _policy(max_steps=1, terminal_evaluator=lambda v, s: None),
+    )
+    assert result["status"] == "BLOCKED"
+    assert "durable persistence failed" in result["block_reason"]
+    assert store.load()["status"] == "BLOCKED"
+
+
+def test_double_persistence_failure_is_durability_unknown():
+    store = FailingSaveStore(failures=2)
+    with pytest.raises(RuntimeError, match="durable persistence is UNKNOWN"):
+        run_durable_loop(
+            FakeExecutor(), store,
+            _policy(max_steps=1, terminal_evaluator=lambda v, s: None),
+        )
+    assert store.load() is None
+
+
+def test_continue_contract_is_stable_when_persisted_repeatedly():
+    state = {
+        "project": "p", "design": "d", "active_phase": "VERIFY",
+        "active_commit": "abc", "latest_run": "run-1", "latest_receipt": "receipt-1",
+        "pipeline": {"VERIFY": "active"}, "active_blockers": [],
+        "next_legal_actions": ["continue"], "forbidden_actions": ["reset"],
+    }
+    policy = _policy(continue_contract_builder=build_continue_contract)
+    store = MemoryStateStore()
+    _persist_state(state, store, policy)
+    first = store.load()["continue_contract"]
+    _persist_state(state, store, policy)
+    second = store.load()["continue_contract"]
+    assert first == second
