@@ -137,6 +137,7 @@ def test_retry_dispatch_requires_unknown_and_increments_attempt(tmp_path):
                      f"{effect['effect_id']}:attempt:1", "fake-provider")
     unknown_effect = transition(str(tmp_path), first["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
     effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":effect["effect_id"], "attempt":2}
+    unknown_effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":unknown_effect["effect_id"], "attempt":2}
     retried = retry_dispatch(str(tmp_path), unknown_effect["effect_id"], "agent:test",
                              f"{effect['effect_id']}:attempt:2", "fake-provider", 2)
     assert retried["effect_id"] == effect["effect_id"]
