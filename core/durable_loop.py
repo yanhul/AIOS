@@ -188,6 +188,25 @@ def _persist_raw_state(state: Mapping[str, Any], store: StateStore) -> None:
     """Persist an invalid durable snapshot without rebuilding governed projections."""
     store.save(deepcopy(dict(state)))
 
+def _persist_or_fail_closed(state: dict[str, Any], store: StateStore, policy: LoopPolicy) -> None:
+    """Commit a durable snapshot or fail without claiming the state was persisted."""
+    try:
+        _persist_or_fail_closed(state, store, policy)
+    except Exception as exc:
+        fallback = deepcopy(state)
+        fallback["status"] = policy.failure_state
+        fallback["block_reason"] = f"durable persistence failed: {type(exc).__name__}: {exc}"
+        try:
+            _persist_raw_state(fallback, store)
+        except Exception as raw_exc:
+            raise RuntimeError(
+                "durable persistence is UNKNOWN; governed snapshot could not be committed: "
+                f"{type(raw_exc).__name__}: {raw_exc}"
+            ) from raw_exc
+        state.clear()
+        state.update(fallback)
+
+
 def _validate_fix_success(verification: Any, expected_state: str) -> None:
     """Require externally verifiable runtime proof before fix promotion."""
     if expected_state == "PASS":
@@ -223,14 +242,14 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"execution failed before authorization: {type(exc).__name__}: {exc}"
-            _persist_state(state, store, policy)
+            _persist_or_fail_closed(state, store, policy)
             return state
         try:
             policy.action_authorizer(deepcopy(decision), deepcopy(state))
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"action authorization failed: {type(exc).__name__}: {exc}"
-            _persist_state(state, store, policy)
+            _persist_or_fail_closed(state, store, policy)
             return state
         try:
             action_result = executor.act(deepcopy(decision), deepcopy(state))
@@ -247,7 +266,7 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"execution failed after authorization: {type(exc).__name__}: {exc}"
-            _persist_state(state, store, policy)
+            _persist_or_fail_closed(state, store, policy)
             return state
         state["step"] += 1
         state["history"].append({"step": state["step"], "observation": deepcopy(observation), "decision": deepcopy(decision), "action": deepcopy(action_result), "verification": deepcopy(verification)})
@@ -299,7 +318,7 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                     state["status"] = "RUNNING"
                     state["continuation"] = deepcopy(dict(continuation))
                     state["history"][-1]["continuation"] = deepcopy(dict(continuation))
-                    _persist_state(state, store, policy)
+                    _persist_or_fail_closed(state, store, policy)
                     continue
             state["status"] = terminal
             state["terminal_evidence"] = {
