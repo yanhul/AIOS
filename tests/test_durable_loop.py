@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: durable loop state persistence and continuation boundary
+# AIOS-REGRESSION: Prevent state loss across durable save/resume
+# AIOS-OWNER: AIOS control-plane durable execution
+# AIOS-COVERAGE-GAP: Covers persisted state patches and continuation tamper rejection
+# AIOS-BASELINE: Tests target the existing durable-loop contract baseline
+
 import pytest
 
 from core.durable_loop import LoopPolicy, MemoryStateStore, run_durable_loop
