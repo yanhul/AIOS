@@ -183,6 +183,16 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
         raise PermissionError("effect actor does not match execution actor")
     if effect.get("state") != "UNKNOWN":
         raise RuntimeError("effect must be UNKNOWN before retry")
+    # UNKNOWN is ambiguous by definition: retry is forbidden unless the persisted
+    # effect carries an explicit, governed retry authorization. A provider timeout
+    # alone is not proof that no external effect occurred.
+    retry_auth = effect.get("retry_authorization")
+    if not isinstance(retry_auth, dict) or retry_auth.get("mode") != "EXPLICIT":
+        raise PermissionError("UNKNOWN effect requires explicit retry authorization")
+    if retry_auth.get("effect_id") != effect.get("effect_id"):
+        raise PermissionError("retry authorization effect binding mismatch")
+    if retry_auth.get("attempt") != attempt:
+        raise PermissionError("retry authorization attempt mismatch")
 
     authorize(aios_dir, contract_id, permit_id)
     contract = load_contract(aios_dir, contract_id)
