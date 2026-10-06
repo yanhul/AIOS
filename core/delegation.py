@@ -143,6 +143,10 @@ def build_delegation(
         raise DelegationError("caller_bound authority requires credential_ref")
     if authority_mode == "service_bound" and credential_ref is None:
         raise DelegationError("service_bound authority requires credential_ref")
+    if authority_mode == "caller_bound" and credential_ref is not None and not credential_ref.startswith("caller:"):
+        raise DelegationError("caller_bound authority requires a caller-scoped credential_ref")
+    if authority_mode == "service_bound" and credential_ref is not None and not credential_ref.startswith("service:"):
+        raise DelegationError("service_bound authority requires a service-scoped credential_ref")
     if authority_mode == "none" and credential_ref is not None:
         raise DelegationError("none authority cannot carry credentials")
     if memory_scope == "shared" and "memory_write" not in permit.get("allowed_effects", []):
@@ -223,6 +227,10 @@ def validate_delegation(
         raise DelegationError("caller_bound authority requires credential_ref")
     if request.authority_mode == "service_bound" and not request.credential_ref:
         raise DelegationError("service_bound authority requires credential_ref")
+    if request.authority_mode == "caller_bound" and request.credential_ref and not request.credential_ref.startswith("caller:"):
+        raise DelegationError("caller_bound authority requires a caller-scoped credential_ref")
+    if request.authority_mode == "service_bound" and request.credential_ref and not request.credential_ref.startswith("service:"):
+        raise DelegationError("service_bound authority requires a service-scoped credential_ref")
     if request.authority_mode == "none" and request.credential_ref is not None:
         raise DelegationError("none authority cannot carry credential_ref")
     verify_permit(dict(contract), dict(permit))
