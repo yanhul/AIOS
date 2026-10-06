@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: durable runtime attempt identity and retry boundary
+# AIOS-REGRESSION: Prevent duplicate external effects across ambiguous resume
+# AIOS-OWNER: AIOS control-plane durable execution
+# AIOS-COVERAGE-GAP: Covers exact DISPATCHED attempt resume and bounded retry
+# AIOS-BASELINE: Tests target the existing M6 durable runtime bridge baseline
+
 import pytest
 
 from core.authority import persist_contract, persist_permit
