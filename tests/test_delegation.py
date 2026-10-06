@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: delegation requires an existing execution contract/permit and never mints authority
+# AIOS-REGRESSION: delegated handoffs must remain bound to target capability and execution lineage
+# AIOS-OWNER: AIOS control plane / delegation boundary
+# AIOS-COVERAGE-GAP: no multi-worker runtime is covered; this test covers the durable proposal boundary
+# AIOS-BASELINE: main at PR creation; exercised against the existing contract, capability, and lineage primitives
+
 import tempfile
 import unittest
 
