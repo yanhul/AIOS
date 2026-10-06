@@ -4,15 +4,45 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-edfa165ec38653b4",
+      "candidate_id": "cand-09aa8449aea3e24a",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "e355e5eb01c47daa5ce6b62e325fc95cf1434eaac1977b7930acd96c6d418644",
+      "source_ref": "https://github.com/shaohsuanw803-boop/deskpilot",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-ce6e98b4a3493393",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "7322170ae60ad061ade2836418cd9a1129dca000fad7b1c1529358883ad1fa05",
+      "source_digest": "c02bc1c41be2549cb9b0cb57e62c942759fc00f9fceee4d6bcdc4395a4bcc2c4",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-787ab0651aec77a0",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "b6a87180891907bf5cb1756c35e4a6c3d7b0639dc2655c8d526f18e1fabcbd0b",
+      "source_ref": "https://github.com/synaptiai/flow-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -34,21 +64,6 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-60e5b4a4799da232",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "6fe38aa3cc2191c9aae99c1673e67222486f57f95b3432f3bb3fa8c7cb4cfb27",
-      "source_ref": "https://github.com/synaptiai/flow-harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
       "candidate_id": "cand-4537a02f19cd16bf",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
@@ -58,21 +73,6 @@
       "ref": "main",
       "source_digest": "6fee287a90a5e960dec2624e9538a035b535e6cc438f92f59c49695ff03718d7",
       "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-feeea1e068a8befe",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "research_harness",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "cff1d21c75cab96c0039f4b77a0350a2239151c201841079c175ddd0b43c64c1",
-      "source_ref": "https://github.com/chiragborse1/deep-research-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -184,14 +184,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-4f2228aaf6f0a8d9",
+      "candidate_id": "cand-cab7cb7cc0f2a75d",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "b49cd4a26ae65bb90e2903022d03376c081f43af9c679512ed1737fa10059971",
+      "source_digest": "be6f9813796781fef6416a8a4484592470092d58e2a1d7f6e3800d7d2116c1a3",
       "source_ref": "https://github.com/teolex2020/aura-memory",
       "status": "UNTRUSTED_EVIDENCE"
     },
