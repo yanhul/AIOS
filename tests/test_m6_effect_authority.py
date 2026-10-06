@@ -50,7 +50,7 @@ def test_effect_transition_is_atomic_and_audited(tmp_path):
     assert effect["state"] == "PLANNED"
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1")
     unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
-    retry_dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:2", "provider-1", 2)
+    retry_dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:2", "provider-1", 2, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":2})
     done = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", _observation(effect["effect_id"], attempt=2))
     assert done["state"] == "OBSERVED_SUCCESS"
     assert (tmp_path / "events" / ("effect-" + effect["effect_id"] + "-OBSERVED_SUCCESS.json")).exists()
