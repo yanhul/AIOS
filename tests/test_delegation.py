@@ -54,7 +54,7 @@ class GovernedDelegationTests(unittest.TestCase):
         contract, permit, registry, lineage = _context()
         request = build_delegation(
             contract=contract, permit=permit, source_actor="AIOS",
-            target_role="verifier", authority_mode="caller_bound", credential_ref="cred:caller",
+            target_role="verifier", authority_mode="caller_bound", credential_ref="caller:test",
             memory_scope="private", target_capability="worker.target@1", operation_id="verify-1", input_digest="input-1",
             evidence_required=["receipt"], lineage=lineage, registry=registry,
         )
@@ -65,7 +65,7 @@ class GovernedDelegationTests(unittest.TestCase):
         contract, permit, registry, lineage = _context()
         request = build_delegation(
             contract=contract, permit=permit, source_actor="AIOS",
-            target_role="verifier", authority_mode="caller_bound", credential_ref="cred:caller",
+            target_role="verifier", authority_mode="caller_bound", credential_ref="caller:test",
             memory_scope="private", target_capability="worker.target@1", operation_id="verify-1", input_digest="input-1",
             evidence_required=["receipt"], lineage=lineage, registry=registry,
         )
@@ -127,7 +127,7 @@ class GovernedDelegationTests(unittest.TestCase):
         with self.assertRaises(DelegationError):
             build_delegation(
                 contract=contract, permit=permit, source_actor="AIOS",
-                target_role="worker", authority_mode="service_bound", credential_ref="cred:caller",
+                target_role="worker", authority_mode="service_bound", credential_ref="caller:test",
                 memory_scope="private", target_capability="worker.target@1",
                 operation_id="run-1", input_digest="input-1",
                 evidence_required=["receipt"], lineage=lineage, registry=registry,
@@ -137,7 +137,7 @@ class GovernedDelegationTests(unittest.TestCase):
         contract, permit, registry, lineage = _context()
         request = build_delegation(
             contract=contract, permit=permit, source_actor="AIOS",
-            target_role="verifier", authority_mode="caller_bound", credential_ref="cred:caller",
+            target_role="verifier", authority_mode="caller_bound", credential_ref="caller:test",
             memory_scope="private", target_capability="worker.target@1", operation_id="verify-1", input_digest="input-1",
             evidence_required=["receipt"], lineage=lineage, registry=registry,
         )
@@ -150,7 +150,7 @@ class GovernedDelegationTests(unittest.TestCase):
         contract, permit, registry, lineage = _context()
         request = build_delegation(
             contract=contract, permit=permit, source_actor="AIOS",
-            target_role="verifier", authority_mode="caller_bound", credential_ref="cred:caller",
+            target_role="verifier", authority_mode="caller_bound", credential_ref="caller:test",
             memory_scope="private", target_capability="worker.target@1", operation_id="verify-1", input_digest="input-1",
             evidence_required=["receipt"], lineage=lineage, registry=registry,
         )
