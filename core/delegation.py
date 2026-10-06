@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from .capabilities import Capability, CapabilityRegistry
-from .contract import verify_permit
+from .contract import contract_identity, verify_permit
 from .execution_lineage import ExecutionLineage, validate_lineage
 from .mutation import canonical_json, commit_batch
 
@@ -141,7 +141,7 @@ def build_delegation(
             raise DelegationError(f"delegation lineage is invalid: {exc}") from exc
 
     payload = {
-        "source_contract_id": _text(contract.get("contract_id"), "contract_id"),
+        "source_contract_id": contract_identity(contract),
         "source_permit_id": _text(permit.get("permit_id"), "permit_id"),
         "source_actor": _text(source_actor, "source_actor"),
         "target_role": target_role,
@@ -175,7 +175,7 @@ def validate_delegation(
     """Fail closed when a persisted handoff no longer matches its authority."""
     if request.state != DELEGATION_STATE:
         raise DelegationError("delegation is not in PROPOSED state")
-    if request.source_contract_id != contract.get("contract_id"):
+    if request.source_contract_id != contract_identity(contract):
         raise DelegationError("delegation contract binding mismatch")
     if request.source_permit_id != permit.get("permit_id"):
         raise DelegationError("delegation permit binding mismatch")
