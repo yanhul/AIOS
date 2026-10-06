@@ -6,27 +6,27 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "62636cec3a31aea7df5198581f3d45e5b13b9b637e55670dc7005006485885de",
+      "source_digest": "ee0376380b1ef62888f7cf9db7d77a8b44dcd1ed04235c1ad48210846fdb01a7",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "stars": 0,
-      "updated_at": "2026-10-06T13:43:21Z"
+      "updated_at": "2026-10-06T15:58:20Z"
     },
     {
       "description": "Governed IT service desk agent: reliable RAG, MCP diagnostics, durable approvals and an auditable execution harness.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "shaohsuanw803-boop/deskpilot",
-      "source_digest": "65f7315c10b13eb0f62548ba867d99c732218c3a6b4929e67be8ff891729e7dd",
+      "source_digest": "e713b0730c7daa3d315d289faf3756ac1fa0d6c1bfa5d0cc4eea3973b1137873",
       "source_ref": "https://github.com/shaohsuanw803-boop/deskpilot",
-      "stars": 0,
-      "updated_at": "2026-10-06T11:43:55Z"
+      "stars": 1,
+      "updated_at": "2026-10-06T15:04:47Z"
     },
     {
       "description": "Provider-neutral coding-agent harness with deterministic workflow graphs, durable evidence, and fail-closed sandboxed execution",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "synaptiai/flow-harness",
-      "source_digest": "dbce80bb9baa768433d6967904727a9d353c9f6b4165adfc4cec969e1a00ed6e",
+      "source_digest": "cf8ef08a33de17196c6c73aaf15bd65c6c7fd57def1d6cbddcf0ad32fee8232d",
       "source_ref": "https://github.com/synaptiai/flow-harness",
       "stars": 0,
       "updated_at": "2026-10-06T08:08:18Z"
