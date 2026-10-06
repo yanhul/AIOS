@@ -257,6 +257,23 @@ def test_state_patch_is_durable_across_resume():
     assert persisted["blocked_requirements"] == ["G7"]
 
 
+def test_continue_contract_is_stable_when_persisted_repeatedly():
+    state = {
+        "project": "p", "design": "d", "active_phase": "VERIFY",
+        "active_commit": "abc", "latest_run": "run-1", "latest_receipt": "receipt-1",
+        "pipeline": {"VERIFY": "active"}, "active_blockers": [],
+        "next_legal_actions": ["continue"], "forbidden_actions": ["reset"],
+    }
+    policy = _policy(continue_contract_builder=build_continue_contract)
+    store = MemoryStateStore()
+    from core.durable_loop import _persist_state
+    _persist_state(state, store, policy)
+    first = store.load()["continue_contract"]
+    _persist_state(state, store, policy)
+    second = store.load()["continue_contract"]
+    assert first == second
+
+
 def test_continue_contract_is_persisted_and_revalidated_on_resume():
     from core.continue_contract import build_continue_contract
 
