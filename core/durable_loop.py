@@ -143,7 +143,12 @@ def _persist_state(state: dict[str, Any], store: StateStore, policy: LoopPolicy)
         if not isinstance(contract, Mapping):
             raise ValueError("continue contract builder must return a mapping")
         state["continue_contract"] = deepcopy(dict(contract))
-    _persist_state(state, store, policy)
+    store.save(state)
+
+
+def _persist_raw_state(state: Mapping[str, Any], store: StateStore) -> None:
+    """Persist an invalid durable snapshot without rebuilding governed projections."""
+    store.save(deepcopy(dict(state)))
 
 def _validate_fix_success(verification: Any, expected_state: str) -> None:
     """Require externally verifiable runtime proof before fix promotion."""
