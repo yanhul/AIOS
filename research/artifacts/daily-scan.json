@@ -6,20 +6,20 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "shaohsuanw803-boop/deskpilot",
-      "source_digest": "cab8bde72255bd9212c88f2824a2a71785b726b1ae744f7f978f4416a0e80239",
+      "source_digest": "699dbf38f151d7bcdac0a43682bbef3967125361be008987247e5ca8ae95e089",
       "source_ref": "https://github.com/shaohsuanw803-boop/deskpilot",
       "stars": 0,
-      "updated_at": "2026-10-06T09:54:59Z"
+      "updated_at": "2026-10-06T11:43:55Z"
     },
     {
       "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "375d848d72e37784427ce5ad58417f3d683538b60f5b2b9ad2e87a67c83daa12",
+      "source_digest": "ea370f9f48753ba21800990ec22cc2885cc78646c17f170f1e7810526dcd2fbf",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "stars": 0,
-      "updated_at": "2026-10-06T09:13:59Z"
+      "updated_at": "2026-10-06T11:20:04Z"
     },
     {
       "description": "Provider-neutral coding-agent harness with deterministic workflow graphs, durable evidence, and fail-closed sandboxed execution",

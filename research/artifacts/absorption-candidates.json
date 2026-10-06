@@ -4,14 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-c4bdd9c9cddad4da",
+      "candidate_id": "cand-b4903b0710ec51aa",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "cab8bde72255bd9212c88f2824a2a71785b726b1ae744f7f978f4416a0e80239",
+      "source_digest": "699dbf38f151d7bcdac0a43682bbef3967125361be008987247e5ca8ae95e089",
       "source_ref": "https://github.com/shaohsuanw803-boop/deskpilot",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -19,14 +19,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-66227453a7941ffe",
+      "candidate_id": "cand-b0005bfb038881f6",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "375d848d72e37784427ce5ad58417f3d683538b60f5b2b9ad2e87a67c83daa12",
+      "source_digest": "ea370f9f48753ba21800990ec22cc2885cc78646c17f170f1e7810526dcd2fbf",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "status": "UNTRUSTED_EVIDENCE"
     },
