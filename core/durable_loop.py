@@ -205,6 +205,8 @@ def _persist_or_fail_closed(state: dict[str, Any], store: StateStore, policy: Lo
             ) from raw_exc
         state.clear()
         state.update(fallback)
+        return False
+    return True
 
 def _validate_fix_success(verification: Any, expected_state: str) -> None:
     """Require externally verifiable runtime proof before fix promotion."""
