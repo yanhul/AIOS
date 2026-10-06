@@ -10,6 +10,18 @@ from .continue_contract import validate_continue_contract
 
 TERMINAL = frozenset({"PASS", "BLOCKED", "INCONCLUSIVE"})
 
+# Verifier state patches are data-plane observations only. These fields are
+# owned by the durable control-plane state machine and can never be patched by
+# an executor/verifier.
+_PROTECTED_STATE_FIELDS = frozenset({
+    "step",
+    "status",
+    "history",
+    "terminal_evidence",
+    "continue_contract",
+    "policy_digest",
+})
+
 class StateStore(Protocol):
     def load(self) -> Mapping[str, Any] | None: ...
     def save(self, state: Mapping[str, Any]) -> None: ...
@@ -147,13 +159,29 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
         _validate_terminal_evidence(state)
 
 def _persist_state(state: dict[str, Any], store: StateStore, policy: LoopPolicy) -> None:
-    """Persist durable state and its model-facing continuation projection."""
+    """Persist a complete durable snapshot with its continuation projection."""
+    candidate = deepcopy(state)
     if policy.continue_contract_builder is not None:
-        contract = policy.continue_contract_builder(deepcopy(state))
+        contract = policy.continue_contract_builder(deepcopy(candidate))
         if not isinstance(contract, Mapping):
             raise ValueError("continue contract builder must return a mapping")
-        state["continue_contract"] = deepcopy(dict(contract))
-    store.save(state)
+        candidate["continue_contract"] = deepcopy(dict(contract))
+    store.save(candidate)
+    state.clear()
+    state.update(deepcopy(candidate))
+
+
+def _apply_state_patch(state: dict[str, Any], patch: Mapping[str, Any]) -> None:
+    """Apply verifier-owned data updates without allowing control-plane mutation."""
+    if not isinstance(patch, Mapping):
+        raise ValueError("verification state_patch must be a mapping")
+    protected = sorted(_PROTECTED_STATE_FIELDS.intersection(patch))
+    if protected:
+        raise ValueError(f"verification state_patch attempts protected fields: {protected}")
+    for key, value in patch.items():
+        if not isinstance(key, str) or not key.strip():
+            raise ValueError("verification state_patch keys must be non-empty strings")
+        state[key] = deepcopy(value)
 
 
 def _persist_raw_state(state: Mapping[str, Any], store: StateStore) -> None:
@@ -211,9 +239,7 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
             if isinstance(verification, Mapping):
                 patch = verification.get("state_patch")
                 if patch is not None:
-                    if not isinstance(patch, Mapping):
-                        raise ValueError("verification state_patch must be a mapping")
-                    state.update(deepcopy(dict(patch)))
+                    _apply_state_patch(state, patch)
             if policy.require_execution_receipt:
                 receipt = _validate_execution_receipt(verification)
                 if policy.execution_receipt_validator is not None:
