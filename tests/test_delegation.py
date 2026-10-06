@@ -79,7 +79,8 @@ class GovernedDelegationTests(unittest.TestCase):
         with self.assertRaises(DelegationError):
             build_delegation(
                 contract=contract, permit=permit, source_actor="AIOS",
-                target_role="verifier", target_capability="missing@1",
+                target_role="verifier", authority_mode="none", credential_ref=None,
+                memory_scope="private", target_capability="missing@1",
                 operation_id="verify-1", input_digest="input-1",
                 evidence_required=["receipt"], lineage=lineage, registry=registry,
             )
