@@ -287,7 +287,7 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"terminal evaluation failed: {type(exc).__name__}: {exc}"
-            _persist_state(state, store, policy)
+            _persist_or_fail_closed(state, store, policy)
             return state
         if terminal is not None:
             if terminal == "BLOCKED" and policy.blocked_continuation is not None:
@@ -325,17 +325,17 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                 "status": terminal,
                 "verification": deepcopy(verification),
             }
-            _persist_state(state, store, policy)
+            _persist_or_fail_closed(state, store, policy)
             return state
         state["status"] = "RUNNING"
-        _persist_state(state, store, policy)
+        _persist_or_fail_closed(state, store, policy)
     state["status"] = policy.budget_exhaustion_state
     state["terminal_evidence"] = {
         "step": state["step"],
         "status": state["status"],
         "verification": {"reason": "BUDGET_EXHAUSTED"},
     }
-    _persist_state(state, store, policy)
+    _persist_or_fail_closed(state, store, policy)
     return state
 
 __all__ = ["TERMINAL", "LoopPolicy", "MemoryStateStore", "run_durable_loop"]
