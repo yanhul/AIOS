@@ -210,7 +210,7 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
     if "external_effect" not in contract["allowed_effects"]:
         raise PermissionError("external effect is not authorized by contract")
 
-    dispatched = retry_dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name, attempt)
+    dispatched = retry_dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name, attempt, retry_authorization=retry_auth)
     _submit_runtime(durable_runtime, "retry", dispatched, attempt_id, provider_name, attempt=attempt)
     return execute_attempt(aios_dir, contract, dispatched, actor, adapter, attempt_id)
 
