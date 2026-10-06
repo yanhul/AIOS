@@ -257,6 +257,40 @@ def test_state_patch_is_durable_across_resume():
     assert persisted["blocked_requirements"] == ["G7"]
 
 
+
+class FailingSaveStore(MemoryStateStore):
+    def __init__(self, state=None, failures=1):
+        super().__init__(state or {})
+        self.failures = failures
+
+    def save(self, state):
+        if self.failures:
+            self.failures -= 1
+            raise OSError("store unavailable")
+        super().save(state)
+
+
+def test_persistence_failure_is_fail_closed_and_retries_governed_block():
+    store = FailingSaveStore()
+    result = run_durable_loop(
+        FakeExecutor(), store,
+        _policy(max_steps=1, terminal_evaluator=lambda v, s: None),
+    )
+    assert result["status"] == "BLOCKED"
+    assert "durable persistence failed" in result["block_reason"]
+    assert store.load()["status"] == "BLOCKED"
+
+
+def test_double_persistence_failure_is_durability_unknown():
+    store = FailingSaveStore(failures=2)
+    with pytest.raises(RuntimeError, match="durable persistence is UNKNOWN"):
+        run_durable_loop(
+            FakeExecutor(), store,
+            _policy(max_steps=1, terminal_evaluator=lambda v, s: None),
+        )
+    assert store.load() is None
+
+
 def test_continue_contract_is_persisted_and_revalidated_on_resume():
     from core.continue_contract import build_continue_contract
 
