@@ -118,6 +118,7 @@ def test_retry_bridges_explicit_bounded_retry(tmp_path):
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test",
                         unknown_reason="timeout")
+    effect["retry_authorization"] = {"mode": "EXPLICIT", "effect_id": effect["effect_id"], "attempt": 2}
     result = execute_retry_attempt(
         str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
         f"{effect['effect_id']}:attempt:2", 2, GoodRuntime()
@@ -125,6 +126,19 @@ def test_retry_bridges_explicit_bounded_retry(tmp_path):
     assert result["state"] == "OBSERVED_SUCCESS"
     assert result["attempt"] == 2
 
+
+def test_unknown_retry_requires_explicit_authorization(tmp_path):
+    cid, pid = setup(tmp_path, max_attempts=2)
+    effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
+    effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
+                      f"{effect['effect_id']}:attempt:1", "fake-provider")
+    effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test",
+                        unknown_reason="timeout")
+    with pytest.raises(PermissionError, match="explicit retry authorization"):
+        execute_retry_attempt(
+            str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
+            f"{effect['effect_id']}:attempt:2", 2, GoodRuntime()
+        )
 
 def test_retry_runtime_cannot_override_contract_bounds(tmp_path):
     cid, pid = setup(tmp_path, max_attempts=1)
