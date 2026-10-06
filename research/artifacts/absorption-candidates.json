@@ -4,29 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-b4903b0710ec51aa",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "699dbf38f151d7bcdac0a43682bbef3967125361be008987247e5ca8ae95e089",
-      "source_ref": "https://github.com/shaohsuanw803-boop/deskpilot",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-b0005bfb038881f6",
+      "candidate_id": "cand-e4d6c6bfe76cf618",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "ea370f9f48753ba21800990ec22cc2885cc78646c17f170f1e7810526dcd2fbf",
+      "source_digest": "62636cec3a31aea7df5198581f3d45e5b13b9b637e55670dc7005006485885de",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -34,14 +19,29 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-ecdffd2ba496f114",
+      "candidate_id": "cand-b50e6e9d57ea79ba",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "65f7315c10b13eb0f62548ba867d99c732218c3a6b4929e67be8ff891729e7dd",
+      "source_ref": "https://github.com/shaohsuanw803-boop/deskpilot",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-9a8d1569e42e04b7",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "6aa8f49e30ef12fd5048fe8ca20f5c5806166b4a57adf0452509d099c388c2c0",
+      "source_digest": "dbce80bb9baa768433d6967904727a9d353c9f6b4165adfc4cec969e1a00ed6e",
       "source_ref": "https://github.com/synaptiai/flow-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -184,14 +184,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-cab7cb7cc0f2a75d",
+      "candidate_id": "cand-c85e7367638fcfab",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "be6f9813796781fef6416a8a4484592470092d58e2a1d7f6e3800d7d2116c1a3",
+      "source_digest": "6302a1b0c5e82a00b1a8417d6424e4dc4a14789cb5e0fc6276271ad1441b3aaa",
       "source_ref": "https://github.com/teolex2020/aura-memory",
       "status": "UNTRUSTED_EVIDENCE"
     },
