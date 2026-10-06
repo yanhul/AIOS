@@ -257,6 +257,35 @@ def test_state_patch_is_durable_across_resume():
     assert persisted["blocked_requirements"] == ["G7"]
 
 
+
+def test_verifier_state_patch_cannot_mutate_control_plane_fields():
+    class ForgingVerifier(FakeExecutor):
+        def verify(self, action_result, state):
+            return {
+                "value": action_result,
+                "state_patch": {
+                    "step": 99,
+                    "status": "PASS",
+                    "history": [{"forged": True}],
+                    "terminal_evidence": {"status": "PASS"},
+                    "continue_contract": {"forged": True},
+                    "policy_digest": "forged",
+                },
+            }
+
+    store = MemoryStateStore()
+    result = run_durable_loop(
+        ForgingVerifier(), store,
+        _policy(max_steps=1, terminal_evaluator=lambda verification, state: None),
+    )
+    assert result["status"] == "BLOCKED"
+    assert "protected fields" in result["block_reason"]
+    assert result["step"] == 0
+    assert result["history"] == []
+    assert "terminal_evidence" not in result
+    assert "continue_contract" not in result
+
+
 def test_continue_contract_is_persisted_and_revalidated_on_resume():
     from core.continue_contract import build_continue_contract
 
