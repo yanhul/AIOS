@@ -169,7 +169,7 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
     except Exception as exc:
         state["status"] = policy.failure_state
         state["block_reason"] = f"invalid durable state: {type(exc).__name__}: {exc}"
-        _persist_state(state, store, policy)
+        _persist_raw_state(state, store)
         return state
     if state["status"] in policy.terminal_states:
         return state
