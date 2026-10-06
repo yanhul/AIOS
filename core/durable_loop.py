@@ -125,6 +125,16 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
         policy.resume_validator(state)
     if policy.continue_contract_builder is not None:
         contract = state.get("continue_contract")
+        # A fresh RUNNING state may bootstrap its first continuation projection.
+        # Once durable progress exists, absence/mismatch is a resume-integrity failure.
+        bootstrap = (
+            contract is None
+            and state.get("status") == "RUNNING"
+            and state.get("step") == 0
+            and not state.get("history")
+        )
+        if bootstrap:
+            return
         if not isinstance(contract, Mapping):
             raise ValueError("persisted continue contract is missing")
         validate_continue_contract(contract)
