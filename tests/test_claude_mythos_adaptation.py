@@ -26,7 +26,8 @@ def test_volatile_claims_require_discovery() -> None:
 def test_model_guess_never_becomes_fact_or_verified() -> None:
     assert classify_claim(source_kind="model_guess") == ClaimStatus.ASSUMPTION
     assert classify_claim(source_kind="unknown") == ClaimStatus.UNKNOWN
-    assert classify_claim(source_kind="model_guess", verified=False) != ClaimStatus.VERIFIED
+    with pytest.raises(TypeError):
+        classify_claim(source_kind="model_guess", verified=True)  # type: ignore[call-arg]
 
 
 def test_tool_success_is_not_world_state_verification() -> None:
