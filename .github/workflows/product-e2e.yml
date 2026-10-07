@@ -38,7 +38,7 @@ jobs:
           test "$(git -C "$RUNNER_TEMP/RX50" rev-parse HEAD)" = "040e462ef63bc03fe4d5448a6dbf68dde0e4f6eb"
       - name: Run durable crash/recovery conformance
         run: |
-          python scripts/product_e2e_durable_crash_recovery.py
+          PYTHONPATH="$PWD" python scripts/product_e2e_durable_crash_recovery.py
 
       - name: Run live registered-workload conformance
         run: |
