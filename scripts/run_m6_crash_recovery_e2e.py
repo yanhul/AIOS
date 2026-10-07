@@ -59,11 +59,11 @@ class RecordingAdapter:
         self.log = log
 
     def execute(self, *, contract, effect, attempt_id):
-        current = json.loads(self.log.read_text(encoding="utf-8")) if self.log.exists() else {}
-        current["provider_execute"] = {
-            "effect_id": effect["effect_id"], "attempt_id": attempt_id,
-        }
-        self.log.write_text(json.dumps(current) + "\n", encoding="utf-8")
+        self.log.write_text(
+            json.dumps({"event": "provider_execute", "effect_id": effect["effect_id"],
+                        "attempt_id": attempt_id}) + "\n",
+            encoding="utf-8",
+        )
         return ProviderReceipt(
             self.name, effect["effect_id"], attempt_id, "product-e2e-op-1",
             "OBSERVED_SUCCESS", {"status": "ok", "crash_recovered": True},
@@ -115,7 +115,8 @@ def main() -> int:
     args = ap.parse_args()
     root = Path(args.root).resolve()
     root.mkdir(parents=True, exist_ok=True)
-    log = root / "recovery-proof.json"
+    log = root / "resume-proof.json"
+    provider_log = root / "provider-proof.json"
 
     if args.phase == "crash":
         cid, pid = setup(root)
@@ -140,17 +141,18 @@ def main() -> int:
 
     contract = load_contract(str(root), cid)
     result = resume_attempt(
-        str(root), contract, effect, ACTOR, RecordingAdapter(log), RecordingRuntime(log),
+        str(root), contract, effect, ACTOR, RecordingAdapter(provider_log), RecordingRuntime(log),
     )
     if result["state"] != "OBSERVED_SUCCESS":
         raise AssertionError(f"resume did not reach OBSERVED_SUCCESS: {result}")
     if result["attempt_id"] != attempt_id or result["attempt"] != 1:
         raise AssertionError("resume allocated or changed the attempt identity")
 
-    proof = json.loads(log.read_text(encoding="utf-8"))
-    if proof["resume"]["attempt_id"] != attempt_id:
+    resume_proof = json.loads(log.read_text(encoding="utf-8"))
+    provider_proof = json.loads(provider_log.read_text(encoding="utf-8"))
+    if resume_proof["attempt_id"] != attempt_id:
         raise AssertionError("runtime resume receipt changed attempt identity")
-    if proof["provider_execute"]["attempt_id"] != attempt_id:
+    if provider_proof["attempt_id"] != attempt_id:
         raise AssertionError("provider execution changed attempt identity")
     print(json.dumps({
         "status": "PASS",
