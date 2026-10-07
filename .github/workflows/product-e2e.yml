@@ -9,6 +9,42 @@ permissions:
   contents: read
 
 jobs:
+  durable-crash-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Product E2E Python dependencies
+        run: python -m pip install --disable-pip-version-check PyYAML
+      - name: Run durable crash/recovery conformance
+        run: |
+          PYTHONPATH="$PWD" python scripts/product_e2e_durable_crash_recovery.py
+      - name: Publish crash/recovery evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-durable-crash-recovery-${{ github.run_id }}
+          path: artifacts/conformance/durable-crash-recovery.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Require durable crash/recovery conformance
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path("artifacts/conformance/durable-crash-recovery.json").read_text())
+          assert result["status"] == "PASS", result
+          assert result["durable_state_before_resume"] == "DISPATCHED", result
+          assert result["resume_state"] == "OBSERVED_SUCCESS", result
+          assert result["same_attempt_identity"] is True, result
+          assert result["duplicate_retry"] is False, result
+          assert result["evidence_refs"] and result["verification_refs"], result
+          print(json.dumps({"DURABLE_CRASH_RECOVERY_PASS": True}, sort_keys=True))
+          PY
+
   product-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -36,10 +72,6 @@ jobs:
           git -C "$RUNNER_TEMP/RX50" fetch --depth 1 origin refs/heads/aios-conformance/rx50:refs/remotes/origin/aios-conformance/rx50
           git -C "$RUNNER_TEMP/RX50" checkout --detach refs/remotes/origin/aios-conformance/rx50
           test "$(git -C "$RUNNER_TEMP/RX50" rev-parse HEAD)" = "040e462ef63bc03fe4d5448a6dbf68dde0e4f6eb"
-      - name: Run durable crash/recovery conformance
-        run: |
-          PYTHONPATH="$PWD" python scripts/product_e2e_durable_crash_recovery.py
-
       - name: Run live registered-workload conformance
         run: |
           python scripts/run_3_workload_conformance.py             --root yanhul/try "$RUNNER_TEMP/try"             --root yanhul/android-ai-assistant "$RUNNER_TEMP/android-ai-assistant"             --root yanhul/RX50 "$RUNNER_TEMP/RX50"
@@ -61,7 +93,7 @@ jobs:
           path: artifacts/conformance/*.json
           if-no-files-found: error
           retention-days: 90
-      - name: Require product E2E conformance
+      - name: Require registered workload conformance
         run: |
           python - <<'PY'
           import json
@@ -71,7 +103,6 @@ jobs:
               "yanhul__try.json",
               "yanhul__android-ai-assistant.json",
               "yanhul__RX50.json",
-              "durable-crash-recovery.json",
           }
           files = {p.name for p in root.glob("*.json")}
           assert files == expected, (files, expected)
@@ -84,5 +115,5 @@ jobs:
           }
           assert not missing_evidence, f"product result missing evidence/verification: {missing_evidence}"
           summary = {name: obj["status"] for name, obj in sorted(results.items())}
-          print(json.dumps({"PRODUCT_E2E_CONFORMANCE_PASS": summary}, sort_keys=True))
+          print(json.dumps({"REGISTERED_WORKLOAD_E2E_PASS": summary}, sort_keys=True))
           PY
