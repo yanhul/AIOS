@@ -17,6 +17,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install Product E2E Python dependencies
+        run: python -m pip install --disable-pip-version-check PyYAML
+
       - name: Checkout registered workloads
         run: |
           git clone --depth 1 --no-checkout https://github.com/yanhul/try.git "$RUNNER_TEMP/try"
