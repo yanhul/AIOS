@@ -10,6 +10,7 @@ from enum import Enum
 from typing import Any, Iterable
 
 from .capabilities import Capability
+from .verification import apply_verification
 
 
 class ClaimStatus(str, Enum):
@@ -98,11 +99,28 @@ def observe_tool_result(result: ToolResult, *, observation_id: str, source_ref: 
     )
 
 
-def promote_observation(observation: Observation, *, verification_evidence: Iterable[str]) -> Observation:
-    """Promote only when explicit independent verification evidence exists."""
-    evidence = tuple(x for x in verification_evidence if isinstance(x, str) and x.strip())
-    if not evidence:
-        raise PermissionError("observation cannot be promoted without verification evidence")
+def promote_observation(
+    observation: Observation,
+    *,
+    aios_dir: str,
+    verification_evidence: Iterable[tuple[str, str]],
+    verifier: str,
+) -> Observation:
+    """Promote only from persisted AIOS verification evidence.
+
+    Raw strings, provider success, and caller-supplied booleans are not
+    evidence. The native verification kernel resolves every EVIDENCE ref
+    against persisted state and records an append-only verification attempt.
+    """
+    refs = [list(ref) for ref in verification_evidence]
+    if not refs:
+        raise PermissionError("observation cannot be promoted without persisted verification evidence")
+    result = apply_verification(
+        aios_dir, "EVIDENCE", observation.observation_id, refs, verifier,
+        reason=observation.claim,
+    )
+    if result["outcome"] != "VERIFIED":
+        raise PermissionError("observation cannot be promoted: verification evidence is unsupported")
     return Observation(
         observation_id=observation.observation_id,
         source_ref=observation.source_ref,
