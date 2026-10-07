@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: schematic evidence boundary and PCB EDA receipt validation
+# AIOS-REGRESSION: schematic PASS must not require placement/routing closure
+# AIOS-OWNER: core.pcb_eda
+# AIOS-COVERAGE-GAP: durable placement transition remains a separate phase
+# AIOS-BASELINE: existing PCB EDA receipt contract and deferred finding lineage
+
 import json
 
 import pytest
