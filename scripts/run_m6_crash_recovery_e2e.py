@@ -14,6 +14,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+AIOS_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(AIOS_ROOT))
+
 from core.authority import load_contract, persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
