@@ -120,6 +120,11 @@ class PcbExecutor:
                     "reason": "discovery verified required blocker evidence",
                 }
             return {"operation": op, **result}
+        if op == "pcb.eda.placement":
+            if state.get("schematic_phase") != "VERIFIED":
+                raise RuntimeError("placement requires VERIFIED schematic phase")
+            raise RuntimeError("placement phase is not implemented in schematic boundary")
+
         if op == "pcb.eda.schematic":
             attempt_no = state.get("step", 0) + 1
             attempt_dir = self.args.output / f"schematic-attempt-{attempt_no}"
@@ -135,6 +140,13 @@ class PcbExecutor:
             validate_schematic_receipt(receipt)
             state["latest_schematic_attempt_dir"] = str(attempt_dir.resolve())
             state["schematic_receipt"] = receipt
+            if receipt["status"] == "PASS":
+                state["continuation"] = {
+                    "authority": "AIOS_CONTROL_PLANE",
+                    "evidence_refs": ["SCHEMATIC_RECEIPT"],
+                    "next_operation_id": "pcb.eda.placement",
+                    "reason": "schematic phase verified; placement is the next explicit phase",
+                }
             return {"operation": op, "returncode": rc, "receipt": receipt,
                     "attempt_dir": str(attempt_dir.resolve())}
 
