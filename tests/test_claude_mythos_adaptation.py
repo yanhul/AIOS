@@ -31,7 +31,7 @@ def test_model_guess_never_becomes_fact_or_verified() -> None:
         classify_claim(source_kind="model_guess", verified=True)  # type: ignore[call-arg]
 
 
-def test_tool_success_is_not_world_state_verification() -> None:
+def test_tool_success_is_not_world_state_verification(tmp_path) -> None:
     result = ToolResult("provider-a", "inv-1", {"success": True})
     observation = observe_tool_result(
         result, observation_id="obs-1",
@@ -39,7 +39,10 @@ def test_tool_success_is_not_world_state_verification() -> None:
     )
     assert observation.verified is False
     with pytest.raises(PermissionError):
-        promote_observation(observation, verification_evidence=[])
+        promote_observation(
+            observation, aios_dir=str(tmp_path),
+            verification_evidence=[], verifier="test-verifier",
+        )
 
 
 def test_independent_evidence_is_required_for_promotion(tmp_path) -> None:
