@@ -6,10 +6,10 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "8996bfc92c8a82729cc55894258586643663128c65f3b7cc6c23686abbed7d9d",
+      "source_digest": "5840d1f58675022747d49ef31e3ea7c6caa9f3730c55031752a93a33f79a9547",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "stars": 0,
-      "updated_at": "2026-10-07T01:20:13Z"
+      "updated_at": "2026-10-07T08:13:11Z"
     },
     {
       "description": "Governed IT service desk agent: reliable RAG, MCP diagnostics, durable approvals and an auditable execution harness.",
@@ -26,7 +26,7 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "synaptiai/flow-harness",
-      "source_digest": "cf8ef08a33de17196c6c73aaf15bd65c6c7fd57def1d6cbddcf0ad32fee8232d",
+      "source_digest": "e376a0b22d70c927014eda95080f91e9f98885cce42a66fe1072c007d3693b06",
       "source_ref": "https://github.com/synaptiai/flow-harness",
       "stars": 0,
       "updated_at": "2026-10-06T08:08:18Z"

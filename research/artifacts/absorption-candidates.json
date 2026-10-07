@@ -4,14 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-a9badcebd0377d7c",
+      "candidate_id": "cand-25d7d3b05e4fe6d3",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "8996bfc92c8a82729cc55894258586643663128c65f3b7cc6c23686abbed7d9d",
+      "source_digest": "5840d1f58675022747d49ef31e3ea7c6caa9f3730c55031752a93a33f79a9547",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -34,14 +34,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-aa17aba7fc8917c9",
+      "candidate_id": "cand-2bb7fca36fbd3ba5",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "cf8ef08a33de17196c6c73aaf15bd65c6c7fd57def1d6cbddcf0ad32fee8232d",
+      "source_digest": "e376a0b22d70c927014eda95080f91e9f98885cce42a66fe1072c007d3693b06",
       "source_ref": "https://github.com/synaptiai/flow-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
