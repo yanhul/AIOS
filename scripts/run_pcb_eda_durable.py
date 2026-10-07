@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from adapters.pcb_eda.adapter import run_kit
-from core.pcb_eda import PcbEdaRequest
+from core.pcb_eda import PcbEdaRequest, SCHEMATIC_PHASE, validate_schematic_receipt
 from core.durable_loop import LoopPolicy, run_durable_loop
 from core.blocked_continuation import classify_blockers, plan_blocked_continuation
 
@@ -100,7 +100,7 @@ class PcbExecutor:
                 "continuation": state.get("continuation")}
 
     def decide(self, observation, state):
-        op = (state.get("continuation") or {}).get("next_operation_id", "pcb.eda@1")
+        op = (state.get("continuation") or {}).get("next_operation_id", "pcb.eda.schematic")
         return {"logical_operation_id": op, "authority": "AIOS_CONTROL_PLANE"}
 
     def act(self, decision, state):
@@ -120,6 +120,24 @@ class PcbExecutor:
                     "reason": "discovery verified required blocker evidence",
                 }
             return {"operation": op, **result}
+        if op == "pcb.eda.schematic":
+            attempt_no = state.get("step", 0) + 1
+            attempt_dir = self.args.output / f"schematic-attempt-{attempt_no}"
+            attempt_dir.mkdir(parents=True, exist_ok=True)
+            req = PcbEdaRequest(
+                task_id=f"{self.args.task_id}-schematic-attempt-{attempt_no}",
+                input_dir=str(self.args.input), output_dir=str(attempt_dir),
+                kit_root=str(self.args.kit_root),
+                config=str(self.args.config) if self.args.config else None,
+                repair=False, max_retries=0, phase=SCHEMATIC_PHASE,
+            )
+            rc, receipt = run_kit(req)
+            validate_schematic_receipt(receipt)
+            state["latest_schematic_attempt_dir"] = str(attempt_dir.resolve())
+            state["schematic_receipt"] = receipt
+            return {"operation": op, "returncode": rc, "receipt": receipt,
+                    "attempt_dir": str(attempt_dir.resolve())}
+
         if op != "pcb.eda@1":
             raise RuntimeError(f"unauthorized PCB operation: {op}")
 
@@ -160,6 +178,31 @@ class PcbExecutor:
                     "evidence": result,
                 },
             }
+        if result.get("operation") == "pcb.eda.schematic":
+            receipt = result["receipt"]
+            return {
+                "status": receipt["status"],
+                "state_patch": {
+                    "schematic_receipt": receipt,
+                    "schematic_phase": "VERIFIED" if receipt["status"] == "PASS" else receipt["status"],
+                    "latest_schematic_attempt_dir": result["attempt_dir"],
+                },
+                "blockers": (receipt.get("evidence", {}).get("finding_inventory", {}).get("blocking", [])
+                             if isinstance(receipt.get("evidence"), Mapping) else []),
+                "receipt": {
+                    "effect_id": f"{self.args.task_id}:schematic-effect:{state.get('step', 0)+1}",
+                    "attempt_id": f"{self.args.task_id}:schematic-attempt:{state.get('step', 0)+1}",
+                    "status": "OBSERVED",
+                    "evidence": {
+                        "phase": "SCHEMATIC",
+                        "phase_receipt": str(Path(result["attempt_dir"]) / "phase_receipt.json"),
+                        "required_gates": receipt.get("evidence", {}).get("required_gates"),
+                        "finding_inventory": receipt.get("evidence", {}).get("finding_inventory"),
+                    },
+                },
+                "kit_receipt": receipt,
+            }
+
         receipt = result["receipt"]
         blockers = receipt.get("blockers") or receipt.get("findings") or []
         kinds = classify_blockers({"blockers": blockers})
@@ -213,12 +256,15 @@ def main():
 
     def terminal(v, s):
         status = v.get("status")
+        if status == "PASS" and v.get("kit_receipt", {}).get("phase") == "SCHEMATIC":
+            return "SCHEMATIC_VERIFIED"
         if status == "PASS": return "PASS"
         if status == "BLOCKED": return "BLOCKED"
         return None
 
     policy = LoopPolicy(
         max_steps=a.max_steps, terminal_evaluator=terminal,
+        terminal_states=frozenset({"PASS", "BLOCKED", "INCONCLUSIVE", "SCHEMATIC_VERIFIED"}),
         action_authorizer=lambda d, s: None, require_execution_receipt=True,
         blocked_continuation=continuation,
     )
