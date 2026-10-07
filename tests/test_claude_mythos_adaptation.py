@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import pytest
 
 from core.capabilities import Capability
@@ -41,13 +42,26 @@ def test_tool_success_is_not_world_state_verification() -> None:
         promote_observation(observation, verification_evidence=[])
 
 
-def test_independent_evidence_is_required_for_promotion() -> None:
+def test_independent_evidence_is_required_for_promotion(tmp_path) -> None:
     result = ToolResult("provider-a", "inv-2", {"status": "ok"})
     observation = observe_tool_result(
         result, observation_id="obs-2",
         source_ref="provider-a:inv-2", claim="effect is observed",
     )
-    promoted = promote_observation(observation, verification_evidence=["verify-run-7"])
+    with pytest.raises(PermissionError):
+        promote_observation(
+            observation, aios_dir=str(tmp_path),
+            verification_evidence=[("EVIDENCE", "EV-missing")], verifier="test-verifier",
+        )
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    (evidence_dir / "EV-test.json").write_text(json.dumps({
+        "entity_type": "EVIDENCE", "entity_id": "EV-test",
+    }), encoding="utf-8")
+    promoted = promote_observation(
+        observation, aios_dir=str(tmp_path),
+        verification_evidence=[("EVIDENCE", "EV-test")], verifier="test-verifier",
+    )
     assert promoted.verified is True
 
 
