@@ -38,10 +38,14 @@ def requires_discovery(volatility: Volatility | str) -> bool:
     return value in _DISCOVERY_REQUIRED
 
 
-def classify_claim(*, source_kind: str, verified: bool = False) -> ClaimStatus:
+def classify_claim(*, source_kind: str) -> ClaimStatus:
+    """Classify an unverified claim; VERIFIED is only a promotion outcome.
+
+    Deliberately has no ``verified``/confidence override. A caller cannot
+    manufacture VERIFIED state by passing a boolean; verification belongs to
+    the persisted verification/receipt path and ``promote_observation``.
+    """
     kind = source_kind.strip().lower() if isinstance(source_kind, str) else ""
-    if verified:
-        return ClaimStatus.VERIFIED
     if kind in {"measurement", "direct_source", "authoritative_record"}:
         return ClaimStatus.FACT
     if kind in {"decision", "approved_decision"}:
