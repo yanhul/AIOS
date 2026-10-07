@@ -3,6 +3,8 @@ name: Product E2E Conformance
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
