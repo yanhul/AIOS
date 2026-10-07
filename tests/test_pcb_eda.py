@@ -52,3 +52,46 @@ def test_unknown_or_missing_schema_is_fail_closed():
 def test_request_rejects_negative_retry_budget():
     with pytest.raises(ValueError, match="max_retries"):
         PcbEdaRequest("x", "/i", "/o", "/k", max_retries=-1).validate()
+
+def schematic_receipt(status="PASS"):
+    return {
+        "schema": "altium-audit-e2e-phase/v2",
+        "phase": "SCHEMATIC",
+        "status": status,
+        "evidence": {
+            "required_gates": {
+                "G0_INTAKE": "VERIFIED", "G1_PARSE": "VERIFIED",
+                "G2_COMPILE": "VERIFIED", "G3_CONNECTIVITY": "VERIFIED",
+            },
+            "finding_inventory": {
+                "errors": [], "blocking": [],
+                "deferred_non_gating": [{"id": "G2-SCH-NC-PIN-CONNECTED-U19", "status": "FAIL"}],
+            },
+        },
+    }
+
+
+def test_schematic_pass_does_not_require_placement_or_routing():
+    from core.pcb_eda import validate_schematic_receipt
+    validate_schematic_receipt(schematic_receipt())
+
+
+def test_schematic_pass_rejects_effective_blocker():
+    from core.pcb_eda import validate_schematic_receipt
+    r = schematic_receipt()
+    r["evidence"]["finding_inventory"]["errors"] = [{"id": "REAL-BLOCKER", "status": "FAIL"}]
+    with pytest.raises(ValueError, match="blocking"):
+        validate_schematic_receipt(r)
+
+
+def test_schematic_receipt_rejects_missing_deferred_projection():
+    from core.pcb_eda import validate_schematic_receipt
+    r = schematic_receipt()
+    del r["evidence"]["finding_inventory"]["deferred_non_gating"]
+    with pytest.raises(ValueError, match="deferred"):
+        validate_schematic_receipt(r)
+
+
+def test_request_accepts_schematic_phase():
+    from core.pcb_eda import PcbEdaRequest
+    PcbEdaRequest("x", "/i", "/o", "/k", phase="SCHEMATIC").validate()
