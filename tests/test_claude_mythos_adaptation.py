@@ -57,7 +57,10 @@ def test_independent_evidence_is_required_for_promotion(tmp_path) -> None:
             verification_evidence=[("EVIDENCE", "EV-missing")], verifier="test-verifier",
         )
     evidence_dir = tmp_path / "evidence"
-    evidence_dir.mkdir()
+    # Native verification may materialize the evidence directory while rejecting
+    # an unresolved reference; the test must assert verification semantics, not
+    # an incidental filesystem precondition.
+    evidence_dir.mkdir(exist_ok=True)
     (evidence_dir / "EV-test.json").write_text(json.dumps({
         "entity_type": "EVIDENCE", "entity_id": "EV-test",
     }), encoding="utf-8")
