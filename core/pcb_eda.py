@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 TERMINAL_STATES = frozenset({"PASS", "BLOCKED", "INCONCLUSIVE"})
+SCHEMATIC_PHASE = "SCHEMATIC"
+SCHEMATIC_REQUIRED_GATES = ("G0_INTAKE", "G1_PARSE", "G2_COMPILE", "G3_CONNECTIVITY")
 
 
 @dataclass(frozen=True)
@@ -21,6 +23,7 @@ class PcbEdaRequest:
     repair: bool = True
     max_retries: int = 3
     policy_digest: str | None = None
+    phase: str = "PCB"
 
     def validate(self) -> None:
         for name in ("task_id", "input_dir", "output_dir", "kit_root"):
@@ -31,6 +34,8 @@ class PcbEdaRequest:
             raise ValueError("max_retries must be >= 0")
         if self.config is not None and not isinstance(self.config, str):
             raise ValueError("config must be a string or None")
+        if self.phase not in {"PCB", SCHEMATIC_PHASE}:
+            raise ValueError("phase must be PCB or SCHEMATIC")
 
 
 def validate_kit_receipt(receipt: Mapping[str, Any]) -> None:
@@ -54,6 +59,34 @@ def validate_kit_receipt(receipt: Mapping[str, Any]) -> None:
             raise ValueError("PASS PCB EDA result lacks connectivity/placement/routing closure")
 
 
+
+def validate_schematic_receipt(receipt: Mapping[str, Any]) -> None:
+    """Fail closed on schematic evidence without requiring PCB closure gates."""
+    if not isinstance(receipt, Mapping):
+        raise ValueError("schematic receipt is not a mapping")
+    if receipt.get("schema") != "altium-audit-e2e-phase/v2":
+        raise ValueError("unsupported schematic receipt schema")
+    if receipt.get("phase") != SCHEMATIC_PHASE:
+        raise ValueError("receipt is not a schematic phase receipt")
+    status = receipt.get("status")
+    if status not in {"PASS", "BLOCKED"}:
+        raise ValueError(f"unauthorized schematic phase status: {status!r}")
+    evidence = receipt.get("evidence")
+    if not isinstance(evidence, Mapping):
+        raise ValueError("schematic receipt requires evidence")
+    gates = evidence.get("required_gates")
+    if not isinstance(gates, Mapping):
+        raise ValueError("schematic receipt requires required_gates evidence")
+    if status == "PASS" and any(gates.get(k) != "VERIFIED" for k in SCHEMATIC_REQUIRED_GATES):
+        raise ValueError("schematic PASS lacks G0/G1/G2/G3 verification")
+    inventory = evidence.get("finding_inventory")
+    if not isinstance(inventory, Mapping):
+        raise ValueError("schematic receipt requires finding inventory")
+    if status == "PASS" and (inventory.get("errors") or inventory.get("blocking")):
+        raise ValueError("schematic PASS contains effective blocking findings")
+    if "deferred_non_gating" not in inventory:
+        raise ValueError("schematic receipt must preserve deferred findings explicitly")
+
 def reconcile_pcb_eda(request: PcbEdaRequest, receipt: Mapping[str, Any]) -> Mapping[str, Any]:
     request.validate()
     validate_kit_receipt(receipt)
@@ -67,4 +100,4 @@ def reconcile_pcb_eda(request: PcbEdaRequest, receipt: Mapping[str, Any]) -> Map
     }
 
 
-__all__ = ["PcbEdaRequest", "TERMINAL_STATES", "validate_kit_receipt", "reconcile_pcb_eda"]
+__all__ = ["PcbEdaRequest", "TERMINAL_STATES", "SCHEMATIC_PHASE", "SCHEMATIC_REQUIRED_GATES", "validate_kit_receipt", "validate_schematic_receipt", "reconcile_pcb_eda"]
