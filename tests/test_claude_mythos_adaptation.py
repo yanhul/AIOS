@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: epistemic discovery, observation, and capability-routing boundaries
+# AIOS-REGRESSION: Claude Mythos 5.1 adaptation must not promote guesses/tool success
+# AIOS-OWNER: AIOS control-plane epistemic boundary
+# AIOS-COVERAGE-GAP: full repository integration and provider-specific execution remain covered elsewhere
+# AIOS-BASELINE: main
+
 from __future__ import annotations
 
 import pytest
