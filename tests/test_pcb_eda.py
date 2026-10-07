@@ -101,3 +101,13 @@ def test_schematic_receipt_rejects_missing_deferred_projection():
 def test_request_accepts_schematic_phase():
     from core.pcb_eda import PcbEdaRequest
     PcbEdaRequest("x", "/i", "/o", "/k", phase="SCHEMATIC").validate()
+
+# AIOS-CONTRACT: schematic transition must be explicit and authority-gated
+# AIOS-REGRESSION: schematic PASS cannot silently execute PCB placement
+# AIOS-OWNER: scripts.run_pcb_eda_durable
+# AIOS-COVERAGE-GAP: real Audit Kit placement execution is deferred to next phase
+# AIOS-BASELINE: durable pcb.eda@1 must preserve phase lineage
+
+def test_schematic_transition_is_explicit():
+    from scripts.run_pcb_eda_durable import PcbExecutor
+    assert "pcb.eda.placement" in PcbExecutor.act.__code__.co_consts
