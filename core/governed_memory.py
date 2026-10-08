@@ -175,13 +175,9 @@ def persist_memory(store, record: Mapping[str, Any], *, decision_id: str,
         "authority": authority,
         "execution_lineage": dict(execution_lineage) if execution_lineage else None,
     }
-    current = store.load_namespace("memory", default=[])
-    if not isinstance(current, list):
-        raise ValueError("memory WAL state must be a list")
-    # Preserve the append-only memory history across writes. The WAL stores
-    # the full namespace projection, so recovery never silently drops older
-    # records when a new memory candidate is persisted.
-    store.commit_namespace("memory", [*current, envelope])
+    # Append is a single fsynced WAL mutation, not a racy read/modify/write.
+    # Replay folds the append into the namespace projection after process death.
+    store.append_namespace("memory", envelope)
     return envelope
 
 
