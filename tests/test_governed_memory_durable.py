@@ -31,7 +31,17 @@ def test_memory_write_requires_governed_mutation_and_lineage(tmp_path):
     with pytest.raises(ValueError):
         persist_memory(store, _record(), decision_id="D-1", mutation_id="M-1", authority="NONE")
     persist_memory(store, _record(), decision_id="D-1", mutation_id="M-1", authority="AIOS_CONTROL_PLANE")
-    assert load_memory(store)[0]["memory_id"] == _record()["memory_id"]
+    second = build_memory_record(
+        memory_type="EPISODIC",
+        content={"topic": "durable memory", "fact": "second write"},
+        evidence_refs=[["EVIDENCE", "EV-2"]],
+        predecessor="D-2",
+        authority="AIOS_CONTROL_PLANE",
+        source_commit="def",
+    ).as_dict()
+    persist_memory(store, second, decision_id="D-2", mutation_id="M-2", authority="AIOS_CONTROL_PLANE")
+    loaded = load_memory(store)
+    assert [item["memory_id"] for item in loaded] == [_record()["memory_id"], second["memory_id"]]
 
 
 def test_unknown_execution_lineage_never_materializes(tmp_path):
