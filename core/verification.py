@@ -44,6 +44,7 @@ from .mutation import (
     commit_batch,
     event_identity,
     _load_existing,
+    validate_entity,
 )
 
 __all__ = [
@@ -111,6 +112,11 @@ def resolve_evidence(aios_dir, evidence_refs):
             except (OSError, json.JSONDecodeError):
                 continue
             if ent.get("entity_type") == "EVIDENCE":
+                try:
+                    validate_entity(ent)
+                except MutationError:
+                    # Malformed or forged evidence is not resolvable evidence.
+                    continue
                 cache[ent.get("entity_id")] = ent
     for family, eid in evidence_refs:
         ent = cache.get(eid)
