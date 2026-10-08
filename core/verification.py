@@ -60,7 +60,7 @@ OUTCOME_UNSUPPORTED = "UNSUPPORTED"
 AUTHORITY = "AIOS_VERIFICATION"
 
 _VERIFICATION_DIR = "verifications"
-_IMPORT_FAMILIES = {
+_SUBJECT_FAMILIES = {
     "REQUIREMENT", "DECISION", "EVIDENCE", "ISSUE", "GATE", "CONTRADICTION", "OBSERVATION", "CLAIM",
 }
 _EVIDENCE_ID_PREFIX = "EV-"
@@ -173,7 +173,7 @@ def apply_verification(aios_dir, subject_type, subject_id, evidence_refs,
     paired audit event. Returns the persisted record summary.
     """
     _require_actor(verifier)
-    if subject_type not in _IMPORT_FAMILIES:
+    if subject_type not in _SUBJECT_FAMILIES:
         raise VerificationError(
             f"subject_type {subject_type!r} is not an imported entity family")
     if not isinstance(subject_id, str) or not subject_id.strip():
