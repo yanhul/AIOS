@@ -29,6 +29,10 @@ class WalStateStore:
         self.snapshot_path.parent.mkdir(parents=True, exist_ok=True)
         self.wal = DurableTransitionLog(str(self.wal_path))
 
+    @property
+    def _memory_snapshot_path(self) -> Path:
+        return self.snapshot_path.with_name(self.snapshot_path.stem + ".memory.json")
+
     @staticmethod
     def _validate_state(value: Any) -> dict[str, Any]:
         if not isinstance(value, Mapping):
@@ -54,34 +58,41 @@ class WalStateStore:
     def commit_namespace(self, namespace: str, value: Any) -> None:
         namespace = self._validate_namespace(namespace)
         candidate = deepcopy(value)
+        if namespace == "state" and not isinstance(candidate, Mapping):
+            raise ValueError("state namespace must be a mapping")
         self.wal.append(
             transition=self.NAMESPACE_TRANSITION,
             payload={"namespace": namespace, "value": candidate},
         )
-        if namespace == "state":
-            if not isinstance(candidate, Mapping):
-                raise ValueError("state namespace must be a mapping")
-            self._write_snapshot(candidate)
+        self._write_namespace_snapshot(namespace, candidate)
 
-    def _write_snapshot(self, state: Mapping[str, Any]) -> None:
-        parent = self.snapshot_path.parent
+    def _write_json_atomic(self, path: Path, value: Any) -> None:
+        parent = path.parent
         fd, tmp_name = tempfile.mkstemp(
-            prefix=f".{self.snapshot_path.name}.", suffix=".tmp",
-            dir=str(parent), text=True,
+            prefix=f".{path.name}.", suffix=".tmp", dir=str(parent), text=True
         )
         try:
             with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
-                json.dump(state, fh, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+                json.dump(value, fh, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
                 fh.write("\n")
                 fh.flush()
                 os.fsync(fh.fileno())
-            os.replace(tmp_name, self.snapshot_path)
+            os.replace(tmp_name, path)
         except Exception:
             try:
                 os.unlink(tmp_name)
             except FileNotFoundError:
                 pass
             raise
+
+    def _write_snapshot(self, state: Mapping[str, Any]) -> None:
+        self._write_json_atomic(self.snapshot_path, state)
+
+    def _write_namespace_snapshot(self, namespace: str, value: Any) -> None:
+        if namespace == "state":
+            self._write_snapshot(value)
+        elif namespace == "memory":
+            self._write_json_atomic(self._memory_snapshot_path, value)
 
     def _latest(self, namespace: str):
         replay = self.wal.replay()
@@ -112,6 +123,10 @@ class WalStateStore:
         latest = self._latest(namespace)
         if latest is not None:
             return deepcopy(latest)
+        snapshot = self._memory_snapshot_path if namespace == "memory" else self.snapshot_path
+        if snapshot.exists():
+            with snapshot.open("r", encoding="utf-8") as fh:
+                return deepcopy(json.load(fh))
         return deepcopy(default)
 
 
