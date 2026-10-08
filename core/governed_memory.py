@@ -101,7 +101,17 @@ def build_memory_record(
         "status": status,
     }
     memory_id = "MEM-" + _digest(unsigned)
-    return MemoryRecord(\n        memory_id=memory_id,\n        memory_type=memory_type,\n        content=dict(content),\n        evidence_refs=refs,\n        predecessor=predecessor,\n        authority=authority,\n        source_commit=source_commit,\n        version=version,\n        status=status,\n    )
+    return MemoryRecord(
+        memory_id=memory_id,
+        memory_type=memory_type,
+        content=dict(content),
+        evidence_refs=refs,
+        predecessor=predecessor,
+        authority=authority,
+        source_commit=source_commit,
+        version=version,
+        status=status,
+    ),\n        evidence_refs=refs,\n        predecessor=predecessor,\n        authority=authority,\n        source_commit=source_commit,\n        version=version,\n        status=status,\n    )
 
 
 def validate_memory_record(record: Mapping[str, Any]) -> bool:
