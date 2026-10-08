@@ -142,6 +142,21 @@ def test_duplicate_evidence_identity_cannot_cross_authority_boundary(tmp_path) -
         )
 
 
+def test_malformed_duplicate_evidence_identity_cannot_cross_authority_boundary(tmp_path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    _write_evidence(evidence_dir, "EV-108", "first persisted evidence")
+    (evidence_dir / "malformed-duplicate.json").write_text(json.dumps({
+        "entity_type": "EVIDENCE", "entity_id": "EV-108",
+    }), encoding="utf-8")
+    with pytest.raises(PermissionError):
+        assert_authoritative_claim(
+            claim_id="claim-malformed-duplicate-evidence", status=ClaimStatus.FACT,
+            volatility=Volatility.STABLE,
+            verification_evidence=[("EVIDENCE", "EV-108")],
+            aios_dir=str(tmp_path), verifier="test-verifier",
+        )
+
+
 def test_persisted_verification_loader_rejects_tampering(tmp_path) -> None:
     evidence_dir = tmp_path / "evidence"
     _write_evidence(evidence_dir, "EV-106")
