@@ -132,6 +132,8 @@ def retrieve_memory(
     *,
     query: str,
     current_commit: str,
+    aios_dir: str | None = None,
+    evidence_resolver=None,
     allowed_types: set[str] | None = None,
 ) -> list[Mapping[str, Any]]:
     """Return context candidates only; retrieval grants no authority."""
@@ -140,11 +142,19 @@ def retrieve_memory(
     allowed = MEMORY_TYPES if allowed_types is None else set(allowed_types)
     if not allowed <= MEMORY_TYPES:
         raise ValueError("allowed_types contains unauthorized memory type")
+    if evidence_resolver is None:
+        if not aios_dir:
+            raise ValueError("aios_dir is required for governed evidence resolution")
+        from .verification import resolve_evidence
+        evidence_resolver = lambda refs: resolve_evidence(aios_dir, refs)
     result: list[Mapping[str, Any]] = []
     q = query.casefold()
     for raw in records:
         validate_memory_record(raw)
         if raw["status"] != "ACTIVE":
+            continue
+        _, unresolved = evidence_resolver([list(ref) for ref in raw["evidence_refs"]])
+        if unresolved:
             continue
         # source_commit is provenance, not a freshness oracle. Prior-commit
         # memories remain candidates; callers must reconcile them with current state.
