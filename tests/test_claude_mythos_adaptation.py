@@ -15,20 +15,18 @@ from core.epistemic import (
     observe_tool_result, promote_observation, requires_discovery,
     route_capabilities,
 )
-from core.mutation import TransitionError
+from core.mutation import TransitionError, apply_mutations
 from core.verification import apply_verification, load_verifications
 
 
-def _write_evidence(evidence_dir, entity_id: str, statement: str = "independent evidence") -> None:
-    evidence_dir.mkdir(exist_ok=True)
-    (evidence_dir / (entity_id + ".json")).write_text(json.dumps({
+def _write_evidence(aios_dir, entity_id: str, statement: str = "independent evidence") -> None:
+    apply_mutations(str(aios_dir), [{
         "entity_type": "EVIDENCE", "entity_id": entity_id,
         "statement": statement, "status": "OBSERVED",
         "source_file": "tests/fixture.md", "source_line": 1,
         "source_text": statement, "classification": "EVIDENCE",
         "imported_at": "2026-01-01T00:00:00Z", "snapshot_id": "test-snapshot",
-    }), encoding="utf-8")
-
+    }], actor="test-fixture")
 
 def test_volatile_claims_require_discovery() -> None:
     assert requires_discovery(Volatility.STABLE) is False
@@ -54,8 +52,7 @@ def test_classification_is_not_authority(tmp_path) -> None:
 
 
 def test_current_claim_requires_discovery_evidence(tmp_path) -> None:
-    evidence_dir = tmp_path / "evidence"
-    _write_evidence(evidence_dir, "EV-101")
+    _write_evidence(tmp_path, "EV-101")
     assert_authoritative_claim(
         claim_id="claim-current", status=ClaimStatus.FACT, volatility=Volatility.CURRENT,
         verification_evidence=[("EVIDENCE", "EV-101")],
@@ -96,11 +93,10 @@ def test_independent_evidence_is_required_for_promotion(tmp_path) -> None:
             observation, aios_dir=str(tmp_path),
             verification_evidence=[("EVIDENCE", "EV-missing")], verifier="test-verifier",
         )
-    evidence_dir = tmp_path / "evidence"
     # Native verification may materialize the evidence directory while rejecting
     # an unresolved reference; the test must assert verification semantics, not
     # an incidental filesystem precondition.
-    _write_evidence(evidence_dir, "EV-102")
+    _write_evidence(tmp_path, "EV-102")
     promoted = promote_observation(
         observation, aios_dir=str(tmp_path),
         verification_evidence=[("EVIDENCE", "EV-102")], verifier="test-verifier",
@@ -124,8 +120,8 @@ def test_malformed_evidence_cannot_cross_authority_boundary(tmp_path) -> None:
 
 
 def test_duplicate_evidence_identity_cannot_cross_authority_boundary(tmp_path) -> None:
+    _write_evidence(tmp_path, "EV-105", "first persisted evidence")
     evidence_dir = tmp_path / "evidence"
-    _write_evidence(evidence_dir, "EV-105", "first persisted evidence")
     (evidence_dir / "duplicate.json").write_text(json.dumps({
         "entity_type": "EVIDENCE", "entity_id": "EV-105",
         "statement": "conflicting persisted evidence", "status": "OBSERVED",
@@ -155,8 +151,8 @@ def test_evidence_without_committed_mutation_receipt_cannot_cross_authority_boun
 
 
 def test_malformed_duplicate_evidence_identity_cannot_cross_authority_boundary(tmp_path) -> None:
+    _write_evidence(tmp_path, "EV-108", "first persisted evidence")
     evidence_dir = tmp_path / "evidence"
-    _write_evidence(evidence_dir, "EV-108", "first persisted evidence")
     (evidence_dir / "malformed-duplicate.json").write_text(json.dumps({
         "entity_type": "EVIDENCE", "entity_id": "EV-108",
     }), encoding="utf-8")
@@ -170,8 +166,7 @@ def test_malformed_duplicate_evidence_identity_cannot_cross_authority_boundary(t
 
 
 def test_persisted_verification_loader_rejects_tampering(tmp_path) -> None:
-    evidence_dir = tmp_path / "evidence"
-    _write_evidence(evidence_dir, "EV-106")
+    _write_evidence(tmp_path, "EV-106")
     apply_verification(
         str(tmp_path), "CLAIM", "claim-loader",
         [("EVIDENCE", "EV-106")], "test-verifier",
@@ -185,8 +180,7 @@ def test_persisted_verification_loader_rejects_tampering(tmp_path) -> None:
 
 
 def test_persisted_verification_loader_rejects_duplicate_identity(tmp_path) -> None:
-    evidence_dir = tmp_path / "evidence"
-    _write_evidence(evidence_dir, "EV-107")
+    _write_evidence(tmp_path, "EV-107")
     apply_verification(
         str(tmp_path), "CLAIM", "claim-loader-duplicate",
         [("EVIDENCE", "EV-107")], "test-verifier",
@@ -206,8 +200,7 @@ def test_failed_tool_result_cannot_be_observation() -> None:
 
 
 def test_observation_verification_uses_observation_namespace(tmp_path) -> None:
-    evidence_dir = tmp_path / "evidence"
-    _write_evidence(evidence_dir, "EV-103")
+    _write_evidence(tmp_path, "EV-103")
     result = ToolResult("provider-a", "inv-namespace", {"status": "ok"})
     observation = observe_tool_result(
         result, observation_id="obs-namespace",
