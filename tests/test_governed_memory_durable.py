@@ -29,18 +29,18 @@ def _record():
     ).as_dict()
 
 
-def _authorization(aios_dir):
-    policy = {"policy_type": "GOVERNING_POLICY", "rules": ["MEMORY_WRITE"]}
+def _authorization(aios_dir, *, scope="memory:write", policy_rules=("MEMORY_WRITE",), permissions=("MEMORY_WRITE",)):
+    policy = {"policy_type": "GOVERNING_POLICY", "rules": list(policy_rules)}
     digest = persist_policy(aios_dir, policy)
     registry = CapabilityRegistry()
     registry.register(Capability(
         capability_id="memory.write", version="1", owner="AIOS", kind="memory",
-        permissions=("MEMORY_WRITE",), status="ACTIVE",
+        permissions=tuple(permissions), status="ACTIVE",
     ))
     registry.persist(aios_dir, actor="test-setup")
     contract = {
         "contract_type": "EXECUTION_CONTRACT", "task_id": "memory-test",
-        "scope": "memory:write", "actor": "test-writer",
+        "scope": scope, "actor": "test-writer",
         "capabilities": ["memory.write@1"], "input_digest": "test-input",
         "allowed_effects": ["MEMORY_WRITE"], "evidence_required": ["EVIDENCE"],
         "max_attempts": 1, "terminal_states": ["OBSERVED_SUCCESS", "OBSERVED_FAILURE"],
@@ -69,6 +69,29 @@ def test_memory_write_requires_governed_mutation_and_lineage(tmp_path):
     persist_memory(store, second, decision_id="D-2", mutation_id="M-2", authority="AIOS_CONTROL_PLANE", **auth)
     loaded = load_memory(store)
     assert [item["memory_id"] for item in loaded] == [_record()["memory_id"], second["memory_id"]]
+
+
+def test_memory_write_fails_closed_for_forged_or_insufficient_authority(tmp_path):
+    store = WalStateStore(str(tmp_path / "state.json"))
+    good = _authorization(str(tmp_path / "good"))
+    with pytest.raises(Exception):
+        persist_memory(store, _record(), decision_id="D-1", mutation_id="M-1",
+                       authority="AIOS_CONTROL_PLANE", **{**good, "permit_id": "PT-forged"})
+    with pytest.raises(ValueError, match="actor"):
+        persist_memory(store, _record(), decision_id="D-1", mutation_id="M-2",
+                       authority="AIOS_CONTROL_PLANE", **{**good, "actor": "attacker"})
+    bad_scope = _authorization(str(tmp_path / "bad-scope"), scope="execution")
+    with pytest.raises(ValueError, match="scope"):
+        persist_memory(store, _record(), decision_id="D-1", mutation_id="M-3",
+                       authority="AIOS_CONTROL_PLANE", **bad_scope)
+    bad_policy = _authorization(str(tmp_path / "bad-policy"), policy_rules=())
+    with pytest.raises(ValueError, match="policy"):
+        persist_memory(store, _record(), decision_id="D-1", mutation_id="M-4",
+                       authority="AIOS_CONTROL_PLANE", **bad_policy)
+    bad_capability = _authorization(str(tmp_path / "bad-capability"), permissions=())
+    with pytest.raises(ValueError, match="capability"):
+        persist_memory(store, _record(), decision_id="D-1", mutation_id="M-5",
+                       authority="AIOS_CONTROL_PLANE", **bad_capability)
 
 
 def test_unknown_execution_lineage_never_materializes(tmp_path):
