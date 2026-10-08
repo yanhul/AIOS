@@ -15,6 +15,7 @@ from core.epistemic import (
     observe_tool_result, promote_observation, requires_discovery,
     route_capabilities,
 )
+from core.mutation import TransitionError
 from core.verification import apply_verification, load_verifications
 
 
@@ -152,7 +153,7 @@ def test_persisted_verification_loader_rejects_tampering(tmp_path) -> None:
     record = json.loads(record_path.read_text(encoding="utf-8"))
     record["outcome"] = "UNSUPPORTED"
     record_path.write_text(json.dumps(record), encoding="utf-8")
-    with pytest.raises(Exception):
+    with pytest.raises(TransitionError):
         load_verifications(str(tmp_path))
 
 
