@@ -46,7 +46,7 @@ class Executor:
           "latest_attempt_dir":x["attempt_dir"],"latest_receipt":str(Path(x["attempt_dir"])/"phase_receipt.json"),"latest_run":self.a.run_id,
           "next_legal_actions":["placement"] if status=="PASS" else ["inspect_receipt","inspect_source","patch","commit","wait_ci"],
           "forbidden_actions":["routing","claim_pass"] if status=="PASS" else ["placement","routing","claim_pass"],
-          }}}
+          }}
 
 def main():
     ap=argparse.ArgumentParser()
