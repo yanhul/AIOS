@@ -35,7 +35,7 @@ def test_classification_is_not_authority(tmp_path) -> None:
     assert classify_claim(source_kind="authoritative_record") == ClaimStatus.FACT
     with pytest.raises(PermissionError):
         assert_authoritative_claim(
-            status=ClaimStatus.FACT, volatility=Volatility.STABLE,
+            claim_id="claim-authority", status=ClaimStatus.FACT, volatility=Volatility.STABLE,
             verification_evidence=[], aios_dir=str(tmp_path), verifier="test-verifier",
         )
 
@@ -47,7 +47,7 @@ def test_current_claim_requires_discovery_evidence(tmp_path) -> None:
         "entity_type": "EVIDENCE", "entity_id": "EV-discovery",
     }), encoding="utf-8")
     assert_authoritative_claim(
-        status=ClaimStatus.FACT, volatility=Volatility.CURRENT,
+        claim_id="claim-current", status=ClaimStatus.FACT, volatility=Volatility.CURRENT,
         verification_evidence=[("EVIDENCE", "EV-discovery")],
         aios_dir=str(tmp_path), verifier="test-verifier",
     )
@@ -56,7 +56,7 @@ def test_current_claim_requires_discovery_evidence(tmp_path) -> None:
 def test_current_claim_without_discovery_is_blocked(tmp_path) -> None:
     with pytest.raises(PermissionError):
         assert_authoritative_claim(
-            status=ClaimStatus.FACT, volatility=Volatility.CURRENT,
+            claim_id="claim-current-blocked", status=ClaimStatus.FACT, volatility=Volatility.CURRENT,
             verification_evidence=[], aios_dir=str(tmp_path), verifier="test-verifier",
         )
 
