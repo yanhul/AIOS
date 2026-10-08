@@ -44,6 +44,9 @@ from .mutation import (
     commit_batch,
     event_identity,
     _load_existing,
+    _entity_relpath,
+    _require_committed_event as _require_entity_event,
+    validate_entity,
 )
 
 __all__ = [
@@ -60,8 +63,8 @@ OUTCOME_UNSUPPORTED = "UNSUPPORTED"
 AUTHORITY = "AIOS_VERIFICATION"
 
 _VERIFICATION_DIR = "verifications"
-_IMPORT_FAMILIES = {
-    "REQUIREMENT", "DECISION", "EVIDENCE", "ISSUE", "GATE", "CONTRADICTION",
+_SUBJECT_FAMILIES = {
+    "REQUIREMENT", "DECISION", "EVIDENCE", "ISSUE", "GATE", "CONTRADICTION", "OBSERVATION", "CLAIM",
 }
 _EVIDENCE_ID_PREFIX = "EV-"
 
@@ -100,6 +103,8 @@ def resolve_evidence(aios_dir, evidence_refs):
     resolved, unresolved = [], []
     evidence_dir = os.path.join(aios_dir, "evidence")
     cache = {}
+    seen_ids = set()
+    duplicate_ids = set()
     if os.path.isdir(evidence_dir):
         for fn in os.listdir(evidence_dir):
             if not fn.endswith(".json"):
@@ -111,8 +116,41 @@ def resolve_evidence(aios_dir, evidence_refs):
             except (OSError, json.JSONDecodeError):
                 continue
             if ent.get("entity_type") == "EVIDENCE":
-                cache[ent.get("entity_id")] = ent
+                eid = ent.get("entity_id")
+                if isinstance(eid, str) and eid in seen_ids:
+                    # Any second persisted representation of the same identity
+                    # is ambiguous, even when the duplicate is malformed.
+                    duplicate_ids.add(eid)
+                    cache.pop(eid, None)
+                    continue
+                if isinstance(eid, str):
+                    seen_ids.add(eid)
+                try:
+                    validate_entity(ent)
+                    expected_path = os.path.join(
+                        evidence_dir, os.path.basename(_entity_relpath(ent))
+                    )
+                    actual_path = os.path.join(evidence_dir, fn)
+                    if os.path.normcase(os.path.abspath(actual_path)) != os.path.normcase(
+                        os.path.abspath(expected_path)
+                    ):
+                        raise MutationError(
+                            f"EVIDENCE {eid} is not stored at its canonical path"
+                        )
+                    _require_entity_event(aios_dir, ent)
+                except (MutationError, OSError, json.JSONDecodeError):
+                    # Malformed, forged, relocated, or receipt-less evidence is
+                    # never resolvable authority.
+                    continue
+                cache[eid] = ent
+
+    if duplicate_ids:
+        # Ambiguous persisted identity cannot be used as verification evidence.
+        unresolved.extend([["EVIDENCE", eid] for eid in sorted(duplicate_ids)])
+
     for family, eid in evidence_refs:
+        if eid in duplicate_ids:
+            continue
         ent = cache.get(eid)
         if ent is None:
             unresolved.append([family, eid])
@@ -133,37 +171,94 @@ def _verification_relpath(verification_id):
     return os.path.join(_VERIFICATION_DIR, verification_id + ".json")
 
 
-def _require_committed_event(aios_dir, verification_id):
+def _require_committed_event(aios_dir, record):
+    verification_id = record["verification_id"]
+    expected_event = {
+        "kind": "mutation",
+        "action": "verification.recorded",
+        "actor": record["verifier"],
+        "verification_id": verification_id,
+        "record_type": "VERIFICATION",
+        "subject_type": record["subject_type"],
+        "subject_id": record["subject_id"],
+        "outcome": record["outcome"],
+        "evidence_refs": record["evidence_refs"],
+        "authority": record["authority"],
+    }
+    expected_event_id = event_identity(expected_event)
     events_dir = os.path.join(aios_dir, "events")
     if os.path.isdir(events_dir):
         for fn in sorted(os.listdir(events_dir)):
             if not fn.endswith(".json"):
                 continue
-            with open(os.path.join(events_dir, fn), "r",
-                      encoding="utf-8") as fh:
-                try:
+            path = os.path.join(events_dir, fn)
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
                     ev = json.load(fh)
-                except json.JSONDecodeError:
-                    continue
-            if (ev.get("kind") == "mutation"
-                    and ev.get("action") == "verification.recorded"
-                    and ev.get("verification_id") == verification_id):
-                return
+            except (OSError, json.JSONDecodeError):
+                continue
+            if ev.get("kind") != "mutation" or ev.get("action") != "verification.recorded":
+                continue
+            if ev.get("verification_id") != verification_id:
+                continue
+            if ev.get("event_id") != expected_event_id:
+                continue
+            if os.path.basename(fn) != f"EVT-{fn.split('-', 2)[1]}-{expected_event_id}.json":
+                continue
+            return
     raise TransitionError(
-        f"verification record {verification_id} has no paired audit event; "
-        f"state was tampered with or predates M2")
+        f"verification record {verification_id} has no matching integrity-bound "
+        f"audit event; state was tampered with or predates M2")
 
 
 def load_verifications(aios_dir):
-    """Load all persisted verification records keyed by verification_id."""
+    """Load only integrity-bound persisted verification records.
+
+    A verification file is authoritative only when its self-derived identity
+    matches verification_id/identity and its paired mutation event still exists.
+    Duplicate verification identities fail closed rather than being silently
+    overwritten by directory iteration order.
+    """
     out = {}
     vdir = os.path.join(aios_dir, _VERIFICATION_DIR)
-    if os.path.isdir(vdir):
-        for fn in os.listdir(vdir):
-            if fn.endswith(".json"):
-                with open(os.path.join(vdir, fn), "r", encoding="utf-8") as fh:
-                    rec = json.load(fh)
-                out[rec["verification_id"]] = rec
+    if not os.path.isdir(vdir):
+        return out
+
+    for fn in sorted(os.listdir(vdir)):
+        if not fn.endswith(".json"):
+            continue
+        path = os.path.join(vdir, fn)
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                rec = json.load(fh)
+        except (OSError, json.JSONDecodeError) as exc:
+            raise TransitionError(
+                f"invalid persisted verification record {fn!r}"
+            ) from exc
+
+        if not isinstance(rec, dict):
+            raise TransitionError(
+                f"invalid persisted verification record {fn!r}: expected object"
+            )
+        verification_id = rec.get("verification_id")
+        identity = rec.get("identity")
+        if (not isinstance(verification_id, str)
+                or not verification_id.startswith("VF-")
+                or not isinstance(identity, str)):
+            raise TransitionError(
+                f"invalid persisted verification record {fn!r}: missing identity"
+            )
+        expected_identity = verification_identity(rec)
+        if identity != expected_identity or verification_id != "VF-" + expected_identity:
+            raise TransitionError(
+                f"verification record {verification_id!r} has invalid identity"
+            )
+        if verification_id in out:
+            raise TransitionError(
+                f"duplicate persisted verification identity {verification_id!r}"
+            )
+        _require_committed_event(aios_dir, rec)
+        out[verification_id] = rec
     return out
 
 
@@ -173,7 +268,7 @@ def apply_verification(aios_dir, subject_type, subject_id, evidence_refs,
     paired audit event. Returns the persisted record summary.
     """
     _require_actor(verifier)
-    if subject_type not in _IMPORT_FAMILIES:
+    if subject_type not in _SUBJECT_FAMILIES:
         raise VerificationError(
             f"subject_type {subject_type!r} is not an imported entity family")
     if not isinstance(subject_id, str) or not subject_id.strip():
@@ -216,7 +311,7 @@ def apply_verification(aios_dir, subject_type, subject_id, evidence_refs,
     if os.path.exists(dest):
         existing = _load_existing(dest)
         if canonical_json(existing) == canonical_json(record):
-            _require_committed_event(aios_dir, record["verification_id"])
+            _require_committed_event(aios_dir, record)
             return {"outcome": outcome, "verification_id": record["verification_id"],
                     "replayed": True, "event_file": None}
         raise TransitionError(
