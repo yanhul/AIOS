@@ -12,7 +12,7 @@ to AIOS authority, evidence, receipt, and promotion gates.
 | Source pattern | AIOS action | Implemented boundary |
 |---|---|---|
 | Volatility-aware discovery | ABSORB | core.epistemic.requires_discovery |
-| Unknown/current claims require discovery | ABSORB | Volatility.UNKNOWN/CURRENT/RECENT |
+| Unknown/current claims require discovery | ABSORB | `requires_discovery` + `assert_authoritative_claim` |
 | Explicit epistemic uncertainty | ABSORB | ClaimStatus |
 | Tool result is not proof of world state | ABSORB | ToolResult -> Observation -> verification |
 | Capability-based tool routing | ABSORB | route_capabilities |
@@ -26,7 +26,7 @@ to AIOS authority, evidence, receipt, and promotion gates.
 2. A successful provider/tool response cannot become world-state verification by itself.
 3. Observation promotion requires explicit verification evidence.
 4. Capability routing only produces candidates; it never grants permission or execution authority.
-5. Current/recent/unknown information requires discovery before authoritative assertion.
+5. Current/recent/unknown information requires discovery evidence before authoritative assertion; the code gate blocks unsupported claims.
 6. Durable continuation remains an AIOS contract projection, not reconstructed chat memory.
 
 ## Verification
