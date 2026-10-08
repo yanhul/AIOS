@@ -6,10 +6,10 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "Root1V/aeon-agent-harness",
-      "source_digest": "4d7bc9b4e0dd769342b251eeda9de27de1aee8de930b498e4d9f9c6524b74ea7",
+      "source_digest": "2ef2904ddb2b3c9ab26b4d90e5c1e3cfcf3fb54c14c3b216072d82c3909e5f68",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "stars": 0,
-      "updated_at": "2026-10-08T12:49:45Z"
+      "updated_at": "2026-10-08T12:56:47Z"
     },
     {
       "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
