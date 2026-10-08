@@ -15,6 +15,7 @@ from core.epistemic import (
     observe_tool_result, promote_observation, requires_discovery,
     route_capabilities,
 )
+from core.verification import apply_verification, load_verifications
 
 
 def _write_evidence(evidence_dir, entity_id: str, statement: str = "independent evidence") -> None:
@@ -139,6 +140,34 @@ def test_duplicate_evidence_identity_cannot_cross_authority_boundary(tmp_path) -
             aios_dir=str(tmp_path), verifier="test-verifier",
         )
 
+
+def test_persisted_verification_loader_rejects_tampering(tmp_path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    _write_evidence(evidence_dir, "EV-106")
+    apply_verification(
+        str(tmp_path), "CLAIM", "claim-loader",
+        [("EVIDENCE", "EV-106")], "test-verifier",
+    )
+    record_path = next((tmp_path / "verifications").glob("*.json"))
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["outcome"] = "UNSUPPORTED"
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+    with pytest.raises(Exception):
+        load_verifications(str(tmp_path))
+
+
+def test_persisted_verification_loader_rejects_duplicate_identity(tmp_path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    _write_evidence(evidence_dir, "EV-107")
+    apply_verification(
+        str(tmp_path), "CLAIM", "claim-loader-duplicate",
+        [("EVIDENCE", "EV-107")], "test-verifier",
+    )
+    record_path = next((tmp_path / "verifications").glob("*.json"))
+    duplicate_path = record_path.with_name("duplicate.json")
+    duplicate_path.write_text(record_path.read_text(encoding="utf-8"), encoding="utf-8")
+    with pytest.raises(Exception):
+        load_verifications(str(tmp_path))
 
 def test_failed_tool_result_cannot_be_observation() -> None:
     with pytest.raises(ValueError):
