@@ -11,7 +11,7 @@ def record(**kwargs):
     return build_memory_record(
         memory_type="SEMANTIC",
         content={"fact": "schematic evidence is required"},
-        evidence_refs=["evidence-1"],
+        evidence_refs=[["EVIDENCE", "EV-1"]],
         predecessor="decision-1",
         authority="AIOS_CONTROL_PLANE",
         source_commit="abc",
@@ -36,7 +36,7 @@ def test_memory_authority_is_control_plane_only():
         build_memory_record(
             memory_type="SEMANTIC",
             content={"fact": "x"},
-            evidence_refs=["e1"],
+            evidence_refs=[["EVIDENCE", "EV-1"]],
             predecessor="d1",
             authority="REASONER",
             source_commit="abc",
@@ -59,9 +59,12 @@ def test_memory_retrieval_returns_candidate_not_authority():
     assert found[0]["authority"] == "NONE"
 
 
-def test_stale_commit_memory_is_not_retrieved():
+def test_prior_commit_memory_remains_a_candidate_with_lineage():
     item = record(source_commit="old")
-    assert retrieve_memory([item], query="schematic", current_commit="abc") == []
+    found = retrieve_memory([item], query="schematic", current_commit="abc")
+    assert len(found) == 1
+    assert found[0]["source_commit"] == "old"
+    assert found[0]["authority"] == "NONE"
 
 
 def test_revoked_memory_is_not_retrieved():
