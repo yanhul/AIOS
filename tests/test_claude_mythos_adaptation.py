@@ -124,7 +124,13 @@ def test_malformed_evidence_cannot_cross_authority_boundary(tmp_path) -> None:
 def test_duplicate_evidence_identity_cannot_cross_authority_boundary(tmp_path) -> None:
     evidence_dir = tmp_path / "evidence"
     _write_evidence(evidence_dir, "EV-105", "first persisted evidence")
-    _write_evidence(evidence_dir, "EV-105", "conflicting persisted evidence")
+    (evidence_dir / "duplicate.json").write_text(json.dumps({
+        "entity_type": "EVIDENCE", "entity_id": "EV-105",
+        "statement": "conflicting persisted evidence", "status": "OBSERVED",
+        "source_file": "tests/fixture.md", "source_line": 2,
+        "source_text": "conflicting persisted evidence", "classification": "EVIDENCE",
+        "imported_at": "2026-01-01T00:00:00Z", "snapshot_id": "test-snapshot",
+    }), encoding="utf-8")
     with pytest.raises(PermissionError):
         assert_authoritative_claim(
             claim_id="claim-duplicate-evidence", status=ClaimStatus.FACT,
