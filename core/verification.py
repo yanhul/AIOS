@@ -173,15 +173,53 @@ def _require_committed_event(aios_dir, verification_id):
 
 
 def load_verifications(aios_dir):
-    """Load all persisted verification records keyed by verification_id."""
+    """Load only integrity-bound persisted verification records.
+
+    A verification file is authoritative only when its self-derived identity
+    matches verification_id/identity and its paired mutation event still exists.
+    Duplicate verification identities fail closed rather than being silently
+    overwritten by directory iteration order.
+    """
     out = {}
     vdir = os.path.join(aios_dir, _VERIFICATION_DIR)
-    if os.path.isdir(vdir):
-        for fn in os.listdir(vdir):
-            if fn.endswith(".json"):
-                with open(os.path.join(vdir, fn), "r", encoding="utf-8") as fh:
-                    rec = json.load(fh)
-                out[rec["verification_id"]] = rec
+    if not os.path.isdir(vdir):
+        return out
+
+    for fn in sorted(os.listdir(vdir)):
+        if not fn.endswith(".json"):
+            continue
+        path = os.path.join(vdir, fn)
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                rec = json.load(fh)
+        except (OSError, json.JSONDecodeError) as exc:
+            raise TransitionError(
+                f"invalid persisted verification record {fn!r}"
+            ) from exc
+
+        if not isinstance(rec, dict):
+            raise TransitionError(
+                f"invalid persisted verification record {fn!r}: expected object"
+            )
+        verification_id = rec.get("verification_id")
+        identity = rec.get("identity")
+        if (not isinstance(verification_id, str)
+                or not verification_id.startswith("VF-")
+                or not isinstance(identity, str)):
+            raise TransitionError(
+                f"invalid persisted verification record {fn!r}: missing identity"
+            )
+        expected_identity = verification_identity(rec)
+        if identity != expected_identity or verification_id != "VF-" + expected_identity:
+            raise TransitionError(
+                f"verification record {verification_id!r} has invalid identity"
+            )
+        if verification_id in out:
+            raise TransitionError(
+                f"duplicate persisted verification identity {verification_id!r}"
+            )
+        _require_committed_event(aios_dir, verification_id)
+        out[verification_id] = rec
     return out
 
 
