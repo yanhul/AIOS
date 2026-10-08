@@ -101,6 +101,7 @@ def resolve_evidence(aios_dir, evidence_refs):
     resolved, unresolved = [], []
     evidence_dir = os.path.join(aios_dir, "evidence")
     cache = {}
+    seen_ids = set()
     duplicate_ids = set()
     if os.path.isdir(evidence_dir):
         for fn in os.listdir(evidence_dir):
@@ -113,14 +114,19 @@ def resolve_evidence(aios_dir, evidence_refs):
             except (OSError, json.JSONDecodeError):
                 continue
             if ent.get("entity_type") == "EVIDENCE":
+                eid = ent.get("entity_id")
+                if isinstance(eid, str) and eid in seen_ids:
+                    # Any second persisted representation of the same identity
+                    # is ambiguous, even when the duplicate is malformed.
+                    duplicate_ids.add(eid)
+                    cache.pop(eid, None)
+                    continue
+                if isinstance(eid, str):
+                    seen_ids.add(eid)
                 try:
                     validate_entity(ent)
                 except MutationError:
                     # Malformed or forged evidence is not resolvable evidence.
-                    continue
-                eid = ent.get("entity_id")
-                if eid in cache:
-                    duplicate_ids.add(eid)
                     continue
                 cache[eid] = ent
 
