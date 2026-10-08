@@ -12,6 +12,7 @@ from typing import Any, Mapping
 from .mutation import canonical_json
 from .authority import authorize, load_contract
 from .capabilities import CapabilityRegistry
+from .policy_registry import resolve_policy
 
 MEMORY_TYPES = frozenset({"SEMANTIC", "EPISODIC", "PROCEDURAL"})
 MEMORY_STATUSES = frozenset({"ACTIVE", "SUPERSEDED", "REVOKED"})
@@ -172,8 +173,13 @@ def persist_memory(store, record: Mapping[str, Any], *, decision_id: str,
     contract = load_contract(aios_dir, contract_id)
     if contract.get("actor") != actor:
         raise ValueError("memory writer actor does not match authorized contract")
+    if contract.get("scope") != "memory:write":
+        raise ValueError("contract scope does not authorize memory:write")
     if "MEMORY_WRITE" not in contract.get("allowed_effects", []):
         raise ValueError("contract does not authorize MEMORY_WRITE")
+    policy = resolve_policy(aios_dir, contract["policy_digest"])
+    if "MEMORY_WRITE" not in policy.get("rules", []):
+        raise ValueError("governing policy does not authorize MEMORY_WRITE")
     registry = CapabilityRegistry.load(aios_dir)
     capabilities = registry.resolve_contract(contract)
     if not any(cap.status == "ACTIVE" and "MEMORY_WRITE" in cap.permissions for cap in capabilities):
@@ -190,6 +196,9 @@ def persist_memory(store, record: Mapping[str, Any], *, decision_id: str,
         "decision_id": decision_id,
         "mutation_id": mutation_id,
         "authority": authority,
+        "contract_id": contract_id,
+        "permit_id": permit_id,
+        "actor": actor,
         "execution_lineage": dict(execution_lineage) if execution_lineage else None,
     }
     # Append is a single fsynced WAL mutation, not a racy read/modify/write.
@@ -213,6 +222,9 @@ def load_memory(store) -> list[Mapping[str, Any]]:
             raise ValueError("invalid memory mutation authority")
         _text(envelope.get("decision_id"), "decision_id")
         _text(envelope.get("mutation_id"), "mutation_id")
+        _text(envelope.get("contract_id"), "contract_id")
+        _text(envelope.get("permit_id"), "permit_id")
+        _text(envelope.get("actor"), "actor")
         _validate_execution_lineage(envelope)
         result.append(dict(memory))
     return result
