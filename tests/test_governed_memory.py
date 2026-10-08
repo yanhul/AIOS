@@ -53,7 +53,7 @@ def test_memory_identity_is_self_bound():
 
 def test_memory_retrieval_returns_candidate_not_authority():
     item = record()
-    found = retrieve_memory([item], query="schematic", current_commit="abc")
+    found = retrieve_memory([item], query="schematic", current_commit="abc", evidence_resolver=lambda refs: ([{"entity_id":"EV-1"}], []))
     assert len(found) == 1
     assert found[0]["context_role"] == "MEMORY_CANDIDATE"
     assert found[0]["authority"] == "NONE"
@@ -69,7 +69,7 @@ def test_prior_commit_memory_remains_a_candidate_with_lineage():
 
 def test_revoked_memory_is_not_retrieved():
     item = record(status="REVOKED")
-    assert retrieve_memory([item], query="schematic", current_commit="abc") == []
+    assert retrieve_memory([item], query="schematic", current_commit="abc", evidence_resolver=lambda refs: ([{"entity_id":"EV-1"}], [])) == []
 
 
 def test_tampered_memory_id_is_blocked():
@@ -77,3 +77,19 @@ def test_tampered_memory_id_is_blocked():
     item["memory_id"] = "MEM-forged"
     with pytest.raises(ValueError, match="identity"):
         validate_memory_record(item)
+
+
+def test_unresolved_evidence_blocks_retrieval():
+    item = record()
+    assert retrieve_memory(
+        [item],
+        query="schematic",
+        current_commit="abc",
+        evidence_resolver=lambda refs: ([], [["EVIDENCE", "EV-1"]]),
+    ) == []
+
+
+def test_retrieval_requires_governed_resolution_boundary():
+    item = record()
+    with pytest.raises(ValueError, match="aios_dir"):
+        retrieve_memory([item], query="schematic", current_commit="abc")
