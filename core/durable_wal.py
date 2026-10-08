@@ -60,6 +60,13 @@ class DurableTransitionLog:
 
         with self._lock:
             replay = self.replay()
+            if replay.dropped_tail_records:
+                with open(self.path, "rb") as fh:
+                    lines = fh.readlines()
+                with open(self.path, "wb") as fh:
+                    fh.writelines(lines[:-1])
+                    fh.flush()
+                    os.fsync(fh.fileno())
             sequence = len(replay.records) + 1
             body = {
                 "version": self.VERSION,
