@@ -11,7 +11,7 @@ import pytest
 
 from core.capabilities import Capability
 from core.epistemic import (
-    ClaimStatus, ToolResult, Volatility, classify_claim,
+    ClaimStatus, ToolResult, Volatility, assert_authoritative_claim, classify_claim,
     observe_tool_result, promote_observation, requires_discovery,
     route_capabilities,
 )
@@ -29,6 +29,36 @@ def test_model_guess_never_becomes_fact_or_verified() -> None:
     assert classify_claim(source_kind="unknown") == ClaimStatus.UNKNOWN
     with pytest.raises(TypeError):
         classify_claim(source_kind="model_guess", verified=True)  # type: ignore[call-arg]
+
+
+def test_classification_is_not_authority(tmp_path) -> None:
+    assert classify_claim(source_kind="authoritative_record") == ClaimStatus.FACT
+    with pytest.raises(PermissionError):
+        assert_authoritative_claim(
+            status=ClaimStatus.FACT, volatility=Volatility.STABLE,
+            verification_evidence=[], aios_dir=str(tmp_path), verifier="test-verifier",
+        )
+
+
+def test_current_claim_requires_discovery_evidence(tmp_path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    (evidence_dir / "EV-discovery.json").write_text(json.dumps({
+        "entity_type": "EVIDENCE", "entity_id": "EV-discovery",
+    }), encoding="utf-8")
+    assert_authoritative_claim(
+        status=ClaimStatus.FACT, volatility=Volatility.CURRENT,
+        verification_evidence=[("EVIDENCE", "EV-discovery")],
+        aios_dir=str(tmp_path), verifier="test-verifier",
+    )
+
+
+def test_current_claim_without_discovery_is_blocked(tmp_path) -> None:
+    with pytest.raises(PermissionError):
+        assert_authoritative_claim(
+            status=ClaimStatus.FACT, volatility=Volatility.CURRENT,
+            verification_evidence=[], aios_dir=str(tmp_path), verifier="test-verifier",
+        )
 
 
 def test_tool_success_is_not_world_state_verification(tmp_path) -> None:
@@ -77,6 +107,28 @@ def test_failed_tool_result_cannot_be_observation() -> None:
             ToolResult("provider-a", "inv-3", {"error": "timeout"}, success=False),
             observation_id="obs-3", source_ref="provider-a:inv-3", claim="effect exists",
         )
+
+
+def test_observation_verification_uses_observation_namespace(tmp_path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    (evidence_dir / "EV-test.json").write_text(json.dumps({
+        "entity_type": "EVIDENCE", "entity_id": "EV-test",
+    }), encoding="utf-8")
+    result = ToolResult("provider-a", "inv-namespace", {"status": "ok"})
+    observation = observe_tool_result(
+        result, observation_id="obs-namespace",
+        source_ref="provider-a:inv-namespace", claim="effect is observed",
+    )
+    promote_observation(
+        observation, aios_dir=str(tmp_path),
+        verification_evidence=[("EVIDENCE", "EV-test")], verifier="test-verifier",
+    )
+    records = list((tmp_path / "verifications").glob("*.json"))
+    assert records
+    record = json.loads(records[0].read_text(encoding="utf-8"))
+    assert record["subject_type"] == "OBSERVATION"
+    assert record["subject_id"] == "obs-namespace"
 
 
 def test_capability_routing_is_descriptive_not_authoritative() -> None:
