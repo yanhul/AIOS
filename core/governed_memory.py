@@ -20,12 +20,19 @@ def _text(value: Any, field: str) -> str:
     return value
 
 
-def _strings(value: Any, field: str, *, nonempty: bool = True) -> list[str]:
-    if not isinstance(value, list) or not all(isinstance(x, str) and x.strip() for x in value):
-        raise ValueError(f"{field} must be a list of non-empty strings")
-    if nonempty and not value:
-        raise ValueError(f"{field} must not be empty")
-    return list(value)
+def _evidence_refs(value: Any) -> tuple[tuple[str, str], ...]:
+    if not isinstance(value, list) or not value:
+        raise ValueError("evidence_refs must be a non-empty list")
+    refs = []
+    for pos, ref in enumerate(value):
+        if (not isinstance(ref, (list, tuple)) or len(ref) != 2
+                or not all(isinstance(x, str) and x.strip() for x in ref)):
+            raise ValueError(f"evidence_refs[{pos}] must be [family, id] strings")
+        family, evidence_id = ref
+        if family != "EVIDENCE" or not evidence_id.startswith("EV-"):
+            raise ValueError(f"evidence_refs[{pos}] must reference persisted EVIDENCE as [EVIDENCE, EV-*]")
+        refs.append((family, evidence_id))
+    return tuple(refs)
 
 
 def _digest(value: Mapping[str, Any]) -> str:
@@ -37,7 +44,7 @@ class MemoryRecord:
     memory_id: str
     memory_type: str
     content: Mapping[str, Any]
-    evidence_refs: tuple[str, ...]
+    evidence_refs: tuple[tuple[str, str], ...]
     predecessor: str
     authority: str
     source_commit: str
@@ -49,7 +56,7 @@ class MemoryRecord:
             "memory_id": self.memory_id,
             "memory_type": self.memory_type,
             "content": dict(self.content),
-            "evidence_refs": list(self.evidence_refs),
+            "evidence_refs": [list(ref) for ref in self.evidence_refs],
             "predecessor": self.predecessor,
             "authority": self.authority,
             "source_commit": self.source_commit,
@@ -73,7 +80,7 @@ def build_memory_record(
         raise ValueError("unauthorized memory_type")
     if not isinstance(content, Mapping) or not content:
         raise ValueError("memory content must be a non-empty mapping")
-    refs = tuple(_strings(evidence_refs, "evidence_refs"))
+    refs = _evidence_refs(evidence_refs)
     _text(predecessor, "predecessor")
     if authority != "AIOS_CONTROL_PLANE":
         raise ValueError("memory authority must be AIOS_CONTROL_PLANE")
@@ -86,7 +93,7 @@ def build_memory_record(
     unsigned = {
         "memory_type": memory_type,
         "content": dict(content),
-        "evidence_refs": list(refs),
+        "evidence_refs": [list(ref) for ref in refs],
         "predecessor": predecessor,
         "authority": authority,
         "source_commit": source_commit,
@@ -137,8 +144,10 @@ def retrieve_memory(
     q = query.casefold()
     for raw in records:
         validate_memory_record(raw)
-        if raw["status"] != "ACTIVE" or raw["source_commit"] != current_commit:
+        if raw["status"] != "ACTIVE":
             continue
+        # source_commit is provenance, not a freshness oracle. Prior-commit
+        # memories remain candidates; callers must reconcile them with current state.
         if raw["memory_type"] not in allowed:
             continue
         haystack = canonical_json(raw["content"]).casefold()
