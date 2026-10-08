@@ -58,6 +58,10 @@ jobs:
           python -m pip install pytest PyYAML
           python -m pip install -r kit/tools/altium-audit/requirements.txt
 
+      - name: Validate durable runner syntax
+        working-directory: aios
+        run: python -m py_compile scripts/run_pcb_eda_schematic_durable.py
+
       - name: Validate durable contract
         working-directory: aios
         run: python -m pytest -q tests/test_blocked_continuation.py
