@@ -61,7 +61,7 @@ def test_memory_retrieval_returns_candidate_not_authority():
 
 def test_prior_commit_memory_remains_a_candidate_with_lineage():
     item = record(source_commit="old")
-    found = retrieve_memory([item], query="schematic", current_commit="abc")
+    found = retrieve_memory([item], query="schematic", current_commit="abc", evidence_resolver=lambda refs: ([{"entity_id":"EV-1"}], []))
     assert len(found) == 1
     assert found[0]["source_commit"] == "old"
     assert found[0]["authority"] == "NONE"
