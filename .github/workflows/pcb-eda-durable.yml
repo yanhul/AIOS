@@ -28,14 +28,6 @@ on:
     branches: [main]
   push:
     branches: [main]
-    paths:
-      - ".github/workflows/pcb-eda-durable.yml"
-      - "core/blocked_continuation.py"
-      - "core/durable_loop.py"
-      - "core/orchestrator.py"
-      - "adapters/pcb_eda/**"
-      - "scripts/run_pcb_eda_schematic_durable.py"
-      - "capabilities/registry.yaml"
 
 permissions:
   contents: read
