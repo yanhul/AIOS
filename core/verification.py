@@ -101,6 +101,7 @@ def resolve_evidence(aios_dir, evidence_refs):
     resolved, unresolved = [], []
     evidence_dir = os.path.join(aios_dir, "evidence")
     cache = {}
+    duplicate_ids = set()
     if os.path.isdir(evidence_dir):
         for fn in os.listdir(evidence_dir):
             if not fn.endswith(".json"):
@@ -117,8 +118,19 @@ def resolve_evidence(aios_dir, evidence_refs):
                 except MutationError:
                     # Malformed or forged evidence is not resolvable evidence.
                     continue
-                cache[ent.get("entity_id")] = ent
+                eid = ent.get("entity_id")
+                if eid in cache:
+                    duplicate_ids.add(eid)
+                    continue
+                cache[eid] = ent
+
+    if duplicate_ids:
+        # Ambiguous persisted identity cannot be used as verification evidence.
+        unresolved.extend([["EVIDENCE", eid] for eid in sorted(duplicate_ids)])
+
     for family, eid in evidence_refs:
+        if eid in duplicate_ids:
+            continue
         ent = cache.get(eid)
         if ent is None:
             unresolved.append([family, eid])
