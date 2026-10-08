@@ -1,0 +1,160 @@
+"""Governed memory candidates for the AIOS control plane.
+
+Memory is contextual evidence, never authority or durable execution state.
+"""
+from __future__ import annotations
+
+import hashlib
+from dataclasses import dataclass
+from typing import Any, Mapping
+
+from .mutation import canonical_json
+
+MEMORY_TYPES = frozenset({"SEMANTIC", "EPISODIC", "PROCEDURAL"})
+MEMORY_STATUSES = frozenset({"ACTIVE", "SUPERSEDED", "REVOKED"})
+
+
+def _text(value: Any, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} must be a non-empty string")
+    return value
+
+
+def _strings(value: Any, field: str, *, nonempty: bool = True) -> list[str]:
+    if not isinstance(value, list) or not all(isinstance(x, str) and x.strip() for x in value):
+        raise ValueError(f"{field} must be a list of non-empty strings")
+    if nonempty and not value:
+        raise ValueError(f"{field} must not be empty")
+    return list(value)
+
+
+def _digest(value: Mapping[str, Any]) -> str:
+    return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class MemoryRecord:
+    memory_id: str
+    memory_type: str
+    content: Mapping[str, Any]
+    evidence_refs: tuple[str, ...]
+    predecessor: str
+    authority: str
+    source_commit: str
+    version: int = 1
+    status: str = "ACTIVE"
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "memory_id": self.memory_id,
+            "memory_type": self.memory_type,
+            "content": dict(self.content),
+            "evidence_refs": list(self.evidence_refs),
+            "predecessor": self.predecessor,
+            "authority": self.authority,
+            "source_commit": self.source_commit,
+            "version": self.version,
+            "status": self.status,
+        }
+
+
+def build_memory_record(
+    *,
+    memory_type: str,
+    content: Mapping[str, Any],
+    evidence_refs: list[str],
+    predecessor: str,
+    authority: str,
+    source_commit: str,
+    version: int = 1,
+    status: str = "ACTIVE",
+) -> MemoryRecord:
+    if memory_type not in MEMORY_TYPES:
+        raise ValueError("unauthorized memory_type")
+    if not isinstance(content, Mapping) or not content:
+        raise ValueError("memory content must be a non-empty mapping")
+    refs = tuple(_strings(evidence_refs, "evidence_refs"))
+    _text(predecessor, "predecessor")
+    if authority != "AIOS_CONTROL_PLANE":
+        raise ValueError("memory authority must be AIOS_CONTROL_PLANE")
+    _text(source_commit, "source_commit")
+    if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+        raise ValueError("memory version must be a positive integer")
+    if status not in MEMORY_STATUSES:
+        raise ValueError("unauthorized memory status")
+
+    unsigned = {
+        "memory_type": memory_type,
+        "content": dict(content),
+        "evidence_refs": list(refs),
+        "predecessor": predecessor,
+        "authority": authority,
+        "source_commit": source_commit,
+        "version": version,
+        "status": status,
+    }
+    memory_id = "MEM-" + _digest(unsigned)
+    return MemoryRecord(memory_id=memory_id, **unsigned)
+
+
+def validate_memory_record(record: Mapping[str, Any]) -> bool:
+    if not isinstance(record, Mapping):
+        raise ValueError("memory record must be a mapping")
+    required = {"memory_id","memory_type","content","evidence_refs","predecessor",
+                "authority","source_commit","version","status"}
+    missing = required - set(record)
+    if missing:
+        raise ValueError(f"memory record missing fields: {sorted(missing)}")
+    expected = build_memory_record(
+        memory_type=record["memory_type"],
+        content=record["content"],
+        evidence_refs=record["evidence_refs"],
+        predecessor=record["predecessor"],
+        authority=record["authority"],
+        source_commit=record["source_commit"],
+        version=record["version"],
+        status=record["status"],
+    )
+    if record["memory_id"] != expected.memory_id:
+        raise ValueError("memory identity mismatch")
+    return True
+
+
+def retrieve_memory(
+    records: list[Mapping[str, Any]],
+    *,
+    query: str,
+    current_commit: str,
+    allowed_types: set[str] | None = None,
+) -> list[Mapping[str, Any]]:
+    """Return context candidates only; retrieval grants no authority."""
+    _text(query, "query")
+    _text(current_commit, "current_commit")
+    allowed = MEMORY_TYPES if allowed_types is None else set(allowed_types)
+    if not allowed <= MEMORY_TYPES:
+        raise ValueError("allowed_types contains unauthorized memory type")
+    result: list[Mapping[str, Any]] = []
+    q = query.casefold()
+    for raw in records:
+        validate_memory_record(raw)
+        if raw["status"] != "ACTIVE" or raw["source_commit"] != current_commit:
+            continue
+        if raw["memory_type"] not in allowed:
+            continue
+        haystack = canonical_json(raw["content"]).casefold()
+        if q in haystack:
+            candidate = dict(raw)
+            candidate["context_role"] = "MEMORY_CANDIDATE"
+            candidate["authority"] = "NONE"
+            result.append(candidate)
+    return result
+
+
+__all__ = [
+    "MEMORY_TYPES",
+    "MEMORY_STATUSES",
+    "MemoryRecord",
+    "build_memory_record",
+    "validate_memory_record",
+    "retrieve_memory",
+]
