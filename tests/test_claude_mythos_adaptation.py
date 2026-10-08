@@ -17,6 +17,16 @@ from core.epistemic import (
 )
 
 
+def _write_evidence(evidence_dir, entity_id: str, statement: str = "independent evidence") -> None:
+    evidence_dir.mkdir(exist_ok=True)
+    (evidence_dir / (entity_id + ".json")).write_text(json.dumps({
+        "entity_type": "EVIDENCE", "entity_id": entity_id,
+        "statement": statement, "status": "OBSERVED",
+        "source_file": "tests/fixture.md", "source_line": 1,
+        "source_text": statement, "classification": "EVIDENCE",
+        "imported_at": "2026-01-01T00:00:00Z", "snapshot_id": "test-snapshot",
+    }), encoding="utf-8")
+
 def test_volatile_claims_require_discovery() -> None:
     assert requires_discovery(Volatility.STABLE) is False
     assert requires_discovery(Volatility.CURRENT) is True
@@ -44,11 +54,11 @@ def test_current_claim_requires_discovery_evidence(tmp_path) -> None:
     evidence_dir = tmp_path / "evidence"
     evidence_dir.mkdir()
     (evidence_dir / "EV-discovery.json").write_text(json.dumps({
-        "entity_type": "EVIDENCE", "entity_id": "EV-discovery",
+        "entity_type": "EVIDENCE", "entity_id": "EV-101",
     }), encoding="utf-8")
     assert_authoritative_claim(
         claim_id="claim-current", status=ClaimStatus.FACT, volatility=Volatility.CURRENT,
-        verification_evidence=[("EVIDENCE", "EV-discovery")],
+        verification_evidence=[("EVIDENCE", "EV-101")],
         aios_dir=str(tmp_path), verifier="test-verifier",
     )
 
@@ -92,15 +102,28 @@ def test_independent_evidence_is_required_for_promotion(tmp_path) -> None:
     # an incidental filesystem precondition.
     evidence_dir.mkdir(exist_ok=True)
     (evidence_dir / "EV-test.json").write_text(json.dumps({
-        "entity_type": "EVIDENCE", "entity_id": "EV-test",
+        "entity_type": "EVIDENCE", "entity_id": "EV-102",
     }), encoding="utf-8")
     promoted = promote_observation(
         observation, aios_dir=str(tmp_path),
-        verification_evidence=[("EVIDENCE", "EV-test")], verifier="test-verifier",
+        verification_evidence=[("EVIDENCE", "EV-102")], verifier="test-verifier",
     )
     assert promoted.verified is True
 
 
+def test_malformed_evidence_cannot_cross_authority_boundary(tmp_path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    (evidence_dir / "EV-104.json").write_text(json.dumps({
+        "entity_type": "EVIDENCE", "entity_id": "EV-104",
+    }), encoding="utf-8")
+    with pytest.raises(PermissionError):
+        assert_authoritative_claim(
+            claim_id="claim-forged-evidence", status=ClaimStatus.FACT,
+            volatility=Volatility.STABLE,
+            verification_evidence=[("EVIDENCE", "EV-104")],
+            aios_dir=str(tmp_path), verifier="test-verifier",
+        )
 def test_failed_tool_result_cannot_be_observation() -> None:
     with pytest.raises(ValueError):
         observe_tool_result(
@@ -112,9 +135,7 @@ def test_failed_tool_result_cannot_be_observation() -> None:
 def test_observation_verification_uses_observation_namespace(tmp_path) -> None:
     evidence_dir = tmp_path / "evidence"
     evidence_dir.mkdir()
-    (evidence_dir / "EV-test.json").write_text(json.dumps({
-        "entity_type": "EVIDENCE", "entity_id": "EV-test",
-    }), encoding="utf-8")
+    _write_evidence(evidence_dir, "EV-103")
     result = ToolResult("provider-a", "inv-namespace", {"status": "ok"})
     observation = observe_tool_result(
         result, observation_id="obs-namespace",
@@ -122,7 +143,7 @@ def test_observation_verification_uses_observation_namespace(tmp_path) -> None:
     )
     promote_observation(
         observation, aios_dir=str(tmp_path),
-        verification_evidence=[("EVIDENCE", "EV-test")], verifier="test-verifier",
+        verification_evidence=[("EVIDENCE", "EV-103")], verifier="test-verifier",
     )
     records = list((tmp_path / "verifications").glob("*.json"))
     assert records
