@@ -1,0 +1,116 @@
+name: AIOS PCB EDA Durable Run
+# E2E trigger: execute the current pcb.eda@1 kit against the source repo on main.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: "Repository containing SCH/PCB/PRJ"
+        required: true
+        default: "yanhul/temp"
+        type: string
+      ref:
+        description: "Input repository ref"
+        required: true
+        default: "main"
+        type: string
+      max_steps:
+        description: "Bounded durable-loop steps"
+        required: true
+        default: "4"
+        type: string
+      kit_retries:
+        description: "Audit Kit internal retry budget per attempt"
+        required: true
+        default: "3"
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/pcb-eda-durable.yml"
+      - "core/blocked_continuation.py"
+      - "core/durable_loop.py"
+      - "core/orchestrator.py"
+      - "adapters/pcb_eda/**"
+      - "scripts/run_pcb_eda_durable.py"
+      - "capabilities/registry.yaml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aios-pcb-eda-durable
+  cancel-in-progress: false
+
+jobs:
+  pcb-eda:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: aios
+          persist-credentials: false
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.source_repo || 'yanhul/temp' }}
+          ref: ${{ inputs.ref || 'main' }}
+          path: kit
+          persist-credentials: false
+
+      - run: |
+          python -m pip install pytest PyYAML
+          python -m pip install -r kit/tools/altium-audit/requirements.txt
+
+      - name: Validate durable contract
+        working-directory: aios
+        run: python -m pytest -q tests/test_blocked_continuation.py
+
+      - name: Run AIOS durable PCB loop
+        env:
+          INPUT_ROOT: ${{ github.workspace }}/kit/audit-input
+          KIT_ROOT: ${{ github.workspace }}/kit
+          MAX_STEPS: ${{ inputs.max_steps || '4' }}
+          KIT_RETRIES: ${{ inputs.kit_retries || '3' }}
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/pcb-output"
+          set +e
+          PYTHONPATH="$GITHUB_WORKSPACE/aios" python "$GITHUB_WORKSPACE/aios/scripts/run_pcb_eda_schematic_durable.py"             --task-id "aios-pcb-$GITHUB_RUN_ID"             --design "$DESIGN"             --input "$INPUT_ROOT"             --output "$GITHUB_WORKSPACE/pcb-output"             --kit-root "$KIT_ROOT"             --config "$KIT_ROOT/altium-audit-2605.config.json"             --state "$GITHUB_WORKSPACE/pcb-output/state.json"             --source-commit "${{ github.event.pull_request.head.sha || github.sha }}"             --run-id "$GITHUB_RUN_ID"             --max-steps "$MAX_STEPS"             | tee "$GITHUB_WORKSPACE/pcb-output/durable-result.json"
+          rc=${PIPESTATUS[0]}
+          echo "AIOS_DURABLE_RC=$rc"
+          exit "$rc"
+
+      - name: Upload E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-pcb-eda-e2e-${{ github.run_id }}
+          path: pcb-output
+          retention-days: 90
+
+# E2E trigger after durable continuation receipt test fix.
+
+# E2E trigger: rerun against latest AIOS main after adapter syntax closure.
+
+# E2E trigger: atomic stable-main verification.
+
+# E2E trigger: adapter parse + durable output directory closure.
+
+# E2E trigger: minimal parse-safe adapter.
+
+# E2E trigger: expand GitHub workspace paths correctly.
+
+# E2E trigger: point input contract at temp/audit-input.
+
+# E2E trigger: install Audit Kit parser dependencies.
+
+# E2E trigger: preserve attempt evidence through verification.
+
+# E2E trigger: persist durable-loop state patches.
+
+# E2E trigger: terminalize unresolved evidence discovery as BLOCKED.
+# E2E trigger: execute after strict G7 routing-authority merge in yanhul/temp.
+
+# E2E trigger: strict QI9 benchmark from yanhul/temp main.
