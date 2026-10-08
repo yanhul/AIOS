@@ -51,9 +51,9 @@ class Executor:
 
 def main():
     ap=argparse.ArgumentParser()
-    for n in ("task_id","source_commit","run_id"): ap.add_argument("--"+n,required=True)
+    ap.add_argument("--task-id","--task_id",dest="task_id",required=True); ap.add_argument("--source-commit","--source_commit",dest="source_commit",required=True); ap.add_argument("--run-id","--run_id",dest="run_id",required=True)
     ap.add_argument("--design",default="QI9-2605-A01"); ap.add_argument("--input",type=Path,required=True); ap.add_argument("--output",type=Path,required=True)
-    ap.add_argument("--kit-root",type=Path,required=True); ap.add_argument("--config",type=Path,required=True); ap.add_argument("--state",type=Path,required=True); ap.add_argument("--max-steps",type=int,default=1)
+    ap.add_argument("--kit-root","--kit_root",dest="kit_root",type=Path,required=True); ap.add_argument("--config",type=Path,required=True); ap.add_argument("--state",type=Path,required=True); ap.add_argument("--max-steps","--max_steps",dest="max_steps",type=int,default=1)
     a=ap.parse_args(); a.output.mkdir(parents=True,exist_ok=True); st=Store(a.state)
     if st.load() is None: st.save(seed(a))
     def term(v,s): return v.get("status") if v.get("status") in {"PASS","BLOCKED"} else None
