@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: durable loop state patch persistence through WAL
+# AIOS-REGRESSION: Prevent verified state patches from being lost across persistence
+# AIOS-OWNER: AIOS control-plane durable execution
+# AIOS-COVERAGE-GAP: Covers durable-loop integration with WAL-backed state
+# AIOS-BASELINE: Tests target the existing durable-loop contract baseline
+
 from core.durable_loop import LoopPolicy, run_durable_loop
 from core.wal_state_store import WalStateStore
 
