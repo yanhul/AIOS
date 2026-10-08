@@ -6,10 +6,12 @@ Persistence shares the AIOS durable WAL boundary with control-plane state.
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from .mutation import canonical_json
+from .mutation import canonical_json, validate_entity, _entity_relpath, _require_committed_event
 from .authority import authorize, load_contract
 from .capabilities import CapabilityRegistry
 from .policy_registry import resolve_policy
@@ -186,6 +188,28 @@ def persist_memory(store, record: Mapping[str, Any], *, decision_id: str,
         raise ValueError("contract has no ACTIVE MEMORY_WRITE capability")
     _text(decision_id, "decision_id")
     _text(mutation_id, "mutation_id")
+    # A caller-supplied ID is not a decision receipt: resolve the canonical
+    # persisted DECISION and require its integrity-bound mutation event.
+    decision_path = os.path.join(aios_dir, "decisions", decision_id + ".json")
+    if not os.path.isfile(decision_path):
+        raise ValueError("decision_id does not resolve to persisted DECISION")
+    try:
+        with open(decision_path, "r", encoding="utf-8") as fh:
+            decision = json.load(fh)
+        validate_entity(decision)
+        if decision.get("entity_type") != "DECISION" or decision.get("entity_id") != decision_id:
+            raise ValueError("decision identity mismatch")
+        expected = os.path.abspath(os.path.join(aios_dir, _entity_relpath(decision)))
+        if os.path.normcase(os.path.abspath(decision_path)) != os.path.normcase(expected):
+            raise ValueError("DECISION is not stored at its canonical path")
+        _require_committed_event(aios_dir, decision)
+    except (OSError, ValueError, TypeError) as exc:
+        raise ValueError(f"decision_id is not integrity-bound persisted DECISION: {exc}") from exc
+    # Reuse native evidence resolution at write time, not only retrieval time.
+    from .verification import resolve_evidence
+    _, unresolved = resolve_evidence(aios_dir, [list(ref) for ref in record["evidence_refs"]])
+    if unresolved:
+        raise ValueError(f"memory evidence refs unresolved at write time: {unresolved}")
     if authority != "AIOS_CONTROL_PLANE":
         raise ValueError("memory mutation authority must be AIOS_CONTROL_PLANE")
     _validate_execution_lineage({"execution_lineage": execution_lineage} if execution_lineage else {})
