@@ -2,14 +2,24 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
+      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "Root1V/aeon-agent-harness",
+      "source_digest": "b76413b9a692784486c159691ddd8772a3c38c87b4cb449acad786fef3378add",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
+      "stars": 0,
+      "updated_at": "2026-10-08T05:46:52Z"
+    },
+    {
       "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "5840d1f58675022747d49ef31e3ea7c6caa9f3730c55031752a93a33f79a9547",
+      "source_digest": "3d051fe48be8c4a169b09023213e31a6a9e5d4e8d310272b8bdf428288a75715",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "stars": 0,
-      "updated_at": "2026-10-07T08:13:11Z"
+      "updated_at": "2026-10-08T01:44:53Z"
     },
     {
       "description": "Governed IT service desk agent: reliable RAG, MCP diagnostics, durable approvals and an auditable execution harness.",
@@ -26,20 +36,10 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "synaptiai/flow-harness",
-      "source_digest": "e376a0b22d70c927014eda95080f91e9f98885cce42a66fe1072c007d3693b06",
+      "source_digest": "056ac98f155a340224b92862e01caa1dfebfec368a616c6b60717eafe40c4695",
       "source_ref": "https://github.com/synaptiai/flow-harness",
       "stars": 0,
       "updated_at": "2026-10-06T08:08:18Z"
-    },
-    {
-      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "Root1V/aeon-agent-harness",
-      "source_digest": "c83722bfe5f3c8857ca7c0647285827f18c2a19a8830bd9f32c0ac2f043ff95c",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "stars": 0,
-      "updated_at": "2026-10-03T18:00:21Z"
     },
     {
       "description": "An open Agents API for Cloudflare Workers, with durable sessions, pluggable harnesses, and isolated execution.",
