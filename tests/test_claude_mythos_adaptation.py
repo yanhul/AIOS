@@ -142,6 +142,18 @@ def test_duplicate_evidence_identity_cannot_cross_authority_boundary(tmp_path) -
         )
 
 
+def test_evidence_without_committed_mutation_receipt_cannot_cross_authority_boundary(tmp_path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    _write_evidence(evidence_dir, "EV-109", "unreceipted evidence")
+    with pytest.raises(PermissionError):
+        assert_authoritative_claim(
+            claim_id="claim-unreceipted-evidence", status=ClaimStatus.FACT,
+            volatility=Volatility.STABLE,
+            verification_evidence=[("EVIDENCE", "EV-109")],
+            aios_dir=str(tmp_path), verifier="test-verifier",
+        )
+
+
 def test_malformed_duplicate_evidence_identity_cannot_cross_authority_boundary(tmp_path) -> None:
     evidence_dir = tmp_path / "evidence"
     _write_evidence(evidence_dir, "EV-108", "first persisted evidence")
