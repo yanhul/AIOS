@@ -66,6 +66,27 @@ class WalStateStore:
         )
         self._write_namespace_snapshot(namespace, candidate)
 
+    def append_namespace(self, namespace: str, item: Any) -> None:
+        """Append one namespace item as its own fsynced WAL record.
+
+        Unlike read/modify/commit, this operation does not lose concurrent
+        appends: the WAL's process lock serializes each append and replay folds
+        the append records into the latest namespace projection.
+        """
+        namespace = self._validate_namespace(namespace)
+        if namespace == "state":
+            raise ValueError("append is not authorized for state namespace")
+        self.wal.append(
+            transition="NAMESPACE_APPENDED",
+            payload={"namespace": namespace, "item": deepcopy(item)},
+        )
+        latest = self._latest(namespace)
+        if latest is None:
+            latest = []
+        if not isinstance(latest, list):
+            raise ValueError("append namespace projection must be a list")
+        self._write_namespace_snapshot(namespace, latest)
+
     def _write_json_atomic(self, path: Path, value: Any) -> None:
         parent = path.parent
         fd, tmp_name = tempfile.mkstemp(
@@ -107,6 +128,12 @@ class WalStateStore:
                 latest = payload.get("state")
             elif record.get("transition") == self.NAMESPACE_TRANSITION:
                 latest = payload.get("value")
+            elif record.get("transition") == "NAMESPACE_APPENDED":
+                if latest is None:
+                    latest = []
+                if not isinstance(latest, list):
+                    raise ValueError("appended namespace WAL state is not a list")
+                latest = [*latest, deepcopy(payload.get("item"))]
         return latest
 
     def load(self) -> Mapping[str, Any] | None:
