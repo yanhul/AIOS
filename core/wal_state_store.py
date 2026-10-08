@@ -1,10 +1,8 @@
-"""WAL-backed durable state store.
+"""WAL-backed durable namespace store shared by AIOS state and memory.
 
-The WAL is the recovery source for AIOS control-plane state. A WAL record is
-only a persisted state transition; it is never an execution receipt and never
-proves that an external effect occurred.
+The WAL is the recovery source. A WAL record is a persisted mutation, never
+an execution receipt and never proof that an external effect occurred.
 """
-
 from __future__ import annotations
 
 import json
@@ -18,17 +16,10 @@ from .durable_wal import DurableTransitionLog
 
 
 class WalStateStore:
-    """StateStore implementation using append+fsync before snapshot commit.
-
-    Save order is deliberately:
-        WAL STATE_COMMITTED -> fsync -> atomic snapshot replace.
-
-    If the process dies after the WAL commit and before snapshot replacement,
-    load() replays the latest WAL state. A corrupt non-tail WAL record fails
-    closed through DurableTransitionLog.
-    """
+    """Shared durable WAL boundary with isolated logical namespaces."""
 
     WAL_TRANSITION = "STATE_COMMITTED"
+    NAMESPACE_TRANSITION = "NAMESPACE_COMMITTED"
 
     def __init__(self, snapshot_path: str, wal_path: str | None = None) -> None:
         self.snapshot_path = Path(snapshot_path)
@@ -44,24 +35,39 @@ class WalStateStore:
             raise ValueError("durable state must be a mapping")
         return deepcopy(dict(value))
 
+    @staticmethod
+    def _validate_namespace(namespace: str) -> str:
+        if not isinstance(namespace, str) or not namespace.strip():
+            raise ValueError("namespace must be a non-empty string")
+        if namespace not in {"state", "memory"}:
+            raise ValueError("unauthorized durable namespace")
+        return namespace
+
     def save(self, state: Mapping[str, Any]) -> None:
         candidate = self._validate_state(state)
-
-        # The WAL is the durable commit point. DurableTransitionLog fsyncs
-        # before append() returns.
         self.wal.append(
             transition=self.WAL_TRANSITION,
-            payload={"state": candidate},
+            payload={"namespace": "state", "state": candidate},
         )
         self._write_snapshot(candidate)
+
+    def commit_namespace(self, namespace: str, value: Any) -> None:
+        namespace = self._validate_namespace(namespace)
+        candidate = deepcopy(value)
+        self.wal.append(
+            transition=self.NAMESPACE_TRANSITION,
+            payload={"namespace": namespace, "value": candidate},
+        )
+        if namespace == "state":
+            if not isinstance(candidate, Mapping):
+                raise ValueError("state namespace must be a mapping")
+            self._write_snapshot(candidate)
 
     def _write_snapshot(self, state: Mapping[str, Any]) -> None:
         parent = self.snapshot_path.parent
         fd, tmp_name = tempfile.mkstemp(
-            prefix=f".{self.snapshot_path.name}.",
-            suffix=".tmp",
-            dir=str(parent),
-            text=True,
+            prefix=f".{self.snapshot_path.name}.", suffix=".tmp",
+            dir=str(parent), text=True,
         )
         try:
             with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
@@ -77,26 +83,36 @@ class WalStateStore:
                 pass
             raise
 
-    def load(self) -> Mapping[str, Any] | None:
-        # The WAL is authoritative whenever it contains a committed state.
-        # Do not let a torn/corrupt/stale snapshot hide a valid WAL recovery.
+    def _latest(self, namespace: str):
         replay = self.wal.replay()
-        if replay.records:
-            latest = replay.records[-1]
-            if latest.get("transition") != self.WAL_TRANSITION:
-                raise ValueError(
-                    f"unexpected durable state WAL transition: {latest.get('transition')!r}"
-                )
-            payload = latest.get("payload")
-            if not isinstance(payload, Mapping) or "state" not in payload:
-                raise ValueError("STATE_COMMITTED WAL payload is invalid")
-            return self._validate_state(payload["state"])
+        latest = None
+        for record in replay.records:
+            payload = record.get("payload")
+            if not isinstance(payload, Mapping):
+                raise ValueError("durable WAL payload is invalid")
+            if payload.get("namespace") != namespace:
+                continue
+            if record.get("transition") == self.WAL_TRANSITION and namespace == "state":
+                latest = payload.get("state")
+            elif record.get("transition") == self.NAMESPACE_TRANSITION:
+                latest = payload.get("value")
+        return latest
 
+    def load(self) -> Mapping[str, Any] | None:
+        latest = self._latest("state")
+        if latest is not None:
+            return self._validate_state(latest)
         if not self.snapshot_path.exists():
             return None
         with self.snapshot_path.open("r", encoding="utf-8") as fh:
-            raw = json.load(fh)
-        return self._validate_state(raw)
+            return self._validate_state(json.load(fh))
+
+    def load_namespace(self, namespace: str, default: Any = None) -> Any:
+        namespace = self._validate_namespace(namespace)
+        latest = self._latest(namespace)
+        if latest is not None:
+            return deepcopy(latest)
+        return deepcopy(default)
 
 
 __all__ = ["WalStateStore"]
