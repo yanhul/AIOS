@@ -4,14 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-42bcb3ff346e8a74",
+      "candidate_id": "cand-2fa350d61198be68",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "b76413b9a692784486c159691ddd8772a3c38c87b4cb449acad786fef3378add",
+      "source_digest": "95ac689ddd0dd9649785287c848976e1a3e38de780b13e6a9f171ac855e118b3",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -154,6 +154,21 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
+      "candidate_id": "cand-111f314f555e62e2",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "287d6f29f26aeca4204d4cf71296db34b31bb6cb998b011a628116ff3f3e17fa",
+      "source_ref": "https://github.com/teolex2020/aura-memory",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
       "candidate_id": "cand-3710b57258764f25",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
@@ -178,21 +193,6 @@
       "ref": "main",
       "source_digest": "71afbf0ab3420b450ef18d0155ad783f298e84e5a7d69645eb59990f8ecb71a2",
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-c85e7367638fcfab",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "6302a1b0c5e82a00b1a8417d6424e4dc4a14789cb5e0fc6276271ad1441b3aaa",
-      "source_ref": "https://github.com/teolex2020/aura-memory",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
