@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: WAL-backed state persistence and recovery boundary
+# AIOS-REGRESSION: Prevent stale or missing snapshots from losing durable state
+# AIOS-OWNER: AIOS control-plane durable execution
+# AIOS-COVERAGE-GAP: Covers WAL-authoritative recovery and UNKNOWN preservation
+# AIOS-BASELINE: Tests target the existing durable state-store baseline
+
 from pathlib import Path
 
 import pytest
