@@ -16,6 +16,7 @@ from core.wal_state_store import WalStateStore
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.policy_registry import persist_policy
+from core.mutation import apply_mutations
 
 
 def _record():
@@ -30,6 +31,22 @@ def _record():
 
 
 def _authorization(aios_dir, *, scope="memory:write", policy_rules=("MEMORY_WRITE",), permissions=("MEMORY_WRITE",)):
+    os.makedirs(aios_dir, exist_ok=True)
+
+    def entity(kind, eid):
+        return {
+            "entity_type": kind, "entity_id": eid,
+            "statement": f"Test persisted {kind} {eid}", "status": "ACTIVE",
+            "source_file": "test-fixture", "source_line": 1,
+            "source_text": f"Test persisted {kind} {eid}",
+            "classification": kind, "imported_at": "2026-10-09T00:00:00Z",
+            "snapshot_id": "memory-test-snapshot",
+        }
+
+    apply_mutations(aios_dir, [
+        entity("DECISION", "D-1"), entity("DECISION", "D-2"),
+        entity("EVIDENCE", "EV-1"), entity("EVIDENCE", "EV-2"),
+    ], actor="test-setup")
     policy = {"policy_type": "GOVERNING_POLICY", "rules": list(policy_rules)}
     digest = persist_policy(aios_dir, policy)
     registry = CapabilityRegistry()
