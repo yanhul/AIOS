@@ -17,7 +17,45 @@ import json
 import os
 import threading
 from dataclasses import dataclass
-from typing import Any, Mapping\n\n\nclass _ProcessFileLock:\n    """Small cross-process lock for the WAL append sequence."""\n\n    def __init__(self, path: str):\n        self.path = path + ".lock"\n        self.fh = None\n\n    def __enter__(self):\n        os.makedirs(os.path.dirname(self.path), exist_ok=True)\n        self.fh = open(self.path, "a+b")\n        self.fh.seek(0)\n        if os.name == "nt":\n            import msvcrt\n            while True:\n                try:\n                    msvcrt.locking(self.fh.fileno(), msvcrt.LK_LOCK, 1)\n                    break\n                except OSError:\n                    continue\n        else:\n            import fcntl\n            fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX)\n        return self\n\n    def __exit__(self, exc_type, exc, tb):\n        try:\n            if os.name == "nt":\n                import msvcrt\n                self.fh.seek(0)\n                msvcrt.locking(self.fh.fileno(), msvcrt.LK_UNLCK, 1)\n            else:\n                import fcntl\n                fcntl.flock(self.fh.fileno(), fcntl.LOCK_UN)\n        finally:\n            self.fh.close()\n        return False\n
+from typing import Any, Mapping
+
+
+class _ProcessFileLock:
+    """Small cross-process lock for the WAL append sequence."""
+
+    def __init__(self, path: str):
+        self.path = path + ".lock"
+        self.fh = None
+
+    def __enter__(self):
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        self.fh = open(self.path, "a+b")
+        self.fh.seek(0)
+        if os.name == "nt":
+            import msvcrt
+            while True:
+                try:
+                    msvcrt.locking(self.fh.fileno(), msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    continue
+        else:
+            import fcntl
+            fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            if os.name == "nt":
+                import msvcrt
+                self.fh.seek(0)
+                msvcrt.locking(self.fh.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(self.fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            self.fh.close()
+        return False
 
 class DurableWalError(RuntimeError):
     """Base error for durable transition-log failures."""
