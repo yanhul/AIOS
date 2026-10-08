@@ -5,6 +5,12 @@ import sys
 
 import pytest
 
+# AIOS-CONTRACT: Memory writes must replay from durable WAL without trusting snapshots
+# AIOS-REGRESSION: Prevent memory history loss, UNKNOWN promotion, and WAL tampering
+# AIOS-OWNER: AIOS control-plane governed memory and durable persistence
+# AIOS-COVERAGE-GAP: Exercises memory namespace recovery and crash-after-WAL boundary
+# AIOS-BASELINE: Regression coverage for shared WAL state/memory store
+
 from core.governed_memory import build_memory_record, load_memory, persist_memory, retrieve_memory
 from core.wal_state_store import WalStateStore
 
