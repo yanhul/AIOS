@@ -52,7 +52,6 @@ class Executor:
           "latest_receipt":str(Path(x["attempt_dir"])/"phase_receipt.json"),"latest_run":self.a.run_id,
           "next_legal_actions":["placement"] if status=="PASS" else ["inspect_receipt","inspect_source","patch","commit","wait_ci"],
           "forbidden_actions":["routing","claim_pass"] if status=="PASS" else ["placement","routing","claim_pass"],
-          "terminal_evidence":{"status":status,"step":s.get("step",0)+1,"verification":r}},
           "receipt":{"effect_id":f"{self.a.task_id}:effect:{s.get('step',0)+1}","attempt_id":f"{self.a.task_id}:attempt:{s.get('step',0)+1}","status":"OBSERVED",
                      "evidence":{"phase_receipt":str(Path(x["attempt_dir"])/"phase_receipt.json"),"phase_receipt_sha256":r["receipt_sha256"],"source_commit":self.a.source_commit}}}
 
