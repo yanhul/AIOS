@@ -78,25 +78,25 @@ class WalStateStore:
             raise
 
     def load(self) -> Mapping[str, Any] | None:
-        snapshot: dict[str, Any] | None = None
-        if self.snapshot_path.exists():
-            with self.snapshot_path.open("r", encoding="utf-8") as fh:
-                raw = json.load(fh)
-            snapshot = self._validate_state(raw)
-
+        # The WAL is authoritative whenever it contains a committed state.
+        # Do not let a torn/corrupt/stale snapshot hide a valid WAL recovery.
         replay = self.wal.replay()
-        if not replay.records:
-            return snapshot
+        if replay.records:
+            latest = replay.records[-1]
+            if latest.get("transition") != self.WAL_TRANSITION:
+                raise ValueError(
+                    f"unexpected durable state WAL transition: {latest.get('transition')!r}"
+                )
+            payload = latest.get("payload")
+            if not isinstance(payload, Mapping) or "state" not in payload:
+                raise ValueError("STATE_COMMITTED WAL payload is invalid")
+            return self._validate_state(payload["state"])
 
-        latest = replay.records[-1]
-        if latest.get("transition") != self.WAL_TRANSITION:
-            raise ValueError(
-                f"unexpected durable state WAL transition: {latest.get('transition')!r}"
-            )
-        payload = latest.get("payload")
-        if not isinstance(payload, Mapping) or "state" not in payload:
-            raise ValueError("STATE_COMMITTED WAL payload is invalid")
-        return self._validate_state(payload["state"])
+        if not self.snapshot_path.exists():
+            return None
+        with self.snapshot_path.open("r", encoding="utf-8") as fh:
+            raw = json.load(fh)
+        return self._validate_state(raw)
 
 
 __all__ = ["WalStateStore"]
