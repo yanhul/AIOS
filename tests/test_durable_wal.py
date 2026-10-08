@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: durable append-only WAL sequencing, integrity, and tail recovery
+# AIOS-REGRESSION: Prevent durable transition corruption from being silently accepted
+# AIOS-OWNER: AIOS control-plane durable execution
+# AIOS-COVERAGE-GAP: Covers WAL replay, truncation, corruption, and receipt boundary
+# AIOS-BASELINE: Tests target the existing durable WAL contract baseline
+
 from pathlib import Path
 
 import pytest
