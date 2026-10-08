@@ -24,6 +24,8 @@ on:
         required: true
         default: "3"
         type: string
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
     paths:
@@ -32,7 +34,7 @@ on:
       - "core/durable_loop.py"
       - "core/orchestrator.py"
       - "adapters/pcb_eda/**"
-      - "scripts/run_pcb_eda_durable.py"
+      - "scripts/run_pcb_eda_schematic_durable.py"
       - "capabilities/registry.yaml"
 
 permissions:
@@ -49,7 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           path: aios
           persist-credentials: false
 
@@ -70,14 +72,15 @@ jobs:
 
       - name: Run AIOS durable PCB loop
         env:
-          INPUT_ROOT: ${{ github.workspace }}/kit/audit-input
+          INPUT_ROOT: ${{ github.workspace }}/kit/audit-input-2605
+          DESIGN: QI9-2605-A01
           KIT_ROOT: ${{ github.workspace }}/kit
           MAX_STEPS: ${{ inputs.max_steps || '4' }}
           KIT_RETRIES: ${{ inputs.kit_retries || '3' }}
         run: |
           mkdir -p "$GITHUB_WORKSPACE/pcb-output"
           set +e
-          PYTHONPATH="$GITHUB_WORKSPACE/aios" python "$GITHUB_WORKSPACE/aios/scripts/run_pcb_eda_durable.py"             --task-id "aios-pcb-$GITHUB_RUN_ID"             --input "$INPUT_ROOT"             --output "$GITHUB_WORKSPACE/pcb-output"             --kit-root "$KIT_ROOT"             --config "$KIT_ROOT/altium-audit.config.json"             --state "$GITHUB_WORKSPACE/pcb-output/state.json"             --max-steps "$MAX_STEPS"             --kit-retries "$KIT_RETRIES"             | tee "$GITHUB_WORKSPACE/pcb-output/durable-result.json"
+          PYTHONPATH="$GITHUB_WORKSPACE/aios" python "$GITHUB_WORKSPACE/aios/scripts/run_pcb_eda_schematic_durable.py"             --task-id "aios-pcb-$GITHUB_RUN_ID"             --input "$INPUT_ROOT"             --output "$GITHUB_WORKSPACE/pcb-output"             --kit-root "$KIT_ROOT"             --config "$KIT_ROOT/altium-audit-2605.config.json"             --state "$GITHUB_WORKSPACE/pcb-output/state.json"             --source-commit "${{ github.event.pull_request.head.sha || github.sha }}"             --run-id "$GITHUB_RUN_ID"             --design "$DESIGN"             --max-steps "$MAX_STEPS"             | tee "$GITHUB_WORKSPACE/pcb-output/durable-result.json"
           rc=${PIPESTATUS[0]}
           echo "AIOS_DURABLE_RC=$rc"
           exit "$rc"
