@@ -41,6 +41,7 @@ def requires_discovery(volatility: Volatility | str) -> bool:
 
 def assert_authoritative_claim(
     *,
+    claim_id: str,
     status: ClaimStatus,
     volatility: Volatility | str,
     verification_evidence: Iterable[tuple[str, str]],
@@ -48,6 +49,8 @@ def assert_authoritative_claim(
     verifier: str,
 ) -> None:
     """Enforce the epistemic authority boundary with persisted evidence."""
+    if not isinstance(claim_id, str) or not claim_id.strip():
+        raise ValueError("claim_id must be a non-empty string")
     if status not in {ClaimStatus.FACT, ClaimStatus.VERIFIED}:
         raise PermissionError(f"claim status {status.value} is not authoritative")
     refs = [list(ref) for ref in verification_evidence]
@@ -59,7 +62,7 @@ def assert_authoritative_claim(
         else "authoritative claim provenance"
     )
     result = apply_verification(
-        aios_dir, "CLAIM", "epistemic-authority", refs, verifier, reason=reason,
+        aios_dir, "CLAIM", claim_id, refs, verifier, reason=reason,
     )
     if result["outcome"] != "VERIFIED":
         raise PermissionError("claim cannot cross authority boundary: evidence is unsupported")
