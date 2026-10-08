@@ -68,3 +68,30 @@ def test_wal_state_store_does_not_turn_wal_into_execution_receipt(tmp_path):
 
     recovered = store.load()
     assert recovered["receipt"]["status"] == "UNKNOWN"
+
+def test_wal_state_store_recovers_after_process_death_between_wal_and_snapshot(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    snapshot = tmp_path / "state.json"
+    wal_path = tmp_path / "wal.jsonl"
+    store = WalStateStore(str(snapshot), str(wal_path))
+    first = {"step": 1, "status": "RUNNING", "history": []}
+    second = {"step": 2, "status": "RUNNING", "history": [{"step": 2}]}
+    store.save(first)
+
+    child_code = (
+        "import os; "
+        "from core.wal_state_store import WalStateStore; "
+        f"s=WalStateStore({str(snapshot)!r}, {str(wal_path)!r}); "
+        "s._write_snapshot=lambda state: os._exit(77); "
+        f"s.save({second!r})"
+    )
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.getcwd()
+    child = subprocess.run([sys.executable, "-c", child_code], env=env)
+
+    assert child.returncode == 77
+    assert snapshot.exists()
+    assert store.load() == second
