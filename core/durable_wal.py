@@ -121,9 +121,22 @@ class DurableTransitionLog:
             return dict(record)
 
     def replay(self) -> WalReplay:
-        with self._lock:
-            if not os.path.exists(self.path):
-                return WalReplay((), 0)
+        with self._lock, _ProcessFileLock(self.path):
+            return self._replay_unlocked()
+
+    def _truncate_incomplete_tail(self) -> None:
+        with open(self.path, "rb") as fh:
+            lines = fh.readlines()
+        if not lines:
+            return
+        with open(self.path, "wb") as fh:
+            fh.writelines(lines[:-1])
+            fh.flush()
+            os.fsync(fh.fileno())
+
+    def _replay_unlocked(self) -> WalReplay:
+        if not os.path.exists(self.path):
+            return WalReplay((), 0)
 
             records = []
             dropped = 0
