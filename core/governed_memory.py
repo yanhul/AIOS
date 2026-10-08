@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from .mutation import canonical_json
+from .authority import authorize, load_contract
+from .capabilities import CapabilityRegistry
 
 MEMORY_TYPES = frozenset({"SEMANTIC", "EPISODIC", "PROCEDURAL"})
 MEMORY_STATUSES = frozenset({"ACTIVE", "SUPERSEDED", "REVOKED"})
@@ -157,10 +159,25 @@ def _validate_execution_lineage(record: Mapping[str, Any]) -> None:
 
 
 def persist_memory(store, record: Mapping[str, Any], *, decision_id: str,
-                   mutation_id: str, authority: str,
+                   mutation_id: str, authority: str, aios_dir: str,
+                   contract_id: str, permit_id: str, actor: str,
                    execution_lineage: Mapping[str, Any] | None = None) -> Mapping[str, Any]:
-    """Governed memory write: decision -> authority -> mutation -> shared WAL."""
+    """Persist only after native, persisted AIOS authority authorizes MEMORY_WRITE."""
     validate_memory_record(record)
+    _text(aios_dir, "aios_dir")
+    _text(contract_id, "contract_id")
+    _text(permit_id, "permit_id")
+    _text(actor, "actor")
+    authorize(aios_dir, contract_id, permit_id)
+    contract = load_contract(aios_dir, contract_id)
+    if contract.get("actor") != actor:
+        raise ValueError("memory writer actor does not match authorized contract")
+    if "MEMORY_WRITE" not in contract.get("allowed_effects", []):
+        raise ValueError("contract does not authorize MEMORY_WRITE")
+    registry = CapabilityRegistry.load(aios_dir)
+    capabilities = registry.resolve_contract(contract)
+    if not any(cap.status == "ACTIVE" and "MEMORY_WRITE" in cap.permissions for cap in capabilities):
+        raise ValueError("contract has no ACTIVE MEMORY_WRITE capability")
     _text(decision_id, "decision_id")
     _text(mutation_id, "mutation_id")
     if authority != "AIOS_CONTROL_PLANE":
