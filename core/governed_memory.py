@@ -69,7 +69,7 @@ def build_memory_record(
     *,
     memory_type: str,
     content: Mapping[str, Any],
-    evidence_refs: list[str],
+    evidence_refs: list[list[str] | tuple[str, str]],
     predecessor: str,
     authority: str,
     source_commit: str,
@@ -101,7 +101,7 @@ def build_memory_record(
         "status": status,
     }
     memory_id = "MEM-" + _digest(unsigned)
-    return MemoryRecord(memory_id=memory_id, **unsigned)
+    return MemoryRecord(\n        memory_id=memory_id,\n        memory_type=memory_type,\n        content=dict(content),\n        evidence_refs=refs,\n        predecessor=predecessor,\n        authority=authority,\n        source_commit=source_commit,\n        version=version,\n        status=status,\n    )
 
 
 def validate_memory_record(record: Mapping[str, Any]) -> bool:
