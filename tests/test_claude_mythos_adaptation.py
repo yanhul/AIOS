@@ -27,6 +27,7 @@ def _write_evidence(evidence_dir, entity_id: str, statement: str = "independent 
         "imported_at": "2026-01-01T00:00:00Z", "snapshot_id": "test-snapshot",
     }), encoding="utf-8")
 
+
 def test_volatile_claims_require_discovery() -> None:
     assert requires_discovery(Volatility.STABLE) is False
     assert requires_discovery(Volatility.CURRENT) is True
@@ -52,10 +53,7 @@ def test_classification_is_not_authority(tmp_path) -> None:
 
 def test_current_claim_requires_discovery_evidence(tmp_path) -> None:
     evidence_dir = tmp_path / "evidence"
-    evidence_dir.mkdir()
-    (evidence_dir / "EV-discovery.json").write_text(json.dumps({
-        "entity_type": "EVIDENCE", "entity_id": "EV-101",
-    }), encoding="utf-8")
+    _write_evidence(evidence_dir, "EV-101")
     assert_authoritative_claim(
         claim_id="claim-current", status=ClaimStatus.FACT, volatility=Volatility.CURRENT,
         verification_evidence=[("EVIDENCE", "EV-101")],
@@ -100,10 +98,7 @@ def test_independent_evidence_is_required_for_promotion(tmp_path) -> None:
     # Native verification may materialize the evidence directory while rejecting
     # an unresolved reference; the test must assert verification semantics, not
     # an incidental filesystem precondition.
-    evidence_dir.mkdir(exist_ok=True)
-    (evidence_dir / "EV-test.json").write_text(json.dumps({
-        "entity_type": "EVIDENCE", "entity_id": "EV-102",
-    }), encoding="utf-8")
+    _write_evidence(evidence_dir, "EV-102")
     promoted = promote_observation(
         observation, aios_dir=str(tmp_path),
         verification_evidence=[("EVIDENCE", "EV-102")], verifier="test-verifier",
@@ -124,6 +119,8 @@ def test_malformed_evidence_cannot_cross_authority_boundary(tmp_path) -> None:
             verification_evidence=[("EVIDENCE", "EV-104")],
             aios_dir=str(tmp_path), verifier="test-verifier",
         )
+
+
 def test_failed_tool_result_cannot_be_observation() -> None:
     with pytest.raises(ValueError):
         observe_tool_result(
@@ -134,7 +131,6 @@ def test_failed_tool_result_cannot_be_observation() -> None:
 
 def test_observation_verification_uses_observation_namespace(tmp_path) -> None:
     evidence_dir = tmp_path / "evidence"
-    evidence_dir.mkdir()
     _write_evidence(evidence_dir, "EV-103")
     result = ToolResult("provider-a", "inv-namespace", {"status": "ok"})
     observation = observe_tool_result(
