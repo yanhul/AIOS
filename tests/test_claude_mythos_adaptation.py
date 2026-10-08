@@ -121,6 +121,19 @@ def test_malformed_evidence_cannot_cross_authority_boundary(tmp_path) -> None:
         )
 
 
+def test_duplicate_evidence_identity_cannot_cross_authority_boundary(tmp_path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    _write_evidence(evidence_dir, "EV-105", "first persisted evidence")
+    _write_evidence(evidence_dir, "EV-105", "conflicting persisted evidence")
+    with pytest.raises(PermissionError):
+        assert_authoritative_claim(
+            claim_id="claim-duplicate-evidence", status=ClaimStatus.FACT,
+            volatility=Volatility.STABLE,
+            verification_evidence=[("EVIDENCE", "EV-105")],
+            aios_dir=str(tmp_path), verifier="test-verifier",
+        )
+
+
 def test_failed_tool_result_cannot_be_observation() -> None:
     with pytest.raises(ValueError):
         observe_tool_result(
