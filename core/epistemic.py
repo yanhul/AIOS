@@ -39,6 +39,32 @@ def requires_discovery(volatility: Volatility | str) -> bool:
     return value in _DISCOVERY_REQUIRED
 
 
+def assert_authoritative_claim(
+    *,
+    status: ClaimStatus,
+    volatility: Volatility | str,
+    verification_evidence: Iterable[tuple[str, str]],
+    aios_dir: str,
+    verifier: str,
+) -> None:
+    """Enforce the epistemic authority boundary with persisted evidence."""
+    if status not in {ClaimStatus.FACT, ClaimStatus.VERIFIED}:
+        raise PermissionError(f"claim status {status.value} is not authoritative")
+    refs = [list(ref) for ref in verification_evidence]
+    if not refs:
+        raise PermissionError("authoritative claim requires persisted verification evidence")
+    reason = (
+        f"discovery required for volatility={Volatility(volatility).value}"
+        if requires_discovery(volatility)
+        else "authoritative claim provenance"
+    )
+    result = apply_verification(
+        aios_dir, "CLAIM", "epistemic-authority", refs, verifier, reason=reason,
+    )
+    if result["outcome"] != "VERIFIED":
+        raise PermissionError("claim cannot cross authority boundary: evidence is unsupported")
+
+
 def classify_claim(*, source_kind: str) -> ClaimStatus:
     """Classify an unverified claim; VERIFIED is only a promotion outcome.
 
@@ -116,7 +142,7 @@ def promote_observation(
     if not refs:
         raise PermissionError("observation cannot be promoted without persisted verification evidence")
     result = apply_verification(
-        aios_dir, "EVIDENCE", observation.observation_id, refs, verifier,
+        aios_dir, "OBSERVATION", observation.observation_id, refs, verifier,
         reason=observation.claim,
     )
     if result["outcome"] != "VERIFIED":
@@ -158,5 +184,5 @@ def route_capabilities(
 __all__ = [
     "ClaimStatus", "Volatility", "ToolResult", "Observation",
     "requires_discovery", "classify_claim", "observe_tool_result",
-    "promote_observation", "route_capabilities",
+    "promote_observation", "assert_authoritative_claim", "route_capabilities",
 ]
