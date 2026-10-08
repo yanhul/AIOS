@@ -50,7 +50,7 @@ def test_memory_wal_tamper_fails_closed(tmp_path):
     path = store.wal_path
     lines = path.read_text(encoding="utf-8").splitlines()
     row = json.loads(lines[-1])
-    row["payload"]["value"]["memory"]["memory_id"] = "MEM-tampered"
+    row["payload"]["item"]["memory"]["memory_id"] = "MEM-tampered"
     lines[-1] = json.dumps(row, sort_keys=True, separators=(",", ":"))
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     with pytest.raises(Exception):
