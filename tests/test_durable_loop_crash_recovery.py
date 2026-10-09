@@ -155,3 +155,39 @@ def test_process_death_recovers_state_patch_and_continue_contract_from_wal(tmp_p
 
 if __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--child":
     _child(sys.argv[2], sys.argv[3], sys.argv[4])
+
+
+
+def test_resume_blocks_if_durable_state_no_longer_matches_persisted_contract(tmp_path):
+    state_path = tmp_path / "tampered-state.json"
+    wal_path = tmp_path / "tampered-state.wal.jsonl"
+    marker_path = tmp_path / "actions.log"
+    store = WalStateStore(str(state_path), str(wal_path))
+    state = _initial_state()
+    state["continue_contract"] = build_continue_contract(state)
+    state["active_phase"] = "routing"
+    store.save(state)
+
+    result = run_durable_loop(_Executor(marker_path), store, _policy())
+
+    assert result["status"] == "BLOCKED"
+    assert "does not match durable state" in result["block_reason"]
+    assert not marker_path.exists()
+
+
+def test_resume_blocks_if_persisted_contract_is_tampered(tmp_path):
+    state_path = tmp_path / "tampered-contract.json"
+    wal_path = tmp_path / "tampered-contract.wal.jsonl"
+    marker_path = tmp_path / "actions.log"
+    store = WalStateStore(str(state_path), str(wal_path))
+    state = _initial_state()
+    contract = build_continue_contract(state)
+    contract["next_legal_actions"] = ["start-routing"]
+    state["continue_contract"] = contract
+    store.save(state)
+
+    result = run_durable_loop(_Executor(marker_path), store, _policy())
+
+    assert result["status"] == "BLOCKED"
+    assert "contract identity mismatch" in result["block_reason"]
+    assert not marker_path.exists()
