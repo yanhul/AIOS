@@ -1,4 +1,9 @@
 """Process-death proof for durable loop state, CONTINUE_CONTRACT, and state_patch recovery."""
+# AIOS-CONTRACT: Durable state and continuation must survive process death at WAL commit.
+# AIOS-REGRESSION: Prevent replay from stale snapshots, lost state_patch, or duplicate actions.
+# AIOS-OWNER: AIOS durable control-plane state and continuation projection.
+# AIOS-COVERAGE-GAP: Crash between fsynced WAL commit and snapshot replacement.
+# AIOS-BASELINE: Validate end-to-end durable-loop resume contract.
 from __future__ import annotations
 
 import json
