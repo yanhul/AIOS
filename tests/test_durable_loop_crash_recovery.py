@@ -118,6 +118,7 @@ def test_process_death_recovers_state_patch_and_continue_contract_from_wal(tmp_p
         cwd=os.getcwd(),
         text=True,
         capture_output=True,
+        env={**os.environ, "PYTHONPATH": os.getcwd() + os.pathsep + os.environ.get("PYTHONPATH", "")},
     )
     assert proc.returncode == 42, (proc.returncode, proc.stdout, proc.stderr)
     # The snapshot is deliberately stale: only the fsynced WAL contains step 1.
