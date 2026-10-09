@@ -125,8 +125,13 @@ def test_memory_write_binds_record_predecessor_to_authorized_decision(tmp_path):
 def test_memory_write_rejects_missing_decision_and_unresolved_evidence(tmp_path):
     auth = _authorization(str(tmp_path / "aios"))
     store = WalStateStore(str(tmp_path / "state.json"))
+    missing_decision_record = build_memory_record(
+        memory_type="SEMANTIC", content={"topic": "missing decision"},
+        evidence_refs=[["EVIDENCE", "EV-1"]], predecessor="D-999",
+        authority="AIOS_CONTROL_PLANE", source_commit="abc",
+    ).as_dict()
     with pytest.raises(ValueError, match="persisted DECISION"):
-        persist_memory(store, _record(), decision_id="D-999", mutation_id="M-9",
+        persist_memory(store, missing_decision_record, decision_id="D-999", mutation_id="M-9",
                        authority="AIOS_CONTROL_PLANE", **auth)
 
     missing_evidence = build_memory_record(
