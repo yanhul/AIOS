@@ -279,6 +279,14 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
             return state
         state["step"] += 1
         state["history"].append({"step": state["step"], "observation": deepcopy(observation), "decision": deepcopy(decision), "action": deepcopy(action_result), "verification": deepcopy(verification)})
+        # UNKNOWN is an unresolved side-effect boundary, not permission to retry.
+        # Persist the attempt/receipt and stop until an explicit reconciliation authorizes continuation.
+        if policy.require_execution_receipt and receipt is not None and receipt["status"] == "UNKNOWN":
+            state["status"] = policy.failure_state
+            state["block_reason"] = "execution receipt UNKNOWN; explicit reconciliation required before retry"
+            if not _persist_or_fail_closed(state, store, policy):
+                return state
+            return state
         try:
             terminal = policy.terminal_evaluator(deepcopy(verification), deepcopy(state))
             if terminal == "PASS" and policy.acceptance_predicates:

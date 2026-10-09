@@ -191,3 +191,42 @@ def test_resume_blocks_if_persisted_contract_is_tampered(tmp_path):
     assert result["status"] == "BLOCKED"
     assert "contract identity mismatch" in result["block_reason"]
     assert not marker_path.exists()
+
+
+
+def test_unknown_receipt_blocks_and_never_retries_automatically(tmp_path):
+    state_path = tmp_path / "unknown-state.json"
+    wal_path = tmp_path / "unknown-state.wal.jsonl"
+    marker_path = tmp_path / "actions.log"
+    store = WalStateStore(str(state_path), str(wal_path))
+
+    class UnknownExecutor(_Executor):
+        def verify(self, action_result, state):
+            result = super().verify(action_result, state)
+            result["status"] = "UNKNOWN"
+            result["receipt"]["status"] = "UNKNOWN"
+            result["receipt"]["evidence"] = {"reason": "provider outcome not observable"}
+            return result
+
+    base = _policy()
+    policy = LoopPolicy(
+        max_steps=base.max_steps,
+        terminal_evaluator=lambda verification, state: "PASS",
+        action_authorizer=base.action_authorizer,
+        policy_digest=base.policy_digest,
+        require_execution_receipt=True,
+        continue_contract_builder=build_continue_contract,
+    )
+
+    result = run_durable_loop(UnknownExecutor(marker_path), store, policy)
+
+    assert result["status"] == "BLOCKED"
+    assert "UNKNOWN" in result["block_reason"]
+    assert result["step"] == 1
+    assert result["history"][-1]["verification"]["receipt"]["attempt_id"] == "A1"
+    assert result["history"][-1]["verification"]["receipt"]["effect_id"] == "E-placement"
+    assert result["history"][-1]["verification"]["receipt"]["status"] == "UNKNOWN"
+    assert marker_path.read_text(encoding="utf-8").splitlines() == ["action-step-0"]
+    recovered = store.load()
+    assert recovered["status"] == "BLOCKED"
+    assert recovered["history"][-1]["verification"]["receipt"]["status"] == "UNKNOWN"
