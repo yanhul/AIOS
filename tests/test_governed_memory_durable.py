@@ -111,6 +111,17 @@ def test_memory_write_fails_closed_for_forged_or_insufficient_authority(tmp_path
                        authority="AIOS_CONTROL_PLANE", **bad_capability)
 
 
+def test_memory_write_binds_record_predecessor_to_authorized_decision(tmp_path):
+    auth = _authorization(str(tmp_path / "aios"))
+    store = WalStateStore(str(tmp_path / "state.json"))
+    with pytest.raises(ValueError, match="predecessor must match"):
+        persist_memory(
+            store, _record(), decision_id="D-2", mutation_id="M-mismatch",
+            authority="AIOS_CONTROL_PLANE", **auth,
+        )
+    assert load_memory(store) == []
+
+
 def test_memory_write_rejects_missing_decision_and_unresolved_evidence(tmp_path):
     auth = _authorization(str(tmp_path / "aios"))
     store = WalStateStore(str(tmp_path / "state.json"))
