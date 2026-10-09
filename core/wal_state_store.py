@@ -109,8 +109,10 @@ class WalStateStore:
         record, appended = self.wal.append_once(
             transition="NAMESPACE_APPENDED",
             payload={"namespace": namespace, "item": deepcopy(dict(item))},
-            unique_path=("namespace", "item", item_key),
+            unique_path=("item", item_key),
             unique_value=key_value,
+            scope_path=("namespace",),
+            scope_value=namespace,
         )
         committed_payload = record.get("payload")
         if not isinstance(committed_payload, Mapping):
