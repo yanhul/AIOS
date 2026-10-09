@@ -42,6 +42,18 @@ def test_wal_discards_only_a_truncated_final_record(tmp_path):
     assert replay.dropped_tail_records == 0
 
 
+def test_wal_rejects_malformed_newline_terminated_final_record(tmp_path):
+    path = Path(tmp_path / "wal.jsonl")
+    wal = DurableTransitionLog(str(path))
+    wal.append(transition="ENQUEUED", payload={"id": "w1"})
+    with path.open("ab") as fh:
+        fh.write(b'{"version":1,"sequence":2,broken}\n')
+        fh.flush()
+
+    with pytest.raises(DurableWalIntegrityError, match="invalid committed WAL record"):
+        wal.replay()
+
+
 def test_wal_rejects_corruption_before_final_tail(tmp_path):
     path = Path(tmp_path / "wal.jsonl")
     wal = DurableTransitionLog(str(path))
