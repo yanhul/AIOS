@@ -246,8 +246,10 @@ def load_memory(store) -> list[Mapping[str, Any]]:
         validate_memory_record(memory)
         if envelope.get("authority") != "AIOS_CONTROL_PLANE":
             raise ValueError("invalid memory mutation authority")
-        _text(envelope.get("decision_id"), "decision_id")
+        decision_id = _text(envelope.get("decision_id"), "decision_id")
         _text(envelope.get("mutation_id"), "mutation_id")
+        if memory["predecessor"] != decision_id:
+            raise ValueError("memory predecessor does not match persisted decision_id")
         _text(envelope.get("contract_id"), "contract_id")
         _text(envelope.get("permit_id"), "permit_id")
         _text(envelope.get("actor"), "actor")
