@@ -182,7 +182,7 @@ def test_resume_blocks_if_persisted_contract_is_tampered(tmp_path):
     store = WalStateStore(str(state_path), str(wal_path))
     state = _initial_state()
     contract = build_continue_contract(state)
-    contract["next_legal_actions"] = ["start-routing"]
+    contract["next_legal_actions"] = ["tampered-action"]
     state["continue_contract"] = contract
     store.save(state)
 
