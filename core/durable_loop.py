@@ -131,6 +131,8 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
         raise ValueError("persisted status is invalid")
     if not isinstance(state.get("history"), list):
         raise ValueError("persisted history is invalid")
+    if state.get("status") in policy.terminal_states:
+        _validate_terminal_evidence(state)
     if policy.policy_digest is not None and state.get("policy_digest") != policy.policy_digest:
         raise ValueError("persisted policy digest does not match current policy")
     if policy.resume_validator is not None:

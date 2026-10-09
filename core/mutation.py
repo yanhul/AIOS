@@ -367,31 +367,48 @@ def _load_existing(path):
 
 
 def _require_committed_event(aios_dir, entity):
-    """Replay integrity: an existing committed entity MUST still have its
-    mutation event. Lookup pairs on stable content fields (the entity's own
-    committed values); the original event's actor may legitimately differ
-    on replay, so the event digest itself is not recomputable here."""
+    """Require the complete entity-import event to match persisted entity data.
+
+    A matching ID/status/snapshot is insufficient: a tampered statement or
+    source location must not borrow an unrelated valid receipt. The event's
+    content-derived identity and canonical filename are checked as well.
+    """
     events_dir = os.path.join(aios_dir, "events")
     if os.path.isdir(events_dir):
         for fn in sorted(os.listdir(events_dir)):
             if not fn.endswith(".json"):
                 continue
-            with open(os.path.join(events_dir, fn), "r",
-                      encoding="utf-8") as fh:
-                try:
+            try:
+                with open(os.path.join(events_dir, fn), "r", encoding="utf-8") as fh:
                     ev = json.load(fh)
-                except json.JSONDecodeError:
-                    continue
-            if (ev.get("kind") == "mutation"
-                    and ev.get("entity_type") == entity["entity_type"]
-                    and ev.get("entity_id") == entity["entity_id"]
-                    and ev.get("status") == entity["status"]
-                    and ev.get("snapshot_id") == entity["snapshot_id"]):
-                return
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(ev, dict) or ev.get("kind") != "mutation":
+                continue
+            if ev.get("action") != "entity.imported":
+                continue
+            fields = (
+                "entity_type", "entity_id", "status", "statement",
+                "source_file", "source_line", "snapshot_id",
+            )
+            if any(ev.get(field) != entity.get(field) for field in fields):
+                continue
+            event_id = ev.get("event_id")
+            if not isinstance(event_id, str):
+                continue
+            logical_event = {
+                key: value for key, value in ev.items()
+                if key not in ("timestamp_utc", "event_id")
+            }
+            if event_identity(logical_event) != event_id:
+                continue
+            if not fn.endswith(f"-{event_id}.json"):
+                continue
+            return
     raise StateConflictError(
         f"committed entity {entity['entity_type']} {entity['entity_id']} "
-        f"has no matching audit event; state was tampered with or predates "
-        f"M1.5")
+        f"has no matching integrity-bound audit event; state was tampered "
+        f"with or predates M1.5")
 
 
 def commit_batch(aios_dir, payloads):

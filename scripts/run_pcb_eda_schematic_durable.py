@@ -42,7 +42,7 @@ class Executor:
         blockers=list(inv.get("blocking") or inv.get("errors") or [])
         pipe=dict(s.get("pipeline") or {}); pipe["schematic"]="VERIFIED" if status=="PASS" else "BLOCKED"
         pipe["placement"]="READY" if status=="PASS" else "BLOCKED_BY_SCHEMATIC"; pipe["routing"]="BLOCKED_BY_PLACEMENT" if status=="PASS" else "BLOCKED_BY_SCHEMATIC"
-        return {"status":status,"state_patch":{"active_phase":"SCHEMATIC_VERIFIED" if status=="PASS" else "SCHEMATIC","pipeline":pipe,"active_blockers":blockers,
+        return {"status":status,"receipt":{"effect_id":f"{self.a.task_id}:effect:{s.get('step',0)+1}","attempt_id":f"{self.a.task_id}:attempt:{s.get('step',0)+1}","status":"OBSERVED","evidence":{"phase_receipt":str(Path(x["attempt_dir"])/"phase_receipt.json"),"phase_receipt_sha256":r["receipt_sha256"],"source_commit":self.a.source_commit}},"state_patch":{"active_phase":"SCHEMATIC_VERIFIED" if status=="PASS" else "SCHEMATIC","pipeline":pipe,"active_blockers":blockers,
           "latest_attempt_dir":x["attempt_dir"],"latest_receipt":str(Path(x["attempt_dir"])/"phase_receipt.json"),"latest_run":self.a.run_id,
           "next_legal_actions":["placement"] if status=="PASS" else ["inspect_receipt","inspect_source","patch","commit","wait_ci"],
           "forbidden_actions":["routing","claim_pass"] if status=="PASS" else ["placement","routing","claim_pass"],
