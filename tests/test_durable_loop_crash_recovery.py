@@ -61,7 +61,7 @@ class _Executor:
         # This marker models a non-idempotent action boundary. Step zero must
         # not be invoked again after recovery of its committed state snapshot.
         with self.marker.open("a", encoding="utf-8") as fh:
-            fh.write(f"action-step-{state['step']}\\n")
+            fh.write(f"action-step-{state['step']}\n")
             fh.flush()
             os.fsync(fh.fileno())
         return {"attempt_id": f"A{state['step'] + 1}", "effect_id": "E-placement"}
