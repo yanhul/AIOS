@@ -227,21 +227,14 @@ def persist_memory(store, record: Mapping[str, Any], *, decision_id: str,
         "actor": actor,
         "execution_lineage": dict(execution_lineage) if execution_lineage else None,
     }
-    # mutation_id is a durable idempotency key, not a decorative caller label.
-    # Reject reuse before append; exact replay is a no-op.
-    existing_envelopes = store.load_namespace("memory", default=[])
-    if not isinstance(existing_envelopes, list):
-        raise ValueError("memory WAL state must be a list")
-    for existing in existing_envelopes:
-        if not isinstance(existing, Mapping):
-            raise ValueError("invalid existing memory mutation envelope")
-        if existing.get("mutation_id") != mutation_id:
-            continue
-        if dict(existing) == envelope:
-            return existing
+    # mutation_id is enforced atomically by the WAL under its cross-process lock.
+    committed, appended = store.append_namespace_once(
+        "memory", envelope, item_key="mutation_id", key_value=mutation_id,
+    )
+    if dict(committed) != envelope:
         raise ValueError("mutation_id already belongs to a different memory mutation")
-    # Append is one fsynced WAL mutation; replay folds it into projection after crash.
-    store.append_namespace("memory", envelope)
+    if not appended:
+        return committed
     return envelope
 
 
