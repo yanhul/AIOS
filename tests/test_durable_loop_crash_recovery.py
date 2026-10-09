@@ -17,6 +17,7 @@ def _initial_state():
         "step": 0,
         "status": "RUNNING",
         "history": [],
+        "policy_digest": "state-continuity-policy-v1",
         "authority": "AIOS_CONTROL_PLANE",
         "project": "state-continuity-e2e",
         "design": "crash-after-state-wal-commit",
