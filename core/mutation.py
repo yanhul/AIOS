@@ -369,10 +369,9 @@ def _load_existing(path):
 def _require_committed_event(aios_dir, entity):
     """Require the complete entity-import event to match persisted entity data.
 
-    The actor and event timestamp are taken from the original receipt, but
-    every entity field represented by the event and the content-derived event
-    identity must match. Matching only ID/status/snapshot would let a changed
-    statement or source location borrow an unrelated valid event.
+    A matching ID/status/snapshot is insufficient: a tampered statement or
+    source location must not borrow an unrelated valid receipt. The event's
+    content-derived identity and canonical filename are checked as well.
     """
     events_dir = os.path.join(aios_dir, "events")
     if os.path.isdir(events_dir):
@@ -380,8 +379,7 @@ def _require_committed_event(aios_dir, entity):
             if not fn.endswith(".json"):
                 continue
             try:
-                with open(os.path.join(events_dir, fn), "r",
-                          encoding="utf-8") as fh:
+                with open(os.path.join(events_dir, fn), "r", encoding="utf-8") as fh:
                     ev = json.load(fh)
             except (OSError, json.JSONDecodeError):
                 continue
