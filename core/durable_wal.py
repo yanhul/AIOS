@@ -122,6 +122,7 @@ class DurableTransitionLog:
     def append_once(
         self, *, transition: str, payload: Mapping[str, Any],
         unique_path: tuple[str, ...], unique_value: Any,
+        scope_path: tuple[str, ...] = (), scope_value: Any = None,
     ) -> tuple[Mapping[str, Any], bool]:
         """Atomically append only if no committed record has the same key.
 
@@ -134,6 +135,8 @@ class DurableTransitionLog:
             raise ValueError("payload must be a mapping")
         if not unique_path or not all(isinstance(part, str) and part for part in unique_path):
             raise ValueError("unique_path must contain non-empty strings")
+        if not all(isinstance(part, str) and part for part in scope_path):
+            raise ValueError("scope_path must contain strings")
 
         def resolve(value, path):
             current = value
@@ -152,7 +155,10 @@ class DurableTransitionLog:
             for existing in replay.records:
                 if existing.get("transition") != transition:
                     continue
-                if resolve(existing.get("payload"), unique_path) == unique_value:
+                existing_payload = existing.get("payload")
+                if scope_path and resolve(existing_payload, scope_path) != scope_value:
+                    continue
+                if resolve(existing_payload, unique_path) == unique_value:
                     return dict(existing), False
             body = {
                 "version": self.VERSION,
