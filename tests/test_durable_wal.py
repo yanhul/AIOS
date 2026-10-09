@@ -60,15 +60,19 @@ def test_wal_append_once_serializes_duplicate_idempotency_keys(tmp_path):
     first, appended = wal.append_once(
         transition="NAMESPACE_APPENDED",
         payload={"namespace": "memory", "item": {"mutation_id": "M-1", "value": 1}},
-        unique_path=("namespace", "item", "mutation_id"),
+        unique_path=("item", "mutation_id"),
         unique_value="M-1",
+        scope_path=("namespace",),
+        scope_value="memory",
     )
     assert appended is True
     replay, appended = wal.append_once(
         transition="NAMESPACE_APPENDED",
         payload={"namespace": "memory", "item": {"mutation_id": "M-1", "value": 2}},
-        unique_path=("namespace", "item", "mutation_id"),
+        unique_path=("item", "mutation_id"),
         unique_value="M-1",
+        scope_path=("namespace",),
+        scope_value="memory",
     )
     assert appended is False
     assert replay == first
