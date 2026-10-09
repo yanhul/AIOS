@@ -55,6 +55,26 @@ def test_wal_rejects_corruption_before_final_tail(tmp_path):
         wal.replay()
 
 
+def test_wal_append_once_serializes_duplicate_idempotency_keys(tmp_path):
+    wal = DurableTransitionLog(str(tmp_path / "wal.jsonl"))
+    first, appended = wal.append_once(
+        transition="NAMESPACE_APPENDED",
+        payload={"namespace": "memory", "item": {"mutation_id": "M-1", "value": 1}},
+        unique_path=("namespace", "item", "mutation_id"),
+        unique_value="M-1",
+    )
+    assert appended is True
+    replay, appended = wal.append_once(
+        transition="NAMESPACE_APPENDED",
+        payload={"namespace": "memory", "item": {"mutation_id": "M-1", "value": 2}},
+        unique_path=("namespace", "item", "mutation_id"),
+        unique_value="M-1",
+    )
+    assert appended is False
+    assert replay == first
+    assert len(wal.replay().records) == 1
+
+
 def test_wal_is_not_an_execution_receipt(tmp_path):
     wal = DurableTransitionLog(str(tmp_path / "wal.jsonl"))
     record = wal.append(
