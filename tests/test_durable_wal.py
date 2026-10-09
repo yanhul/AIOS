@@ -115,7 +115,7 @@ def test_wal_append_fsyncs_parent_directory_after_file_fsync(tmp_path, monkeypat
 
     def checked_fsync_parent(target):
         assert path.exists()
-        assert path.read_bytes().endswith(b"\\n")
+        assert path.read_bytes().endswith(b"\n")
         calls.append(target)
         original(target)
 
