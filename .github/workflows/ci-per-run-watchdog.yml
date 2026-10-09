@@ -107,8 +107,9 @@ jobs:
             fi
 
             e2e_run_id=""
+            e2e_conclusion=""
             evidence_deadline=$(($(date +%s) + 600))
-            while [ -z "$e2e_run_id" ]; do
+            while true; do
               runs_json="$(gh api "repos/$REPOSITORY/actions/runs?head_sha=$HEAD_SHA&per_page=100")"
               e2e_run_id="$(printf '%s' "$runs_json" | python -c '
           import json,sys
@@ -117,24 +118,30 @@ jobs:
           matches.sort(key=lambda r:r.get("id",0), reverse=True)
           print(matches[0]["id"] if matches else "")
           ' "$HEAD_SHA")"
+              e2e_status=""
+              e2e_conclusion=""
+              has_artifact="no"
               if [ -n "$e2e_run_id" ]; then
+                e2e_json="$(gh api "repos/$REPOSITORY/actions/runs/$e2e_run_id")"
+                e2e_status="$(printf '%s' "$e2e_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("status",""))')"
+                e2e_conclusion="$(printf '%s' "$e2e_json" | python -c 'import json,sys; print(json.load(sys.stdin).get("conclusion") or "")')"
                 artifacts_json="$(gh api "repos/$REPOSITORY/actions/runs/$e2e_run_id/artifacts")"
                 has_artifact="$(printf '%s' "$artifacts_json" | python -c '
           import json,sys
           d=json.load(sys.stdin)
           print("yes" if any(a.get("name")==("aios-product-e2e-"+sys.argv[1]) and not a.get("expired") for a in d.get("artifacts", [])) else "no")
           ' "$e2e_run_id")"
-                if [ "$has_artifact" = "yes" ]; then
+                if [ "$e2e_status" = "completed" ] && [ "$has_artifact" = "yes" ]; then
                   break
                 fi
-                e2e_run_id=""
               fi
               if [ "$(date +%s)" -ge "$evidence_deadline" ]; then
-                echo "EVIDENCE_WATCHDOG_BLOCKED: no same-SHA Product E2E evidence artifact within 10 minutes"
+                echo "EVIDENCE_WATCHDOG_BLOCKED: no completed same-SHA Product E2E run with evidence artifact within 10 minutes"
                 exit 1
               fi
               sleep 15
             done
+            echo "PRODUCT_E2E_RUN=$e2e_run_id conclusion=$e2e_conclusion"
 
             mkdir -p "$RUNNER_TEMP/aios-evidence"
             gh run download "$e2e_run_id" -n "aios-product-e2e-$e2e_run_id" -D "$RUNNER_TEMP/aios-evidence"
@@ -152,16 +159,29 @@ jobs:
           files = {p.name for p in root.glob("*.json")}
           assert files == expected, {"files": sorted(files), "expected": sorted(expected)}
 
-          allowed = {
-              "PASS", "BLOCKED", "INCONCLUSIVE",
-              "EDGE_FOUND", "NO_EDGE_FOUND", "REJECT", "PROMOTE",
+          expected_workloads = {
+              "yanhul__try.json": "yanhul/try",
+              "yanhul__android-ai-assistant.json": "yanhul/android-ai-assistant",
+              "yanhul__RX50.json": "yanhul/RX50",
           }
-          for path in root.glob("*.json"):
+          statuses = {}
+          for path in sorted(root.glob("*.json")):
               obj = json.loads(path.read_text())
-              assert obj.get("status") in allowed, path.name
+              expected_workload = expected_workloads[path.name]
+              assert obj.get("workload_id") == expected_workload, {
+                  "file": path.name, "workload_id": obj.get("workload_id"),
+                  "expected": expected_workload,
+              }
+              assert obj.get("status") in {
+                  "PASS", "BLOCKED", "INCONCLUSIVE",
+                  "EDGE_FOUND", "NO_EDGE_FOUND", "REJECT", "PROMOTE",
+              }, path.name
               assert obj.get("evidence_refs"), path.name
               assert obj.get("verification_refs"), path.name
-              assert obj.get("workload_id"), path.name
+              statuses[expected_workload] = obj["status"]
+          print(json.dumps({"PRODUCT_E2E_RECEIPT_STATUSES": statuses}, sort_keys=True))
+          blocked = {name: status for name, status in statuses.items() if status != "PASS"}
+          assert not blocked, f"registered workload conformance not PASS: {blocked}"
           print("EVIDENCE_WATCHDOG=PASS")
           PY
           else
