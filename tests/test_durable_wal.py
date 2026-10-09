@@ -27,6 +27,7 @@ def test_wal_discards_only_a_truncated_final_record(tmp_path):
     path = Path(tmp_path / "wal.jsonl")
     wal = DurableTransitionLog(str(path))
     wal.append(transition="ENQUEUED", payload={"id": "w1"})
+    committed_prefix = path.read_bytes()
     with path.open("ab") as fh:
         fh.write(b'{"version":1,"sequence":2,"transition":"STARTED"')
         fh.flush()
@@ -40,6 +41,9 @@ def test_wal_discards_only_a_truncated_final_record(tmp_path):
     assert len(replay.records) == 2
     assert replay.records[-1]["sequence"] == 2
     assert replay.dropped_tail_records == 0
+    repaired = path.read_bytes()
+    assert repaired.startswith(committed_prefix)
+    assert repaired.splitlines(keepends=True)[0] == committed_prefix
 
 
 def test_wal_rejects_malformed_newline_terminated_final_record(tmp_path):
