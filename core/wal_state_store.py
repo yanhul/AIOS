@@ -87,6 +87,46 @@ class WalStateStore:
             raise ValueError("append namespace projection must be a list")
         self._write_namespace_snapshot(namespace, latest)
 
+    def append_namespace_once(
+        self, namespace: str, item: Any, *, item_key: str, key_value: str
+    ) -> tuple[Any, bool]:
+        """Atomically append one item under a unique namespace key.
+
+        Returns (committed_item, appended); an existing key is returned
+        without writing a second WAL record.
+        """
+        namespace = self._validate_namespace(namespace)
+        if namespace == "state":
+            raise ValueError("append is not authorized for state namespace")
+        if not isinstance(item, Mapping):
+            raise ValueError("idempotent namespace item must be a mapping")
+        if not isinstance(item_key, str) or not item_key.strip():
+            raise ValueError("item_key must be a non-empty string")
+        if not isinstance(key_value, str) or not key_value.strip():
+            raise ValueError("key_value must be a non-empty string")
+        if item.get(item_key) != key_value:
+            raise ValueError("item does not contain the requested idempotency key")
+        record, appended = self.wal.append_once(
+            transition="NAMESPACE_APPENDED",
+            payload={"namespace": namespace, "item": deepcopy(dict(item))},
+            unique_path=("namespace", "item", item_key),
+            unique_value=key_value,
+        )
+        committed_payload = record.get("payload")
+        if not isinstance(committed_payload, Mapping):
+            raise ValueError("durable WAL payload is invalid")
+        committed_item = committed_payload.get("item")
+        if not isinstance(committed_item, Mapping):
+            raise ValueError("durable WAL item is invalid")
+        if appended:
+            latest = self._latest(namespace)
+            if latest is None:
+                latest = []
+            if not isinstance(latest, list):
+                raise ValueError("append namespace projection must be a list")
+            self._write_namespace_snapshot(namespace, latest)
+        return deepcopy(dict(committed_item)), appended
+
     def _write_json_atomic(self, path: Path, value: Any) -> None:
         parent = path.parent
         fd, tmp_name = tempfile.mkstemp(
