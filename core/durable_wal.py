@@ -14,6 +14,23 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 
+def _fsync_parent_dir(path: str) -> None:
+    """Persist directory-entry changes on POSIX after durable file writes.
+
+    Windows does not expose a portable directory-fsync equivalent through
+    Python's standard library; file contents are still flushed there.
+    """
+    if os.name == "nt":
+        return
+    directory = os.path.dirname(os.path.abspath(path)) or "."
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    fd = os.open(directory, flags)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 class _ProcessFileLock:
     """Cross-process lock for one WAL file."""
 
@@ -117,6 +134,7 @@ class DurableTransitionLog:
                 fh.write(self._canonical(record))
                 fh.flush()
                 os.fsync(fh.fileno())
+            _fsync_parent_dir(self.path)
             return dict(record)
 
     def append_once(
@@ -171,6 +189,7 @@ class DurableTransitionLog:
                 fh.write(self._canonical(record))
                 fh.flush()
                 os.fsync(fh.fileno())
+            _fsync_parent_dir(self.path)
             return dict(record), True
 
     def replay(self) -> WalReplay:
@@ -187,6 +206,7 @@ class DurableTransitionLog:
             fh.writelines(lines[:-1])
             fh.flush()
             os.fsync(fh.fileno())
+        _fsync_parent_dir(self.path)
 
     def _replay_unlocked(self) -> WalReplay:
         if not os.path.exists(self.path):
