@@ -199,21 +199,21 @@ class DurableTransitionLog:
 
         for index, raw in enumerate(lines):
             if not raw.strip():
-                if index == len(lines) - 1:
+                if index == len(lines) - 1 and not raw.endswith(b"\\n"):
                     dropped += 1
                     break
                 raise DurableWalIntegrityError(
-                    "blank WAL record before final tail"
+                    f"blank committed WAL record at line {index + 1}"
                 )
 
             try:
                 record = json.loads(raw.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
-                if index == len(lines) - 1:
+                if index == len(lines) - 1 and not raw.endswith(b"\\n"):
                     dropped += 1
                     break
                 raise DurableWalIntegrityError(
-                    f"invalid non-tail WAL record at line {index + 1}"
+                    f"invalid committed WAL record at line {index + 1}"
                 )
 
             if not isinstance(record, dict):
