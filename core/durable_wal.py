@@ -198,14 +198,20 @@ class DurableTransitionLog:
             return self._replay_unlocked()
 
     def _truncate_incomplete_tail(self) -> None:
+        # Preserve the committed prefix in place. Rewriting the whole WAL with
+        # mode "wb" would destroy every committed record if the process died
+        # between truncation and rewriting the prefix.
         with open(self.path, "rb") as fh:
             lines = fh.readlines()
         if not lines:
             return
-        with open(self.path, "wb") as fh:
-            fh.writelines(lines[:-1])
-            fh.flush()
-            os.fsync(fh.fileno())
+        valid_length = sum(len(line) for line in lines[:-1])
+        fd = os.open(self.path, os.O_WRONLY)
+        try:
+            os.ftruncate(fd, valid_length)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
         _fsync_parent_dir(self.path)
 
     def _replay_unlocked(self) -> WalReplay:
