@@ -199,7 +199,7 @@ class DurableTransitionLog:
 
         for index, raw in enumerate(lines):
             if not raw.strip():
-                if index == len(lines) - 1 and not raw.endswith(b"\\n"):
+                if index == len(lines) - 1 and not raw.endswith(b"\n"):
                     dropped += 1
                     break
                 raise DurableWalIntegrityError(
@@ -209,7 +209,7 @@ class DurableTransitionLog:
             try:
                 record = json.loads(raw.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
-                if index == len(lines) - 1 and not raw.endswith(b"\\n"):
+                if index == len(lines) - 1 and not raw.endswith(b"\n"):
                     dropped += 1
                     break
                 raise DurableWalIntegrityError(
