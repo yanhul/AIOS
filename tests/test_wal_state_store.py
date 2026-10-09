@@ -95,3 +95,22 @@ def test_wal_state_store_recovers_after_process_death_between_wal_and_snapshot(t
     assert child.returncode == 77
     assert snapshot.exists()
     assert store.load() == second
+
+
+def test_snapshot_replace_fsyncs_parent_directory(tmp_path, monkeypatch):
+    import core.wal_state_store as state_store
+
+    snapshot = tmp_path / "state.json"
+    store = WalStateStore(str(snapshot), str(tmp_path / "wal.jsonl"))
+    calls = []
+    original = state_store._fsync_parent_dir
+
+    def checked_fsync_parent(path):
+        assert snapshot.exists()
+        assert snapshot.read_text(encoding="utf-8").strip() == '{"status":"RUNNING"}'
+        calls.append(path)
+        original(path)
+
+    monkeypatch.setattr(state_store, "_fsync_parent_dir", checked_fsync_parent)
+    store._write_snapshot({"status": "RUNNING"})
+    assert calls == [snapshot]
