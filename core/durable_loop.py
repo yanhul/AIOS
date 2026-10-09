@@ -238,6 +238,11 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         return state
     if state["status"] in policy.terminal_states:
         return state
+    # Preflight and durably commit the continuation projection before any side effect.
+    # Missing contract inputs must block before ACT, not after an effect has already occurred.
+    if policy.continue_contract_builder is not None and "continue_contract" not in state:
+        if not _persist_or_fail_closed(state, store, policy):
+            return state
     while state["step"] < policy.max_steps:
         try:
             observation = executor.observe(deepcopy(state))
@@ -283,7 +288,7 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         # Persist the attempt/receipt and stop until an explicit reconciliation authorizes continuation.
         if policy.require_execution_receipt and receipt is not None and receipt["status"] == "UNKNOWN":
             state["status"] = policy.failure_state
-            state["block_reason"] = "execution receipt UNKNOWN; explicit reconciliation required before retry"
+            state["block_reason"] = "UNKNOWN execution receipt; explicit reconciliation required before retry"
             if not _persist_or_fail_closed(state, store, policy):
                 return state
             return state
