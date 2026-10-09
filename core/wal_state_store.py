@@ -15,6 +15,18 @@ from typing import Any, Mapping
 from .durable_wal import DurableTransitionLog
 
 
+def _fsync_parent_dir(path: Path) -> None:
+    """Persist atomic snapshot replacement on POSIX filesystems."""
+    if os.name == "nt":
+        return
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    fd = os.open(str(path.parent), flags)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 class WalStateStore:
     """Shared durable WAL boundary with isolated logical namespaces."""
 
@@ -141,6 +153,7 @@ class WalStateStore:
                 fh.flush()
                 os.fsync(fh.fileno())
             os.replace(tmp_name, path)
+            _fsync_parent_dir(path)
         except Exception:
             try:
                 os.unlink(tmp_name)
