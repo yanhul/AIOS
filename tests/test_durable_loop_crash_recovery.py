@@ -208,6 +208,8 @@ def test_unknown_receipt_blocks_and_never_retries_automatically(tmp_path):
             result["receipt"]["evidence"] = {"reason": "provider outcome not observable"}
             return result
 
+    # Start from a complete governed state so this test reaches the UNKNOWN receipt boundary.
+    store.save(_initial_state())
     base = _policy()
     policy = LoopPolicy(
         max_steps=base.max_steps,
