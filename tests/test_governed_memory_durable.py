@@ -117,6 +117,18 @@ def test_memory_mutation_id_is_idempotent_and_cannot_be_reused(tmp_path):
     assert load_memory(store) == [record]
 
 
+def test_memory_replay_rejects_duplicate_mutation_ids(tmp_path):
+    auth = _authorization(str(tmp_path / "aios"))
+    store = WalStateStore(str(tmp_path / "state.json"))
+    envelope = persist_memory(
+        store, _record(), decision_id="D-1", mutation_id="M-duplicate",
+        authority="AIOS_CONTROL_PLANE", **auth,
+    )
+    store.append_namespace("memory", envelope)
+    with pytest.raises(ValueError, match="duplicate memory mutation_id"):
+        load_memory(store)
+
+
 def test_memory_write_fails_closed_for_forged_or_insufficient_authority(tmp_path):
     store = WalStateStore(str(tmp_path / "state.json"))
     good = _authorization(str(tmp_path / "good"))
