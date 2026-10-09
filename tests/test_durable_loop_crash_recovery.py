@@ -194,6 +194,27 @@ def test_resume_blocks_if_persisted_contract_is_tampered(tmp_path):
 
 
 
+
+def test_missing_continue_contract_inputs_block_before_any_side_effect(tmp_path):
+    state_path = tmp_path / "invalid-state.json"
+    wal_path = tmp_path / "invalid-state.wal.jsonl"
+    marker_path = tmp_path / "actions.log"
+    store = WalStateStore(str(state_path), str(wal_path))
+    invalid_state = _initial_state()
+    invalid_state.pop("project")
+    store.save(invalid_state)
+
+    result = run_durable_loop(_Executor(marker_path), store, _policy())
+
+    assert result["status"] == "BLOCKED"
+    assert "project must be a non-empty string" in result["block_reason"]
+    assert not marker_path.exists()
+    recovered = store.load()
+    assert recovered["status"] == "BLOCKED"
+    assert recovered["step"] == 0
+    assert recovered["history"] == []
+
+
 def test_unknown_receipt_blocks_and_never_retries_automatically(tmp_path):
     state_path = tmp_path / "unknown-state.json"
     wal_path = tmp_path / "unknown-state.wal.jsonl"
