@@ -2,24 +2,44 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
-      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
+      "description": "Keel, a durable execution runtime for AI agents, and Crashproof, the harness that tries to break it and everyone else's.",
       "query": "agent harness durable execution",
       "ref": "main",
-      "repo": "Root1V/aeon-agent-harness",
-      "source_digest": "2ef2904ddb2b3c9ab26b4d90e5c1e3cfcf3fb54c14c3b216072d82c3909e5f68",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
+      "repo": "keshav9926/drydock",
+      "source_digest": "9e1041d183d26e7aa4e0c7e941072c42c4b7120dd162a6f62f8c4584dd3cf9c9",
+      "source_ref": "https://github.com/keshav9926/drydock",
       "stars": 0,
-      "updated_at": "2026-10-08T12:56:47Z"
+      "updated_at": "2026-10-09T07:05:49Z"
     },
     {
       "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "3d051fe48be8c4a169b09023213e31a6a9e5d4e8d310272b8bdf428288a75715",
+      "source_digest": "ccc49e685441e3e6ae0e1ea3a034ffa1edb421254aa690ff9ecb68d204bf0fa0",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "stars": 0,
-      "updated_at": "2026-10-08T01:44:53Z"
+      "updated_at": "2026-10-09T06:47:16Z"
+    },
+    {
+      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "Root1V/aeon-agent-harness",
+      "source_digest": "cf0f4f1520628f806746f73d03c38c0870858e5fbea8187f48cf314c72b6db7b",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
+      "stars": 1,
+      "updated_at": "2026-10-09T03:42:27Z"
+    },
+    {
+      "description": "Deterministic multi-agent software-delivery orchestrator with durable workflows, exact-head evidence, and a Cursor-first path to multi-harness execution.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "tomazb/multi-agent-software-engineer",
+      "source_digest": "b4caa529a0ecefb01eb81bcd09b24fe40a397cbb2c5ed6739d53ef6ddcacceb7",
+      "source_ref": "https://github.com/tomazb/multi-agent-software-engineer",
+      "stars": 1,
+      "updated_at": "2026-10-08T16:06:29Z"
     },
     {
       "description": "Governed IT service desk agent: reliable RAG, MCP diagnostics, durable approvals and an auditable execution harness.",
@@ -30,26 +50,6 @@
       "source_ref": "https://github.com/shaohsuanw803-boop/deskpilot",
       "stars": 1,
       "updated_at": "2026-10-06T15:04:47Z"
-    },
-    {
-      "description": "Provider-neutral coding-agent harness with deterministic workflow graphs, durable evidence, and fail-closed sandboxed execution",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "synaptiai/flow-harness",
-      "source_digest": "056ac98f155a340224b92862e01caa1dfebfec368a616c6b60717eafe40c4695",
-      "source_ref": "https://github.com/synaptiai/flow-harness",
-      "stars": 0,
-      "updated_at": "2026-10-06T08:08:18Z"
-    },
-    {
-      "description": "An open Agents API for Cloudflare Workers, with durable sessions, pluggable harnesses, and isolated execution.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "inaridiy/CF-Open-Agents-API",
-      "source_digest": "6fee287a90a5e960dec2624e9538a035b535e6cc438f92f59c49695ff03718d7",
-      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
-      "stars": 26,
-      "updated_at": "2026-10-01T13:10:04Z"
     },
     {
       "description": "OmniResearch is an autonomous multi-agent AI framework that automates the AI/ML research lifecycle\u2014from planning and literature discovery to dataset selection, experimentation, analysis, verification, and research report generation using LangGraph, multimodal RAG, and research memory.",
@@ -106,10 +106,10 @@
       "query": "agent memory provenance governance",
       "ref": "main",
       "repo": "teolex2020/aura-memory",
-      "source_digest": "287d6f29f26aeca4204d4cf71296db34b31bb6cb998b011a628116ff3f3e17fa",
+      "source_digest": "6313696a4d30c6946d29bf27d29f4bbdfa0a4f788219731ebb396dc4ba6bcbf6",
       "source_ref": "https://github.com/teolex2020/aura-memory",
       "stars": 85,
-      "updated_at": "2026-10-08T11:01:08Z"
+      "updated_at": "2026-10-08T13:09:21Z"
     },
     {
       "description": "Check agent memory against the Vercy Governance Overlay, plus a read-only MCP server over the Vercy model catalogue.",

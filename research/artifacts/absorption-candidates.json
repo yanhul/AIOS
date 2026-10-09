@@ -4,14 +4,44 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-d672239c5843a0ee",
+      "candidate_id": "cand-242d149a53975bde",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "9e1041d183d26e7aa4e0c7e941072c42c4b7120dd162a6f62f8c4584dd3cf9c9",
+      "source_ref": "https://github.com/keshav9926/drydock",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-169121dbe4862ca9",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "2ef2904ddb2b3c9ab26b4d90e5c1e3cfcf3fb54c14c3b216072d82c3909e5f68",
+      "source_digest": "ccc49e685441e3e6ae0e1ea3a034ffa1edb421254aa690ff9ecb68d204bf0fa0",
+      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-967d86f76ae5062b",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "cf0f4f1520628f806746f73d03c38c0870858e5fbea8187f48cf314c72b6db7b",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -19,15 +49,15 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-c8ccdcfd0efa8e31",
+      "candidate_id": "cand-f4c69ea84cf48a97",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "3d051fe48be8c4a169b09023213e31a6a9e5d4e8d310272b8bdf428288a75715",
-      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
+      "source_digest": "b4caa529a0ecefb01eb81bcd09b24fe40a397cbb2c5ed6739d53ef6ddcacceb7",
+      "source_ref": "https://github.com/tomazb/multi-agent-software-engineer",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -43,36 +73,6 @@
       "ref": "main",
       "source_digest": "e713b0730c7daa3d315d289faf3756ac1fa0d6c1bfa5d0cc4eea3973b1137873",
       "source_ref": "https://github.com/shaohsuanw803-boop/deskpilot",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-fc70b1b91a16c0d8",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "056ac98f155a340224b92862e01caa1dfebfec368a616c6b60717eafe40c4695",
-      "source_ref": "https://github.com/synaptiai/flow-harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-4537a02f19cd16bf",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "6fee287a90a5e960dec2624e9538a035b535e6cc438f92f59c49695ff03718d7",
-      "source_ref": "https://github.com/inaridiy/CF-Open-Agents-API",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -154,14 +154,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-111f314f555e62e2",
+      "candidate_id": "cand-b82c01a4e03c5865",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "287d6f29f26aeca4204d4cf71296db34b31bb6cb998b011a628116ff3f3e17fa",
+      "source_digest": "6313696a4d30c6946d29bf27d29f4bbdfa0a4f788219731ebb396dc4ba6bcbf6",
       "source_ref": "https://github.com/teolex2020/aura-memory",
       "status": "UNTRUSTED_EVIDENCE"
     },
