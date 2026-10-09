@@ -244,6 +244,7 @@ def load_memory(store) -> list[Mapping[str, Any]]:
     if not isinstance(state, list):
         raise ValueError("memory WAL state must be a list")
     result = []
+    seen_mutation_ids = set()
     for envelope in state:
         if not isinstance(envelope, Mapping):
             raise ValueError("invalid memory mutation envelope")
@@ -252,7 +253,10 @@ def load_memory(store) -> list[Mapping[str, Any]]:
         if envelope.get("authority") != "AIOS_CONTROL_PLANE":
             raise ValueError("invalid memory mutation authority")
         decision_id = _text(envelope.get("decision_id"), "decision_id")
-        _text(envelope.get("mutation_id"), "mutation_id")
+        mutation_id = _text(envelope.get("mutation_id"), "mutation_id")
+        if mutation_id in seen_mutation_ids:
+            raise ValueError("duplicate memory mutation_id in durable history")
+        seen_mutation_ids.add(mutation_id)
         if memory["predecessor"] != decision_id:
             raise ValueError("memory predecessor does not match persisted decision_id")
         _text(envelope.get("contract_id"), "contract_id")
