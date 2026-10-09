@@ -88,6 +88,35 @@ def test_memory_write_requires_governed_mutation_and_lineage(tmp_path):
     assert [item["memory_id"] for item in loaded] == [_record()["memory_id"], second["memory_id"]]
 
 
+def test_memory_mutation_id_is_idempotent_and_cannot_be_reused(tmp_path):
+    auth = _authorization(str(tmp_path / "aios"))
+    store = WalStateStore(str(tmp_path / "state.json"))
+    record = _record()
+    first = persist_memory(
+        store, record, decision_id="D-1", mutation_id="M-idempotent",
+        authority="AIOS_CONTROL_PLANE", **auth,
+    )
+    wal_after_first = store.wal_path.read_bytes()
+    replay = persist_memory(
+        store, record, decision_id="D-1", mutation_id="M-idempotent",
+        authority="AIOS_CONTROL_PLANE", **auth,
+    )
+    assert replay == first
+    assert store.wal_path.read_bytes() == wal_after_first
+
+    different = build_memory_record(
+        memory_type="SEMANTIC", content={"topic": "different payload"},
+        evidence_refs=[["EVIDENCE", "EV-1"]], predecessor="D-1",
+        authority="AIOS_CONTROL_PLANE", source_commit="abc",
+    ).as_dict()
+    with pytest.raises(ValueError, match="already belongs"):
+        persist_memory(
+            store, different, decision_id="D-1", mutation_id="M-idempotent",
+            authority="AIOS_CONTROL_PLANE", **auth,
+        )
+    assert load_memory(store) == [record]
+
+
 def test_memory_write_fails_closed_for_forged_or_insufficient_authority(tmp_path):
     store = WalStateStore(str(tmp_path / "state.json"))
     good = _authorization(str(tmp_path / "good"))
