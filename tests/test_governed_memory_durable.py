@@ -111,6 +111,35 @@ def test_memory_write_fails_closed_for_forged_or_insufficient_authority(tmp_path
                        authority="AIOS_CONTROL_PLANE", **bad_capability)
 
 
+def test_memory_write_rejects_missing_decision_and_unresolved_evidence(tmp_path):
+    auth = _authorization(str(tmp_path / "aios"))
+    store = WalStateStore(str(tmp_path / "state.json"))
+    with pytest.raises(ValueError, match="persisted DECISION"):
+        persist_memory(store, _record(), decision_id="D-999", mutation_id="M-9",
+                       authority="AIOS_CONTROL_PLANE", **auth)
+
+    missing_evidence = build_memory_record(
+        memory_type="SEMANTIC", content={"topic": "missing evidence"},
+        evidence_refs=[["EVIDENCE", "EV-999"]], predecessor="D-1",
+        authority="AIOS_CONTROL_PLANE", source_commit="abc",
+    ).as_dict()
+    with pytest.raises(ValueError, match="unresolved at write time"):
+        persist_memory(store, missing_evidence, decision_id="D-1", mutation_id="M-10",
+                       authority="AIOS_CONTROL_PLANE", **auth)
+
+
+def test_memory_write_rejects_tampered_persisted_decision(tmp_path):
+    auth = _authorization(str(tmp_path / "aios"))
+    decision_path = tmp_path / "aios" / "decisions" / "D-1.json"
+    decision = json.loads(decision_path.read_text(encoding="utf-8"))
+    decision["statement"] = "tampered decision"
+    decision_path.write_text(json.dumps(decision), encoding="utf-8")
+    with pytest.raises(Exception):
+        persist_memory(WalStateStore(str(tmp_path / "state.json")), _record(),
+                       decision_id="D-1", mutation_id="M-11",
+                       authority="AIOS_CONTROL_PLANE", **auth)
+
+
 def test_unknown_execution_lineage_never_materializes(tmp_path):
     auth = _authorization(str(tmp_path / "aios"))
     store = WalStateStore(str(tmp_path / "state.json"))
