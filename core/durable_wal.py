@@ -119,6 +119,54 @@ class DurableTransitionLog:
                 os.fsync(fh.fileno())
             return dict(record)
 
+    def append_once(
+        self, *, transition: str, payload: Mapping[str, Any],
+        unique_path: tuple[str, ...], unique_value: Any,
+    ) -> tuple[Mapping[str, Any], bool]:
+        """Atomically append only if no committed record has the same key.
+
+        The key is resolved inside the WAL process lock, so concurrent writers
+        cannot both commit the same idempotency key.
+        """
+        if not isinstance(transition, str) or not transition.strip():
+            raise ValueError("transition must be a non-empty string")
+        if not isinstance(payload, Mapping):
+            raise ValueError("payload must be a mapping")
+        if not unique_path or not all(isinstance(part, str) and part for part in unique_path):
+            raise ValueError("unique_path must contain non-empty strings")
+
+        def resolve(value, path):
+            current = value
+            for part in path:
+                if not isinstance(current, Mapping) or part not in current:
+                    return None
+                current = current[part]
+            return current
+
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        with self._lock, _ProcessFileLock(self.path):
+            replay = self._replay_unlocked()
+            if replay.dropped_tail_records:
+                self._truncate_incomplete_tail()
+                replay = self._replay_unlocked()
+            for existing in replay.records:
+                if existing.get("transition") != transition:
+                    continue
+                if resolve(existing.get("payload"), unique_path) == unique_value:
+                    return dict(existing), False
+            body = {
+                "version": self.VERSION,
+                "sequence": len(replay.records) + 1,
+                "transition": transition,
+                "payload": dict(payload),
+            }
+            record = {**body, "checksum": self._checksum(body)}
+            with open(self.path, "ab") as fh:
+                fh.write(self._canonical(record))
+                fh.flush()
+                os.fsync(fh.fileno())
+            return dict(record), True
+
     def replay(self) -> WalReplay:
         """Replay only while holding the cross-process WAL lock."""
         with self._lock, _ProcessFileLock(self.path):
