@@ -188,6 +188,8 @@ def persist_memory(store, record: Mapping[str, Any], *, decision_id: str,
         raise ValueError("contract has no ACTIVE MEMORY_WRITE capability")
     _text(decision_id, "decision_id")
     _text(mutation_id, "mutation_id")
+    if record["predecessor"] != decision_id:
+        raise ValueError("memory predecessor must match the governed decision_id")
     # A caller-supplied ID is not a decision receipt: resolve the canonical
     # persisted DECISION and require its integrity-bound mutation event.
     decision_path = os.path.join(aios_dir, "decisions", decision_id + ".json")
