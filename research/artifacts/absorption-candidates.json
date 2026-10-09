@@ -4,30 +4,30 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-242d149a53975bde",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "9e1041d183d26e7aa4e0c7e941072c42c4b7120dd162a6f62f8c4584dd3cf9c9",
-      "source_ref": "https://github.com/keshav9926/drydock",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-169121dbe4862ca9",
+      "candidate_id": "cand-02ea64c15fb5ca53",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "ccc49e685441e3e6ae0e1ea3a034ffa1edb421254aa690ff9ecb68d204bf0fa0",
+      "source_digest": "dbcd7b773bb0ceb2ed8e9bf977f2fd5598b3ed60e05bf919bd0f4ae989367309",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-182cad64efbf01ca",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "4899549bc2623a2dc98417c567a43a523c548bb75f3d4579fc0b260544e073f8",
+      "source_ref": "https://github.com/keshav9926/drydock",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {

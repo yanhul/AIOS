@@ -2,24 +2,24 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
-      "description": "Keel, a durable execution runtime for AI agents, and Crashproof, the harness that tries to break it and everyone else's.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "keshav9926/drydock",
-      "source_digest": "9e1041d183d26e7aa4e0c7e941072c42c4b7120dd162a6f62f8c4584dd3cf9c9",
-      "source_ref": "https://github.com/keshav9926/drydock",
-      "stars": 0,
-      "updated_at": "2026-10-09T07:05:49Z"
-    },
-    {
       "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "ccc49e685441e3e6ae0e1ea3a034ffa1edb421254aa690ff9ecb68d204bf0fa0",
+      "source_digest": "dbcd7b773bb0ceb2ed8e9bf977f2fd5598b3ed60e05bf919bd0f4ae989367309",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "stars": 0,
-      "updated_at": "2026-10-09T06:47:16Z"
+      "updated_at": "2026-10-09T08:38:52Z"
+    },
+    {
+      "description": "Keel, a durable execution runtime for AI agents, and Crashproof, the harness that tries to break it and everyone else's.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "keshav9926/drydock",
+      "source_digest": "4899549bc2623a2dc98417c567a43a523c548bb75f3d4579fc0b260544e073f8",
+      "source_ref": "https://github.com/keshav9926/drydock",
+      "stars": 0,
+      "updated_at": "2026-10-09T07:05:49Z"
     },
     {
       "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
