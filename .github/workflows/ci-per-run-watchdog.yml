@@ -30,6 +30,8 @@ jobs:
           RUN_ID: ${{ github.event.workflow_run.id }}
           REPOSITORY: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          CI_EVENT: ${{ github.event.workflow_run.event }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
           set -euo pipefail
           deadline=$(($(date +%s) + 2040))
@@ -95,10 +97,47 @@ jobs:
           done
 
           if [ "$conclusion" = "success" ]; then
-            echo "CI_TERMINAL_SUCCESS -> independent evidence verification"
+            echo "CI_TERMINAL_SUCCESS"
+
+            # Product workload receipts belong to Product E2E, not to the unit-CI run.
+            # Only main push runs have a required same-SHA Product E2E companion.
+            if [ "$CI_EVENT" != "push" ] || [ "$HEAD_BRANCH" != "main" ]; then
+              echo "EVIDENCE_WATCHDOG=SKIP_NON_MAIN_PUSH event=$CI_EVENT branch=$HEAD_BRANCH"
+              exit 0
+            fi
+
+            e2e_run_id=""
+            evidence_deadline=$(($(date +%s) + 600))
+            while [ -z "$e2e_run_id" ]; do
+              runs_json="$(gh api "repos/$REPOSITORY/actions/runs?head_sha=$HEAD_SHA&per_page=100")"
+              e2e_run_id="$(printf '%s' "$runs_json" | python -c '
+          import json,sys
+          runs=json.load(sys.stdin).get("workflow_runs", [])
+          matches=[r for r in runs if r.get("name")=="Product E2E Conformance" and r.get("event")=="push" and r.get("head_branch")=="main" and r.get("head_sha")==sys.argv[1]]
+          matches.sort(key=lambda r:r.get("id",0), reverse=True)
+          print(matches[0]["id"] if matches else "")
+          ' "$HEAD_SHA")"
+              if [ -n "$e2e_run_id" ]; then
+                artifacts_json="$(gh api "repos/$REPOSITORY/actions/runs/$e2e_run_id/artifacts")"
+                has_artifact="$(printf '%s' "$artifacts_json" | python -c '
+          import json,sys
+          d=json.load(sys.stdin)
+          print("yes" if any(a.get("name")==("aios-product-e2e-"+sys.argv[1]) and not a.get("expired") for a in d.get("artifacts", [])) else "no")
+          ' "$e2e_run_id")"
+                if [ "$has_artifact" = "yes" ]; then
+                  break
+                fi
+                e2e_run_id=""
+              fi
+              if [ "$(date +%s)" -ge "$evidence_deadline" ]; then
+                echo "EVIDENCE_WATCHDOG_BLOCKED: no same-SHA Product E2E evidence artifact within 10 minutes"
+                exit 1
+              fi
+              sleep 15
+            done
 
             mkdir -p "$RUNNER_TEMP/aios-evidence"
-            gh run download "$RUN_ID" -n "aios-ci-evidence-$RUN_ID" -D "$RUNNER_TEMP/aios-evidence"
+            gh run download "$e2e_run_id" -n "aios-product-e2e-$e2e_run_id" -D "$RUNNER_TEMP/aios-evidence"
 
             python - <<'PY'
           import json, os
@@ -122,6 +161,7 @@ jobs:
               assert obj.get("status") in allowed, path.name
               assert obj.get("evidence_refs"), path.name
               assert obj.get("verification_refs"), path.name
+              assert obj.get("workload_id"), path.name
           print("EVIDENCE_WATCHDOG=PASS")
           PY
           else
