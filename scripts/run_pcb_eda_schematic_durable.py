@@ -221,12 +221,47 @@ def main() -> int:
             raise ValueError("schematic workload identity is missing")
         if evidence.get("source_commit") != a.source_commit or evidence.get("kit_commit") != identity.get("kit_commit"):
             raise ValueError("schematic receipt source/kit commit lineage mismatch")
+    def validate_state_patch(patch: Mapping[str, Any], receipt: Mapping[str, Any], state: Mapping[str, Any]) -> None:
+        evidence = receipt.get("evidence")
+        if not isinstance(evidence, Mapping):
+            raise ValueError("schematic state patch has no receipt evidence")
+        artifact = Path(str(evidence.get("phase_receipt", ""))).resolve(strict=True)
+        output_root = a.output.resolve(strict=True)
+        if not artifact.is_relative_to(output_root) or artifact.name != "phase_receipt.json":
+            raise ValueError("schematic state patch references an ungoverned artifact")
+        raw = artifact.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != evidence.get("phase_receipt_sha256"):
+            raise ValueError("schematic state patch receipt digest mismatch")
+        actual = json.loads(raw.decode("utf-8"))
+        validate_schematic_receipt(actual)
+        status = actual["status"]
+        inventory = actual["evidence"]["finding_inventory"]
+        expected_pipeline = {
+            "schematic": "VERIFIED" if status == "PASS" else "BLOCKED",
+            "placement": "READY" if status == "PASS" else "BLOCKED_BY_SCHEMATIC",
+            "routing": "BLOCKED_BY_PLACEMENT" if status == "PASS" else "BLOCKED_BY_SCHEMATIC",
+        }
+        expected = {
+            "active_phase": "SCHEMATIC_VERIFIED" if status == "PASS" else "SCHEMATIC",
+            "pipeline": expected_pipeline,
+            "active_blockers": list(inventory.get("blocking") or inventory.get("errors") or []),
+            "latest_attempt_dir": str(artifact.parent.resolve()),
+            "latest_receipt": str(artifact),
+            "latest_run": a.run_id,
+            "next_legal_actions": ["placement"] if status == "PASS" else ["inspect_receipt", "inspect_source", "patch", "commit", "wait_ci"],
+            "forbidden_actions": ["routing", "claim_pass"] if status == "PASS" else ["placement", "routing", "claim_pass"],
+            "receipt": dict(receipt),
+        }
+        if dict(patch) != expected:
+            raise ValueError("schematic state patch does not match validated phase receipt")
+
     policy = LoopPolicy(
         max_steps=1,
         terminal_evaluator=lambda verification, state: verification.get("status") if verification.get("status") in {"PASS", "BLOCKED"} else None,
         action_authorizer=lambda decision, state: None if decision.get("logical_operation_id") == "pcb.eda.schematic" else (_ for _ in ()).throw(PermissionError("unauthorized phase")),
         require_execution_receipt=True,
         execution_receipt_validator=validate_execution_receipt,
+        state_patch_validator=validate_state_patch,
         resume_validator=lambda state: validate_resume_identity(state, identity),
         continue_contract_builder=build_continue_contract,
     )
