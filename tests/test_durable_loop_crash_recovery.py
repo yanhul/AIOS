@@ -405,3 +405,5 @@ if __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--child":
     _child(sys.argv[2], sys.argv[3], sys.argv[4])
 elif __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--crash-after-effect":
     _crash_after_provider_effect(sys.argv[2], sys.argv[3], sys.argv[4])
+elif __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--crash-after-receipt":
+    _crash_after_validated_receipt(sys.argv[2], sys.argv[3], sys.argv[4])
