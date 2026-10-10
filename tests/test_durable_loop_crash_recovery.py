@@ -623,6 +623,45 @@ def test_resume_blocks_duplicate_effect_id_in_persisted_history_before_provider_
     assert store.load()["history"] == state["history"]
 
 
+def test_unknown_history_receipt_can_be_explicitly_reconciled_without_replaying_action(tmp_path):
+    state_path = tmp_path / "unknown-reconcile-state.json"
+    wal_path = tmp_path / "unknown-reconcile-state.wal.jsonl"
+    marker_path = tmp_path / "unknown-reconcile-actions.log"
+    store = WalStateStore(str(state_path), str(wal_path))
+
+    class UnknownExecutor(_Executor):
+        def verify(self, action_result, state):
+            result = super().verify(action_result, state)
+            result["receipt"]["status"] = "UNKNOWN"
+            result["receipt"]["evidence"] = {"reason": "provider outcome initially unknown"}
+            return result
+
+    store.save(_initial_state())
+    blocked = run_durable_loop(UnknownExecutor(marker_path), store, _policy())
+    assert blocked["status"] == "BLOCKED"
+    intent = blocked["in_flight_attempt"]
+    assert blocked["history"][-1]["verification"]["receipt"]["status"] == "UNKNOWN"
+    assert marker_path.read_text(encoding="utf-8").splitlines() == ["action-step-0"]
+
+    observed = {
+        "effect_id": intent["effect_id"],
+        "attempt_id": intent["attempt_id"],
+        "status": "OBSERVED",
+        "evidence": {"provider_receipt": "confirmed-after-recovery"},
+    }
+    reconciled = reconcile_in_flight_attempt(
+        store, _policy(), observed, authorizer=lambda *_: None
+    )
+
+    assert reconciled["status"] == "RUNNING"
+    assert reconciled["step"] == 1
+    assert "in_flight_attempt" not in reconciled
+    assert len(reconciled["history"]) == 1
+    assert reconciled["history"][-1]["verification"]["receipt"]["status"] == "OBSERVED"
+    assert marker_path.read_text(encoding="utf-8").splitlines() == ["action-step-0"]
+    assert store.load() == reconciled
+
+
 if __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--child":
     _child(sys.argv[2], sys.argv[3], sys.argv[4])
 elif __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--crash-after-effect":
