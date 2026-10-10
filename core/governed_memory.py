@@ -111,14 +111,13 @@ def build_memory_record(
         source_commit=source_commit,
         version=version,
         status=status,
-    ),\n        evidence_refs=refs,\n        predecessor=predecessor,\n        authority=authority,\n        source_commit=source_commit,\n        version=version,\n        status=status,\n    )
+    )
 
 
 def validate_memory_record(record: Mapping[str, Any]) -> bool:
     if not isinstance(record, Mapping):
         raise ValueError("memory record must be a mapping")
-    required = {"memory_id","memory_type","content","evidence_refs","predecessor",
-                "authority","source_commit","version","status"}
+    required = {"memory_id", "memory_type", "content", "evidence_refs", "predecessor", "authority", "source_commit", "version", "status"}
     missing = required - set(record)
     if missing:
         raise ValueError(f"memory record missing fields: {sorted(missing)}")
@@ -166,8 +165,6 @@ def retrieve_memory(
         _, unresolved = evidence_resolver([list(ref) for ref in raw["evidence_refs"]])
         if unresolved:
             continue
-        # source_commit is provenance, not a freshness oracle. Prior-commit
-        # memories remain candidates; callers must reconcile them with current state.
         if raw["memory_type"] not in allowed:
             continue
         haystack = canonical_json(raw["content"]).casefold()
@@ -179,11 +176,4 @@ def retrieve_memory(
     return result
 
 
-__all__ = [
-    "MEMORY_TYPES",
-    "MEMORY_STATUSES",
-    "MemoryRecord",
-    "build_memory_record",
-    "validate_memory_record",
-    "retrieve_memory",
-]
+__all__ = ["MEMORY_TYPES", "MEMORY_STATUSES", "MemoryRecord", "build_memory_record", "validate_memory_record", "retrieve_memory"]
