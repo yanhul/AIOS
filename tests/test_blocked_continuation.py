@@ -37,9 +37,10 @@ def test_durable_loop_can_redispatch_only_after_verified_evidence():
             calls.append(decision["logical_operation_id"])
             return {"ok": True}
         def verify(self, result, state):
+            intent = state["in_flight_attempt"]
             if len(calls) == 1:
-                return {"status": "BLOCKED", "blockers": [{"id": "topology"}], "receipt": {"effect_id":"e1","attempt_id":"a1","status":"OBSERVED","evidence":{"findings":"f1"}}}
-            return {"status": "FIXED", "receipt": {"effect_id":"e2","attempt_id":"a2","status":"OBSERVED","evidence":{"findings":"f2"}}}
+                return {"status": "BLOCKED", "blockers": [{"id": "topology"}], "receipt": {"effect_id":intent["effect_id"],"attempt_id":intent["attempt_id"],"status":"OBSERVED","evidence":{"findings":"f1"}}}
+            return {"status": "FIXED", "receipt": {"effect_id":intent["effect_id"],"attempt_id":intent["attempt_id"],"status":"OBSERVED","evidence":{"findings":"f2"}}}
 
     def continuation(verification, state):
         assert verification["status"] == "BLOCKED"
