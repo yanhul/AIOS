@@ -127,8 +127,14 @@ def _validate_terminal_evidence(state: Mapping[str, Any]) -> None:
         raise ValueError("terminal evidence status does not match state")
     if not isinstance(evidence.get("step"), int) or evidence["step"] != state.get("step"):
         raise ValueError("terminal evidence step does not match state")
-    if "verification" not in evidence:
-        raise ValueError("terminal evidence verification is missing")
+    verification = evidence.get("verification")
+    if not isinstance(verification, Mapping):
+        raise ValueError("terminal evidence verification is missing or invalid")
+    if state.get("status") == "PASS":
+        if not verification:
+            raise ValueError("PASS terminal evidence requires non-empty verification evidence")
+        if set(verification) == {"reason"}:
+            raise ValueError("PASS cannot use synthesized reason-only terminal evidence")
 
 @dataclass
 class MemoryStateStore:
@@ -179,12 +185,19 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
 def _persist_state(state: dict[str, Any], store: StateStore, policy: LoopPolicy) -> None:
     """Persist a complete durable snapshot with its continuation projection."""
     candidate = deepcopy(state)
+    if candidate.get("status") == "PASS" and not isinstance(candidate.get("terminal_evidence"), Mapping):
+        # PASS must be backed by the actual terminal evaluation path. Never
+        # manufacture evidence at persistence time to make a success resumable.
+        raise ValueError("PASS cannot be persisted without immutable terminal evidence")
     if candidate.get("status") in policy.terminal_states and not isinstance(candidate.get("terminal_evidence"), Mapping):
+        # Synthetic evidence is permitted only for non-success terminal states.
         candidate["terminal_evidence"] = {
             "step": candidate.get("step", 0),
             "status": candidate["status"],
             "verification": {"reason": candidate.get("block_reason", "TERMINAL_STATE")},
         }
+    if candidate.get("status") == "PASS":
+        _validate_terminal_evidence(candidate)
     if policy.continue_contract_builder is not None:
         contract = policy.continue_contract_builder(deepcopy(candidate))
         if not isinstance(contract, Mapping):
