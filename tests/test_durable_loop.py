@@ -202,8 +202,8 @@ class ReceiptExecutor(FakeExecutor):
         return {
             "value": action_result,
             "receipt": {
-                "effect_id": "effect-1",
-                "attempt_id": f"attempt-{state['step']}",
+                "effect_id": state["in_flight_attempt"]["effect_id"],
+                "attempt_id": state["in_flight_attempt"]["attempt_id"],
                 "status": "OBSERVED",
                 "evidence": {"result": action_result},
             },
