@@ -750,6 +750,10 @@ def test_resume_rejects_fabricated_nonempty_pass_evidence():
     assert result["status"] == "BLOCKED"
     assert "matching final history entry" in result["block_reason"]
     assert store.load()["status"] == "BLOCKED"
+    assert store.load()["terminal_evidence"]["status"] == "BLOCKED"
+    resumed_again = run_durable_loop(FakeExecutor(), store, _policy(max_steps=1))
+    assert resumed_again["status"] == "BLOCKED"
+    assert "terminal evidence status does not match state" not in resumed_again["block_reason"]
 
 
 def test_resume_rejects_synthesized_reason_only_pass_evidence():
