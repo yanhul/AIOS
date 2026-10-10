@@ -30,12 +30,13 @@ def _policy(max_steps=5, terminal_evaluator=None, **kwargs):
         kwargs["execution_receipt_validator"] = lambda receipt, state: None
     if kwargs.get("require_execution_receipt") and "state_patch_validator" not in kwargs:
         kwargs["state_patch_validator"] = lambda patch, receipt, state: None
+    action_authorizer = kwargs.pop("action_authorizer", lambda decision, state: None)
     return LoopPolicy(
         max_steps=max_steps,
         terminal_evaluator=terminal_evaluator or (
             lambda verification, state: "PASS" if verification["value"] >= 3 else None
         ),
-        action_authorizer=lambda decision, state: None,
+        action_authorizer=action_authorizer,
         **kwargs,
     )
 
