@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: Blocked continuation requires verified evidence and receipt-bound execution intents.
+# AIOS-REGRESSION: Prevent redispatch without verified evidence and prevent receipt/intent lineage mismatch.
+# AIOS-OWNER: AIOS governed durable execution and PCB EDA continuation.
+# AIOS-COVERAGE-GAP: Exercise authorized continuation after an observed receipt.
+# AIOS-BASELINE: Validate the durable-loop blocked continuation contract.
+
 from core.blocked_continuation import classify_blockers, plan_blocked_continuation
 from core.durable_loop import LoopPolicy, MemoryStateStore, run_durable_loop
 
