@@ -258,10 +258,57 @@ def main():
         if actual.get("gates") != evidence.get("gates"):
             raise ValueError("PCB receipt gates do not match the persisted artifact")
 
+    def validate_state_patch(patch: Mapping[str, Any], receipt: Mapping[str, Any], state: Mapping[str, Any]) -> None:
+        evidence = receipt.get("evidence")
+        intent = state.get("in_flight_attempt")
+        if not isinstance(evidence, Mapping) or not isinstance(intent, Mapping):
+            raise ValueError("PCB state patch lacks receipt evidence or execution intent")
+        decision = intent.get("decision")
+        operation = decision.get("logical_operation_id") if isinstance(decision, Mapping) else None
+        if operation == "pcb.eda.discover_evidence":
+            discovery = evidence.get("discovery_result")
+            if not isinstance(discovery, Mapping):
+                raise ValueError("discovery state patch has no source result")
+            refs = discovery.get("verified_evidence_refs")
+            unresolved = discovery.get("unresolved_requirements")
+            if not isinstance(refs, list) or not isinstance(unresolved, list):
+                raise ValueError("discovery state patch source lists are invalid")
+            expected = {
+                "verified_evidence_refs": refs,
+                "blocked_requirements": unresolved,
+                "discovery": dict(discovery),
+            }
+            if discovery.get("status") == "PASS":
+                expected["continuation"] = {
+                    "authority": "AIOS_CONTROL_PLANE",
+                    "evidence_refs": refs,
+                    "next_operation_id": "pcb.eda@1",
+                    "reason": "discovery verified required blocker evidence",
+                }
+            if dict(patch) != expected:
+                raise ValueError("discovery state patch differs from validated discovery receipt")
+            return
+        summary = Path(str(evidence.get("summary", ""))).resolve(strict=True)
+        raw = summary.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != evidence.get("summary_sha256"):
+            raise ValueError("PCB state patch receipt digest mismatch")
+        actual = json.loads(raw.decode("utf-8"))
+        validate_kit_receipt(actual)
+        blockers = actual.get("blockers") or actual.get("findings") or []
+        kinds = classify_blockers({"blockers": blockers})
+        plan = plan_blocked_continuation({"blockers": blockers}, state) if kinds else None
+        expected = {
+            "latest_attempt_dir": str(summary.parent.resolve()),
+            "blocked_requirements": list(plan.get("requires_verification", [])) if plan else [],
+        }
+        if dict(patch) != expected:
+            raise ValueError("PCB state patch does not match validated Audit Kit receipt")
+
     policy = LoopPolicy(
         max_steps=a.max_steps, terminal_evaluator=terminal,
         action_authorizer=lambda d, s: None, require_execution_receipt=True,
         execution_receipt_validator=validate_execution_receipt,
+        state_patch_validator=validate_state_patch,
         blocked_continuation=continuation,
     )
     result = run_durable_loop(PcbExecutor(a), JsonStateStore(a.state), policy)
