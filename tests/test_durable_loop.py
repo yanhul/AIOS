@@ -81,6 +81,24 @@ def test_action_requires_control_plane_authorization():
     assert calls == [{"next": 1}]
 
 
+def test_action_authorizer_false_return_fails_closed_before_act():
+    class NoActExecutor(FakeExecutor):
+        def __init__(self):
+            self.act_calls = 0
+        def act(self, decision, state):
+            self.act_calls += 1
+            return super().act(decision, state)
+
+    executor = NoActExecutor()
+    result = run_durable_loop(
+        executor,
+        MemoryStateStore(),
+        _policy(action_authorizer=lambda decision, state: False),
+    )
+    assert result["status"] == "BLOCKED"
+    assert "must return None" in result["block_reason"]
+    assert executor.act_calls == 0
+
 def test_resume_with_stale_policy_is_blocked():
     store = MemoryStateStore({"step": 1, "status": "RUNNING", "history": [], "policy_digest": "old"})
     result = run_durable_loop(FakeExecutor(), store, _policy(policy_digest="new"))
