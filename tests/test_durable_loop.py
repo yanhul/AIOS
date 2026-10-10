@@ -454,3 +454,34 @@ def test_rejected_receipt_cannot_persist_verifier_state_patch():
     assert store.load()["status"] == "BLOCKED"
     assert "verified_evidence_refs" not in store.load()
     assert "continuation" not in store.load()
+
+
+def test_unknown_receipt_cannot_persist_verifier_state_patch():
+    class UnknownReceiptWithPatchExecutor(ReceiptExecutor):
+        def verify(self, action_result, state):
+            result = super().verify(action_result, state)
+            result["receipt"]["status"] = "UNKNOWN"
+            result["state_patch"] = {
+                "verified_evidence_refs": ["unobserved-effect"],
+                "continuation": {"operation_id": "unauthorized-next-step"},
+            }
+            return result
+
+    store = MemoryStateStore()
+    result = run_durable_loop(
+        UnknownReceiptWithPatchExecutor(),
+        store,
+        _policy(
+            max_steps=1,
+            require_execution_receipt=True,
+            terminal_evaluator=lambda verification, state: None,
+        ),
+    )
+
+    assert result["status"] == "BLOCKED"
+    assert "UNKNOWN execution receipt" in result["block_reason"]
+    assert "verified_evidence_refs" not in result
+    assert "continuation" not in result
+    assert store.load()["status"] == "BLOCKED"
+    assert "verified_evidence_refs" not in store.load()
+    assert "continuation" not in store.load()
