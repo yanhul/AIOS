@@ -504,6 +504,7 @@ def test_tampered_validated_receipt_is_rejected_before_authorization(tmp_path):
     mutations = {
         "effect_id": lambda receipt: receipt.update(effect_id="forged-effect"),
         "attempt_id": lambda receipt: receipt.update(attempt_id="forged-attempt"),
+        "provider_identity": lambda receipt: receipt["evidence"].update(provider="forged-provider"),
         "provider_evidence": lambda receipt: receipt["evidence"].update(receipt="forged-provider-evidence"),
     }
     for case, mutate in mutations.items():
