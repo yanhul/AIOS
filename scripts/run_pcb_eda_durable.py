@@ -6,20 +6,20 @@ specific evidence required by the observed blocker, persists those verified
 references, and only then permits a new pcb.eda@1 attempt.
 """
 from __future__ import annotations
-import argparse, json
+import argparse, hashlib, json
 from pathlib import Path
 from typing import Any, Mapping
 
 from adapters.pcb_eda.adapter import run_kit
-from core.pcb_eda import PcbEdaRequest
+from core.pcb_eda import PcbEdaRequest, validate_kit_receipt
 from core.durable_loop import LoopPolicy, run_durable_loop
 from core.blocked_continuation import classify_blockers, plan_blocked_continuation
+from core.wal_state_store import WalStateStore
 
 
-class JsonStateStore:
-    def __init__(self, path: Path): self.path = path
-    def load(self): return json.loads(self.path.read_text()) if self.path.exists() else None
-    def save(self, state): self.path.write_text(json.dumps(state, indent=2, default=str), encoding="utf-8")
+class JsonStateStore(WalStateStore):
+    """Compatibility name backed by the fsynced WAL, not a plain JSON overwrite."""
+    pass
 
 
 def _load_json(path: Path) -> Mapping[str, Any]:
@@ -157,7 +157,7 @@ class PcbExecutor:
                     "effect_id": f"{self.args.task_id}:effect:{state.get('step', 0)+1}",
                     "attempt_id": f"{self.args.task_id}:attempt:{state.get('step', 0)+1}",
                     "status": "OBSERVED",
-                    "evidence": result,
+                    "evidence": {"provider": "aios-control-plane-evidence-discovery", "discovery_result": result},
                 },
             }
         receipt = result["receipt"]
@@ -183,8 +183,11 @@ class PcbExecutor:
                 "attempt_id": f"{self.args.task_id}:attempt:{state.get('step', 0)+1}",
                 "status": "OBSERVED",
                 "evidence": {
+                    "provider": "altium-audit-kit",
                     "summary": str(Path(attempt_dir) / "summary.json"),
+                    "summary_sha256": hashlib.sha256((Path(attempt_dir) / "summary.json").read_bytes()).hexdigest(),
                     "receipt_schema": receipt.get("schema"),
+                    "kit_status": receipt.get("status"),
                     "terminal_reason": receipt.get("terminal_reason"),
                     "gates": receipt.get("gates"),
                 },
@@ -213,16 +216,152 @@ def main():
 
     def terminal(v, s):
         status = v.get("status")
-        if status == "PASS": return "PASS"
-        if status == "BLOCKED": return "BLOCKED"
-        return None
+        outer = v.get("receipt")
+        evidence = outer.get("evidence") if isinstance(outer, Mapping) else None
+        if not isinstance(evidence, Mapping):
+            raise ValueError("terminal PCB verdict has no validated execution receipt")
+        if evidence.get("provider") == "aios-control-plane-evidence-discovery":
+            if status == "READY":
+                return None
+            if status == "BLOCKED":
+                return "BLOCKED"
+            raise ValueError("discovery terminal status is unauthorized")
+        summary = Path(str(evidence.get("summary", ""))).resolve(strict=True)
+        output_root = a.output.resolve(strict=True)
+        if not summary.is_relative_to(output_root) or summary.name != "summary.json":
+            raise ValueError("terminal PCB verdict references an ungoverned artifact")
+        raw = summary.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != evidence.get("summary_sha256"):
+            raise ValueError("terminal PCB receipt digest mismatch")
+        actual = json.loads(raw.decode("utf-8"))
+        validate_kit_receipt(actual)
+        if status != actual.get("status") or status != evidence.get("kit_status"):
+            raise ValueError("terminal PCB verdict conflicts with validated Audit Kit status")
+        if status in {"PASS", "BLOCKED", "INCONCLUSIVE"}:
+            return status
+        raise ValueError(f"unauthorized PCB terminal status: {status!r}")
+
+    def validate_execution_receipt(receipt: Mapping[str, Any], state: Mapping[str, Any]) -> None:
+        evidence = receipt.get("evidence")
+        intent = state.get("in_flight_attempt")
+        if not isinstance(evidence, Mapping) or not isinstance(intent, Mapping):
+            raise ValueError("PCB receipt evidence or persisted intent is missing")
+        if receipt.get("effect_id") != intent.get("effect_id") or receipt.get("attempt_id") != intent.get("attempt_id"):
+            raise ValueError("PCB receipt does not match persisted execution intent")
+        decision = intent.get("decision")
+        operation = decision.get("logical_operation_id") if isinstance(decision, Mapping) else None
+        if operation == "pcb.eda.discover_evidence":
+            if evidence.get("provider") != "aios-control-plane-evidence-discovery":
+                raise ValueError("evidence-discovery receipt provider identity is invalid")
+            discovery = evidence.get("discovery_result")
+            if not isinstance(discovery, Mapping) or discovery.get("status") not in {"PASS", "BLOCKED"}:
+                raise ValueError("evidence-discovery receipt is incomplete")
+            refs = discovery.get("verified_evidence_refs")
+            if discovery.get("status") == "PASS" and (
+                not isinstance(refs, list) or not refs
+                or not all(isinstance(ref, str) and ref.strip() for ref in refs)
+            ):
+                raise ValueError("evidence-discovery PASS lacks verified evidence refs")
+            return
+        if evidence.get("provider") != "altium-audit-kit":
+            raise ValueError("PCB receipt provider identity is invalid")
+        summary = Path(str(evidence.get("summary", ""))).resolve(strict=True)
+        output_root = a.output.resolve(strict=True)
+        if not summary.is_relative_to(output_root) or summary.name != "summary.json":
+            raise ValueError("PCB receipt artifact escapes the governed output directory")
+        raw = summary.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != evidence.get("summary_sha256"):
+            raise ValueError("PCB receipt artifact digest mismatch")
+        actual = json.loads(raw.decode("utf-8"))
+        validate_kit_receipt(actual)
+        if actual.get("schema") != evidence.get("receipt_schema"):
+            raise ValueError("PCB receipt schema does not match the persisted artifact")
+        if actual.get("status") != evidence.get("kit_status"):
+            raise ValueError("PCB receipt status does not match the persisted artifact")
+        if actual.get("terminal_reason") != evidence.get("terminal_reason"):
+            raise ValueError("PCB receipt terminal reason does not match the persisted artifact")
+        if actual.get("gates") != evidence.get("gates"):
+            raise ValueError("PCB receipt gates do not match the persisted artifact")
+
+    def validate_state_patch(patch: Mapping[str, Any], receipt: Mapping[str, Any], state: Mapping[str, Any]) -> None:
+        evidence = receipt.get("evidence")
+        intent = state.get("in_flight_attempt")
+        if not isinstance(evidence, Mapping) or not isinstance(intent, Mapping):
+            raise ValueError("PCB state patch lacks receipt evidence or execution intent")
+        decision = intent.get("decision")
+        operation = decision.get("logical_operation_id") if isinstance(decision, Mapping) else None
+        if operation == "pcb.eda.discover_evidence":
+            discovery = evidence.get("discovery_result")
+            if not isinstance(discovery, Mapping):
+                raise ValueError("discovery state patch has no source result")
+            refs = discovery.get("verified_evidence_refs")
+            unresolved = discovery.get("unresolved_requirements")
+            if not isinstance(refs, list) or not isinstance(unresolved, list):
+                raise ValueError("discovery state patch source lists are invalid")
+            expected = {
+                "verified_evidence_refs": refs,
+                "blocked_requirements": unresolved,
+                "discovery": dict(discovery),
+            }
+            if discovery.get("status") == "PASS":
+                expected["continuation"] = {
+                    "authority": "AIOS_CONTROL_PLANE",
+                    "evidence_refs": refs,
+                    "next_operation_id": "pcb.eda@1",
+                    "reason": "discovery verified required blocker evidence",
+                }
+            if dict(patch) != expected:
+                raise ValueError("discovery state patch differs from validated discovery receipt")
+            return
+        summary = Path(str(evidence.get("summary", ""))).resolve(strict=True)
+        raw = summary.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != evidence.get("summary_sha256"):
+            raise ValueError("PCB state patch receipt digest mismatch")
+        actual = json.loads(raw.decode("utf-8"))
+        validate_kit_receipt(actual)
+        blockers = actual.get("blockers") or actual.get("findings") or []
+        kinds = classify_blockers({"blockers": blockers})
+        planning_state = dict(state)
+        planning_state["blocked_requirements"] = []
+        plan = plan_blocked_continuation({"blockers": blockers}, planning_state) if kinds else None
+        expected = {
+            "latest_attempt_dir": str(summary.parent.resolve()),
+            "blocked_requirements": list(plan.get("requires_verification", [])) if plan else [],
+        }
+        if dict(patch) != expected:
+            raise ValueError("PCB state patch does not match validated Audit Kit receipt")
+
+    def authorize_action(decision: Mapping[str, Any], state: Mapping[str, Any]) -> None:
+        if not isinstance(decision, Mapping) or decision.get("authority") != "AIOS_CONTROL_PLANE":
+            raise PermissionError("PCB execution requires AIOS control-plane authority")
+        operation = decision.get("logical_operation_id")
+        if operation not in {"pcb.eda@1", "pcb.eda.discover_evidence"}:
+            raise PermissionError(f"unauthorized PCB operation: {operation!r}")
+        continuation = state.get("continuation")
+        if continuation is None:
+            if operation != "pcb.eda@1":
+                raise PermissionError("evidence discovery requires a persisted governed continuation")
+            return
+        if not isinstance(continuation, Mapping) or continuation.get("authority") != "AIOS_CONTROL_PLANE":
+            raise PermissionError("persisted continuation lacks control-plane authority")
+        if continuation.get("next_operation_id") != operation:
+            raise PermissionError("decision does not match the persisted continuation operation")
+        refs = continuation.get("evidence_refs")
+        if not isinstance(refs, list) or not refs or not all(isinstance(ref, str) and ref.strip() for ref in refs):
+            raise PermissionError("persisted continuation evidence refs are invalid")
+        if operation == "pcb.eda@1":
+            verified = set(state.get("verified_evidence_refs") or [])
+            if any(ref not in verified for ref in refs):
+                raise PermissionError("PCB redispatch requires persisted verified evidence refs")
 
     policy = LoopPolicy(
         max_steps=a.max_steps, terminal_evaluator=terminal,
-        action_authorizer=lambda d, s: None, require_execution_receipt=True,
+        action_authorizer=authorize_action, require_execution_receipt=True,
+        execution_receipt_validator=validate_execution_receipt,
+        state_patch_validator=validate_state_patch,
         blocked_continuation=continuation,
     )
-    result = run_durable_loop(PcbExecutor(a), JsonStateStore(a.state), policy)
+    result = run_durable_loop(PcbExecutor(a), JsonStateStore(str(a.state)), policy)
     print(json.dumps(result, indent=2, default=str))
     raise SystemExit(0 if result["status"] == "PASS" else 2)
 
