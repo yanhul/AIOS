@@ -147,6 +147,41 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
         raise ValueError("persisted status is invalid")
     if not isinstance(state.get("history"), list):
         raise ValueError("persisted history is invalid")
+    # Effect and attempt identities are globally single-use within the durable
+    # lineage. Validate the entire persisted history before any resumed action.
+    seen_effect_ids: set[str] = set()
+    seen_attempt_ids: set[str] = set()
+    for index, entry in enumerate(state["history"]):
+        if not isinstance(entry, Mapping):
+            continue
+        verification = entry.get("verification")
+        receipt = verification.get("receipt") if isinstance(verification, Mapping) else None
+        if receipt is None:
+            continue
+        if not isinstance(receipt, Mapping):
+            raise ValueError(f"persisted receipt lineage is invalid at history[{index}]")
+        effect_id = receipt.get("effect_id")
+        attempt_id = receipt.get("attempt_id")
+        if not isinstance(effect_id, str) or not effect_id.strip() or not isinstance(attempt_id, str) or not attempt_id.strip():
+            raise ValueError(f"persisted receipt lineage is incomplete at history[{index}]")
+        if effect_id in seen_effect_ids:
+            raise ValueError(f"duplicate persisted effect_id in history: {effect_id}")
+        if attempt_id in seen_attempt_ids:
+            raise ValueError(f"duplicate persisted attempt_id in history: {attempt_id}")
+        seen_effect_ids.add(effect_id)
+        seen_attempt_ids.add(attempt_id)
+    in_flight = state.get("in_flight_attempt")
+    if in_flight is not None:
+        if not isinstance(in_flight, Mapping):
+            raise ValueError("persisted in-flight execution attempt is invalid")
+        effect_id = in_flight.get("effect_id")
+        attempt_id = in_flight.get("attempt_id")
+        if not isinstance(effect_id, str) or not effect_id.strip() or not isinstance(attempt_id, str) or not attempt_id.strip():
+            raise ValueError("persisted in-flight execution lineage is incomplete")
+        if effect_id in seen_effect_ids:
+            raise ValueError(f"in-flight effect_id already exists in persisted history: {effect_id}")
+        if attempt_id in seen_attempt_ids:
+            raise ValueError(f"in-flight attempt_id already exists in persisted history: {attempt_id}")
     if state.get("status") in policy.terminal_states:
         _validate_terminal_evidence(state)
     if policy.policy_digest is not None and state.get("policy_digest") != policy.policy_digest:
