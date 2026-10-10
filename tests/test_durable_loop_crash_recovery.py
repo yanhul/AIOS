@@ -155,10 +155,6 @@ def test_process_death_recovers_state_patch_and_continue_contract_from_wal(tmp_p
     ]
 
 
-if __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--child":
-    _child(sys.argv[2], sys.argv[3], sys.argv[4])
-elif __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--crash-after-effect":
-    _crash_after_provider_effect(sys.argv[2], sys.argv[3], sys.argv[4])
 
 
 
@@ -396,3 +392,8 @@ def test_unknown_receipt_blocks_and_never_retries_automatically(tmp_path):
     recovered = store.load()
     assert recovered["status"] == "BLOCKED"
     assert recovered["history"][-1]["verification"]["receipt"]["status"] == "UNKNOWN"
+
+if __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--child":
+    _child(sys.argv[2], sys.argv[3], sys.argv[4])
+elif __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--crash-after-effect":
+    _crash_after_provider_effect(sys.argv[2], sys.argv[3], sys.argv[4])
