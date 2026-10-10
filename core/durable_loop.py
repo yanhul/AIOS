@@ -449,6 +449,10 @@ def reconcile_in_flight_attempt(
         raise ValueError("reconciliation requires an OBSERVED provider receipt")
     if validated.get("effect_id") != intent.get("effect_id") or validated.get("attempt_id") != intent.get("attempt_id"):
         raise ValueError("reconciliation receipt does not match the persisted execution intent")
+    # Recovery must enforce the same provider/evidence validator as the normal
+    # execution path. Shape and lineage alone do not prove the receipt is authentic.
+    if policy.execution_receipt_validator is not None:
+        policy.execution_receipt_validator(deepcopy(validated), deepcopy(state))
     authorizer(deepcopy(intent), deepcopy(validated))
 
     verification = {"status": "OBSERVED", "receipt": deepcopy(dict(validated)), "reconciled": True}
