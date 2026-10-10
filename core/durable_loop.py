@@ -313,7 +313,13 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                     raise ValueError("execution receipt lineage does not match persisted intent")
                 if policy.execution_receipt_validator is not None:
                     policy.execution_receipt_validator(deepcopy(receipt), deepcopy(state))
-            if patch is not None:
+            # UNKNOWN proves neither effect completion nor safe continuation. Keep
+            # its receipt for reconciliation, but never let its state_patch promote
+            # evidence refs or schedule another operation.
+            if patch is not None and (
+                not policy.require_execution_receipt
+                or (receipt is not None and receipt.get("status") == "OBSERVED")
+            ):
                 _apply_state_patch(state, patch)
         except Exception as exc:
             state["status"] = policy.failure_state
