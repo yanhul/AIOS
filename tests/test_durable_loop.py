@@ -544,3 +544,50 @@ def test_resume_blocks_in_flight_attempt_until_explicit_observed_reconciliation(
     assert reconciled["history"][-1]["verification"]["reconciled"] is True
     assert store.load() == reconciled
     assert executor.act_calls == 0
+
+
+def test_reconciliation_runs_provider_receipt_validator_before_authorization():
+    intent = {
+        "effect_id": "effect-reconcile-validator",
+        "attempt_id": "attempt-reconcile-validator",
+        "decision": {"next": 1},
+        "observation": {"n": 0},
+        "status": "PREPARED",
+    }
+    original = {
+        "step": 0,
+        "status": "RUNNING",
+        "history": [],
+        "in_flight_attempt": intent,
+    }
+    store = MemoryStateStore(original)
+    calls = []
+
+    def reject_provider_receipt(receipt, state):
+        calls.append(("validator", receipt["attempt_id"]))
+        raise PermissionError("provider signature not verified")
+
+    def authorize(intent, receipt):
+        calls.append(("authorizer", intent["attempt_id"]))
+
+    policy = _policy(
+        max_steps=2,
+        require_execution_receipt=True,
+        execution_receipt_validator=reject_provider_receipt,
+        terminal_evaluator=lambda verification, state: "PASS",
+    )
+    with pytest.raises(PermissionError, match="provider signature not verified"):
+        reconcile_in_flight_attempt(
+            store,
+            policy,
+            {
+                "effect_id": "effect-reconcile-validator",
+                "attempt_id": "attempt-reconcile-validator",
+                "status": "OBSERVED",
+                "evidence": {"provider_receipt": "unverified"},
+            },
+            authorizer=authorize,
+        )
+
+    assert calls == [("validator", "attempt-reconcile-validator")]
+    assert store.load() == original
