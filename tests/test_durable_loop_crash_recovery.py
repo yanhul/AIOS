@@ -45,6 +45,7 @@ def _policy():
         policy_digest="state-continuity-policy-v1",
         continue_contract_builder=build_continue_contract,
         require_execution_receipt=True,
+        execution_receipt_validator=lambda receipt, state: None,
     )
 
 
@@ -284,6 +285,7 @@ def test_authorized_observed_receipt_reconciles_unknown_without_replay(tmp_path)
         action_authorizer=base.action_authorizer,
         policy_digest=base.policy_digest,
         require_execution_receipt=True,
+        execution_receipt_validator=lambda receipt, state: None,
         continue_contract_builder=build_continue_contract,
     )
     blocked = run_durable_loop(UnknownExecutor(marker_path), store, policy)
@@ -332,6 +334,7 @@ def test_reconciliation_rejects_wrong_attempt_identity(tmp_path):
         action_authorizer=base.action_authorizer,
         policy_digest=base.policy_digest,
         require_execution_receipt=True,
+        execution_receipt_validator=lambda receipt, state: None,
         continue_contract_builder=build_continue_contract,
     )
     blocked = run_durable_loop(UnknownExecutor(marker_path), store, policy)
@@ -377,6 +380,7 @@ def test_unknown_receipt_blocks_and_never_retries_automatically(tmp_path):
         action_authorizer=base.action_authorizer,
         policy_digest=base.policy_digest,
         require_execution_receipt=True,
+        execution_receipt_validator=lambda receipt, state: None,
         continue_contract_builder=build_continue_contract,
     )
 
