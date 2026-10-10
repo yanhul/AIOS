@@ -35,20 +35,33 @@ def main() -> int:
     except json.JSONDecodeError as exc:
         raise SystemExit("MiniMind capability adapter did not emit JSON") from exc
 
+    if not isinstance(receipt, dict):
+        raise SystemExit("MiniMind capability receipt must be a JSON object")
     required = {"status", "evidence_refs", "verification_refs", "provenance"}
     missing = required - receipt.keys()
     if missing:
         raise SystemExit(f"MiniMind capability receipt missing {sorted(missing)}")
-    if receipt["provenance"].get("producer") != "jingyaogong/minimind":
+    provenance = receipt["provenance"]
+    if not isinstance(provenance, dict):
+        raise SystemExit("MiniMind capability provenance must be an object")
+    if provenance.get("producer") != "jingyaogong/minimind":
         raise SystemExit("MiniMind capability provenance producer mismatch")
-    if receipt["provenance"].get("adapter") != "minimind.model@1":
+    if provenance.get("adapter") != "minimind.model@1":
         raise SystemExit("MiniMind capability provenance adapter mismatch")
-    if not receipt["evidence_refs"] or not receipt["verification_refs"]:
-        raise SystemExit("MiniMind capability receipt lacks evidence/verification")
+    for field in ("evidence_refs", "verification_refs"):
+        refs = receipt[field]
+        if not isinstance(refs, list) or not refs or not all(
+            isinstance(ref, str) and ref.strip() for ref in refs
+        ):
+            raise SystemExit(
+                f"MiniMind capability receipt {field} must be a non-empty list of strings"
+            )
     if receipt["status"] not in {"AVAILABLE", "BLOCKED", "INCONCLUSIVE"}:
         raise SystemExit(f"Ungoverned MiniMind capability status: {receipt['status']}")
 
-    print(json.dumps({"MINIMIND_CAPABILITY_CHECK_PASS": receipt}, sort_keys=True))
+    # The check process can succeed while the capability is BLOCKED. Never label
+    # that outcome CHECK_PASS: machine-readable status must carry the verdict.
+    print(json.dumps({"MINIMIND_CAPABILITY_CHECK": receipt}, sort_keys=True))
     return 0
 
 
