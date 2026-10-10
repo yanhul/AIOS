@@ -81,10 +81,31 @@ def validate_schematic_receipt(receipt: Mapping[str, Any]) -> None:
     inventory = evidence.get("finding_inventory")
     if not isinstance(inventory, Mapping):
         raise ValueError("schematic receipt requires finding inventory")
+    deferred = inventory.get("deferred_non_gating")
+    if not isinstance(deferred, list):
+        raise ValueError("schematic receipt must preserve deferred findings explicitly")
+    unknown = inventory.get("unknown")
+    if not isinstance(unknown, list):
+        raise ValueError("schematic receipt requires an explicit UNKNOWN finding inventory")
+    required_unknown = evidence.get("required_unknown_findings", [])
+    if not isinstance(required_unknown, list):
+        raise ValueError("required_unknown_findings must be a list")
+    deferred_ids = {
+        item.get("id") for item in deferred
+        if isinstance(item, Mapping) and isinstance(item.get("id"), str)
+    }
+    unresolved_schematic = [
+        item for item in unknown
+        if isinstance(item, Mapping)
+        and item.get("domain") == "schematic"
+        and item.get("id") not in deferred_ids
+    ]
     if status == "PASS" and (inventory.get("errors") or inventory.get("blocking")):
         raise ValueError("schematic PASS contains effective blocking findings")
-    if "deferred_non_gating" not in inventory:
-        raise ValueError("schematic receipt must preserve deferred findings explicitly")
+    if status == "PASS" and required_unknown:
+        raise ValueError("schematic PASS contains unresolved required UNKNOWN findings")
+    if status == "PASS" and unresolved_schematic:
+        raise ValueError("schematic PASS contains UNKNOWN schematic findings outside explicit deferrals")
 
 
 def reconcile_pcb_eda(request: PcbEdaRequest, receipt: Mapping[str, Any]) -> Mapping[str, Any]:
