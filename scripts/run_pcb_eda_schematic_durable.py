@@ -151,6 +151,7 @@ class Executor:
             "evidence": {
                 "phase_receipt": str(Path(result["attempt_dir"]) / "phase_receipt.json"),
                 "phase_receipt_sha256": result["receipt_sha256"],
+                "phase_status": status,
                 "source_commit": self.a.source_commit,
                 "kit_commit": state["workload_identity"]["kit_commit"],
             },
@@ -199,11 +200,98 @@ def main() -> int:
     else:
         validate_resume_identity(loaded, identity)
 
+    def validate_execution_receipt(receipt: Mapping[str, Any], state: Mapping[str, Any]) -> None:
+        evidence = receipt.get("evidence")
+        if not isinstance(evidence, Mapping):
+            raise ValueError("schematic execution receipt evidence is missing")
+        intent = state.get("in_flight_attempt")
+        if not isinstance(intent, Mapping):
+            raise ValueError("schematic receipt has no persisted execution intent")
+        if receipt.get("effect_id") != intent.get("effect_id") or receipt.get("attempt_id") != intent.get("attempt_id"):
+            raise ValueError("schematic receipt does not match persisted execution intent")
+        artifact = Path(str(evidence.get("phase_receipt", ""))).resolve(strict=True)
+        output_root = a.output.resolve(strict=True)
+        if not artifact.is_relative_to(output_root) or artifact.name != "phase_receipt.json":
+            raise ValueError("schematic receipt artifact escapes the governed output directory")
+        raw = artifact.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != evidence.get("phase_receipt_sha256"):
+            raise ValueError("schematic receipt artifact digest mismatch")
+        actual = json.loads(raw.decode("utf-8"))
+        validate_schematic_receipt(actual)
+        if actual.get("status") != evidence.get("phase_status"):
+            raise ValueError("schematic receipt status does not match the validated phase artifact")
+        identity = state.get("workload_identity")
+        if not isinstance(identity, Mapping):
+            raise ValueError("schematic workload identity is missing")
+        if evidence.get("source_commit") != a.source_commit or evidence.get("kit_commit") != identity.get("kit_commit"):
+            raise ValueError("schematic receipt source/kit commit lineage mismatch")
+    def validate_state_patch(patch: Mapping[str, Any], receipt: Mapping[str, Any], state: Mapping[str, Any]) -> None:
+        evidence = receipt.get("evidence")
+        if not isinstance(evidence, Mapping):
+            raise ValueError("schematic state patch has no receipt evidence")
+        artifact = Path(str(evidence.get("phase_receipt", ""))).resolve(strict=True)
+        output_root = a.output.resolve(strict=True)
+        if not artifact.is_relative_to(output_root) or artifact.name != "phase_receipt.json":
+            raise ValueError("schematic state patch references an ungoverned artifact")
+        raw = artifact.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != evidence.get("phase_receipt_sha256"):
+            raise ValueError("schematic state patch receipt digest mismatch")
+        actual = json.loads(raw.decode("utf-8"))
+        validate_schematic_receipt(actual)
+        if actual.get("status") != evidence.get("phase_status"):
+            raise ValueError("schematic state patch phase status mismatch")
+        status = actual["status"]
+        inventory = actual["evidence"]["finding_inventory"]
+        expected_pipeline = {
+            "schematic": "VERIFIED" if status == "PASS" else "BLOCKED",
+            "placement": "READY" if status == "PASS" else "BLOCKED_BY_SCHEMATIC",
+            "routing": "BLOCKED_BY_PLACEMENT" if status == "PASS" else "BLOCKED_BY_SCHEMATIC",
+        }
+        expected = {
+            "active_phase": "SCHEMATIC_VERIFIED" if status == "PASS" else "SCHEMATIC",
+            "pipeline": expected_pipeline,
+            "active_blockers": list(inventory.get("blocking") or inventory.get("errors") or []),
+            "latest_attempt_dir": str(artifact.parent.resolve()),
+            "latest_receipt": str(artifact),
+            "latest_run": a.run_id,
+            "next_legal_actions": ["placement"] if status == "PASS" else ["inspect_receipt", "inspect_source", "patch", "commit", "wait_ci"],
+            "forbidden_actions": ["routing", "claim_pass"] if status == "PASS" else ["placement", "routing", "claim_pass"],
+            "receipt": dict(receipt),
+        }
+        if dict(patch) != expected:
+            raise ValueError("schematic state patch does not match validated phase receipt")
+
+    def authorize_schematic(decision: Mapping[str, Any], state: Mapping[str, Any]) -> None:
+        if not isinstance(decision, Mapping) or decision.get("authority") != "AIOS_CONTROL_PLANE":
+            raise PermissionError("schematic execution requires AIOS control-plane authority")
+        if decision.get("logical_operation_id") != "pcb.eda.schematic":
+            raise PermissionError("unauthorized EDA phase")
+        pipeline = state.get("pipeline")
+        if not isinstance(pipeline, Mapping):
+            raise PermissionError("schematic execution requires persisted pipeline state")
+        if pipeline.get("schematic") == "VERIFIED":
+            raise PermissionError("schematic is already verified; a new governed contract is required")
+        if pipeline.get("placement") not in {"BLOCKED_BY_SCHEMATIC", "PENDING"} or pipeline.get("routing") not in {"BLOCKED_BY_SCHEMATIC", "BLOCKED_BY_PLACEMENT", "PENDING"}:
+            raise PermissionError("schematic-first invariant is violated by persisted pipeline state")
+
+    def terminal_schematic(verification: Mapping[str, Any], state: Mapping[str, Any]) -> str:
+        status = verification.get("status")
+        pipeline = state.get("pipeline")
+        if not isinstance(pipeline, Mapping):
+            raise ValueError("terminal schematic verdict has no receipt-bound pipeline state")
+        if status == "PASS" and pipeline.get("schematic") == "VERIFIED":
+            return "PASS"
+        if status == "BLOCKED" and pipeline.get("schematic") == "BLOCKED":
+            return "BLOCKED"
+        raise ValueError("terminal schematic verdict conflicts with validated receipt-bound pipeline")
+
     policy = LoopPolicy(
         max_steps=1,
-        terminal_evaluator=lambda verification, state: verification.get("status") if verification.get("status") in {"PASS", "BLOCKED"} else None,
-        action_authorizer=lambda decision, state: None if decision.get("logical_operation_id") == "pcb.eda.schematic" else (_ for _ in ()).throw(PermissionError("unauthorized phase")),
+        terminal_evaluator=terminal_schematic,
+        action_authorizer=authorize_schematic,
         require_execution_receipt=True,
+        execution_receipt_validator=validate_execution_receipt,
+        state_patch_validator=validate_state_patch,
         resume_validator=lambda state: validate_resume_identity(state, identity),
         continue_contract_builder=build_continue_contract,
     )

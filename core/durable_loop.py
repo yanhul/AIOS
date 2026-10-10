@@ -51,6 +51,8 @@ class LoopPolicy:
     blocked_continuation: Callable[[Any, Mapping[str, Any]], Mapping[str, Any] | None] | None = None
     acceptance_predicates: tuple[AcceptancePredicate, ...] = ()
     continue_contract_builder: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None
+    # Appended to preserve positional compatibility for earlier LoopPolicy fields.
+    state_patch_validator: Callable[[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]], None] | None = None
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
@@ -69,8 +71,20 @@ class LoopPolicy:
             raise ValueError("failure_state must be an authorized terminal state")
         if not isinstance(self.require_execution_receipt, bool):
             raise ValueError("require_execution_receipt must be boolean")
+        if self.require_execution_receipt and self.execution_receipt_validator is None:
+            raise ValueError(
+                "require_execution_receipt requires an execution_receipt_validator; "
+                "receipt shape and lineage do not establish provider authenticity"
+            )
         if self.execution_receipt_validator is not None and not callable(self.execution_receipt_validator):
             raise ValueError("execution_receipt_validator must be callable")
+        if self.require_execution_receipt and self.state_patch_validator is None:
+            raise ValueError(
+                "require_execution_receipt requires a state_patch_validator; "
+                "an authentic receipt alone does not authorize arbitrary verifier state"
+            )
+        if self.state_patch_validator is not None and not callable(self.state_patch_validator):
+            raise ValueError("state_patch_validator must be callable")
         if self.fix_plan is not None:
             if not isinstance(self.fix_success_state, str) or not self.fix_success_state.strip():
                 raise ValueError("fix_success_state must be a non-empty string")
@@ -113,8 +127,28 @@ def _validate_terminal_evidence(state: Mapping[str, Any]) -> None:
         raise ValueError("terminal evidence status does not match state")
     if not isinstance(evidence.get("step"), int) or evidence["step"] != state.get("step"):
         raise ValueError("terminal evidence step does not match state")
-    if "verification" not in evidence:
-        raise ValueError("terminal evidence verification is missing")
+    verification = evidence.get("verification")
+    if not isinstance(verification, Mapping):
+        raise ValueError("terminal evidence verification is missing or invalid")
+    if state.get("status") == "PASS":
+        if not verification:
+            raise ValueError("PASS terminal evidence requires non-empty verification evidence")
+        if set(verification) == {"reason"}:
+            raise ValueError("PASS cannot use synthesized reason-only terminal evidence")
+        # A PASS projection must be bound to the final completed history entry.
+        # Merely attaching arbitrary non-empty data to terminal_evidence is not
+        # proof that the loop actually verified that step.
+        history = state.get("history")
+        if not isinstance(history, list) or not history:
+            raise ValueError("PASS terminal evidence requires a matching final history entry")
+        final_entry = history[-1]
+        if (
+            not isinstance(final_entry, Mapping)
+            or final_entry.get("step") != state.get("step")
+            or not isinstance(final_entry.get("verification"), Mapping)
+            or dict(final_entry["verification"]) != dict(verification)
+        ):
+            raise ValueError("PASS terminal evidence does not match final history verification")
 
 @dataclass
 class MemoryStateStore:
@@ -165,12 +199,19 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
 def _persist_state(state: dict[str, Any], store: StateStore, policy: LoopPolicy) -> None:
     """Persist a complete durable snapshot with its continuation projection."""
     candidate = deepcopy(state)
+    if candidate.get("status") == "PASS" and not isinstance(candidate.get("terminal_evidence"), Mapping):
+        # PASS must be backed by the actual terminal evaluation path. Never
+        # manufacture evidence at persistence time to make a success resumable.
+        raise ValueError("PASS cannot be persisted without immutable terminal evidence")
     if candidate.get("status") in policy.terminal_states and not isinstance(candidate.get("terminal_evidence"), Mapping):
+        # Synthetic evidence is permitted only for non-success terminal states.
         candidate["terminal_evidence"] = {
             "step": candidate.get("step", 0),
             "status": candidate["status"],
             "verification": {"reason": candidate.get("block_reason", "TERMINAL_STATE")},
         }
+    if candidate.get("status") == "PASS":
+        _validate_terminal_evidence(candidate)
     if policy.continue_contract_builder is not None:
         contract = policy.continue_contract_builder(deepcopy(candidate))
         if not isinstance(contract, Mapping):
@@ -182,16 +223,21 @@ def _persist_state(state: dict[str, Any], store: StateStore, policy: LoopPolicy)
 
 
 def _apply_state_patch(state: dict[str, Any], patch: Mapping[str, Any]) -> None:
-    """Apply verifier-owned data updates without allowing control-plane mutation."""
+    """Validate and copy the entire verifier patch before mutating durable state."""
     if not isinstance(patch, Mapping):
         raise ValueError("verification state_patch must be a mapping")
+    # Validate all keys before touching state; otherwise a malformed later key
+    # could leave earlier fields partially applied when the caller fails closed.
+    for key in patch:
+        if not isinstance(key, str) or not key.strip():
+            raise ValueError("verification state_patch keys must be non-empty strings")
     protected = sorted(_PROTECTED_STATE_FIELDS.intersection(patch))
     if protected:
         raise ValueError(f"verification state_patch attempts protected fields: {protected}")
-    for key, value in patch.items():
-        if not isinstance(key, str) or not key.strip():
-            raise ValueError("verification state_patch keys must be non-empty strings")
-        state[key] = deepcopy(value)
+    # Deep-copy all values up front as deepcopy itself can fail for an object.
+    # Updating only after preparation makes the mutation all-or-nothing.
+    prepared = {key: deepcopy(value) for key, value in patch.items()}
+    state.update(prepared)
 
 
 def _persist_raw_state(state: Mapping[str, Any], store: StateStore) -> None:
@@ -206,6 +252,13 @@ def _persist_or_fail_closed(state: dict[str, Any], store: StateStore, policy: Lo
         fallback = deepcopy(state)
         fallback["status"] = policy.failure_state
         fallback["block_reason"] = f"durable persistence failed: {type(exc).__name__}: {exc}"
+        # Never leave a forged/stale PASS projection attached to the fail-closed
+        # snapshot; a later resume must be able to validate the BLOCKED outcome.
+        fallback["terminal_evidence"] = {
+            "step": fallback.get("step", 0),
+            "status": policy.failure_state,
+            "verification": {"reason": fallback["block_reason"]},
+        }
         try:
             _persist_raw_state(fallback, store)
         except Exception as raw_exc:
@@ -242,6 +295,13 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
     except Exception as exc:
         state["status"] = policy.failure_state
         state["block_reason"] = f"invalid durable state: {type(exc).__name__}: {exc}"
+        # A rejected persisted PASS must not leave its stale PASS evidence
+        # attached to the new fail-closed terminal state.
+        state["terminal_evidence"] = {
+            "step": state.get("step", 0),
+            "status": policy.failure_state,
+            "verification": {"reason": state["block_reason"]},
+        }
         _persist_raw_state(state, store)
         return state
     if state["status"] in policy.terminal_states:
@@ -270,7 +330,9 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                 return state
             return state
         try:
-            policy.action_authorizer(deepcopy(decision), deepcopy(state))
+            authorization_result = policy.action_authorizer(deepcopy(decision), deepcopy(state))
+            if authorization_result is not None:
+                raise PermissionError("action_authorizer must return None or raise to deny")
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"action authorization failed: {type(exc).__name__}: {exc}"
@@ -295,10 +357,10 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
             action_result = executor.act(deepcopy(decision), deepcopy(state))
             verification = executor.verify(deepcopy(action_result), deepcopy(state))
             receipt = None
-            if isinstance(verification, Mapping):
-                patch = verification.get("state_patch")
-                if patch is not None:
-                    _apply_state_patch(state, patch)
+            patch = verification.get("state_patch") if isinstance(verification, Mapping) else None
+            # Validate the execution receipt and its durable lineage before
+            # accepting any verifier-supplied state patch. Otherwise a rejected
+            # receipt could still persist forged evidence refs or continuation data.
             if policy.require_execution_receipt:
                 receipt = _validate_execution_receipt(verification)
                 intent = state.get("in_flight_attempt")
@@ -307,7 +369,39 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                 if receipt.get("effect_id") != intent.get("effect_id") or receipt.get("attempt_id") != intent.get("attempt_id"):
                     raise ValueError("execution receipt lineage does not match persisted intent")
                 if policy.execution_receipt_validator is not None:
-                    policy.execution_receipt_validator(deepcopy(receipt), deepcopy(state))
+                    validation_result = policy.execution_receipt_validator(deepcopy(receipt), deepcopy(state))
+                    if validation_result is not None:
+                        raise ValueError("execution_receipt_validator must return None or raise to reject")
+            # UNKNOWN proves neither effect completion nor safe continuation. Keep
+            # its receipt for reconciliation, but never let its state_patch promote
+            # evidence refs or schedule another operation.
+            if patch is not None and (
+                not policy.require_execution_receipt
+                or (receipt is not None and receipt.get("status") == "OBSERVED")
+            ):
+                if policy.require_execution_receipt:
+                    if policy.state_patch_validator is None or receipt is None:
+                        raise ValueError("state patch validation is not configured for receipt-governed execution")
+                    patch_validation_result = policy.state_patch_validator(
+                        deepcopy(patch), deepcopy(receipt), deepcopy(state)
+                    )
+                    if patch_validation_result is not None:
+                        raise ValueError("state_patch_validator must return None or raise to reject")
+                # Crash-safe receipt boundary: durably bind the validated provider
+                # receipt and its validated patch to the in-flight attempt before
+                # applying any patch. Recovery can then reconcile this exact attempt
+                # without invoking the provider again.
+                if policy.require_execution_receipt and receipt is not None and receipt.get("status") == "OBSERVED":
+                    intent = deepcopy(dict(state["in_flight_attempt"]))
+                    intent["status"] = "RECEIPT_VALIDATED"
+                    intent["validated_receipt"] = deepcopy(dict(receipt))
+                    intent["validated_state_patch"] = deepcopy(dict(patch or {}))
+                    intent["validated_verification"] = deepcopy(dict(verification))
+                    intent["validated_action_result"] = deepcopy(action_result)
+                    state["in_flight_attempt"] = intent
+                    if not _persist_or_fail_closed(state, store, policy):
+                        return state
+                _apply_state_patch(state, patch)
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"execution failed after authorization: {type(exc).__name__}: {exc}"
@@ -436,9 +530,43 @@ def reconcile_in_flight_attempt(
         raise ValueError("reconciliation requires an OBSERVED provider receipt")
     if validated.get("effect_id") != intent.get("effect_id") or validated.get("attempt_id") != intent.get("attempt_id"):
         raise ValueError("reconciliation receipt does not match the persisted execution intent")
-    authorizer(deepcopy(intent), deepcopy(validated))
+    # A receipt already committed as RECEIPT_VALIDATED is an exact durable
+    # recovery token. Reject any altered copy before invoking validators or
+    # authority callbacks, so tampering cannot trigger authorization side effects.
+    pending_receipt = intent.get("validated_receipt")
+    pending_patch = intent.get("validated_state_patch")
+    pending_verification = intent.get("validated_verification")
+    pending_action = intent.get("validated_action_result")
+    if intent.get("status") == "RECEIPT_VALIDATED":
+        if not isinstance(pending_receipt, Mapping) or dict(pending_receipt) != dict(validated):
+            raise ValueError("reconciliation receipt does not match the durably validated receipt")
+        if not isinstance(pending_patch, Mapping) or not isinstance(pending_verification, Mapping):
+            raise ValueError("durable validated receipt record is incomplete")
 
-    verification = {"status": "OBSERVED", "receipt": deepcopy(dict(validated)), "reconciled": True}
+    # Recovery must enforce the same provider/evidence validator as the normal
+    # execution path. Shape and lineage alone do not prove the receipt is authentic.
+    if policy.execution_receipt_validator is not None:
+        validation_result = policy.execution_receipt_validator(deepcopy(validated), deepcopy(state))
+        if validation_result is not None:
+            raise ValueError("execution_receipt_validator must return None or raise to reject")
+    authorization_result = authorizer(deepcopy(intent), deepcopy(validated))
+    if authorization_result is not None:
+        raise PermissionError("reconciliation authorizer must return None or raise to deny")
+
+    # Revalidate the patch against the persisted receipt and current state,
+    # then apply it during explicitly authorized recovery.
+    if intent.get("status") == "RECEIPT_VALIDATED":
+        if policy.state_patch_validator is None:
+            raise ValueError("state patch validator is required to recover a validated receipt")
+        patch_result = policy.state_patch_validator(deepcopy(dict(pending_patch)), deepcopy(validated), deepcopy(state))
+        if patch_result is not None:
+            raise ValueError("state_patch_validator must return None or raise to reject")
+        _apply_state_patch(state, pending_patch)
+        verification = deepcopy(dict(pending_verification))
+        verification["receipt"] = deepcopy(dict(validated))
+        verification["reconciled"] = True
+    else:
+        verification = {"status": "OBSERVED", "receipt": deepcopy(dict(validated)), "reconciled": True}
     history = state.get("history")
     if not isinstance(history, list):
         raise ValueError("durable history is invalid")
@@ -458,7 +586,7 @@ def reconcile_in_flight_attempt(
             "step": state["step"],
             "observation": deepcopy(intent.get("observation", {"reconciled": True})),
             "decision": deepcopy(intent.get("decision", {})),
-            "action": {"effect_id": intent["effect_id"], "reconciled": True},
+            "action": deepcopy(pending_action) if intent.get("status") == "RECEIPT_VALIDATED" else {"effect_id": intent["effect_id"], "reconciled": True},
             "verification": deepcopy(verification),
         })
     state.pop("in_flight_attempt", None)

@@ -6,7 +6,7 @@
 
 import pytest
 
-from core.durable_loop import LoopPolicy, MemoryStateStore, run_durable_loop, _persist_state
+from core.durable_loop import LoopPolicy, MemoryStateStore, run_durable_loop, reconcile_in_flight_attempt, _persist_state
 from core.continue_contract import build_continue_contract
 
 
@@ -25,12 +25,18 @@ class FakeExecutor:
 
 
 def _policy(max_steps=5, terminal_evaluator=None, **kwargs):
+    # Test-only provider stub: production callers must supply a real receipt verifier.
+    if kwargs.get("require_execution_receipt") and "execution_receipt_validator" not in kwargs:
+        kwargs["execution_receipt_validator"] = lambda receipt, state: None
+    if kwargs.get("require_execution_receipt") and "state_patch_validator" not in kwargs:
+        kwargs["state_patch_validator"] = lambda patch, receipt, state: None
+    action_authorizer = kwargs.pop("action_authorizer", lambda decision, state: None)
     return LoopPolicy(
         max_steps=max_steps,
         terminal_evaluator=terminal_evaluator or (
             lambda verification, state: "PASS" if verification["value"] >= 3 else None
         ),
-        action_authorizer=lambda decision, state: None,
+        action_authorizer=action_authorizer,
         **kwargs,
     )
 
@@ -75,6 +81,24 @@ def test_action_requires_control_plane_authorization():
     assert "authorization" in result["block_reason"]
     assert calls == [{"next": 1}]
 
+
+def test_action_authorizer_false_return_fails_closed_before_act():
+    class NoActExecutor(FakeExecutor):
+        def __init__(self):
+            self.act_calls = 0
+        def act(self, decision, state):
+            self.act_calls += 1
+            return super().act(decision, state)
+
+    executor = NoActExecutor()
+    result = run_durable_loop(
+        executor,
+        MemoryStateStore(),
+        _policy(action_authorizer=lambda decision, state: False),
+    )
+    assert result["status"] == "BLOCKED"
+    assert "must return None" in result["block_reason"]
+    assert executor.act_calls == 0
 
 def test_resume_with_stale_policy_is_blocked():
     store = MemoryStateStore({"step": 1, "status": "RUNNING", "history": [], "policy_digest": "old"})
@@ -209,6 +233,26 @@ class ReceiptExecutor(FakeExecutor):
             },
         }
 
+
+def test_receipt_required_policy_rejects_missing_provider_validator():
+    with pytest.raises(ValueError, match="requires an execution_receipt_validator"):
+        LoopPolicy(
+            max_steps=1,
+            terminal_evaluator=lambda verification, state: "PASS",
+            action_authorizer=lambda decision, state: None,
+            require_execution_receipt=True,
+        )
+
+
+def test_receipt_required_policy_rejects_missing_state_patch_validator():
+    with pytest.raises(ValueError, match="requires a state_patch_validator"):
+        LoopPolicy(
+            max_steps=1,
+            terminal_evaluator=lambda verification, state: "PASS",
+            action_authorizer=lambda decision, state: None,
+            require_execution_receipt=True,
+            execution_receipt_validator=lambda receipt, state: None,
+        )
 
 def test_receipt_lineage_is_required_before_terminal_evaluation():
     policy = _policy(max_steps=1, require_execution_receipt=True, terminal_evaluator=lambda verification, state: "PASS")
@@ -384,3 +428,349 @@ def test_continue_contract_is_stable_when_persisted_repeatedly():
     _persist_state(state, store, policy)
     second = store.load()["continue_contract"]
     assert first == second
+
+
+
+def test_receipt_does_not_authorize_unbound_verifier_state_patch():
+    class PatchForgeryExecutor(FakeExecutor):
+        def act(self, decision, state):
+            return {"verified_evidence_refs": ["evidence://provider/actual"]}
+
+        def verify(self, action_result, state):
+            intent = state["in_flight_attempt"]
+            return {
+                "value": 1,
+                "receipt": {
+                    "effect_id": intent["effect_id"],
+                    "attempt_id": intent["attempt_id"],
+                    "status": "OBSERVED",
+                    "evidence": action_result,
+                },
+                "state_patch": {"verified_evidence_refs": ["evidence://forged/unrelated"]},
+            }
+
+    def validate_patch(patch, receipt, state):
+        if patch.get("verified_evidence_refs") != receipt["evidence"].get("verified_evidence_refs"):
+            raise ValueError("state patch evidence is not bound to provider receipt")
+
+    store = MemoryStateStore()
+    result = run_durable_loop(
+        PatchForgeryExecutor(),
+        store,
+        _policy(
+            max_steps=1,
+            require_execution_receipt=True,
+            execution_receipt_validator=lambda receipt, state: None,
+            state_patch_validator=validate_patch,
+            terminal_evaluator=lambda verification, state: None,
+        ),
+    )
+
+    assert result["status"] == "BLOCKED"
+    assert "not bound to provider receipt" in result["block_reason"]
+    assert "verified_evidence_refs" not in result
+    assert "verified_evidence_refs" not in store.load()
+    assert store.load()["in_flight_attempt"]["status"] == "PREPARED"
+
+def test_state_patch_validator_false_return_fails_closed():
+    class PatchExecutor(ReceiptExecutor):
+        def verify(self, action_result, state):
+            result = super().verify(action_result, state)
+            result["state_patch"] = {"verified_evidence_refs": ["evidence://untrusted"]}
+            return result
+
+    store = MemoryStateStore()
+    result = run_durable_loop(
+        PatchExecutor(),
+        store,
+        _policy(
+            max_steps=1,
+            require_execution_receipt=True,
+            execution_receipt_validator=lambda receipt, state: None,
+            state_patch_validator=lambda patch, receipt, state: False,
+            terminal_evaluator=lambda verification, state: None,
+        ),
+    )
+    assert result["status"] == "BLOCKED"
+    assert "must return None" in result["block_reason"]
+    assert "verified_evidence_refs" not in result
+    assert "verified_evidence_refs" not in store.load()
+
+def test_invalid_state_patch_cannot_partially_mutate_durable_state():
+    class PartiallyInvalidPatchExecutor(FakeExecutor):
+        def verify(self, action_result, state):
+            return {
+                "value": action_result,
+                "state_patch": {
+                    "verified_evidence_refs": ["forged-evidence"],
+                    "": "invalid-key-after-valid-field",
+                },
+            }
+
+    store = MemoryStateStore()
+    result = run_durable_loop(
+        PartiallyInvalidPatchExecutor(),
+        store,
+        _policy(max_steps=1, terminal_evaluator=lambda verification, state: None),
+    )
+
+    assert result["status"] == "BLOCKED"
+    assert "state_patch keys must be non-empty strings" in result["block_reason"]
+    assert "verified_evidence_refs" not in result
+    assert "verified_evidence_refs" not in store.load()
+
+
+def test_rejected_receipt_cannot_persist_verifier_state_patch():
+    class MismatchedReceiptExecutor:
+        def observe(self, state):
+            return {"observed": True}
+
+        def decide(self, observation, state):
+            return {"operation": "test"}
+
+        def act(self, decision, state):
+            return {"acted": True}
+
+        def verify(self, action_result, state):
+            return {
+                "status": "OBSERVED",
+                "receipt": {
+                    "effect_id": "forged-effect",
+                    "attempt_id": "forged-attempt",
+                    "status": "OBSERVED",
+                    "evidence": {"claim": "not lineage-bound"},
+                },
+                "state_patch": {
+                    "verified_evidence_refs": ["forged-evidence"],
+                    "continuation": {"operation_id": "unauthorized-next-step"},
+                },
+            }
+
+    store = MemoryStateStore()
+    policy = LoopPolicy(
+        max_steps=1,
+        terminal_evaluator=lambda verification, state: None,
+        action_authorizer=lambda decision, state: None,
+        require_execution_receipt=True,
+        execution_receipt_validator=lambda receipt, state: None,
+        state_patch_validator=lambda patch, receipt, state: None,
+    )
+
+    result = run_durable_loop(MismatchedReceiptExecutor(), store, policy)
+
+    assert result["status"] == "BLOCKED"
+    assert "lineage does not match" in result["block_reason"]
+    assert "verified_evidence_refs" not in result
+    assert "continuation" not in result
+    assert store.load()["status"] == "BLOCKED"
+    assert "verified_evidence_refs" not in store.load()
+    assert "continuation" not in store.load()
+
+
+def test_unknown_receipt_cannot_persist_verifier_state_patch():
+    class UnknownReceiptWithPatchExecutor(ReceiptExecutor):
+        def verify(self, action_result, state):
+            result = super().verify(action_result, state)
+            result["receipt"]["status"] = "UNKNOWN"
+            result["state_patch"] = {
+                "verified_evidence_refs": ["unobserved-effect"],
+                "continuation": {"operation_id": "unauthorized-next-step"},
+            }
+            return result
+
+    store = MemoryStateStore()
+    result = run_durable_loop(
+        UnknownReceiptWithPatchExecutor(),
+        store,
+        _policy(
+            max_steps=1,
+            require_execution_receipt=True,
+            terminal_evaluator=lambda verification, state: None,
+        ),
+    )
+
+    assert result["status"] == "BLOCKED"
+    assert "UNKNOWN execution receipt" in result["block_reason"]
+    assert "verified_evidence_refs" not in result
+    assert "continuation" not in result
+    assert store.load()["status"] == "BLOCKED"
+    assert "verified_evidence_refs" not in store.load()
+    assert "continuation" not in store.load()
+
+
+def test_resume_blocks_in_flight_attempt_until_explicit_observed_reconciliation():
+    class NoReplayExecutor(FakeExecutor):
+        def __init__(self):
+            self.act_calls = 0
+
+        def act(self, decision, state):
+            self.act_calls += 1
+            return super().act(decision, state)
+
+    intent = {
+        "effect_id": "effect-crash-a1",
+        "attempt_id": "attempt-crash-a1",
+        "decision": {"next": 1},
+        "observation": {"n": 0},
+        "status": "PREPARED",
+    }
+    store = MemoryStateStore({
+        "step": 0,
+        "status": "RUNNING",
+        "history": [],
+        "in_flight_attempt": intent,
+    })
+    executor = NoReplayExecutor()
+    policy = _policy(
+        max_steps=2,
+        require_execution_receipt=True,
+        terminal_evaluator=lambda verification, state: "PASS",
+    )
+
+    resumed = run_durable_loop(executor, store, policy)
+    assert resumed["status"] == "BLOCKED"
+    assert "explicit provider reconciliation required" in resumed["block_reason"]
+    assert executor.act_calls == 0
+    assert store.load()["in_flight_attempt"]["attempt_id"] == "attempt-crash-a1"
+
+    authorized = []
+    reconciled = reconcile_in_flight_attempt(
+        store,
+        policy,
+        {
+            "effect_id": "effect-crash-a1",
+            "attempt_id": "attempt-crash-a1",
+            "status": "OBSERVED",
+            "evidence": {"provider_receipt": "provider-confirmed-a1"},
+        },
+        authorizer=lambda persisted_intent, receipt: authorized.append(
+            (persisted_intent["attempt_id"], receipt["effect_id"])
+        ),
+    )
+
+    assert authorized == [("attempt-crash-a1", "effect-crash-a1")]
+    assert reconciled["status"] == "PASS"
+    assert reconciled["step"] == 1
+    assert "in_flight_attempt" not in reconciled
+    assert reconciled["history"][-1]["verification"]["reconciled"] is True
+    assert store.load() == reconciled
+    assert executor.act_calls == 0
+
+
+def test_reconciliation_runs_provider_receipt_validator_before_authorization():
+    intent = {
+        "effect_id": "effect-reconcile-validator",
+        "attempt_id": "attempt-reconcile-validator",
+        "decision": {"next": 1},
+        "observation": {"n": 0},
+        "status": "PREPARED",
+    }
+    original = {
+        "step": 0,
+        "status": "RUNNING",
+        "history": [],
+        "in_flight_attempt": intent,
+    }
+    store = MemoryStateStore(original)
+    calls = []
+
+    def reject_provider_receipt(receipt, state):
+        calls.append(("validator", receipt["attempt_id"]))
+        raise PermissionError("provider signature not verified")
+
+    def authorize(intent, receipt):
+        calls.append(("authorizer", intent["attempt_id"]))
+
+    policy = _policy(
+        max_steps=2,
+        require_execution_receipt=True,
+        execution_receipt_validator=reject_provider_receipt,
+        terminal_evaluator=lambda verification, state: "PASS",
+    )
+    with pytest.raises(PermissionError, match="provider signature not verified"):
+        reconcile_in_flight_attempt(
+            store,
+            policy,
+            {
+                "effect_id": "effect-reconcile-validator",
+                "attempt_id": "attempt-reconcile-validator",
+                "status": "OBSERVED",
+                "evidence": {"provider_receipt": "unverified"},
+            },
+            authorizer=authorize,
+        )
+
+    assert calls == [("validator", "attempt-reconcile-validator")]
+    assert store.load() == original
+
+def test_pass_cannot_be_persisted_without_real_terminal_evidence():
+    store = MemoryStateStore()
+    state = {"step": 1, "status": "PASS", "history": []}
+    policy = _policy(max_steps=1)
+
+    with pytest.raises(ValueError, match="PASS cannot be persisted without immutable terminal evidence"):
+        _persist_state(state, store, policy)
+
+    assert store.load() is None
+
+
+def test_pass_cannot_persist_fabricated_nonempty_terminal_evidence():
+    store = MemoryStateStore()
+    state = {
+        "step": 1,
+        "status": "PASS",
+        "history": [{"step": 1, "verification": {"value": "not actually verified"}}],
+        "terminal_evidence": {
+            "step": 1,
+            "status": "PASS",
+            "verification": {"fabricated": True},
+        },
+    }
+
+    with pytest.raises(ValueError, match="does not match final history verification"):
+        _persist_state(state, store, _policy(max_steps=1))
+
+    assert store.load() is None
+
+
+def test_resume_rejects_fabricated_nonempty_pass_evidence():
+    store = MemoryStateStore({
+        "step": 1,
+        "status": "PASS",
+        "history": [],
+        "terminal_evidence": {
+            "step": 1,
+            "status": "PASS",
+            "verification": {"fabricated": True},
+        },
+    })
+
+    result = run_durable_loop(FakeExecutor(), store, _policy(max_steps=1))
+
+    assert result["status"] == "BLOCKED"
+    assert "matching final history entry" in result["block_reason"]
+    assert store.load()["status"] == "BLOCKED"
+    assert store.load()["terminal_evidence"]["status"] == "BLOCKED"
+    resumed_again = run_durable_loop(FakeExecutor(), store, _policy(max_steps=1))
+    assert resumed_again["status"] == "BLOCKED"
+    assert "terminal evidence status does not match state" not in resumed_again["block_reason"]
+
+
+def test_resume_rejects_synthesized_reason_only_pass_evidence():
+    store = MemoryStateStore({
+        "step": 1,
+        "status": "PASS",
+        "history": [],
+        "terminal_evidence": {
+            "step": 1,
+            "status": "PASS",
+            "verification": {"reason": "TERMINAL_STATE"},
+        },
+    })
+
+    result = run_durable_loop(FakeExecutor(), store, _policy(max_steps=1))
+
+    assert result["status"] == "BLOCKED"
+    assert "reason-only terminal evidence" in result["block_reason"]
+    assert store.load()["status"] == "BLOCKED"
+
