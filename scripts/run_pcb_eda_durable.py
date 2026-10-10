@@ -227,7 +227,7 @@ def main():
         if receipt.get("effect_id") != intent.get("effect_id") or receipt.get("attempt_id") != intent.get("attempt_id"):
             raise ValueError("PCB receipt does not match persisted execution intent")
         decision = intent.get("decision")
-        operation = decision.get("operation") if isinstance(decision, Mapping) else None
+        operation = decision.get("logical_operation_id") if isinstance(decision, Mapping) else None
         if operation == "pcb.eda.discover_evidence":
             if evidence.get("provider") != "aios-control-plane-evidence-discovery":
                 raise ValueError("evidence-discovery receipt provider identity is invalid")
