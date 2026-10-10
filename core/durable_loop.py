@@ -489,6 +489,19 @@ def reconcile_in_flight_attempt(
         raise ValueError("reconciliation requires an OBSERVED provider receipt")
     if validated.get("effect_id") != intent.get("effect_id") or validated.get("attempt_id") != intent.get("attempt_id"):
         raise ValueError("reconciliation receipt does not match the persisted execution intent")
+    # A receipt already committed as RECEIPT_VALIDATED is an exact durable
+    # recovery token. Reject any altered copy before invoking validators or
+    # authority callbacks, so tampering cannot trigger authorization side effects.
+    pending_receipt = intent.get("validated_receipt")
+    pending_patch = intent.get("validated_state_patch")
+    pending_verification = intent.get("validated_verification")
+    pending_action = intent.get("validated_action_result")
+    if intent.get("status") == "RECEIPT_VALIDATED":
+        if not isinstance(pending_receipt, Mapping) or dict(pending_receipt) != dict(validated):
+            raise ValueError("reconciliation receipt does not match the durably validated receipt")
+        if not isinstance(pending_patch, Mapping) or not isinstance(pending_verification, Mapping):
+            raise ValueError("durable validated receipt record is incomplete")
+
     # Recovery must enforce the same provider/evidence validator as the normal
     # execution path. Shape and lineage alone do not prove the receipt is authentic.
     if policy.execution_receipt_validator is not None:
@@ -499,18 +512,9 @@ def reconcile_in_flight_attempt(
     if authorization_result is not None:
         raise PermissionError("reconciliation authorizer must return None or raise to deny")
 
-    # If the validated receipt+patch was committed before a process death, only
-    # the exact durable receipt may close it. Revalidate the patch against the
-    # persisted receipt and current state, then apply it during authorized recovery.
-    pending_receipt = intent.get("validated_receipt")
-    pending_patch = intent.get("validated_state_patch")
-    pending_verification = intent.get("validated_verification")
-    pending_action = intent.get("validated_action_result")
+    # Revalidate the patch against the persisted receipt and current state,
+    # then apply it during explicitly authorized recovery.
     if intent.get("status") == "RECEIPT_VALIDATED":
-        if not isinstance(pending_receipt, Mapping) or dict(pending_receipt) != dict(validated):
-            raise ValueError("reconciliation receipt does not match the durably validated receipt")
-        if not isinstance(pending_patch, Mapping) or not isinstance(pending_verification, Mapping):
-            raise ValueError("durable validated receipt record is incomplete")
         if policy.state_patch_validator is None:
             raise ValueError("state patch validator is required to recover a validated receipt")
         patch_result = policy.state_patch_validator(deepcopy(dict(pending_patch)), deepcopy(validated), deepcopy(state))
