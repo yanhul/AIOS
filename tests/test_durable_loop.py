@@ -702,3 +702,33 @@ def test_reconciliation_runs_provider_receipt_validator_before_authorization():
 
     assert calls == [("validator", "attempt-reconcile-validator")]
     assert store.load() == original
+
+def test_pass_cannot_be_persisted_without_real_terminal_evidence():
+    store = MemoryStateStore()
+    state = {"step": 1, "status": "PASS", "history": []}
+    policy = _policy(max_steps=1)
+
+    with pytest.raises(ValueError, match="PASS cannot be persisted without immutable terminal evidence"):
+        _persist_state(state, store, policy)
+
+    assert store.load() is None
+
+
+def test_resume_rejects_synthesized_reason_only_pass_evidence():
+    store = MemoryStateStore({
+        "step": 1,
+        "status": "PASS",
+        "history": [],
+        "terminal_evidence": {
+            "step": 1,
+            "status": "PASS",
+            "verification": {"reason": "TERMINAL_STATE"},
+        },
+    })
+
+    result = run_durable_loop(FakeExecutor(), store, _policy(max_steps=1))
+
+    assert result["status"] == "BLOCKED"
+    assert "reason-only terminal evidence" in result["block_reason"]
+    assert store.load()["status"] == "BLOCKED"
+
