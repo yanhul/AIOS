@@ -40,7 +40,8 @@ def _durable_loop_probe():
 
     policy = LoopPolicy(max_steps=1, terminal_evaluator=lambda verification, state: verification["status"],
                         action_authorizer=lambda decision, state: None, require_execution_receipt=True,
-                        execution_receipt_validator=validate_probe_receipt)
+                        execution_receipt_validator=validate_probe_receipt,
+                        state_patch_validator=lambda patch, receipt, state: None)
     result = run_durable_loop(E(), MemoryStateStore(), policy)
     return result.get("status") == "PASS" and result.get("terminal_evidence", {}).get("verification", {}).get("receipt", {}).get("status") == "OBSERVED"
 
