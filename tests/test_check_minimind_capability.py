@@ -1,3 +1,9 @@
+"""Strict output semantics for MiniMind capability discovery."""
+# AIOS-CONTRACT: Capability check process success is distinct from capability availability.
+# AIOS-REGRESSION: A BLOCKED provider must never be emitted under a CHECK_PASS key.
+# AIOS-OWNER: MiniMind capability adapter contract and CI discovery output.
+# AIOS-COVERAGE-GAP: Malformed reference collections can look truthy without being valid evidence.
+# AIOS-BASELINE: Preserve explicit capability status and typed evidence references.
 import json
 import subprocess
 
