@@ -582,6 +582,47 @@ def test_duplicate_reconciliation_cannot_apply_effect_or_patch_twice(tmp_path):
     assert marker_path.read_text(encoding="utf-8").splitlines() == ["action-step-0"]
 
 
+def test_resume_blocks_duplicate_effect_id_in_persisted_history_before_provider_action(tmp_path):
+    state_path = tmp_path / "duplicate-history-state.json"
+    wal_path = tmp_path / "duplicate-history-state.wal.jsonl"
+    marker_path = tmp_path / "duplicate-history-actions.log"
+    store = WalStateStore(str(state_path), str(wal_path))
+    state = _initial_state()
+    state["step"] = 1
+    state["history"] = [
+        {
+            "step": 1,
+            "verification": {
+                "receipt": {
+                    "effect_id": "effect-reused",
+                    "attempt_id": "attempt-original",
+                    "status": "OBSERVED",
+                    "evidence": {"provider_receipt": "receipt-1"},
+                }
+            },
+        },
+        {
+            "step": 2,
+            "verification": {
+                "receipt": {
+                    "effect_id": "effect-reused",
+                    "attempt_id": "attempt-forged-reuse",
+                    "status": "OBSERVED",
+                    "evidence": {"provider_receipt": "receipt-2"},
+                }
+            },
+        },
+    ]
+    store.save(state)
+
+    result = run_durable_loop(_Executor(marker_path), store, _policy())
+
+    assert result["status"] == "BLOCKED"
+    assert "duplicate persisted effect_id" in result["block_reason"]
+    assert marker_path.exists() is False
+    assert store.load()["history"] == state["history"]
+
+
 if __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--child":
     _child(sys.argv[2], sys.argv[3], sys.argv[4])
 elif __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--crash-after-effect":
