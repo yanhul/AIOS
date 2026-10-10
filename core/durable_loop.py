@@ -252,6 +252,13 @@ def _persist_or_fail_closed(state: dict[str, Any], store: StateStore, policy: Lo
         fallback = deepcopy(state)
         fallback["status"] = policy.failure_state
         fallback["block_reason"] = f"durable persistence failed: {type(exc).__name__}: {exc}"
+        # Never leave a forged/stale PASS projection attached to the fail-closed
+        # snapshot; a later resume must be able to validate the BLOCKED outcome.
+        fallback["terminal_evidence"] = {
+            "step": fallback.get("step", 0),
+            "status": policy.failure_state,
+            "verification": {"reason": fallback["block_reason"]},
+        }
         try:
             _persist_raw_state(fallback, store)
         except Exception as raw_exc:
