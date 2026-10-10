@@ -44,6 +44,7 @@ def _policy():
         action_authorizer=lambda decision, state: None,
         policy_digest="state-continuity-policy-v1",
         continue_contract_builder=build_continue_contract,
+        require_execution_receipt=True,
     )
 
 
@@ -64,7 +65,8 @@ class _Executor:
             fh.write(f"action-step-{state['step']}\n")
             fh.flush()
             os.fsync(fh.fileno())
-        return {"attempt_id": f"A{state['step'] + 1}", "effect_id": "E-placement"}
+        intent = state["in_flight_attempt"]
+        return {"attempt_id": intent["attempt_id"], "effect_id": intent["effect_id"]}
 
     def verify(self, action_result, state):
         next_step = state["step"] + 1
@@ -155,6 +157,54 @@ def test_process_death_recovers_state_patch_and_continue_contract_from_wal(tmp_p
 
 if __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--child":
     _child(sys.argv[2], sys.argv[3], sys.argv[4])
+elif __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--crash-after-effect":
+    _crash_after_provider_effect(sys.argv[2], sys.argv[3], sys.argv[4])
+
+
+
+
+def _crash_after_provider_effect(state_path: str, wal_path: str, marker_path: str) -> None:
+    class CrashAfterEffectExecutor(_Executor):
+        def act(self, decision, state):
+            with self.marker.open("a", encoding="utf-8") as fh:
+                fh.write("provider-effect-committed\\n")
+                fh.flush()
+                os.fsync(fh.fileno())
+            os._exit(43)
+
+    store = WalStateStore(state_path, wal_path)
+    store.save(_initial_state())
+    run_durable_loop(CrashAfterEffectExecutor(Path(marker_path)), store, _policy())
+    raise AssertionError("crash boundary was not reached")
+
+
+def test_process_death_after_provider_effect_never_replays_without_reconciliation(tmp_path):
+    state_path = tmp_path / "effect-crash-state.json"
+    wal_path = tmp_path / "effect-crash-state.wal.jsonl"
+    marker_path = tmp_path / "effect-actions.log"
+    proc = subprocess.run(
+        [sys.executable, __file__, "--crash-after-effect", str(state_path), str(wal_path), str(marker_path)],
+        cwd=os.getcwd(),
+        text=True,
+        capture_output=True,
+        env={**os.environ, "PYTHONPATH": os.getcwd() + os.pathsep + os.environ.get("PYTHONPATH", "")},
+    )
+    assert proc.returncode == 43, (proc.returncode, proc.stdout, proc.stderr)
+
+    store = WalStateStore(str(state_path), str(wal_path))
+    recovered = store.load()
+    assert recovered["step"] == 0
+    assert recovered["status"] == "RUNNING"
+    intent = recovered["in_flight_attempt"]
+    assert intent["status"] == "PREPARED"
+    assert intent["effect_id"].startswith("effect-")
+    assert intent["attempt_id"].startswith("attempt-")
+
+    result = run_durable_loop(_Executor(marker_path), store, _policy())
+    assert result["status"] == "BLOCKED"
+    assert "unresolved in-flight execution attempt" in result["block_reason"]
+    assert result["in_flight_attempt"] == intent
+    assert marker_path.read_text(encoding="utf-8").splitlines() == ["provider-effect-committed"]
 
 
 
