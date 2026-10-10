@@ -497,6 +497,90 @@ def test_unauthorized_reconciliation_after_receipt_commit_preserves_durable_stat
     assert marker_path.read_text(encoding="utf-8").splitlines() == ["action-step-0"]
 
 
+
+def test_tampered_validated_receipt_is_rejected_before_authorization(tmp_path):
+    # Each field is changed independently after a real process death at the
+    # durable RECEIPT_VALIDATED boundary. No tampered receipt may reach authority.
+    mutations = {
+        "effect_id": lambda receipt: receipt.update(effect_id="forged-effect"),
+        "attempt_id": lambda receipt: receipt.update(attempt_id="forged-attempt"),
+        "provider_evidence": lambda receipt: receipt["evidence"].update(receipt="forged-provider-evidence"),
+    }
+    for case, mutate in mutations.items():
+        case_dir = tmp_path / case
+        case_dir.mkdir()
+        state_path = case_dir / "state.json"
+        wal_path = case_dir / "state.wal.jsonl"
+        marker_path = case_dir / "actions.log"
+        proc = subprocess.run(
+            [sys.executable, __file__, "--crash-after-receipt", str(state_path), str(wal_path), str(marker_path)],
+            cwd=os.getcwd(),
+            text=True,
+            capture_output=True,
+            env={**os.environ, "PYTHONPATH": os.getcwd() + os.pathsep + os.environ.get("PYTHONPATH", "")},
+        )
+        assert proc.returncode == 44, (case, proc.returncode, proc.stdout, proc.stderr)
+        store = WalStateStore(str(state_path), str(wal_path))
+        before = store.load()
+        original = before["in_flight_attempt"]["validated_receipt"]
+        tampered = json.loads(json.dumps(original))
+        mutate(tampered)
+        authorization_calls = []
+
+        try:
+            reconcile_in_flight_attempt(
+                store, _policy(), tampered,
+                authorizer=lambda *_: authorization_calls.append("called"),
+            )
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"{case}: tampered receipt was accepted")
+
+        assert authorization_calls == [], f"{case}: authority was invoked for tampered receipt"
+        assert store.load() == before, f"{case}: durable state changed after rejection"
+        assert marker_path.read_text(encoding="utf-8").splitlines() == ["action-step-0"]
+
+
+def test_duplicate_reconciliation_cannot_apply_effect_or_patch_twice(tmp_path):
+    state_path = tmp_path / "duplicate-state.json"
+    wal_path = tmp_path / "duplicate-state.wal.jsonl"
+    marker_path = tmp_path / "duplicate-actions.log"
+    proc = subprocess.run(
+        [sys.executable, __file__, "--crash-after-receipt", str(state_path), str(wal_path), str(marker_path)],
+        cwd=os.getcwd(),
+        text=True,
+        capture_output=True,
+        env={**os.environ, "PYTHONPATH": os.getcwd() + os.pathsep + os.environ.get("PYTHONPATH", "")},
+    )
+    assert proc.returncode == 44, (proc.returncode, proc.stdout, proc.stderr)
+    store = WalStateStore(str(state_path), str(wal_path))
+    intent = store.load()["in_flight_attempt"]
+    receipt = intent["validated_receipt"]
+    first = reconcile_in_flight_attempt(
+        store, _policy(), receipt, authorizer=lambda *_: None
+    )
+    after_first = store.load()
+    assert "in_flight_attempt" not in after_first
+    assert len(after_first["history"]) == 1
+    assert after_first["history"][0]["verification"]["receipt"]["effect_id"] == receipt["effect_id"]
+    assert marker_path.read_text(encoding="utf-8").splitlines() == ["action-step-0"]
+
+    try:
+        reconcile_in_flight_attempt(
+            store, _policy(), receipt, authorizer=lambda *_: None
+        )
+    except ValueError as exc:
+        assert "no in-flight execution attempt" in str(exc)
+    else:
+        raise AssertionError("duplicate reconciliation was accepted")
+
+    assert store.load() == after_first
+    assert first["step"] == after_first["step"] == 1
+    assert len(after_first["history"]) == 1
+    assert marker_path.read_text(encoding="utf-8").splitlines() == ["action-step-0"]
+
+
 if __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--child":
     _child(sys.argv[2], sys.argv[3], sys.argv[4])
 elif __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--crash-after-effect":
