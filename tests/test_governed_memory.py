@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: Governed memory records require evidence-bound identity and cannot grant authority.
+# AIOS-REGRESSION: Reject malformed, tampered, revoked, or unresolved memory records.
+# AIOS-OWNER: AIOS governed memory candidate retrieval boundary.
+# AIOS-COVERAGE-GAP: Cover self-bound identity and evidence resolution fail-closed behavior.
+# AIOS-BASELINE: Validate governed memory construction, validation, and retrieval semantics.
+
 import pytest
 
 from core.governed_memory import (
