@@ -1,4 +1,4 @@
-name: AIOS PCB EDA Durable Run
+name: AIOS PCB EDA Durable Gate Conformance
 # E2E trigger: execute the current pcb.eda@1 kit against the source repo on main.
 
 on:
@@ -75,7 +75,33 @@ jobs:
           PYTHONPATH="$GITHUB_WORKSPACE/aios" python "$GITHUB_WORKSPACE/aios/scripts/run_pcb_eda_schematic_durable.py"             --task-id "aios-pcb-$GITHUB_RUN_ID"             --input "$INPUT_ROOT"             --output "$GITHUB_WORKSPACE/pcb-output"             --kit-root "$KIT_ROOT"             --config "$KIT_ROOT/altium-audit-2605.config.json"             --state "$GITHUB_WORKSPACE/pcb-output/state.json"             --source-commit "${{ github.event.pull_request.head.sha || github.sha }}"             --run-id "$GITHUB_RUN_ID"             --design "$DESIGN"             --max-steps "$MAX_STEPS"             | tee "$GITHUB_WORKSPACE/pcb-output/durable-result.json"
           rc=${PIPESTATUS[0]}
           echo "AIOS_DURABLE_RC=$rc"
-          exit "$rc"
+          python - "$GITHUB_WORKSPACE/pcb-output/durable-result.json" "$rc" <<'PY'
+          import json, sys
+          from pathlib import Path
+          path, raw_rc = Path(sys.argv[1]), int(sys.argv[2])
+          if not path.is_file():
+              raise SystemExit("durable result artifact missing")
+          result = json.loads(path.read_text(encoding="utf-8"))
+          status = result.get("status") or result.get("terminal_status")
+          state = result.get("state") if isinstance(result.get("state"), dict) else result
+          pipeline = result.get("pipeline") or state.get("pipeline")
+          if not isinstance(pipeline, dict):
+              raise SystemExit("durable result lacks pipeline phase states")
+          if status == "PASS":
+              if raw_rc != 0 or pipeline.get("schematic") != "VERIFIED":
+                  raise SystemExit("PASS/exit/pipeline mismatch")
+              if pipeline.get("placement") != "READY" or pipeline.get("routing") != "BLOCKED_BY_PLACEMENT":
+                  raise SystemExit("schematic PASS must only unlock placement; routing remains blocked")
+              print("AIOS_GATE_CONFORMANCE_PASS; DESIGN_STATUS=SCHEMATIC_PASS")
+          elif status == "BLOCKED":
+              if raw_rc == 0 or pipeline.get("schematic") != "BLOCKED":
+                  raise SystemExit("BLOCKED/exit/pipeline mismatch")
+              if pipeline.get("placement") != "BLOCKED_BY_SCHEMATIC" or pipeline.get("routing") != "BLOCKED_BY_SCHEMATIC":
+                  raise SystemExit("blocked schematic must keep placement and routing blocked")
+              print("AIOS_GATE_CONFORMANCE_PASS; DESIGN_STATUS=BLOCKED")
+          else:
+              raise SystemExit(f"unauthorized durable terminal status: {status!r}")
+          PY
 
       - name: Upload E2E evidence
         if: always()
