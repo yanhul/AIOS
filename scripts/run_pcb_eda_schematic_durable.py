@@ -256,10 +256,23 @@ def main() -> int:
         if dict(patch) != expected:
             raise ValueError("schematic state patch does not match validated phase receipt")
 
+    def authorize_schematic(decision: Mapping[str, Any], state: Mapping[str, Any]) -> None:
+        if not isinstance(decision, Mapping) or decision.get("authority") != "AIOS_CONTROL_PLANE":
+            raise PermissionError("schematic execution requires AIOS control-plane authority")
+        if decision.get("logical_operation_id") != "pcb.eda.schematic":
+            raise PermissionError("unauthorized EDA phase")
+        pipeline = state.get("pipeline")
+        if not isinstance(pipeline, Mapping):
+            raise PermissionError("schematic execution requires persisted pipeline state")
+        if pipeline.get("schematic") == "VERIFIED":
+            raise PermissionError("schematic is already verified; a new governed contract is required")
+        if pipeline.get("placement") not in {"BLOCKED_BY_SCHEMATIC", "PENDING"} or pipeline.get("routing") not in {"BLOCKED_BY_SCHEMATIC", "BLOCKED_BY_PLACEMENT", "PENDING"}:
+            raise PermissionError("schematic-first invariant is violated by persisted pipeline state")
+
     policy = LoopPolicy(
         max_steps=1,
         terminal_evaluator=lambda verification, state: verification.get("status") if verification.get("status") in {"PASS", "BLOCKED"} else None,
-        action_authorizer=lambda decision, state: None if decision.get("logical_operation_id") == "pcb.eda.schematic" else (_ for _ in ()).throw(PermissionError("unauthorized phase")),
+        action_authorizer=authorize_schematic,
         require_execution_receipt=True,
         execution_receipt_validator=validate_execution_receipt,
         state_patch_validator=validate_state_patch,
