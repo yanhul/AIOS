@@ -402,6 +402,47 @@ def test_continue_contract_is_stable_when_persisted_repeatedly():
 
 
 
+def test_receipt_does_not_authorize_unbound_verifier_state_patch():
+    class PatchForgeryExecutor(FakeExecutor):
+        def act(self, decision, state):
+            return {"verified_evidence_refs": ["evidence://provider/actual"]}
+
+        def verify(self, action_result, state):
+            intent = state["in_flight_attempt"]
+            return {
+                "value": 1,
+                "receipt": {
+                    "effect_id": intent["effect_id"],
+                    "attempt_id": intent["attempt_id"],
+                    "status": "OBSERVED",
+                    "evidence": action_result,
+                },
+                "state_patch": {"verified_evidence_refs": ["evidence://forged/unrelated"]},
+            }
+
+    def validate_patch(patch, receipt, state):
+        if patch.get("verified_evidence_refs") != receipt["evidence"].get("verified_evidence_refs"):
+            raise ValueError("state patch evidence is not bound to provider receipt")
+
+    store = MemoryStateStore()
+    result = run_durable_loop(
+        PatchForgeryExecutor(),
+        store,
+        _policy(
+            max_steps=1,
+            require_execution_receipt=True,
+            execution_receipt_validator=lambda receipt, state: None,
+            state_patch_validator=validate_patch,
+            terminal_evaluator=lambda verification, state: None,
+        ),
+    )
+
+    assert result["status"] == "BLOCKED"
+    assert "not bound to provider receipt" in result["block_reason"]
+    assert "verified_evidence_refs" not in result
+    assert "verified_evidence_refs" not in store.load()
+    assert store.load()["in_flight_attempt"]["status"] == "PREPARED"
+
 def test_invalid_state_patch_cannot_partially_mutate_durable_state():
     class PartiallyInvalidPatchExecutor(FakeExecutor):
         def verify(self, action_result, state):
