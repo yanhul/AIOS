@@ -4,15 +4,30 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-13dec482b91affd3",
+      "candidate_id": "cand-0ae5765ec25ae99d",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "2fc9b899de117426129e16dfdc6ec171c71dcace8eeb0dbb18703c358a4f7730",
+      "source_digest": "ad16c53b64b62deb62211bd68a91cf721c6afa458d390cf5f665a8c0dac631e9",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-bc59620f6a313102",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "a085b4e82d2028ccc9e7228533e0d9523612d1ceb98fc95a1fba4ac7ca5154c0",
+      "source_ref": "https://github.com/Standard-Co/harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -58,21 +73,6 @@
       "ref": "main",
       "source_digest": "b4caa529a0ecefb01eb81bcd09b24fe40a397cbb2c5ed6739d53ef6ddcacceb7",
       "source_ref": "https://github.com/tomazb/multi-agent-software-engineer",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-9c5151ed0301f7cd",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "e713b0730c7daa3d315d289faf3756ac1fa0d6c1bfa5d0cc4eea3973b1137873",
-      "source_ref": "https://github.com/shaohsuanw803-boop/deskpilot",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {

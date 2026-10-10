@@ -6,10 +6,20 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "2fc9b899de117426129e16dfdc6ec171c71dcace8eeb0dbb18703c358a4f7730",
+      "source_digest": "ad16c53b64b62deb62211bd68a91cf721c6afa458d390cf5f665a8c0dac631e9",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "stars": 0,
-      "updated_at": "2026-10-10T02:56:46Z"
+      "updated_at": "2026-10-10T08:19:29Z"
+    },
+    {
+      "description": "Standard: a harness for long-running agents. RLM and Python execution inside Pi Durable.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "Standard-Co/harness",
+      "source_digest": "a085b4e82d2028ccc9e7228533e0d9523612d1ceb98fc95a1fba4ac7ca5154c0",
+      "source_ref": "https://github.com/Standard-Co/harness",
+      "stars": 0,
+      "updated_at": "2026-10-10T04:10:15Z"
     },
     {
       "description": "Keel, a durable execution runtime for AI agents, and Crashproof, the harness that tries to break it and everyone else's.",
@@ -40,16 +50,6 @@
       "source_ref": "https://github.com/tomazb/multi-agent-software-engineer",
       "stars": 1,
       "updated_at": "2026-10-08T16:06:29Z"
-    },
-    {
-      "description": "Governed IT service desk agent: reliable RAG, MCP diagnostics, durable approvals and an auditable execution harness.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "shaohsuanw803-boop/deskpilot",
-      "source_digest": "e713b0730c7daa3d315d289faf3756ac1fa0d6c1bfa5d0cc4eea3973b1137873",
-      "source_ref": "https://github.com/shaohsuanw803-boop/deskpilot",
-      "stars": 1,
-      "updated_at": "2026-10-06T15:04:47Z"
     },
     {
       "description": "OmniResearch is an autonomous multi-agent AI framework that automates the AI/ML research lifecycle\u2014from planning and literature discovery to dataset selection, experimentation, analysis, verification, and research report generation using LangGraph, multimodal RAG, and research memory.",
