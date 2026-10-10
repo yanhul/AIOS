@@ -289,7 +289,9 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                 return state
             return state
         try:
-            policy.action_authorizer(deepcopy(decision), deepcopy(state))
+            authorization_result = policy.action_authorizer(deepcopy(decision), deepcopy(state))
+            if authorization_result is not None:
+                raise PermissionError("action_authorizer must return None or raise to deny")
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"action authorization failed: {type(exc).__name__}: {exc}"
@@ -479,7 +481,9 @@ def reconcile_in_flight_attempt(
         validation_result = policy.execution_receipt_validator(deepcopy(validated), deepcopy(state))
         if validation_result is not None:
             raise ValueError("execution_receipt_validator must return None or raise to reject")
-    authorizer(deepcopy(intent), deepcopy(validated))
+    authorization_result = authorizer(deepcopy(intent), deepcopy(validated))
+    if authorization_result is not None:
+        raise PermissionError("reconciliation authorizer must return None or raise to deny")
 
     verification = {"status": "OBSERVED", "receipt": deepcopy(dict(validated)), "reconciled": True}
     history = state.get("history")
