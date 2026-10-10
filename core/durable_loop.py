@@ -135,6 +135,20 @@ def _validate_terminal_evidence(state: Mapping[str, Any]) -> None:
             raise ValueError("PASS terminal evidence requires non-empty verification evidence")
         if set(verification) == {"reason"}:
             raise ValueError("PASS cannot use synthesized reason-only terminal evidence")
+        # A PASS projection must be bound to the final completed history entry.
+        # Merely attaching arbitrary non-empty data to terminal_evidence is not
+        # proof that the loop actually verified that step.
+        history = state.get("history")
+        if not isinstance(history, list) or not history:
+            raise ValueError("PASS terminal evidence requires a matching final history entry")
+        final_entry = history[-1]
+        if (
+            not isinstance(final_entry, Mapping)
+            or final_entry.get("step") != state.get("step")
+            or not isinstance(final_entry.get("verification"), Mapping)
+            or dict(final_entry["verification"]) != dict(verification)
+        ):
+            raise ValueError("PASS terminal evidence does not match final history verification")
 
 @dataclass
 class MemoryStateStore:
