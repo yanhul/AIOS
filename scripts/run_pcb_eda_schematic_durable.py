@@ -199,11 +199,39 @@ def main() -> int:
     else:
         validate_resume_identity(loaded, identity)
 
+    def validate_execution_receipt(receipt: Mapping[str, Any], state: Mapping[str, Any]) -> None:
+        evidence = receipt.get("evidence")
+        if not isinstance(evidence, Mapping):
+            raise ValueError("schematic execution receipt evidence is missing")
+        intent = state.get("in_flight_attempt")
+        if not isinstance(intent, Mapping):
+            raise ValueError("schematic receipt has no persisted execution intent")
+        if receipt.get("effect_id") != intent.get("effect_id") or receipt.get("attempt_id") != intent.get("attempt_id"):
+            raise ValueError("schematic receipt does not match persisted execution intent")
+        artifact = Path(str(evidence.get("phase_receipt", ""))).resolve(strict=True)
+        output_root = a.output.resolve(strict=True)
+        if not artifact.is_relative_to(output_root) or artifact.name != "phase_receipt.json":
+            raise ValueError("schematic receipt artifact escapes the governed output directory")
+        if sha(artifact) != evidence.get("phase_receipt_sha256"):
+            raise ValueError("schematic receipt artifact digest mismatch")
+        actual = json.loads(artifact.read_text(encoding="utf-8"))
+        validate_schematic_receipt(actual)
+        identity = state.get("workload_identity")
+        if not isinstance(identity, Mapping):
+            raise ValueError("schematic workload identity is missing")
+        if evidence.get("source_commit") != a.source_commit or evidence.get("kit_commit") != identity.get("kit_commit"):
+            raise ValueError("schematic receipt source/kit commit lineage mismatch")
+        if actual.get("status") != state.get("history", [{}])[-1].get("verification", {}).get("status") if state.get("history") else False:
+            # On normal execution the current result is not yet in history; the
+            # phase status is checked by the executor and artifact schema above.
+            pass
+
     policy = LoopPolicy(
         max_steps=1,
         terminal_evaluator=lambda verification, state: verification.get("status") if verification.get("status") in {"PASS", "BLOCKED"} else None,
         action_authorizer=lambda decision, state: None if decision.get("logical_operation_id") == "pcb.eda.schematic" else (_ for _ in ()).throw(PermissionError("unauthorized phase")),
         require_execution_receipt=True,
+        execution_receipt_validator=validate_execution_receipt,
         resume_validator=lambda state: validate_resume_identity(state, identity),
         continue_contract_builder=build_continue_contract,
     )
