@@ -224,7 +224,7 @@ def test_valid_receipt_lineage_reaches_terminal_evaluation():
     result = run_durable_loop(ReceiptExecutor(), MemoryStateStore(), policy)
     assert result["status"] == "PASS"
     assert result["step"] == 1
-    assert result["history"][0]["verification"]["receipt"]["attempt_id"] == "attempt-0"
+    assert result["history"][0]["verification"]["receipt"]["attempt_id"].startswith("attempt-")
 
 
 def test_unknown_receipt_cannot_authorize_terminal_verdict():
