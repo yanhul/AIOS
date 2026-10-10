@@ -69,6 +69,11 @@ class LoopPolicy:
             raise ValueError("failure_state must be an authorized terminal state")
         if not isinstance(self.require_execution_receipt, bool):
             raise ValueError("require_execution_receipt must be boolean")
+        if self.require_execution_receipt and self.execution_receipt_validator is None:
+            raise ValueError(
+                "require_execution_receipt requires an execution_receipt_validator; "
+                "receipt shape and lineage do not establish provider authenticity"
+            )
         if self.execution_receipt_validator is not None and not callable(self.execution_receipt_validator):
             raise ValueError("execution_receipt_validator must be callable")
         if self.fix_plan is not None:
