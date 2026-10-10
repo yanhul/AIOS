@@ -163,7 +163,7 @@ def _crash_after_provider_effect(state_path: str, wal_path: str, marker_path: st
     class CrashAfterEffectExecutor(_Executor):
         def act(self, decision, state):
             with self.marker.open("a", encoding="utf-8") as fh:
-                fh.write("provider-effect-committed\\n")
+                fh.write("provider-effect-committed\n")
                 fh.flush()
                 os.fsync(fh.fileno())
             os._exit(43)
