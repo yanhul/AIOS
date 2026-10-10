@@ -387,6 +387,30 @@ def test_continue_contract_is_stable_when_persisted_repeatedly():
 
 
 
+def test_invalid_state_patch_cannot_partially_mutate_durable_state():
+    class PartiallyInvalidPatchExecutor(FakeExecutor):
+        def verify(self, action_result, state):
+            return {
+                "value": action_result,
+                "state_patch": {
+                    "verified_evidence_refs": ["forged-evidence"],
+                    "": "invalid-key-after-valid-field",
+                },
+            }
+
+    store = MemoryStateStore()
+    result = run_durable_loop(
+        PartiallyInvalidPatchExecutor(),
+        store,
+        _policy(max_steps=1, terminal_evaluator=lambda verification, state: None),
+    )
+
+    assert result["status"] == "BLOCKED"
+    assert "state_patch keys must be non-empty strings" in result["block_reason"]
+    assert "verified_evidence_refs" not in result
+    assert "verified_evidence_refs" not in store.load()
+
+
 def test_rejected_receipt_cannot_persist_verifier_state_patch():
     class MismatchedReceiptExecutor:
         def observe(self, state):
