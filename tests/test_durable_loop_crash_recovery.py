@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from core.continue_contract import build_continue_contract
-from core.durable_loop import LoopPolicy, run_durable_loop
+from core.durable_loop import LoopPolicy, reconcile_in_flight_attempt, run_durable_loop
 from core.wal_state_store import WalStateStore
 
 
@@ -263,6 +263,99 @@ def test_missing_continue_contract_inputs_block_before_any_side_effect(tmp_path)
     assert recovered["status"] == "BLOCKED"
     assert recovered["step"] == 0
     assert recovered["history"] == []
+
+
+
+def test_authorized_observed_receipt_reconciles_unknown_without_replay(tmp_path):
+    state_path = tmp_path / "reconcile-state.json"
+    wal_path = tmp_path / "reconcile-state.wal.jsonl"
+    marker_path = tmp_path / "reconcile-actions.log"
+    store = WalStateStore(str(state_path), str(wal_path))
+    store.save(_initial_state())
+
+    class UnknownExecutor(_Executor):
+        def verify(self, action_result, state):
+            result = super().verify(action_result, state)
+            result["status"] = "UNKNOWN"
+            result["receipt"]["status"] = "UNKNOWN"
+            result["receipt"]["evidence"] = {"reason": "provider response lost"}
+            return result
+
+    base = _policy()
+    policy = LoopPolicy(
+        max_steps=base.max_steps,
+        terminal_evaluator=lambda verification, state: "PASS",
+        action_authorizer=base.action_authorizer,
+        policy_digest=base.policy_digest,
+        require_execution_receipt=True,
+        continue_contract_builder=build_continue_contract,
+    )
+    blocked = run_durable_loop(UnknownExecutor(marker_path), store, policy)
+    assert blocked["status"] == "BLOCKED"
+    intent = blocked["in_flight_attempt"]
+    receipt = {
+        "effect_id": intent["effect_id"],
+        "attempt_id": intent["attempt_id"],
+        "status": "OBSERVED",
+        "evidence": {"provider_query": "effect confirmed"},
+    }
+    authorized = []
+
+    def authorize_reconciliation(saved_intent, observed_receipt):
+        assert saved_intent["effect_id"] == observed_receipt["effect_id"]
+        authorized.append(observed_receipt["attempt_id"])
+
+    result = reconcile_in_flight_attempt(
+        store, policy, receipt, authorizer=authorize_reconciliation
+    )
+    assert result["status"] == "PASS"
+    assert "in_flight_attempt" not in result
+    assert result["history"][-1]["verification"]["receipt"]["status"] == "OBSERVED"
+    assert authorized == [intent["attempt_id"]]
+    assert marker_path.read_text(encoding="utf-8").splitlines() == ["action-step-0"]
+    assert store.load() == result
+
+
+def test_reconciliation_rejects_wrong_attempt_identity(tmp_path):
+    state_path = tmp_path / "wrong-reconcile-state.json"
+    wal_path = tmp_path / "wrong-reconcile-state.wal.jsonl"
+    marker_path = tmp_path / "wrong-reconcile-actions.log"
+    store = WalStateStore(str(state_path), str(wal_path))
+    store.save(_initial_state())
+
+    class UnknownExecutor(_Executor):
+        def verify(self, action_result, state):
+            result = super().verify(action_result, state)
+            result["receipt"]["status"] = "UNKNOWN"
+            return result
+
+    base = _policy()
+    policy = LoopPolicy(
+        max_steps=base.max_steps,
+        terminal_evaluator=lambda verification, state: "PASS",
+        action_authorizer=base.action_authorizer,
+        policy_digest=base.policy_digest,
+        require_execution_receipt=True,
+        continue_contract_builder=build_continue_contract,
+    )
+    blocked = run_durable_loop(UnknownExecutor(marker_path), store, policy)
+    intent = blocked["in_flight_attempt"]
+    before = store.load()
+    wrong = {
+        "effect_id": intent["effect_id"],
+        "attempt_id": "attempt-forged",
+        "status": "OBSERVED",
+        "evidence": {"provider_query": "effect confirmed"},
+    }
+    try:
+        reconcile_in_flight_attempt(store, policy, wrong, authorizer=lambda *_: None)
+    except ValueError as exc:
+        assert "does not match" in str(exc)
+    else:
+        raise AssertionError("mismatched reconciliation receipt was accepted")
+    assert store.load() == before
+    assert marker_path.read_text(encoding="utf-8").splitlines() == ["action-step-0"]
+
 
 
 def test_unknown_receipt_blocks_and_never_retries_automatically(tmp_path):
