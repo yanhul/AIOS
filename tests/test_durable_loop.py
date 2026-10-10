@@ -225,6 +225,16 @@ def test_receipt_required_policy_rejects_missing_provider_validator():
         )
 
 
+def test_receipt_required_policy_rejects_missing_state_patch_validator():
+    with pytest.raises(ValueError, match="requires a state_patch_validator"):
+        LoopPolicy(
+            max_steps=1,
+            terminal_evaluator=lambda verification, state: "PASS",
+            action_authorizer=lambda decision, state: None,
+            require_execution_receipt=True,
+            execution_receipt_validator=lambda receipt, state: None,
+        )
+
 def test_receipt_lineage_is_required_before_terminal_evaluation():
     policy = _policy(max_steps=1, require_execution_receipt=True, terminal_evaluator=lambda verification, state: "PASS")
     result = run_durable_loop(FakeExecutor(), MemoryStateStore(), policy)
