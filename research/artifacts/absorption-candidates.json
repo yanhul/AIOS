@@ -4,14 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-02ea64c15fb5ca53",
+      "candidate_id": "cand-b5d90bb54da4f32f",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "dbcd7b773bb0ceb2ed8e9bf977f2fd5598b3ed60e05bf919bd0f4ae989367309",
+      "source_digest": "d260c138a6a5f1c0b8cf0856ee8754a758c0f51782b630b1f445b51f7f96849a",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -154,6 +154,21 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
+      "candidate_id": "cand-6974473888e7b063",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "a2c4bfd5bc9192dfa20fe94908f76b48b77580a5f5983d26299a7e0f1004c6b6",
+      "source_ref": "https://github.com/jermayne36/heartwood-memory",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
       "candidate_id": "cand-b82c01a4e03c5865",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
@@ -178,21 +193,6 @@
       "ref": "main",
       "source_digest": "66d82d25abc4141c5d749bd8ce28debf4093dbbbcea974b79ad43968260d9e6f",
       "source_ref": "https://github.com/ver-cy/vercy-py",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-24cdbc67c7b8bc07",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "71afbf0ab3420b450ef18d0155ad783f298e84e5a7d69645eb59990f8ecb71a2",
-      "source_ref": "https://github.com/jermayne36/heartwood-memory",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
