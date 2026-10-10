@@ -28,6 +28,8 @@ def _policy(max_steps=5, terminal_evaluator=None, **kwargs):
     # Test-only provider stub: production callers must supply a real receipt verifier.
     if kwargs.get("require_execution_receipt") and "execution_receipt_validator" not in kwargs:
         kwargs["execution_receipt_validator"] = lambda receipt, state: None
+    if kwargs.get("require_execution_receipt") and "state_patch_validator" not in kwargs:
+        kwargs["state_patch_validator"] = lambda patch, receipt, state: None
     return LoopPolicy(
         max_steps=max_steps,
         terminal_evaluator=terminal_evaluator or (
@@ -457,6 +459,7 @@ def test_rejected_receipt_cannot_persist_verifier_state_patch():
         action_authorizer=lambda decision, state: None,
         require_execution_receipt=True,
         execution_receipt_validator=lambda receipt, state: None,
+        state_patch_validator=lambda patch, receipt, state: None,
     )
 
     result = run_durable_loop(MismatchedReceiptExecutor(), store, policy)
