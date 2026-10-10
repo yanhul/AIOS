@@ -714,6 +714,44 @@ def test_pass_cannot_be_persisted_without_real_terminal_evidence():
     assert store.load() is None
 
 
+def test_pass_cannot_persist_fabricated_nonempty_terminal_evidence():
+    store = MemoryStateStore()
+    state = {
+        "step": 1,
+        "status": "PASS",
+        "history": [{"step": 1, "verification": {"value": "not actually verified"}}],
+        "terminal_evidence": {
+            "step": 1,
+            "status": "PASS",
+            "verification": {"fabricated": True},
+        },
+    }
+
+    with pytest.raises(ValueError, match="does not match final history verification"):
+        _persist_state(state, store, _policy(max_steps=1))
+
+    assert store.load() is None
+
+
+def test_resume_rejects_fabricated_nonempty_pass_evidence():
+    store = MemoryStateStore({
+        "step": 1,
+        "status": "PASS",
+        "history": [],
+        "terminal_evidence": {
+            "step": 1,
+            "status": "PASS",
+            "verification": {"fabricated": True},
+        },
+    })
+
+    result = run_durable_loop(FakeExecutor(), store, _policy(max_steps=1))
+
+    assert result["status"] == "BLOCKED"
+    assert "matching final history entry" in result["block_reason"]
+    assert store.load()["status"] == "BLOCKED"
+
+
 def test_resume_rejects_synthesized_reason_only_pass_evidence():
     store = MemoryStateStore({
         "step": 1,
