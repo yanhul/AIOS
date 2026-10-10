@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: PCB and schematic receipts must satisfy phase-specific evidence contracts.
+# AIOS-REGRESSION: Reject missing schematic gates, blocking findings, and malformed terminal receipts.
+# AIOS-OWNER: AIOS governed PCB EDA capability boundary.
+# AIOS-COVERAGE-GAP: Verify schematic-phase evidence independently of placement/routing closure.
+# AIOS-BASELINE: Preserve existing PCB receipt and request validation behavior.
+
 import json
 
 import pytest
