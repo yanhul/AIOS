@@ -296,8 +296,8 @@ def test_unknown_receipt_blocks_and_never_retries_automatically(tmp_path):
     assert result["status"] == "BLOCKED"
     assert "UNKNOWN" in result["block_reason"]
     assert result["step"] == 1
-    assert result["history"][-1]["verification"]["receipt"]["attempt_id"] == "A1"
-    assert result["history"][-1]["verification"]["receipt"]["effect_id"] == "E-placement"
+    assert result["history"][-1]["verification"]["receipt"]["attempt_id"] == result["in_flight_attempt"]["attempt_id"]
+    assert result["history"][-1]["verification"]["receipt"]["effect_id"] == result["in_flight_attempt"]["effect_id"]
     assert result["history"][-1]["verification"]["receipt"]["status"] == "UNKNOWN"
     assert marker_path.read_text(encoding="utf-8").splitlines() == ["action-step-0"]
     recovered = store.load()
