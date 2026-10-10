@@ -459,6 +459,44 @@ def test_process_death_after_validated_receipt_commit_reconciles_exact_receipt_w
     assert store.load() == result
 
 
+def test_unauthorized_reconciliation_after_receipt_commit_preserves_durable_state(tmp_path):
+    state_path = tmp_path / "unauthorized-reconcile-state.json"
+    wal_path = tmp_path / "unauthorized-reconcile-state.wal.jsonl"
+    marker_path = tmp_path / "unauthorized-reconcile-actions.log"
+    proc = subprocess.run(
+        [sys.executable, __file__, "--crash-after-receipt", str(state_path), str(wal_path), str(marker_path)],
+        cwd=os.getcwd(),
+        text=True,
+        capture_output=True,
+        env={**os.environ, "PYTHONPATH": os.getcwd() + os.pathsep + os.environ.get("PYTHONPATH", "")},
+    )
+    assert proc.returncode == 44, (proc.returncode, proc.stdout, proc.stderr)
+
+    store = WalStateStore(str(state_path), str(wal_path))
+    before = store.load()
+    intent = before["in_flight_attempt"]
+    receipt = intent["validated_receipt"]
+    assert intent["status"] == "RECEIPT_VALIDATED"
+
+    def deny_reconciliation(saved_intent, supplied_receipt):
+        raise PermissionError("reconciliation authority denied")
+
+    try:
+        reconcile_in_flight_attempt(store, _policy(), receipt, authorizer=deny_reconciliation)
+    except PermissionError as exc:
+        assert "denied" in str(exc)
+    else:
+        raise AssertionError("unauthorized reconciliation unexpectedly succeeded")
+
+    after = store.load()
+    assert after == before
+    assert after["step"] == 0
+    assert after["in_flight_attempt"]["status"] == "RECEIPT_VALIDATED"
+    assert after["in_flight_attempt"]["validated_receipt"] == receipt
+    assert "latest_attempt_dir" not in after
+    assert marker_path.read_text(encoding="utf-8").splitlines() == ["action-step-0"]
+
+
 if __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--child":
     _child(sys.argv[2], sys.argv[3], sys.argv[4])
 elif __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--crash-after-effect":
