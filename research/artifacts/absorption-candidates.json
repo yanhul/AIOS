@@ -4,14 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-5d65c2c2e8082a31",
+      "candidate_id": "cand-13dec482b91affd3",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "99235687eeda86d4535f509d4404fc3c71ff42f20cac6d0c63295eb2ab18b344",
+      "source_digest": "2fc9b899de117426129e16dfdc6ec171c71dcace8eeb0dbb18703c358a4f7730",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "status": "UNTRUSTED_EVIDENCE"
     },

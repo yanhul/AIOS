@@ -1,10 +1,10 @@
 {
   "candidate_count": 15,
-  "digest": "8b8b3ce95ff3a2564a1a5d7e0928718a49537fdc7d094872c44eb71e0a782d6d",
+  "digest": "06957223a689a74406c4b6d164c1e71fd2e7a37e62f9b91755d6c9cf8ba80100",
   "failure_count": 0,
   "failures": [],
   "independent_tests": {
-    "digest": "67a67833ba20833c60b2fb5cdef93aa70269bd93d757fb1a8354a8819e681f25",
+    "digest": "4dda8cc62e76eb78865a1eda620fa2c87d0bf43ba7c0fe369b9d68f79771831c",
     "passed": true
   },
   "kind": "AIOS_ABSORPTION_INDEPENDENT_VERIFICATION",
@@ -12,16 +12,16 @@
   "records": [
     {
       "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-5d65c2c2e8082a31",
+      "candidate_id": "cand-13dec482b91affd3",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "evidence_digest": "f874d073ff3be8274dd161c04e8f8932ba4b6a1a2239a807ca26bc51e6a7bd68",
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38018391139",
-      "source_digest": "99235687eeda86d4535f509d4404fc3c71ff42f20cac6d0c63295eb2ab18b344",
+      "run_id": "38018818727",
+      "source_digest": "2fc9b899de117426129e16dfdc6ec171c71dcace8eeb0dbb18703c358a4f7730",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
-      "test_digest": "67a67833ba20833c60b2fb5cdef93aa70269bd93d757fb1a8354a8819e681f25",
+      "test_digest": "4dda8cc62e76eb78865a1eda620fa2c87d0bf43ba7c0fe369b9d68f79771831c",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -32,10 +32,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38018391139",
+      "run_id": "38018818727",
       "source_digest": "4899549bc2623a2dc98417c567a43a523c548bb75f3d4579fc0b260544e073f8",
       "source_ref": "https://github.com/keshav9926/drydock",
-      "test_digest": "67a67833ba20833c60b2fb5cdef93aa70269bd93d757fb1a8354a8819e681f25",
+      "test_digest": "4dda8cc62e76eb78865a1eda620fa2c87d0bf43ba7c0fe369b9d68f79771831c",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -46,10 +46,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38018391139",
+      "run_id": "38018818727",
       "source_digest": "cf0f4f1520628f806746f73d03c38c0870858e5fbea8187f48cf314c72b6db7b",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "test_digest": "67a67833ba20833c60b2fb5cdef93aa70269bd93d757fb1a8354a8819e681f25",
+      "test_digest": "4dda8cc62e76eb78865a1eda620fa2c87d0bf43ba7c0fe369b9d68f79771831c",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -60,10 +60,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38018391139",
+      "run_id": "38018818727",
       "source_digest": "b4caa529a0ecefb01eb81bcd09b24fe40a397cbb2c5ed6739d53ef6ddcacceb7",
       "source_ref": "https://github.com/tomazb/multi-agent-software-engineer",
-      "test_digest": "67a67833ba20833c60b2fb5cdef93aa70269bd93d757fb1a8354a8819e681f25",
+      "test_digest": "4dda8cc62e76eb78865a1eda620fa2c87d0bf43ba7c0fe369b9d68f79771831c",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -74,10 +74,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38018391139",
+      "run_id": "38018818727",
       "source_digest": "e713b0730c7daa3d315d289faf3756ac1fa0d6c1bfa5d0cc4eea3973b1137873",
       "source_ref": "https://github.com/shaohsuanw803-boop/deskpilot",
-      "test_digest": "67a67833ba20833c60b2fb5cdef93aa70269bd93d757fb1a8354a8819e681f25",
+      "test_digest": "4dda8cc62e76eb78865a1eda620fa2c87d0bf43ba7c0fe369b9d68f79771831c",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -88,10 +88,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38018391139",
+      "run_id": "38018818727",
       "source_digest": "a755d4ae6a5b7bd994913e225524ef46882b2e5d1be9cc6e80acf3506a13750b",
       "source_ref": "https://github.com/abhijeetchaubey/OmniResearch",
-      "test_digest": "67a67833ba20833c60b2fb5cdef93aa70269bd93d757fb1a8354a8819e681f25",
+      "test_digest": "4dda8cc62e76eb78865a1eda620fa2c87d0bf43ba7c0fe369b9d68f79771831c",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -102,10 +102,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38018391139",
+      "run_id": "38018818727",
       "source_digest": "ebb09ee5914b6e8bba2fe90a69694aa9e348cfb6f18996e511a084e35ae65165",
       "source_ref": "https://github.com/yethikrishna/Yethanus",
-      "test_digest": "67a67833ba20833c60b2fb5cdef93aa70269bd93d757fb1a8354a8819e681f25",
+      "test_digest": "4dda8cc62e76eb78865a1eda620fa2c87d0bf43ba7c0fe369b9d68f79771831c",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -116,10 +116,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38018391139",
+      "run_id": "38018818727",
       "source_digest": "4b3fe2fe2a775115db1a41476b924ba6b5d132ca00a7da67fdf6485fe0b6befc",
       "source_ref": "https://github.com/Yash-Kavaiya/auto-cxas-scrapi",
-      "test_digest": "67a67833ba20833c60b2fb5cdef93aa70269bd93d757fb1a8354a8819e681f25",
+      "test_digest": "4dda8cc62e76eb78865a1eda620fa2c87d0bf43ba7c0fe369b9d68f79771831c",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -130,10 +130,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38018391139",
+      "run_id": "38018818727",
       "source_digest": "9716dab55dc592817a54a87bfce7cb244d2713b570d724683a0cfb9cc771cfa3",
       "source_ref": "https://github.com/yanghangAI/MultiAgentAutoResearch",
-      "test_digest": "67a67833ba20833c60b2fb5cdef93aa70269bd93d757fb1a8354a8819e681f25",
+      "test_digest": "4dda8cc62e76eb78865a1eda620fa2c87d0bf43ba7c0fe369b9d68f79771831c",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -144,10 +144,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38018391139",
+      "run_id": "38018818727",
       "source_digest": "65f113e6207c42700139b62edd50a37b5e6227de2a5019fc0102cd845653ee42",
       "source_ref": "https://github.com/kp-krish/AutoResearch",
-      "test_digest": "67a67833ba20833c60b2fb5cdef93aa70269bd93d757fb1a8354a8819e681f25",
+      "test_digest": "4dda8cc62e76eb78865a1eda620fa2c87d0bf43ba7c0fe369b9d68f79771831c",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -158,10 +158,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38018391139",
+      "run_id": "38018818727",
       "source_digest": "a2c4bfd5bc9192dfa20fe94908f76b48b77580a5f5983d26299a7e0f1004c6b6",
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
-      "test_digest": "67a67833ba20833c60b2fb5cdef93aa70269bd93d757fb1a8354a8819e681f25",
+      "test_digest": "4dda8cc62e76eb78865a1eda620fa2c87d0bf43ba7c0fe369b9d68f79771831c",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -172,10 +172,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38018391139",
+      "run_id": "38018818727",
       "source_digest": "6313696a4d30c6946d29bf27d29f4bbdfa0a4f788219731ebb396dc4ba6bcbf6",
       "source_ref": "https://github.com/teolex2020/aura-memory",
-      "test_digest": "67a67833ba20833c60b2fb5cdef93aa70269bd93d757fb1a8354a8819e681f25",
+      "test_digest": "4dda8cc62e76eb78865a1eda620fa2c87d0bf43ba7c0fe369b9d68f79771831c",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -186,10 +186,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38018391139",
+      "run_id": "38018818727",
       "source_digest": "66d82d25abc4141c5d749bd8ce28debf4093dbbbcea974b79ad43968260d9e6f",
       "source_ref": "https://github.com/ver-cy/vercy-py",
-      "test_digest": "67a67833ba20833c60b2fb5cdef93aa70269bd93d757fb1a8354a8819e681f25",
+      "test_digest": "4dda8cc62e76eb78865a1eda620fa2c87d0bf43ba7c0fe369b9d68f79771831c",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -200,10 +200,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38018391139",
+      "run_id": "38018818727",
       "source_digest": "b2c8871ee134b22587e4b621bb03241db96aea44283448a0c609c0c02bd3f009",
       "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
-      "test_digest": "67a67833ba20833c60b2fb5cdef93aa70269bd93d757fb1a8354a8819e681f25",
+      "test_digest": "4dda8cc62e76eb78865a1eda620fa2c87d0bf43ba7c0fe369b9d68f79771831c",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -214,14 +214,14 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38018391139",
+      "run_id": "38018818727",
       "source_digest": "20d8fbfbdc7056deb9a1f42d05e647f08db7fd2506f5764b36757d3dcc4e4486",
       "source_ref": "https://github.com/qingyou0420/trueheart-core",
-      "test_digest": "67a67833ba20833c60b2fb5cdef93aa70269bd93d757fb1a8354a8819e681f25",
+      "test_digest": "4dda8cc62e76eb78865a1eda620fa2c87d0bf43ba7c0fe369b9d68f79771831c",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     }
   ],
-  "run_id": "38018391139",
+  "run_id": "38018818727",
   "schema_version": 1,
   "verified_count": 15
 }

@@ -6,10 +6,10 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "99235687eeda86d4535f509d4404fc3c71ff42f20cac6d0c63295eb2ab18b344",
+      "source_digest": "2fc9b899de117426129e16dfdc6ec171c71dcace8eeb0dbb18703c358a4f7730",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "stars": 0,
-      "updated_at": "2026-10-10T02:03:08Z"
+      "updated_at": "2026-10-10T02:56:46Z"
     },
     {
       "description": "Keel, a durable execution runtime for AI agents, and Crashproof, the harness that tries to break it and everyone else's.",
