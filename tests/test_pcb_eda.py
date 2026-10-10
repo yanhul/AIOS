@@ -52,3 +52,51 @@ def test_unknown_or_missing_schema_is_fail_closed():
 def test_request_rejects_negative_retry_budget():
     with pytest.raises(ValueError, match="max_retries"):
         PcbEdaRequest("x", "/i", "/o", "/k", max_retries=-1).validate()
+
+
+
+def schematic_receipt(status="PASS"):
+    gates = {name: "VERIFIED" for name in (
+        "G0_INTAKE", "G1_PARSE", "G2_COMPILE", "G3_CONNECTIVITY"
+    )}
+    return {
+        "schema": "altium-audit-e2e-phase/v2",
+        "phase": "SCHEMATIC",
+        "status": status,
+        "evidence": {
+            "required_gates": gates,
+            "finding_inventory": {
+                "errors": [],
+                "blocking": [],
+                "deferred_non_gating": [],
+            },
+        },
+    }
+
+
+def test_schematic_pass_requires_all_schematic_gates_and_inventory():
+    from core.pcb_eda import validate_schematic_receipt
+
+    validate_schematic_receipt(schematic_receipt())
+    bad = schematic_receipt()
+    bad["evidence"]["required_gates"]["G2_COMPILE"] = "BLOCKED"
+    with pytest.raises(ValueError, match="G0/G1/G2/G3"):
+        validate_schematic_receipt(bad)
+
+
+def test_schematic_pass_cannot_hide_blocking_findings():
+    from core.pcb_eda import validate_schematic_receipt
+
+    bad = schematic_receipt()
+    bad["evidence"]["finding_inventory"]["blocking"] = [{"id": "HCPL-0600"}]
+    with pytest.raises(ValueError, match="blocking findings"):
+        validate_schematic_receipt(bad)
+
+
+def test_schematic_receipt_must_preserve_deferred_findings():
+    from core.pcb_eda import validate_schematic_receipt
+
+    bad = schematic_receipt()
+    bad["evidence"]["finding_inventory"].pop("deferred_non_gating")
+    with pytest.raises(ValueError, match="deferred findings"):
+        validate_schematic_receipt(bad)
