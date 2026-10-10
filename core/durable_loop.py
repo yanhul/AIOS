@@ -46,12 +46,13 @@ class LoopPolicy:
     failure_state: str = "BLOCKED"
     require_execution_receipt: bool = False
     execution_receipt_validator: Callable[[Mapping[str, Any], Mapping[str, Any]], None] | None = None
-    state_patch_validator: Callable[[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]], None] | None = None
     fix_plan: FixPlan | None = None
     fix_success_state: str = "PASS"
     blocked_continuation: Callable[[Any, Mapping[str, Any]], Mapping[str, Any] | None] | None = None
     acceptance_predicates: tuple[AcceptancePredicate, ...] = ()
     continue_contract_builder: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None
+    # Appended to preserve positional compatibility for earlier LoopPolicy fields.
+    state_patch_validator: Callable[[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]], None] | None = None
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
