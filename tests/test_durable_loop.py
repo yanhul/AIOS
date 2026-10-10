@@ -283,7 +283,7 @@ def test_verifier_state_patch_cannot_mutate_control_plane_fields():
     assert "protected fields" in result["block_reason"]
     assert result["step"] == 0
     assert result["history"] == []
-    assert "terminal_evidence" not in result
+    assert result["terminal_evidence"]["status"] == "BLOCKED"
     assert "continue_contract" not in result
 
 
