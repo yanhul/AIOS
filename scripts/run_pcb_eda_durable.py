@@ -307,9 +307,32 @@ def main():
         if dict(patch) != expected:
             raise ValueError("PCB state patch does not match validated Audit Kit receipt")
 
+    def authorize_action(decision: Mapping[str, Any], state: Mapping[str, Any]) -> None:
+        if not isinstance(decision, Mapping) or decision.get("authority") != "AIOS_CONTROL_PLANE":
+            raise PermissionError("PCB execution requires AIOS control-plane authority")
+        operation = decision.get("logical_operation_id")
+        if operation not in {"pcb.eda@1", "pcb.eda.discover_evidence"}:
+            raise PermissionError(f"unauthorized PCB operation: {operation!r}")
+        continuation = state.get("continuation")
+        if continuation is None:
+            if operation != "pcb.eda@1":
+                raise PermissionError("evidence discovery requires a persisted governed continuation")
+            return
+        if not isinstance(continuation, Mapping) or continuation.get("authority") != "AIOS_CONTROL_PLANE":
+            raise PermissionError("persisted continuation lacks control-plane authority")
+        if continuation.get("next_operation_id") != operation:
+            raise PermissionError("decision does not match the persisted continuation operation")
+        refs = continuation.get("evidence_refs")
+        if not isinstance(refs, list) or not refs or not all(isinstance(ref, str) and ref.strip() for ref in refs):
+            raise PermissionError("persisted continuation evidence refs are invalid")
+        if operation == "pcb.eda@1":
+            verified = set(state.get("verified_evidence_refs") or [])
+            if any(ref not in verified for ref in refs):
+                raise PermissionError("PCB redispatch requires persisted verified evidence refs")
+
     policy = LoopPolicy(
         max_steps=a.max_steps, terminal_evaluator=terminal,
-        action_authorizer=lambda d, s: None, require_execution_receipt=True,
+        action_authorizer=authorize_action, require_execution_receipt=True,
         execution_receipt_validator=validate_execution_receipt,
         state_patch_validator=validate_state_patch,
         blocked_continuation=continuation,
