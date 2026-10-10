@@ -187,6 +187,7 @@ class PcbExecutor:
                     "summary": str(Path(attempt_dir) / "summary.json"),
                     "summary_sha256": hashlib.sha256((Path(attempt_dir) / "summary.json").read_bytes()).hexdigest(),
                     "receipt_schema": receipt.get("schema"),
+                    "kit_status": receipt.get("status"),
                     "terminal_reason": receipt.get("terminal_reason"),
                     "gates": receipt.get("gates"),
                 },
@@ -215,9 +216,30 @@ def main():
 
     def terminal(v, s):
         status = v.get("status")
-        if status == "PASS": return "PASS"
-        if status == "BLOCKED": return "BLOCKED"
-        return None
+        outer = v.get("receipt")
+        evidence = outer.get("evidence") if isinstance(outer, Mapping) else None
+        if not isinstance(evidence, Mapping):
+            raise ValueError("terminal PCB verdict has no validated execution receipt")
+        if evidence.get("provider") == "aios-control-plane-evidence-discovery":
+            if status == "READY":
+                return None
+            if status == "BLOCKED":
+                return "BLOCKED"
+            raise ValueError("discovery terminal status is unauthorized")
+        summary = Path(str(evidence.get("summary", ""))).resolve(strict=True)
+        output_root = a.output.resolve(strict=True)
+        if not summary.is_relative_to(output_root) or summary.name != "summary.json":
+            raise ValueError("terminal PCB verdict references an ungoverned artifact")
+        raw = summary.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != evidence.get("summary_sha256"):
+            raise ValueError("terminal PCB receipt digest mismatch")
+        actual = json.loads(raw.decode("utf-8"))
+        validate_kit_receipt(actual)
+        if status != actual.get("status") or status != evidence.get("kit_status"):
+            raise ValueError("terminal PCB verdict conflicts with validated Audit Kit status")
+        if status in {"PASS", "BLOCKED", "INCONCLUSIVE"}:
+            return status
+        raise ValueError(f"unauthorized PCB terminal status: {status!r}")
 
     def validate_execution_receipt(receipt: Mapping[str, Any], state: Mapping[str, Any]) -> None:
         evidence = receipt.get("evidence")
@@ -254,6 +276,8 @@ def main():
         validate_kit_receipt(actual)
         if actual.get("schema") != evidence.get("receipt_schema"):
             raise ValueError("PCB receipt schema does not match the persisted artifact")
+        if actual.get("status") != evidence.get("kit_status"):
+            raise ValueError("PCB receipt status does not match the persisted artifact")
         if actual.get("terminal_reason") != evidence.get("terminal_reason"):
             raise ValueError("PCB receipt terminal reason does not match the persisted artifact")
         if actual.get("gates") != evidence.get("gates"):
