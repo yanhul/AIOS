@@ -14,12 +14,12 @@ from adapters.pcb_eda.adapter import run_kit
 from core.pcb_eda import PcbEdaRequest, validate_kit_receipt
 from core.durable_loop import LoopPolicy, run_durable_loop
 from core.blocked_continuation import classify_blockers, plan_blocked_continuation
+from core.wal_state_store import WalStateStore
 
 
-class JsonStateStore:
-    def __init__(self, path: Path): self.path = path
-    def load(self): return json.loads(self.path.read_text()) if self.path.exists() else None
-    def save(self, state): self.path.write_text(json.dumps(state, indent=2, default=str), encoding="utf-8")
+class JsonStateStore(WalStateStore):
+    """Compatibility name backed by the fsynced WAL, not a plain JSON overwrite."""
+    pass
 
 
 def _load_json(path: Path) -> Mapping[str, Any]:
