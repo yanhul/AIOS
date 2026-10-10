@@ -15,9 +15,9 @@ on:
         default: "main"
         type: string
       max_steps:
-        description: "Bounded durable-loop steps"
+        description: "Schematic-first runner permits one phase per invocation"
         required: true
-        default: "4"
+        default: "1"
         type: string
       kit_retries:
         description: "Audit Kit internal retry budget per attempt"
@@ -67,7 +67,7 @@ jobs:
           INPUT_ROOT: ${{ github.workspace }}/kit/audit-input-2605
           DESIGN: QI9-2605-A01
           KIT_ROOT: ${{ github.workspace }}/kit
-          MAX_STEPS: ${{ inputs.max_steps || '4' }}
+          MAX_STEPS: ${{ inputs.max_steps || '1' }}
           KIT_RETRIES: ${{ inputs.kit_retries || '3' }}
         run: |
           mkdir -p "$GITHUB_WORKSPACE/pcb-output"
