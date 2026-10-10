@@ -202,8 +202,8 @@ class ReceiptExecutor(FakeExecutor):
         return {
             "value": action_result,
             "receipt": {
-                "effect_id": "effect-1",
-                "attempt_id": f"attempt-{state['step']}",
+                "effect_id": state["in_flight_attempt"]["effect_id"],
+                "attempt_id": state["in_flight_attempt"]["attempt_id"],
                 "status": "OBSERVED",
                 "evidence": {"result": action_result},
             },
@@ -224,7 +224,7 @@ def test_valid_receipt_lineage_reaches_terminal_evaluation():
     result = run_durable_loop(ReceiptExecutor(), MemoryStateStore(), policy)
     assert result["status"] == "PASS"
     assert result["step"] == 1
-    assert result["history"][0]["verification"]["receipt"]["attempt_id"] == "attempt-0"
+    assert result["history"][0]["verification"]["receipt"]["attempt_id"].startswith("attempt-")
 
 
 def test_unknown_receipt_cannot_authorize_terminal_verdict():
@@ -283,7 +283,7 @@ def test_verifier_state_patch_cannot_mutate_control_plane_fields():
     assert "protected fields" in result["block_reason"]
     assert result["step"] == 0
     assert result["history"] == []
-    assert "terminal_evidence" not in result
+    assert result["terminal_evidence"]["status"] == "BLOCKED"
     assert "continue_contract" not in result
 
 

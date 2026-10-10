@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: Blocked continuation requires verified evidence and receipt-bound execution intents.
+# AIOS-REGRESSION: Prevent redispatch without verified evidence and prevent receipt/intent lineage mismatch.
+# AIOS-OWNER: AIOS governed durable execution and PCB EDA continuation.
+# AIOS-COVERAGE-GAP: Exercise authorized continuation after an observed receipt.
+# AIOS-BASELINE: Validate the durable-loop blocked continuation contract.
+
 from core.blocked_continuation import classify_blockers, plan_blocked_continuation
 from core.durable_loop import LoopPolicy, MemoryStateStore, run_durable_loop
 
@@ -37,9 +43,10 @@ def test_durable_loop_can_redispatch_only_after_verified_evidence():
             calls.append(decision["logical_operation_id"])
             return {"ok": True}
         def verify(self, result, state):
+            intent = state["in_flight_attempt"]
             if len(calls) == 1:
-                return {"status": "BLOCKED", "blockers": [{"id": "topology"}], "receipt": {"effect_id":"e1","attempt_id":"a1","status":"OBSERVED","evidence":{"findings":"f1"}}}
-            return {"status": "FIXED", "receipt": {"effect_id":"e2","attempt_id":"a2","status":"OBSERVED","evidence":{"findings":"f2"}}}
+                return {"status": "BLOCKED", "blockers": [{"id": "topology"}], "receipt": {"effect_id":intent["effect_id"],"attempt_id":intent["attempt_id"],"status":"OBSERVED","evidence":{"findings":"f1"}}}
+            return {"status": "FIXED", "receipt": {"effect_id":intent["effect_id"],"attempt_id":intent["attempt_id"],"status":"OBSERVED","evidence":{"findings":"f2"}}}
 
     def continuation(verification, state):
         assert verification["status"] == "BLOCKED"

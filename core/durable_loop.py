@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Protocol
+from uuid import uuid4
 
 from .fix_protocol import FixPlan, require_fix_plan, require_fix_proof, FixProof
 from .acceptance import AcceptancePredicate, evaluate_acceptance
@@ -20,6 +21,7 @@ _PROTECTED_STATE_FIELDS = frozenset({
     "terminal_evidence",
     "continue_contract",
     "policy_digest",
+    "in_flight_attempt",
 })
 
 class StateStore(Protocol):
@@ -163,6 +165,12 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
 def _persist_state(state: dict[str, Any], store: StateStore, policy: LoopPolicy) -> None:
     """Persist a complete durable snapshot with its continuation projection."""
     candidate = deepcopy(state)
+    if candidate.get("status") in policy.terminal_states and not isinstance(candidate.get("terminal_evidence"), Mapping):
+        candidate["terminal_evidence"] = {
+            "step": candidate.get("step", 0),
+            "status": candidate["status"],
+            "verification": {"reason": candidate.get("block_reason", "TERMINAL_STATE")},
+        }
     if policy.continue_contract_builder is not None:
         contract = policy.continue_contract_builder(deepcopy(candidate))
         if not isinstance(contract, Mapping):
@@ -238,6 +246,18 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         return state
     if state["status"] in policy.terminal_states:
         return state
+    # A persisted in-flight intent means a prior process may have crossed the
+    # external side-effect boundary without committing its receipt. Never replay it.
+    if policy.require_execution_receipt and state.get("in_flight_attempt") is not None:
+        state["status"] = policy.failure_state
+        state["block_reason"] = "unresolved in-flight execution attempt; explicit provider reconciliation required"
+        _persist_or_fail_closed(state, store, policy)
+        return state
+    # Preflight and durably commit the continuation projection before any side effect.
+    # Missing contract inputs must block before ACT, not after an effect has already occurred.
+    if policy.continue_contract_builder is not None and "continue_contract" not in state:
+        if not _persist_or_fail_closed(state, store, policy):
+            return state
     while state["step"] < policy.max_steps:
         try:
             observation = executor.observe(deepcopy(state))
@@ -259,6 +279,19 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                 return state
             return state
         try:
+            if policy.require_execution_receipt:
+                # Write-ahead intent: persist stable effect/attempt identity before
+                # invoking provider code. A crash after this point blocks replay.
+                intent = {
+                    "effect_id": "effect-" + uuid4().hex,
+                    "attempt_id": "attempt-" + uuid4().hex,
+                    "decision": deepcopy(decision),
+                    "observation": deepcopy(observation),
+                    "status": "PREPARED",
+                }
+                state["in_flight_attempt"] = intent
+                if not _persist_or_fail_closed(state, store, policy):
+                    return state
             action_result = executor.act(deepcopy(decision), deepcopy(state))
             verification = executor.verify(deepcopy(action_result), deepcopy(state))
             receipt = None
@@ -268,6 +301,11 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                     _apply_state_patch(state, patch)
             if policy.require_execution_receipt:
                 receipt = _validate_execution_receipt(verification)
+                intent = state.get("in_flight_attempt")
+                if not isinstance(intent, Mapping):
+                    raise ValueError("durable execution intent is missing")
+                if receipt.get("effect_id") != intent.get("effect_id") or receipt.get("attempt_id") != intent.get("attempt_id"):
+                    raise ValueError("execution receipt lineage does not match persisted intent")
                 if policy.execution_receipt_validator is not None:
                     policy.execution_receipt_validator(deepcopy(receipt), deepcopy(state))
         except Exception as exc:
@@ -279,6 +317,18 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
             return state
         state["step"] += 1
         state["history"].append({"step": state["step"], "observation": deepcopy(observation), "decision": deepcopy(decision), "action": deepcopy(action_result), "verification": deepcopy(verification)})
+        # Only an OBSERVED receipt closes the prepared intent. UNKNOWN keeps it
+        # durable for explicit reconciliation; it can never authorize a replay.
+        if policy.require_execution_receipt and receipt is not None and receipt["status"] == "OBSERVED":
+            state.pop("in_flight_attempt", None)
+        # UNKNOWN is an unresolved side-effect boundary, not permission to retry.
+        # Persist the attempt/receipt and stop until an explicit reconciliation authorizes continuation.
+        if policy.require_execution_receipt and receipt is not None and receipt["status"] == "UNKNOWN":
+            state["status"] = policy.failure_state
+            state["block_reason"] = "UNKNOWN execution receipt; explicit reconciliation required before retry"
+            if not _persist_or_fail_closed(state, store, policy):
+                return state
+            return state
         try:
             terminal = policy.terminal_evaluator(deepcopy(verification), deepcopy(state))
             if terminal == "PASS" and policy.acceptance_predicates:
@@ -358,4 +408,98 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         return state
     return state
 
-__all__ = ["TERMINAL", "LoopPolicy", "MemoryStateStore", "run_durable_loop"]
+
+def reconcile_in_flight_attempt(
+    store: StateStore,
+    policy: LoopPolicy,
+    receipt: Mapping[str, Any],
+    *,
+    authorizer: Callable[[Mapping[str, Any], Mapping[str, Any]], None],
+) -> Mapping[str, Any]:
+    """Close an interrupted attempt only with an authorized, matching OBSERVED receipt.
+
+    This is the explicit recovery path for a crash after a provider effect but
+    before its receipt was durably committed. It never guesses or retries.
+    """
+    if not callable(authorizer):
+        raise ValueError("reconciliation requires an authority callback")
+    loaded = store.load()
+    if not isinstance(loaded, Mapping):
+        raise ValueError("cannot reconcile without durable state")
+    state = deepcopy(dict(loaded))
+    _validate_loaded_state(state, policy)
+    intent = state.get("in_flight_attempt")
+    if not isinstance(intent, Mapping):
+        raise ValueError("there is no in-flight execution attempt to reconcile")
+    validated = _validate_execution_receipt({"receipt": receipt})
+    if validated.get("status") != "OBSERVED":
+        raise ValueError("reconciliation requires an OBSERVED provider receipt")
+    if validated.get("effect_id") != intent.get("effect_id") or validated.get("attempt_id") != intent.get("attempt_id"):
+        raise ValueError("reconciliation receipt does not match the persisted execution intent")
+    authorizer(deepcopy(intent), deepcopy(validated))
+
+    verification = {"status": "OBSERVED", "receipt": deepcopy(dict(validated)), "reconciled": True}
+    history = state.get("history")
+    if not isinstance(history, list):
+        raise ValueError("durable history is invalid")
+    already_recorded = bool(
+        history
+        and isinstance(history[-1], Mapping)
+        and isinstance(history[-1].get("verification"), Mapping)
+        and isinstance(history[-1]["verification"].get("receipt"), Mapping)
+        and history[-1]["verification"]["receipt"].get("effect_id") == intent.get("effect_id")
+        and history[-1]["verification"]["receipt"].get("attempt_id") == intent.get("attempt_id")
+    )
+    if already_recorded:
+        history[-1]["verification"] = deepcopy(verification)
+    else:
+        state["step"] += 1
+        history.append({
+            "step": state["step"],
+            "observation": deepcopy(intent.get("observation", {"reconciled": True})),
+            "decision": deepcopy(intent.get("decision", {})),
+            "action": {"effect_id": intent["effect_id"], "reconciled": True},
+            "verification": deepcopy(verification),
+        })
+    state.pop("in_flight_attempt", None)
+    state.pop("terminal_evidence", None)
+    state.pop("block_reason", None)
+    state["status"] = "RUNNING"
+
+    try:
+        terminal = policy.terminal_evaluator(deepcopy(verification), deepcopy(state))
+        if terminal == "PASS" and policy.acceptance_predicates:
+            acceptance_input = dict(state)
+            acceptance_input["verification"] = deepcopy(verification)
+            evaluation = evaluate_acceptance(policy.acceptance_predicates, acceptance_input)
+            failed = tuple(result for result in evaluation if not result.passed)
+            if failed:
+                raise ValueError("PASS rejected: acceptance predicates failed: " + ", ".join(result.predicate_id for result in failed))
+        if terminal is not None and terminal not in policy.terminal_states:
+            raise ValueError(f"invalid terminal status: {terminal}")
+        if policy.fix_plan is not None and terminal == policy.fix_success_state:
+            _validate_fix_success(verification, terminal)
+    except Exception as exc:
+        state["status"] = policy.failure_state
+        state["block_reason"] = f"reconciliation terminal evaluation failed: {type(exc).__name__}: {exc}"
+        terminal = policy.failure_state
+
+    if terminal is not None:
+        state["status"] = terminal
+        state["terminal_evidence"] = {
+            "step": state["step"],
+            "status": terminal,
+            "verification": deepcopy(verification),
+        }
+    elif state["step"] >= policy.max_steps:
+        state["status"] = policy.budget_exhaustion_state
+        state["terminal_evidence"] = {
+            "step": state["step"],
+            "status": state["status"],
+            "verification": {"reason": "BUDGET_EXHAUSTED_AFTER_RECONCILIATION"},
+        }
+    if not _persist_or_fail_closed(state, store, policy):
+        return state
+    return state
+
+__all__ = ["TERMINAL", "LoopPolicy", "MemoryStateStore", "run_durable_loop", "reconcile_in_flight_attempt"]

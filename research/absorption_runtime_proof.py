@@ -27,7 +27,8 @@ def _durable_loop_probe():
         def decide(self, observation, state): return {"op": "probe"}
         def act(self, decision, state): return {"ok": True}
         def verify(self, action_result, state):
-            return {"status": "PASS", "receipt": {"effect_id":"probe-effect","attempt_id":f"attempt-{state['step']+1}","status":"OBSERVED","evidence":{"probe":"ok"}}}
+            intent = state["in_flight_attempt"]
+            return {"status": "PASS", "receipt": {"effect_id":intent["effect_id"],"attempt_id":intent["attempt_id"],"status":"OBSERVED","evidence":{"probe":"ok"}}}
     policy = LoopPolicy(max_steps=1, terminal_evaluator=lambda verification, state: verification["status"],
                         action_authorizer=lambda decision, state: None, require_execution_receipt=True)
     result = run_durable_loop(E(), MemoryStateStore(), policy)
