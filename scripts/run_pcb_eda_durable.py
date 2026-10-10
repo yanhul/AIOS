@@ -157,7 +157,7 @@ class PcbExecutor:
                     "effect_id": f"{self.args.task_id}:effect:{state.get('step', 0)+1}",
                     "attempt_id": f"{self.args.task_id}:attempt:{state.get('step', 0)+1}",
                     "status": "OBSERVED",
-                    "evidence": result,
+                    "evidence": {"provider": "aios-control-plane-evidence-discovery", "discovery_result": result},
                 },
             }
         receipt = result["receipt"]
@@ -226,6 +226,21 @@ def main():
             raise ValueError("PCB receipt evidence or persisted intent is missing")
         if receipt.get("effect_id") != intent.get("effect_id") or receipt.get("attempt_id") != intent.get("attempt_id"):
             raise ValueError("PCB receipt does not match persisted execution intent")
+        decision = intent.get("decision")
+        operation = decision.get("operation") if isinstance(decision, Mapping) else None
+        if operation == "pcb.eda.discover_evidence":
+            if evidence.get("provider") != "aios-control-plane-evidence-discovery":
+                raise ValueError("evidence-discovery receipt provider identity is invalid")
+            discovery = evidence.get("discovery_result")
+            if not isinstance(discovery, Mapping) or discovery.get("status") not in {"PASS", "BLOCKED"}:
+                raise ValueError("evidence-discovery receipt is incomplete")
+            refs = discovery.get("verified_evidence_refs")
+            if discovery.get("status") == "PASS" and (
+                not isinstance(refs, list) or not refs
+                or not all(isinstance(ref, str) and ref.strip() for ref in refs)
+            ):
+                raise ValueError("evidence-discovery PASS lacks verified evidence refs")
+            return
         if evidence.get("provider") != "altium-audit-kit":
             raise ValueError("PCB receipt provider identity is invalid")
         summary = Path(str(evidence.get("summary", ""))).resolve(strict=True)
