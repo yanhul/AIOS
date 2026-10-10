@@ -25,6 +25,9 @@ class FakeExecutor:
 
 
 def _policy(max_steps=5, terminal_evaluator=None, **kwargs):
+    # Test-only provider stub: production callers must supply a real receipt verifier.
+    if kwargs.get("require_execution_receipt") and "execution_receipt_validator" not in kwargs:
+        kwargs["execution_receipt_validator"] = lambda receipt, state: None
     return LoopPolicy(
         max_steps=max_steps,
         terminal_evaluator=terminal_evaluator or (
@@ -208,6 +211,16 @@ class ReceiptExecutor(FakeExecutor):
                 "evidence": {"result": action_result},
             },
         }
+
+
+def test_receipt_required_policy_rejects_missing_provider_validator():
+    with pytest.raises(ValueError, match="requires an execution_receipt_validator"):
+        LoopPolicy(
+            max_steps=1,
+            terminal_evaluator=lambda verification, state: "PASS",
+            action_authorizer=lambda decision, state: None,
+            require_execution_receipt=True,
+        )
 
 
 def test_receipt_lineage_is_required_before_terminal_evaluation():
@@ -443,6 +456,7 @@ def test_rejected_receipt_cannot_persist_verifier_state_patch():
         terminal_evaluator=lambda verification, state: None,
         action_authorizer=lambda decision, state: None,
         require_execution_receipt=True,
+        execution_receipt_validator=lambda receipt, state: None,
     )
 
     result = run_durable_loop(MismatchedReceiptExecutor(), store, policy)
