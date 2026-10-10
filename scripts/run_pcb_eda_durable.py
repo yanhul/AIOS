@@ -297,7 +297,9 @@ def main():
         validate_kit_receipt(actual)
         blockers = actual.get("blockers") or actual.get("findings") or []
         kinds = classify_blockers({"blockers": blockers})
-        plan = plan_blocked_continuation({"blockers": blockers}, state) if kinds else None
+        planning_state = dict(state)
+        planning_state["blocked_requirements"] = []
+        plan = plan_blocked_continuation({"blockers": blockers}, planning_state) if kinds else None
         expected = {
             "latest_attempt_dir": str(summary.parent.resolve()),
             "blocked_requirements": list(plan.get("requires_verification", [])) if plan else [],
