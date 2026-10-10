@@ -75,7 +75,9 @@ def schematic_receipt(status="PASS"):
                 "errors": [],
                 "blocking": [],
                 "deferred_non_gating": [],
+                "unknown": [],
             },
+            "required_unknown_findings": [],
         },
     }
 
@@ -106,3 +108,35 @@ def test_schematic_receipt_must_preserve_deferred_findings():
     bad["evidence"]["finding_inventory"].pop("deferred_non_gating")
     with pytest.raises(ValueError, match="deferred findings"):
         validate_schematic_receipt(bad)
+
+
+
+def test_schematic_pass_rejects_required_unknown_findings():
+    from core.pcb_eda import validate_schematic_receipt
+
+    bad = schematic_receipt()
+    bad["evidence"]["required_unknown_findings"] = [
+        {"id": "G2-SCH-IDENTITY-UNRESOLVED-Y1", "domain": "schematic", "status": "UNKNOWN"}
+    ]
+    with pytest.raises(ValueError, match="unresolved required UNKNOWN"):
+        validate_schematic_receipt(bad)
+
+
+def test_schematic_pass_rejects_unknown_schematic_findings_not_explicitly_deferred():
+    from core.pcb_eda import validate_schematic_receipt
+
+    bad = schematic_receipt()
+    bad["evidence"]["finding_inventory"]["unknown"] = [
+        {"id": "G2-SCH-IDENTITY-UNRESOLVED-Y1", "domain": "schematic", "status": "UNKNOWN"}
+    ]
+    with pytest.raises(ValueError, match="outside explicit deferrals"):
+        validate_schematic_receipt(bad)
+
+
+def test_schematic_pass_keeps_explicitly_deferred_findings_separate_from_required_unknowns():
+    from core.pcb_eda import validate_schematic_receipt
+
+    item = {"id": "G2-HCPL-NC-PIN4-CONNECTED-U19", "domain": "schematic", "status": "FAIL", "severity": "BLOCKER"}
+    good = schematic_receipt()
+    good["evidence"]["finding_inventory"]["deferred_non_gating"] = [item]
+    validate_schematic_receipt(good)

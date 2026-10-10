@@ -29,7 +29,9 @@ def schematic_receipt():
                 "errors": [],
                 "blocking": [],
                 "deferred_non_gating": [],
+                "unknown": [],
             },
+            "required_unknown_findings": [],
         },
     }
 
