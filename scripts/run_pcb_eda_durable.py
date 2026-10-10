@@ -247,9 +247,10 @@ def main():
         output_root = a.output.resolve(strict=True)
         if not summary.is_relative_to(output_root) or summary.name != "summary.json":
             raise ValueError("PCB receipt artifact escapes the governed output directory")
-        if hashlib.sha256(summary.read_bytes()).hexdigest() != evidence.get("summary_sha256"):
+        raw = summary.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != evidence.get("summary_sha256"):
             raise ValueError("PCB receipt artifact digest mismatch")
-        actual = json.loads(summary.read_text(encoding="utf-8"))
+        actual = json.loads(raw.decode("utf-8"))
         validate_kit_receipt(actual)
         if actual.get("schema") != evidence.get("receipt_schema"):
             raise ValueError("PCB receipt schema does not match the persisted artifact")
