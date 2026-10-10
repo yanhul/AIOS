@@ -221,11 +221,6 @@ def main() -> int:
             raise ValueError("schematic workload identity is missing")
         if evidence.get("source_commit") != a.source_commit or evidence.get("kit_commit") != identity.get("kit_commit"):
             raise ValueError("schematic receipt source/kit commit lineage mismatch")
-        if actual.get("status") != state.get("history", [{}])[-1].get("verification", {}).get("status") if state.get("history") else False:
-            # On normal execution the current result is not yet in history; the
-            # phase status is checked by the executor and artifact schema above.
-            pass
-
     policy = LoopPolicy(
         max_steps=1,
         terminal_evaluator=lambda verification, state: verification.get("status") if verification.get("status") in {"PASS", "BLOCKED"} else None,
