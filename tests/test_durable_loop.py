@@ -384,3 +384,49 @@ def test_continue_contract_is_stable_when_persisted_repeatedly():
     _persist_state(state, store, policy)
     second = store.load()["continue_contract"]
     assert first == second
+
+
+
+def test_rejected_receipt_cannot_persist_verifier_state_patch():
+    class MismatchedReceiptExecutor:
+        def observe(self, state):
+            return {"observed": True}
+
+        def decide(self, observation, state):
+            return {"operation": "test"}
+
+        def act(self, decision, state):
+            return {"acted": True}
+
+        def verify(self, action_result, state):
+            return {
+                "status": "OBSERVED",
+                "receipt": {
+                    "effect_id": "forged-effect",
+                    "attempt_id": "forged-attempt",
+                    "status": "OBSERVED",
+                    "evidence": {"claim": "not lineage-bound"},
+                },
+                "state_patch": {
+                    "verified_evidence_refs": ["forged-evidence"],
+                    "continuation": {"operation_id": "unauthorized-next-step"},
+                },
+            }
+
+    store = MemoryStateStore()
+    policy = LoopPolicy(
+        max_steps=1,
+        terminal_evaluator=lambda verification, state: None,
+        action_authorizer=lambda decision, state: None,
+        require_execution_receipt=True,
+    )
+
+    result = run_durable_loop(MismatchedReceiptExecutor(), store, policy)
+
+    assert result["status"] == "BLOCKED"
+    assert "lineage does not match" in result["block_reason"]
+    assert "verified_evidence_refs" not in result
+    assert "continuation" not in result
+    assert store.load()["status"] == "BLOCKED"
+    assert "verified_evidence_refs" not in store.load()
+    assert "continuation" not in store.load()
