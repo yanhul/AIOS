@@ -212,9 +212,10 @@ def main() -> int:
         output_root = a.output.resolve(strict=True)
         if not artifact.is_relative_to(output_root) or artifact.name != "phase_receipt.json":
             raise ValueError("schematic receipt artifact escapes the governed output directory")
-        if sha(artifact) != evidence.get("phase_receipt_sha256"):
+        raw = artifact.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != evidence.get("phase_receipt_sha256"):
             raise ValueError("schematic receipt artifact digest mismatch")
-        actual = json.loads(artifact.read_text(encoding="utf-8"))
+        actual = json.loads(raw.decode("utf-8"))
         validate_schematic_receipt(actual)
         identity = state.get("workload_identity")
         if not isinstance(identity, Mapping):
