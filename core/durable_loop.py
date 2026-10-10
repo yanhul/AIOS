@@ -46,6 +46,7 @@ class LoopPolicy:
     failure_state: str = "BLOCKED"
     require_execution_receipt: bool = False
     execution_receipt_validator: Callable[[Mapping[str, Any], Mapping[str, Any]], None] | None = None
+    state_patch_validator: Callable[[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]], None] | None = None
     fix_plan: FixPlan | None = None
     fix_success_state: str = "PASS"
     blocked_continuation: Callable[[Any, Mapping[str, Any]], Mapping[str, Any] | None] | None = None
@@ -76,6 +77,13 @@ class LoopPolicy:
             )
         if self.execution_receipt_validator is not None and not callable(self.execution_receipt_validator):
             raise ValueError("execution_receipt_validator must be callable")
+        if self.require_execution_receipt and self.state_patch_validator is None:
+            raise ValueError(
+                "require_execution_receipt requires a state_patch_validator; "
+                "an authentic receipt alone does not authorize arbitrary verifier state"
+            )
+        if self.state_patch_validator is not None and not callable(self.state_patch_validator):
+            raise ValueError("state_patch_validator must be callable")
         if self.fix_plan is not None:
             if not isinstance(self.fix_success_state, str) or not self.fix_success_state.strip():
                 raise ValueError("fix_success_state must be a non-empty string")
@@ -325,6 +333,10 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                 not policy.require_execution_receipt
                 or (receipt is not None and receipt.get("status") == "OBSERVED")
             ):
+                if policy.require_execution_receipt:
+                    if policy.state_patch_validator is None or receipt is None:
+                        raise ValueError("state patch validation is not configured for receipt-governed execution")
+                    policy.state_patch_validator(deepcopy(patch), deepcopy(receipt), deepcopy(state))
                 _apply_state_patch(state, patch)
         except Exception as exc:
             state["status"] = policy.failure_state
