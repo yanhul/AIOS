@@ -361,7 +361,7 @@ def main():
         state_patch_validator=validate_state_patch,
         blocked_continuation=continuation,
     )
-    result = run_durable_loop(PcbExecutor(a), JsonStateStore(a.state), policy)
+    result = run_durable_loop(PcbExecutor(a), JsonStateStore(str(a.state)), policy)
     print(json.dumps(result, indent=2, default=str))
     raise SystemExit(0 if result["status"] == "PASS" else 2)
 
