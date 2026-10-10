@@ -6,7 +6,7 @@
 
 import pytest
 
-from core.durable_loop import LoopPolicy, MemoryStateStore, run_durable_loop, _persist_state
+from core.durable_loop import LoopPolicy, MemoryStateStore, run_durable_loop, reconcile_in_flight_attempt, _persist_state
 from core.continue_contract import build_continue_contract
 
 
@@ -485,3 +485,62 @@ def test_unknown_receipt_cannot_persist_verifier_state_patch():
     assert store.load()["status"] == "BLOCKED"
     assert "verified_evidence_refs" not in store.load()
     assert "continuation" not in store.load()
+
+
+def test_resume_blocks_in_flight_attempt_until_explicit_observed_reconciliation():
+    class NoReplayExecutor(FakeExecutor):
+        def __init__(self):
+            self.act_calls = 0
+
+        def act(self, decision, state):
+            self.act_calls += 1
+            return super().act(decision, state)
+
+    intent = {
+        "effect_id": "effect-crash-a1",
+        "attempt_id": "attempt-crash-a1",
+        "decision": {"next": 1},
+        "observation": {"n": 0},
+        "status": "PREPARED",
+    }
+    store = MemoryStateStore({
+        "step": 0,
+        "status": "RUNNING",
+        "history": [],
+        "in_flight_attempt": intent,
+    })
+    executor = NoReplayExecutor()
+    policy = _policy(
+        max_steps=2,
+        require_execution_receipt=True,
+        terminal_evaluator=lambda verification, state: "PASS",
+    )
+
+    resumed = run_durable_loop(executor, store, policy)
+    assert resumed["status"] == "BLOCKED"
+    assert "explicit provider reconciliation required" in resumed["block_reason"]
+    assert executor.act_calls == 0
+    assert store.load()["in_flight_attempt"]["attempt_id"] == "attempt-crash-a1"
+
+    authorized = []
+    reconciled = reconcile_in_flight_attempt(
+        store,
+        policy,
+        {
+            "effect_id": "effect-crash-a1",
+            "attempt_id": "attempt-crash-a1",
+            "status": "OBSERVED",
+            "evidence": {"provider_receipt": "provider-confirmed-a1"},
+        },
+        authorizer=lambda persisted_intent, receipt: authorized.append(
+            (persisted_intent["attempt_id"], receipt["effect_id"])
+        ),
+    )
+
+    assert authorized == [("attempt-crash-a1", "effect-crash-a1")]
+    assert reconciled["status"] == "PASS"
+    assert reconciled["step"] == 1
+    assert "in_flight_attempt" not in reconciled
+    assert reconciled["history"][-1]["verification"]["reconciled"] is True
+    assert store.load() == reconciled
+    assert executor.act_calls == 0
