@@ -153,10 +153,14 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
     seen_attempt_ids: set[str] = set()
     for index, entry in enumerate(state["history"]):
         if not isinstance(entry, Mapping):
-            continue
+            raise ValueError(f"persisted history entry is invalid at history[{index}]")
         verification = entry.get("verification")
+        if policy.require_execution_receipt and not isinstance(verification, Mapping):
+            raise ValueError(f"persisted verification is missing at history[{index}]")
         receipt = verification.get("receipt") if isinstance(verification, Mapping) else None
         if receipt is None:
+            if policy.require_execution_receipt:
+                raise ValueError(f"persisted execution receipt is missing at history[{index}]")
             continue
         if not isinstance(receipt, Mapping):
             raise ValueError(f"persisted receipt lineage is invalid at history[{index}]")
@@ -164,6 +168,8 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
         attempt_id = receipt.get("attempt_id")
         if not isinstance(effect_id, str) or not effect_id.strip() or not isinstance(attempt_id, str) or not attempt_id.strip():
             raise ValueError(f"persisted receipt lineage is incomplete at history[{index}]")
+        if receipt.get("status") not in {"OBSERVED", "UNKNOWN"}:
+            raise ValueError(f"persisted receipt status is invalid at history[{index}]")
         if effect_id in seen_effect_ids:
             raise ValueError(f"duplicate persisted effect_id in history: {effect_id}")
         if attempt_id in seen_attempt_ids:
