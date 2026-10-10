@@ -346,6 +346,20 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                     )
                     if patch_validation_result is not None:
                         raise ValueError("state_patch_validator must return None or raise to reject")
+                # Crash-safe receipt boundary: durably bind the validated provider
+                # receipt and its validated patch to the in-flight attempt before
+                # applying any patch. Recovery can then reconcile this exact attempt
+                # without invoking the provider again.
+                if policy.require_execution_receipt and receipt is not None and receipt.get("status") == "OBSERVED":
+                    intent = deepcopy(dict(state["in_flight_attempt"]))
+                    intent["status"] = "RECEIPT_VALIDATED"
+                    intent["validated_receipt"] = deepcopy(dict(receipt))
+                    intent["validated_state_patch"] = deepcopy(dict(patch or {}))
+                    intent["validated_verification"] = deepcopy(dict(verification))
+                    intent["validated_action_result"] = deepcopy(action_result)
+                    state["in_flight_attempt"] = intent
+                    if not _persist_or_fail_closed(state, store, policy):
+                        return state
                 _apply_state_patch(state, patch)
         except Exception as exc:
             state["status"] = policy.failure_state
@@ -485,7 +499,29 @@ def reconcile_in_flight_attempt(
     if authorization_result is not None:
         raise PermissionError("reconciliation authorizer must return None or raise to deny")
 
-    verification = {"status": "OBSERVED", "receipt": deepcopy(dict(validated)), "reconciled": True}
+    # If the validated receipt+patch was committed before a process death, only
+    # the exact durable receipt may close it. Revalidate the patch against the
+    # persisted receipt and current state, then apply it during authorized recovery.
+    pending_receipt = intent.get("validated_receipt")
+    pending_patch = intent.get("validated_state_patch")
+    pending_verification = intent.get("validated_verification")
+    pending_action = intent.get("validated_action_result")
+    if intent.get("status") == "RECEIPT_VALIDATED":
+        if not isinstance(pending_receipt, Mapping) or dict(pending_receipt) != dict(validated):
+            raise ValueError("reconciliation receipt does not match the durably validated receipt")
+        if not isinstance(pending_patch, Mapping) or not isinstance(pending_verification, Mapping):
+            raise ValueError("durable validated receipt record is incomplete")
+        if policy.state_patch_validator is None:
+            raise ValueError("state patch validator is required to recover a validated receipt")
+        patch_result = policy.state_patch_validator(deepcopy(dict(pending_patch)), deepcopy(validated), deepcopy(state))
+        if patch_result is not None:
+            raise ValueError("state_patch_validator must return None or raise to reject")
+        _apply_state_patch(state, pending_patch)
+        verification = deepcopy(dict(pending_verification))
+        verification["receipt"] = deepcopy(dict(validated))
+        verification["reconciled"] = True
+    else:
+        verification = {"status": "OBSERVED", "receipt": deepcopy(dict(validated)), "reconciled": True}
     history = state.get("history")
     if not isinstance(history, list):
         raise ValueError("durable history is invalid")
@@ -505,7 +541,7 @@ def reconcile_in_flight_attempt(
             "step": state["step"],
             "observation": deepcopy(intent.get("observation", {"reconciled": True})),
             "decision": deepcopy(intent.get("decision", {})),
-            "action": {"effect_id": intent["effect_id"], "reconciled": True},
+            "action": deepcopy(pending_action) if intent.get("status") == "RECEIPT_VALIDATED" else {"effect_id": intent["effect_id"], "reconciled": True},
             "verification": deepcopy(verification),
         })
     state.pop("in_flight_attempt", None)
