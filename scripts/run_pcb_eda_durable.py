@@ -6,12 +6,12 @@ specific evidence required by the observed blocker, persists those verified
 references, and only then permits a new pcb.eda@1 attempt.
 """
 from __future__ import annotations
-import argparse, json
+import argparse, hashlib, json
 from pathlib import Path
 from typing import Any, Mapping
 
 from adapters.pcb_eda.adapter import run_kit
-from core.pcb_eda import PcbEdaRequest
+from core.pcb_eda import PcbEdaRequest, validate_kit_receipt
 from core.durable_loop import LoopPolicy, run_durable_loop
 from core.blocked_continuation import classify_blockers, plan_blocked_continuation
 
@@ -183,7 +183,9 @@ class PcbExecutor:
                 "attempt_id": f"{self.args.task_id}:attempt:{state.get('step', 0)+1}",
                 "status": "OBSERVED",
                 "evidence": {
+                    "provider": "altium-audit-kit",
                     "summary": str(Path(attempt_dir) / "summary.json"),
+                    "summary_sha256": hashlib.sha256((Path(attempt_dir) / "summary.json").read_bytes()).hexdigest(),
                     "receipt_schema": receipt.get("schema"),
                     "terminal_reason": receipt.get("terminal_reason"),
                     "gates": receipt.get("gates"),
@@ -217,9 +219,34 @@ def main():
         if status == "BLOCKED": return "BLOCKED"
         return None
 
+    def validate_execution_receipt(receipt: Mapping[str, Any], state: Mapping[str, Any]) -> None:
+        evidence = receipt.get("evidence")
+        intent = state.get("in_flight_attempt")
+        if not isinstance(evidence, Mapping) or not isinstance(intent, Mapping):
+            raise ValueError("PCB receipt evidence or persisted intent is missing")
+        if receipt.get("effect_id") != intent.get("effect_id") or receipt.get("attempt_id") != intent.get("attempt_id"):
+            raise ValueError("PCB receipt does not match persisted execution intent")
+        if evidence.get("provider") != "altium-audit-kit":
+            raise ValueError("PCB receipt provider identity is invalid")
+        summary = Path(str(evidence.get("summary", ""))).resolve(strict=True)
+        output_root = a.output.resolve(strict=True)
+        if not summary.is_relative_to(output_root) or summary.name != "summary.json":
+            raise ValueError("PCB receipt artifact escapes the governed output directory")
+        if hashlib.sha256(summary.read_bytes()).hexdigest() != evidence.get("summary_sha256"):
+            raise ValueError("PCB receipt artifact digest mismatch")
+        actual = json.loads(summary.read_text(encoding="utf-8"))
+        validate_kit_receipt(actual)
+        if actual.get("schema") != evidence.get("receipt_schema"):
+            raise ValueError("PCB receipt schema does not match the persisted artifact")
+        if actual.get("terminal_reason") != evidence.get("terminal_reason"):
+            raise ValueError("PCB receipt terminal reason does not match the persisted artifact")
+        if actual.get("gates") != evidence.get("gates"):
+            raise ValueError("PCB receipt gates do not match the persisted artifact")
+
     policy = LoopPolicy(
         max_steps=a.max_steps, terminal_evaluator=terminal,
         action_authorizer=lambda d, s: None, require_execution_receipt=True,
+        execution_receipt_validator=validate_execution_receipt,
         blocked_continuation=continuation,
     )
     result = run_durable_loop(PcbExecutor(a), JsonStateStore(a.state), policy)
