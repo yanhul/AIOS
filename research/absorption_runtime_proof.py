@@ -29,8 +29,18 @@ def _durable_loop_probe():
         def verify(self, action_result, state):
             intent = state["in_flight_attempt"]
             return {"status": "PASS", "receipt": {"effect_id":intent["effect_id"],"attempt_id":intent["attempt_id"],"status":"OBSERVED","evidence":{"probe":"ok"}}}
+    def validate_probe_receipt(receipt, state):
+        if receipt.get("evidence") != {"probe": "ok"}:
+            raise ValueError("absorption proof receipt evidence is invalid")
+        intent = state.get("in_flight_attempt")
+        if not isinstance(intent, dict):
+            raise ValueError("absorption proof has no persisted intent")
+        if receipt.get("effect_id") != intent.get("effect_id") or receipt.get("attempt_id") != intent.get("attempt_id"):
+            raise ValueError("absorption proof receipt lineage mismatch")
+
     policy = LoopPolicy(max_steps=1, terminal_evaluator=lambda verification, state: verification["status"],
-                        action_authorizer=lambda decision, state: None, require_execution_receipt=True)
+                        action_authorizer=lambda decision, state: None, require_execution_receipt=True,
+                        execution_receipt_validator=validate_probe_receipt)
     result = run_durable_loop(E(), MemoryStateStore(), policy)
     return result.get("status") == "PASS" and result.get("terminal_evidence", {}).get("verification", {}).get("receipt", {}).get("status") == "OBSERVED"
 
