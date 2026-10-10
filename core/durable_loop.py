@@ -182,16 +182,21 @@ def _persist_state(state: dict[str, Any], store: StateStore, policy: LoopPolicy)
 
 
 def _apply_state_patch(state: dict[str, Any], patch: Mapping[str, Any]) -> None:
-    """Apply verifier-owned data updates without allowing control-plane mutation."""
+    """Validate and copy the entire verifier patch before mutating durable state."""
     if not isinstance(patch, Mapping):
         raise ValueError("verification state_patch must be a mapping")
+    # Validate all keys before touching state; otherwise a malformed later key
+    # could leave earlier fields partially applied when the caller fails closed.
+    for key in patch:
+        if not isinstance(key, str) or not key.strip():
+            raise ValueError("verification state_patch keys must be non-empty strings")
     protected = sorted(_PROTECTED_STATE_FIELDS.intersection(patch))
     if protected:
         raise ValueError(f"verification state_patch attempts protected fields: {protected}")
-    for key, value in patch.items():
-        if not isinstance(key, str) or not key.strip():
-            raise ValueError("verification state_patch keys must be non-empty strings")
-        state[key] = deepcopy(value)
+    # Deep-copy all values up front as deepcopy itself can fail for an object.
+    # Updating only after preparation makes the mutation all-or-nothing.
+    prepared = {key: deepcopy(value) for key, value in patch.items()}
+    state.update(prepared)
 
 
 def _persist_raw_state(state: Mapping[str, Any], store: StateStore) -> None:
