@@ -245,7 +245,7 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
     if policy.require_execution_receipt and state.get("in_flight_attempt") is not None:
         state["status"] = policy.failure_state
         state["block_reason"] = "unresolved in-flight execution attempt; explicit provider reconciliation required"
-        _persist_raw_state(state, store)
+        _persist_or_fail_closed(state, store, policy)
         return state
     # Preflight and durably commit the continuation projection before any side effect.
     # Missing contract inputs must block before ACT, not after an effect has already occurred.
