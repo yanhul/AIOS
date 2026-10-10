@@ -165,6 +165,12 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
 def _persist_state(state: dict[str, Any], store: StateStore, policy: LoopPolicy) -> None:
     """Persist a complete durable snapshot with its continuation projection."""
     candidate = deepcopy(state)
+    if candidate.get("status") in policy.terminal_states and not isinstance(candidate.get("terminal_evidence"), Mapping):
+        candidate["terminal_evidence"] = {
+            "step": candidate.get("step", 0),
+            "status": candidate["status"],
+            "verification": {"reason": candidate.get("block_reason", "TERMINAL_STATE")},
+        }
     if policy.continue_contract_builder is not None:
         contract = policy.continue_contract_builder(deepcopy(candidate))
         if not isinstance(contract, Mapping):
