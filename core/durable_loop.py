@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Protocol
+from uuid import uuid4
 
 from .fix_protocol import FixPlan, require_fix_plan, require_fix_proof, FixProof
 from .acceptance import AcceptancePredicate, evaluate_acceptance
@@ -20,6 +21,7 @@ _PROTECTED_STATE_FIELDS = frozenset({
     "terminal_evidence",
     "continue_contract",
     "policy_digest",
+    "in_flight_attempt",
 })
 
 class StateStore(Protocol):
@@ -238,6 +240,13 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
         return state
     if state["status"] in policy.terminal_states:
         return state
+    # A persisted in-flight intent means a prior process may have crossed the
+    # external side-effect boundary without committing its receipt. Never replay it.
+    if policy.require_execution_receipt and state.get("in_flight_attempt") is not None:
+        state["status"] = policy.failure_state
+        state["block_reason"] = "unresolved in-flight execution attempt; explicit provider reconciliation required"
+        _persist_raw_state(state, store)
+        return state
     # Preflight and durably commit the continuation projection before any side effect.
     # Missing contract inputs must block before ACT, not after an effect has already occurred.
     if policy.continue_contract_builder is not None and "continue_contract" not in state:
@@ -264,6 +273,18 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                 return state
             return state
         try:
+            if policy.require_execution_receipt:
+                # Write-ahead intent: persist stable effect/attempt identity before
+                # invoking provider code. A crash after this point blocks replay.
+                intent = {
+                    "effect_id": "effect-" + uuid4().hex,
+                    "attempt_id": "attempt-" + uuid4().hex,
+                    "decision": deepcopy(decision),
+                    "status": "PREPARED",
+                }
+                state["in_flight_attempt"] = intent
+                if not _persist_or_fail_closed(state, store, policy):
+                    return state
             action_result = executor.act(deepcopy(decision), deepcopy(state))
             verification = executor.verify(deepcopy(action_result), deepcopy(state))
             receipt = None
@@ -273,6 +294,11 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                     _apply_state_patch(state, patch)
             if policy.require_execution_receipt:
                 receipt = _validate_execution_receipt(verification)
+                intent = state.get("in_flight_attempt")
+                if not isinstance(intent, Mapping):
+                    raise ValueError("durable execution intent is missing")
+                if receipt.get("effect_id") != intent.get("effect_id") or receipt.get("attempt_id") != intent.get("attempt_id"):
+                    raise ValueError("execution receipt lineage does not match persisted intent")
                 if policy.execution_receipt_validator is not None:
                     policy.execution_receipt_validator(deepcopy(receipt), deepcopy(state))
         except Exception as exc:
@@ -284,6 +310,10 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
             return state
         state["step"] += 1
         state["history"].append({"step": state["step"], "observation": deepcopy(observation), "decision": deepcopy(decision), "action": deepcopy(action_result), "verification": deepcopy(verification)})
+        # Only an OBSERVED receipt closes the prepared intent. UNKNOWN keeps it
+        # durable for explicit reconciliation; it can never authorize a replay.
+        if policy.require_execution_receipt and receipt is not None and receipt["status"] == "OBSERVED":
+            state.pop("in_flight_attempt", None)
         # UNKNOWN is an unresolved side-effect boundary, not permission to retry.
         # Persist the attempt/receipt and stop until an explicit reconciliation authorizes continuation.
         if policy.require_execution_receipt and receipt is not None and receipt["status"] == "UNKNOWN":
