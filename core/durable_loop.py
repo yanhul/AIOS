@@ -326,7 +326,9 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                 if receipt.get("effect_id") != intent.get("effect_id") or receipt.get("attempt_id") != intent.get("attempt_id"):
                     raise ValueError("execution receipt lineage does not match persisted intent")
                 if policy.execution_receipt_validator is not None:
-                    policy.execution_receipt_validator(deepcopy(receipt), deepcopy(state))
+                    validation_result = policy.execution_receipt_validator(deepcopy(receipt), deepcopy(state))
+                    if validation_result is not None:
+                        raise ValueError("execution_receipt_validator must return None or raise to reject")
             # UNKNOWN proves neither effect completion nor safe continuation. Keep
             # its receipt for reconciliation, but never let its state_patch promote
             # evidence refs or schedule another operation.
@@ -337,7 +339,11 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                 if policy.require_execution_receipt:
                     if policy.state_patch_validator is None or receipt is None:
                         raise ValueError("state patch validation is not configured for receipt-governed execution")
-                    policy.state_patch_validator(deepcopy(patch), deepcopy(receipt), deepcopy(state))
+                    patch_validation_result = policy.state_patch_validator(
+                        deepcopy(patch), deepcopy(receipt), deepcopy(state)
+                    )
+                    if patch_validation_result is not None:
+                        raise ValueError("state_patch_validator must return None or raise to reject")
                 _apply_state_patch(state, patch)
         except Exception as exc:
             state["status"] = policy.failure_state
@@ -470,7 +476,9 @@ def reconcile_in_flight_attempt(
     # Recovery must enforce the same provider/evidence validator as the normal
     # execution path. Shape and lineage alone do not prove the receipt is authentic.
     if policy.execution_receipt_validator is not None:
-        policy.execution_receipt_validator(deepcopy(validated), deepcopy(state))
+        validation_result = policy.execution_receipt_validator(deepcopy(validated), deepcopy(state))
+        if validation_result is not None:
+            raise ValueError("execution_receipt_validator must return None or raise to reject")
     authorizer(deepcopy(intent), deepcopy(validated))
 
     verification = {"status": "OBSERVED", "receipt": deepcopy(dict(validated)), "reconciled": True}
