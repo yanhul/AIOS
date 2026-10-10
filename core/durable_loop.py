@@ -178,9 +178,25 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
         attempt_id = in_flight.get("attempt_id")
         if not isinstance(effect_id, str) or not effect_id.strip() or not isinstance(attempt_id, str) or not attempt_id.strip():
             raise ValueError("persisted in-flight execution lineage is incomplete")
-        if effect_id in seen_effect_ids:
+        # An UNKNOWN receipt is intentionally retained in history while its
+        # matching intent remains in-flight for explicit reconciliation. Permit
+        # only that exact final-history pair; all other identity reuse blocks.
+        last_receipt = None
+        if state["history"]:
+            last_entry = state["history"][-1]
+            last_verification = last_entry.get("verification") if isinstance(last_entry, Mapping) else None
+            candidate = last_verification.get("receipt") if isinstance(last_verification, Mapping) else None
+            if isinstance(candidate, Mapping):
+                last_receipt = candidate
+        matching_unknown_in_flight = (
+            isinstance(last_receipt, Mapping)
+            and last_receipt.get("status") == "UNKNOWN"
+            and last_receipt.get("effect_id") == effect_id
+            and last_receipt.get("attempt_id") == attempt_id
+        )
+        if effect_id in seen_effect_ids and not matching_unknown_in_flight:
             raise ValueError(f"in-flight effect_id already exists in persisted history: {effect_id}")
-        if attempt_id in seen_attempt_ids:
+        if attempt_id in seen_attempt_ids and not matching_unknown_in_flight:
             raise ValueError(f"in-flight attempt_id already exists in persisted history: {attempt_id}")
     if state.get("status") in policy.terminal_states:
         _validate_terminal_evidence(state)
