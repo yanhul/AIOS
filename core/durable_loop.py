@@ -295,10 +295,10 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
             action_result = executor.act(deepcopy(decision), deepcopy(state))
             verification = executor.verify(deepcopy(action_result), deepcopy(state))
             receipt = None
-            if isinstance(verification, Mapping):
-                patch = verification.get("state_patch")
-                if patch is not None:
-                    _apply_state_patch(state, patch)
+            patch = verification.get("state_patch") if isinstance(verification, Mapping) else None
+            # Validate the execution receipt and its durable lineage before
+            # accepting any verifier-supplied state patch. Otherwise a rejected
+            # receipt could still persist forged evidence refs or continuation data.
             if policy.require_execution_receipt:
                 receipt = _validate_execution_receipt(verification)
                 intent = state.get("in_flight_attempt")
@@ -308,6 +308,8 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                     raise ValueError("execution receipt lineage does not match persisted intent")
                 if policy.execution_receipt_validator is not None:
                     policy.execution_receipt_validator(deepcopy(receipt), deepcopy(state))
+            if patch is not None:
+                _apply_state_patch(state, patch)
         except Exception as exc:
             state["status"] = policy.failure_state
             state["block_reason"] = f"execution failed after authorization: {type(exc).__name__}: {exc}"
