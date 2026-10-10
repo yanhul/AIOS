@@ -46,6 +46,7 @@ def _policy():
         continue_contract_builder=build_continue_contract,
         require_execution_receipt=True,
         execution_receipt_validator=lambda receipt, state: None,
+        state_patch_validator=lambda patch, receipt, state: None,
     )
 
 
