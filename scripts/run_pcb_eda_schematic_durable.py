@@ -151,6 +151,7 @@ class Executor:
             "evidence": {
                 "phase_receipt": str(Path(result["attempt_dir"]) / "phase_receipt.json"),
                 "phase_receipt_sha256": result["receipt_sha256"],
+                "phase_status": status,
                 "source_commit": self.a.source_commit,
                 "kit_commit": state["workload_identity"]["kit_commit"],
             },
@@ -217,6 +218,8 @@ def main() -> int:
             raise ValueError("schematic receipt artifact digest mismatch")
         actual = json.loads(raw.decode("utf-8"))
         validate_schematic_receipt(actual)
+        if actual.get("status") != evidence.get("phase_status"):
+            raise ValueError("schematic receipt status does not match the validated phase artifact")
         identity = state.get("workload_identity")
         if not isinstance(identity, Mapping):
             raise ValueError("schematic workload identity is missing")
@@ -235,6 +238,8 @@ def main() -> int:
             raise ValueError("schematic state patch receipt digest mismatch")
         actual = json.loads(raw.decode("utf-8"))
         validate_schematic_receipt(actual)
+        if actual.get("status") != evidence.get("phase_status"):
+            raise ValueError("schematic state patch phase status mismatch")
         status = actual["status"]
         inventory = actual["evidence"]["finding_inventory"]
         expected_pipeline = {
@@ -269,9 +274,20 @@ def main() -> int:
         if pipeline.get("placement") not in {"BLOCKED_BY_SCHEMATIC", "PENDING"} or pipeline.get("routing") not in {"BLOCKED_BY_SCHEMATIC", "BLOCKED_BY_PLACEMENT", "PENDING"}:
             raise PermissionError("schematic-first invariant is violated by persisted pipeline state")
 
+    def terminal_schematic(verification: Mapping[str, Any], state: Mapping[str, Any]) -> str:
+        status = verification.get("status")
+        pipeline = state.get("pipeline")
+        if not isinstance(pipeline, Mapping):
+            raise ValueError("terminal schematic verdict has no receipt-bound pipeline state")
+        if status == "PASS" and pipeline.get("schematic") == "VERIFIED":
+            return "PASS"
+        if status == "BLOCKED" and pipeline.get("schematic") == "BLOCKED":
+            return "BLOCKED"
+        raise ValueError("terminal schematic verdict conflicts with validated receipt-bound pipeline")
+
     policy = LoopPolicy(
         max_steps=1,
-        terminal_evaluator=lambda verification, state: verification.get("status") if verification.get("status") in {"PASS", "BLOCKED"} else None,
+        terminal_evaluator=terminal_schematic,
         action_authorizer=authorize_schematic,
         require_execution_receipt=True,
         execution_receipt_validator=validate_execution_receipt,
