@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from core.continue_contract import build_continue_contract
-from core.durable_loop import LoopPolicy, reconcile_in_flight_attempt, run_durable_loop
+from core.durable_loop import LoopPolicy, MemoryStateStore, reconcile_in_flight_attempt, run_durable_loop
 from core.wal_state_store import WalStateStore
 
 
@@ -668,3 +668,51 @@ elif __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--crash-a
     _crash_after_provider_effect(sys.argv[2], sys.argv[3], sys.argv[4])
 elif __name__ == "__main__" and len(sys.argv) == 5 and sys.argv[1] == "--crash-after-receipt":
     _crash_after_validated_receipt(sys.argv[2], sys.argv[3], sys.argv[4])
+
+
+# AIOS-CONTRACT: malformed durable history must fail closed before action
+# AIOS-REGRESSION: Reject corrupt history rows and missing/invalid receipts on strict resume
+# AIOS-OWNER: Durable-loop resume validation
+# AIOS-COVERAGE-GAP: Corrupt persisted history could previously be skipped during lineage checks
+# AIOS-BASELINE: A resumed strict run must validate all durable history before invoking an executor
+
+def test_strict_resume_blocks_corrupt_history_before_provider_action(tmp_path):
+    marker_path = tmp_path / "actions.log"
+    state = _initial_state()
+    state["step"] = 1
+    state["history"] = ["corrupt-row"]
+    state["continue_contract"] = build_continue_contract(state)
+    executor = _Executor(marker_path)
+    store = MemoryStateStore(state)
+
+    result = run_durable_loop(executor, store, _policy())
+
+    assert result["status"] == "BLOCKED"
+    assert "persisted history entry is invalid" in result["block_reason"]
+    assert not marker_path.exists()
+
+
+def test_strict_resume_blocks_history_receipt_with_invalid_status(tmp_path):
+    marker_path = tmp_path / "actions.log"
+    state = _initial_state()
+    state["step"] = 1
+    state["history"] = [{
+        "step": 1,
+        "verification": {
+            "receipt": {
+                "effect_id": "effect-old",
+                "attempt_id": "attempt-old",
+                "status": "PASS",
+                "evidence": {"provider": "fixture"},
+            }
+        },
+    }]
+    state["continue_contract"] = build_continue_contract(state)
+    executor = _Executor(marker_path)
+    store = MemoryStateStore(state)
+
+    result = run_durable_loop(executor, store, _policy())
+
+    assert result["status"] == "BLOCKED"
+    assert "persisted receipt status is invalid" in result["block_reason"]
+    assert not marker_path.exists()
