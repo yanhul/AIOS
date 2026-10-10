@@ -63,6 +63,7 @@ def test_durable_loop_can_redispatch_only_after_verified_evidence():
         action_authorizer=lambda d, s: None,
         require_execution_receipt=True,
         execution_receipt_validator=lambda receipt, state: None,
+        state_patch_validator=lambda patch, receipt, state: None,
         blocked_continuation=continuation,
     )
     result = run_durable_loop(
