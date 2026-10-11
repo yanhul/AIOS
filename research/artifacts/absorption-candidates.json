@@ -4,15 +4,60 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-0ae5765ec25ae99d",
+      "candidate_id": "cand-658d9949d3d514f0",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "2fcf08b8f26a4bed9302bbb521ae5061300d5bb019be2fe4212fba717c07e4f8",
+      "source_ref": "https://github.com/Jevelopers-neatHack-2026/agent-harness",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-4660d3008a42c722",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "memory",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "febb96a1b3d5c17ef2138309dc66f2f66f4c14da0b6d6c85ab7fba05a864e193",
+      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-21e709a9b99da2ba",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "ad16c53b64b62deb62211bd68a91cf721c6afa458d390cf5f665a8c0dac631e9",
+      "source_digest": "f4cdcdb2bfb7950ac350a44c3a904923ce01c2e53dc9ccc3d65c29a77b206e78",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-2360f32f669da0eb",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "4c3b222ec9bb789c9ff941b47724320e94a99ccd4a144570e74ed14aa4afe098",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -28,51 +73,6 @@
       "ref": "main",
       "source_digest": "a085b4e82d2028ccc9e7228533e0d9523612d1ceb98fc95a1fba4ac7ca5154c0",
       "source_ref": "https://github.com/Standard-Co/harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-182cad64efbf01ca",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "4899549bc2623a2dc98417c567a43a523c548bb75f3d4579fc0b260544e073f8",
-      "source_ref": "https://github.com/keshav9926/drydock",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-967d86f76ae5062b",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "cf0f4f1520628f806746f73d03c38c0870858e5fbea8187f48cf314c72b6db7b",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-f4c69ea84cf48a97",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "b4caa529a0ecefb01eb81bcd09b24fe40a397cbb2c5ed6739d53ef6ddcacceb7",
-      "source_ref": "https://github.com/tomazb/multi-agent-software-engineer",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {

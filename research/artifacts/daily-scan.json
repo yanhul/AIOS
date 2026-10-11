@@ -2,14 +2,44 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
+      "description": "Durable workflow execution, fencing and recovery runtime for the Agent & Creative v1 subsystem (Node 22, SQLite)",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "Jevelopers-neatHack-2026/agent-harness",
+      "source_digest": "2fcf08b8f26a4bed9302bbb521ae5061300d5bb019be2fe4212fba717c07e4f8",
+      "source_ref": "https://github.com/Jevelopers-neatHack-2026/agent-harness",
+      "stars": 0,
+      "updated_at": "2026-10-11T08:37:46Z"
+    },
+    {
+      "description": "a13n - An open-source library and self-hosted platform for building and running your own agent systems\u2014with managed agents, memory, sandboxes, computer use, and durable execution. Commercial Friendly. Built With Love \ud83d\udc9c @converge-ai-labs.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "converge-ai-labs/agent-foundation",
+      "source_digest": "febb96a1b3d5c17ef2138309dc66f2f66f4c14da0b6d6c85ab7fba05a864e193",
+      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
+      "stars": 173,
+      "updated_at": "2026-10-11T07:51:17Z"
+    },
+    {
       "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "ad16c53b64b62deb62211bd68a91cf721c6afa458d390cf5f665a8c0dac631e9",
+      "source_digest": "f4cdcdb2bfb7950ac350a44c3a904923ce01c2e53dc9ccc3d65c29a77b206e78",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "stars": 0,
-      "updated_at": "2026-10-10T08:19:29Z"
+      "updated_at": "2026-10-11T02:45:53Z"
+    },
+    {
+      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "Root1V/aeon-agent-harness",
+      "source_digest": "4c3b222ec9bb789c9ff941b47724320e94a99ccd4a144570e74ed14aa4afe098",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
+      "stars": 1,
+      "updated_at": "2026-10-10T17:32:29Z"
     },
     {
       "description": "Standard: a harness for long-running agents. RLM and Python execution inside Pi Durable.",
@@ -20,36 +50,6 @@
       "source_ref": "https://github.com/Standard-Co/harness",
       "stars": 0,
       "updated_at": "2026-10-10T04:10:15Z"
-    },
-    {
-      "description": "Keel, a durable execution runtime for AI agents, and Crashproof, the harness that tries to break it and everyone else's.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "keshav9926/drydock",
-      "source_digest": "4899549bc2623a2dc98417c567a43a523c548bb75f3d4579fc0b260544e073f8",
-      "source_ref": "https://github.com/keshav9926/drydock",
-      "stars": 0,
-      "updated_at": "2026-10-09T07:05:49Z"
-    },
-    {
-      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "Root1V/aeon-agent-harness",
-      "source_digest": "cf0f4f1520628f806746f73d03c38c0870858e5fbea8187f48cf314c72b6db7b",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "stars": 1,
-      "updated_at": "2026-10-09T03:42:27Z"
-    },
-    {
-      "description": "Deterministic multi-agent software-delivery orchestrator with durable workflows, exact-head evidence, and a Cursor-first path to multi-harness execution.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "tomazb/multi-agent-software-engineer",
-      "source_digest": "b4caa529a0ecefb01eb81bcd09b24fe40a397cbb2c5ed6739d53ef6ddcacceb7",
-      "source_ref": "https://github.com/tomazb/multi-agent-software-engineer",
-      "stars": 1,
-      "updated_at": "2026-10-08T16:06:29Z"
     },
     {
       "description": "OmniResearch is an autonomous multi-agent AI framework that automates the AI/ML research lifecycle\u2014from planning and literature discovery to dataset selection, experimentation, analysis, verification, and research report generation using LangGraph, multimodal RAG, and research memory.",
