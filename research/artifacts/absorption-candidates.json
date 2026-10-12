@@ -4,14 +4,29 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-658d9949d3d514f0",
+      "candidate_id": "cand-484f06541dec1ea0",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "2fcf08b8f26a4bed9302bbb521ae5061300d5bb019be2fe4212fba717c07e4f8",
+      "source_digest": "8c81e8efcde3205e36a4e2383b101ae882351cf3fb4e01dbfe16a0e75a89a656",
+      "source_ref": "https://github.com/julianthant/tether",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-44356b6ff32fa5e9",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "c305b1c0ea745b5dde84c0bd2891235d14149fefd37dab91934c64a0084175e4",
       "source_ref": "https://github.com/Jevelopers-neatHack-2026/agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -19,14 +34,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-4660d3008a42c722",
+      "candidate_id": "cand-6d1b76a924bff269",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "memory",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "febb96a1b3d5c17ef2138309dc66f2f66f4c14da0b6d6c85ab7fba05a864e193",
+      "source_digest": "84876c811de264f94b07617318b37d1cb4500b491b72d653fc613dc6028ac3f5",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -34,14 +49,29 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-21e709a9b99da2ba",
+      "candidate_id": "cand-a0aba0a54d87053b",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "5b0a4cf15f5b23304e2c2592d8725ad5212804ff5e87e8702db4d7fed928de67",
+      "source_ref": "https://github.com/batteryshark/orchestra-next",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-5b449354087c1c05",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "f4cdcdb2bfb7950ac350a44c3a904923ce01c2e53dc9ccc3d65c29a77b206e78",
+      "source_digest": "8edcf3e5ccad11cadfdaff9898ad53f7f8d45c780a9a16e781532b2a39d03810",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -49,44 +79,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-2360f32f669da0eb",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "4c3b222ec9bb789c9ff941b47724320e94a99ccd4a144570e74ed14aa4afe098",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-bc59620f6a313102",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "a085b4e82d2028ccc9e7228533e0d9523612d1ceb98fc95a1fba4ac7ca5154c0",
-      "source_ref": "https://github.com/Standard-Co/harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-b229c78ad4c8802c",
+      "candidate_id": "cand-7943946722eea0a2",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "research_harness",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "a755d4ae6a5b7bd994913e225524ef46882b2e5d1be9cc6e80acf3506a13750b",
+      "source_digest": "8bc0f8c5376c888c1b4494d3ba8430a2ed2d9554d6cb3179ebbb2eead83d9dfa",
       "source_ref": "https://github.com/abhijeetchaubey/OmniResearch",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -154,6 +154,21 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
+      "candidate_id": "cand-ef7628557ff5494d",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "d30838976d786d28d8f78638530e9d644b845223b01542a7ccbe83871cc898f5",
+      "source_ref": "https://github.com/teolex2020/aura-memory",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
       "candidate_id": "cand-6974473888e7b063",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
@@ -163,21 +178,6 @@
       "ref": "main",
       "source_digest": "a2c4bfd5bc9192dfa20fe94908f76b48b77580a5f5983d26299a7e0f1004c6b6",
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-b82c01a4e03c5865",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "6313696a4d30c6946d29bf27d29f4bbdfa0a4f788219731ebb396dc4ba6bcbf6",
-      "source_ref": "https://github.com/teolex2020/aura-memory",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {

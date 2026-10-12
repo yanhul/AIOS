@@ -2,64 +2,64 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
+      "description": "An in-progress coding-agent harness for long-running tasks, controlled tool access, and durable execution.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "julianthant/tether",
+      "source_digest": "8c81e8efcde3205e36a4e2383b101ae882351cf3fb4e01dbfe16a0e75a89a656",
+      "source_ref": "https://github.com/julianthant/tether",
+      "stars": 0,
+      "updated_at": "2026-10-12T08:59:28Z"
+    },
+    {
       "description": "Durable workflow execution, fencing and recovery runtime for the Agent & Creative v1 subsystem (Node 22, SQLite)",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "Jevelopers-neatHack-2026/agent-harness",
-      "source_digest": "2fcf08b8f26a4bed9302bbb521ae5061300d5bb019be2fe4212fba717c07e4f8",
+      "source_digest": "c305b1c0ea745b5dde84c0bd2891235d14149fefd37dab91934c64a0084175e4",
       "source_ref": "https://github.com/Jevelopers-neatHack-2026/agent-harness",
       "stars": 0,
-      "updated_at": "2026-10-11T08:37:46Z"
+      "updated_at": "2026-10-12T08:57:57Z"
     },
     {
       "description": "a13n - An open-source library and self-hosted platform for building and running your own agent systems\u2014with managed agents, memory, sandboxes, computer use, and durable execution. Commercial Friendly. Built With Love \ud83d\udc9c @converge-ai-labs.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "converge-ai-labs/agent-foundation",
-      "source_digest": "febb96a1b3d5c17ef2138309dc66f2f66f4c14da0b6d6c85ab7fba05a864e193",
+      "source_digest": "84876c811de264f94b07617318b37d1cb4500b491b72d653fc613dc6028ac3f5",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "stars": 173,
-      "updated_at": "2026-10-11T07:51:17Z"
+      "stars": 182,
+      "updated_at": "2026-10-12T08:57:32Z"
+    },
+    {
+      "description": "Durable agent runs for local fleets, built on the DeepSeek Harness (dsh). Streamlined Orchestra rewrite: one execution path, stdlib Python, SQLite, three-file console.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "batteryshark/orchestra-next",
+      "source_digest": "5b0a4cf15f5b23304e2c2592d8725ad5212804ff5e87e8702db4d7fed928de67",
+      "source_ref": "https://github.com/batteryshark/orchestra-next",
+      "stars": 0,
+      "updated_at": "2026-10-12T06:11:20Z"
     },
     {
       "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "f4cdcdb2bfb7950ac350a44c3a904923ce01c2e53dc9ccc3d65c29a77b206e78",
+      "source_digest": "8edcf3e5ccad11cadfdaff9898ad53f7f8d45c780a9a16e781532b2a39d03810",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "stars": 0,
-      "updated_at": "2026-10-11T02:45:53Z"
-    },
-    {
-      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "Root1V/aeon-agent-harness",
-      "source_digest": "4c3b222ec9bb789c9ff941b47724320e94a99ccd4a144570e74ed14aa4afe098",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "stars": 1,
-      "updated_at": "2026-10-10T17:32:29Z"
-    },
-    {
-      "description": "Standard: a harness for long-running agents. RLM and Python execution inside Pi Durable.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "Standard-Co/harness",
-      "source_digest": "a085b4e82d2028ccc9e7228533e0d9523612d1ceb98fc95a1fba4ac7ca5154c0",
-      "source_ref": "https://github.com/Standard-Co/harness",
-      "stars": 0,
-      "updated_at": "2026-10-10T04:10:15Z"
+      "updated_at": "2026-10-12T03:36:16Z"
     },
     {
       "description": "OmniResearch is an autonomous multi-agent AI framework that automates the AI/ML research lifecycle\u2014from planning and literature discovery to dataset selection, experimentation, analysis, verification, and research report generation using LangGraph, multimodal RAG, and research memory.",
       "query": "agent research framework autonomous experimentation",
       "ref": "main",
       "repo": "abhijeetchaubey/OmniResearch",
-      "source_digest": "a755d4ae6a5b7bd994913e225524ef46882b2e5d1be9cc6e80acf3506a13750b",
+      "source_digest": "8bc0f8c5376c888c1b4494d3ba8430a2ed2d9554d6cb3179ebbb2eead83d9dfa",
       "source_ref": "https://github.com/abhijeetchaubey/OmniResearch",
       "stars": 0,
-      "updated_at": "2026-10-04T16:30:04Z"
+      "updated_at": "2026-10-12T04:32:19Z"
     },
     {
       "description": "Yethanus \u2014 Python AI agent experimentation framework (anus-ai fork) for exploring autonomous agent architectures.",
@@ -102,6 +102,16 @@
       "updated_at": "2026-09-12T02:35:11Z"
     },
     {
+      "description": "Local cognitive memory runtime for AI agents \u2014 durable recall, temporal versioning, provenance, contradiction governance, and portable encrypted storage. Pure Rust, offline-first, with no required LLM or cloud. Patent pending.",
+      "query": "agent memory provenance governance",
+      "ref": "main",
+      "repo": "teolex2020/aura-memory",
+      "source_digest": "d30838976d786d28d8f78638530e9d644b845223b01542a7ccbe83871cc898f5",
+      "source_ref": "https://github.com/teolex2020/aura-memory",
+      "stars": 85,
+      "updated_at": "2026-10-11T12:09:48Z"
+    },
+    {
       "description": "Heartwood Memory \u2014 governed memory for AI agents. Provenance-first recall, policy-gated retrieval, tenant isolation.",
       "query": "agent memory provenance governance",
       "ref": "main",
@@ -110,16 +120,6 @@
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
       "stars": 0,
       "updated_at": "2026-10-09T21:55:34Z"
-    },
-    {
-      "description": "Local cognitive memory runtime for AI agents \u2014 durable recall, temporal versioning, provenance, contradiction governance, and portable encrypted storage. Pure Rust, offline-first, with no required LLM or cloud. Patent pending.",
-      "query": "agent memory provenance governance",
-      "ref": "main",
-      "repo": "teolex2020/aura-memory",
-      "source_digest": "6313696a4d30c6946d29bf27d29f4bbdfa0a4f788219731ebb396dc4ba6bcbf6",
-      "source_ref": "https://github.com/teolex2020/aura-memory",
-      "stars": 85,
-      "updated_at": "2026-10-08T13:09:21Z"
     },
     {
       "description": "Check agent memory against the Vercy Governance Overlay, plus a read-only MCP server over the Vercy model catalogue.",
