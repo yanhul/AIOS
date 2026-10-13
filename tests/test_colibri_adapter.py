@@ -141,3 +141,19 @@ def test_provider_name_matches_aios_capability_resolution():
     from core.runtime import _provider_authorized
     assert _provider_authorized(authorized_contract(), "colibri.inference") is True
     assert _provider_authorized(authorized_contract(), "colibri") is False
+
+
+def test_malformed_capability_contract_fails_closed():
+    with pytest.raises(ValueError, match="capabilities must be a list"):
+        adapter().execute(
+            contract=authorized_contract(capabilities=COLIBRI_CAPABILITY),
+            effect=effect(),
+            attempt_id="attempt-1",
+        )
+
+
+def test_redirect_handler_never_follows_redirects():
+    from adapters.colibri.runner import _NoRedirectHandler
+
+    handler = _NoRedirectHandler()
+    assert handler.redirect_request(None, None, 302, "Found", {}, "https://example.com/steal") is None
