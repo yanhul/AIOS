@@ -63,7 +63,10 @@ def test_valid_response_is_bound_to_effect_and_attempt():
     assert receipt.effect_id == "effect-1"
     assert receipt.attempt_id == "attempt-1"
     assert receipt.outcome == "OBSERVED_SUCCESS"
-    assert receipt.observation["colibri_response"]["message"]["content"] == "hello"
+    observed = receipt.observation["colibri_response"]
+    assert observed["message"]["content"] == "hello"
+    assert len(observed["request_sha256"]) == 64
+    assert observed["endpoint"] == "http://127.0.0.1:8000/v1/chat/completions"
 
 
 def test_missing_capability_fails_closed():
