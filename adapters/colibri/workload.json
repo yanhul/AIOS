@@ -9,7 +9,7 @@
   "adapter": "adapters/colibri/runner.py",
   "protocol": "OpenAI-compatible chat completions",
   "default_endpoint": "http://127.0.0.1:8000/v1",
-  "terminal_states": ["OBSERVED_SUCCESS", "OBSERVED_FAILURE", "UNKNOWN"],
+  "terminal_states": ["AVAILABLE", "BLOCKED", "INCONCLUSIVE"],
   "verification_classes": ["receipt_binding", "response_schema", "bounded_io", "endpoint_scope", "provenance"],
   "agent_may_modify_policy": false,
   "agent_may_modify_terminal_conditions": false,
