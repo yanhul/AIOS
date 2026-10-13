@@ -45,5 +45,29 @@ class KyojinAdapterContractTests(unittest.TestCase):
             )
 
 
+    def test_transport_ambiguity_propagates_without_retry(self):
+        calls = []
+        def transport(*args):
+            calls.append(args)
+            raise TimeoutError("ambiguous provider result")
+        adapter = KyojinAdapter(model="test-model", transport=transport)
+        with self.assertRaises(TimeoutError):
+            adapter.execute(
+                contract={"scope": "prompt", "capabilities": ["kyojin.inference@1"]},
+                effect={"effect_id": "effect-2", "attempt_id": "attempt-2"},
+                attempt_id="attempt-2",
+            )
+        self.assertEqual(len(calls), 1)
+
+    def test_malformed_response_is_rejected(self):
+        adapter = KyojinAdapter(model="test-model", transport=lambda *args: (200, b'{"choices":[]}'))
+        with self.assertRaises(ValueError):
+            adapter.execute(
+                contract={"scope": "prompt", "capabilities": ["kyojin.inference@1"]},
+                effect={"effect_id": "effect-3", "attempt_id": "attempt-3"},
+                attempt_id="attempt-3",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
