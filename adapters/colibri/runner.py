@@ -5,6 +5,7 @@ effect lifecycle, receipt validation, durable state, verification and promotion.
 """
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import json
 import math
@@ -100,7 +101,9 @@ class ColibriAdapter:
         if len(request_bytes) > self.max_request_bytes:
             raise ValueError("Colibri request exceeds input limit")
 
-        endpoint = _loopback_url(self.base_url) + "/chat/completions"
+        base_url = _loopback_url(self.base_url)
+        endpoint = base_url + "/chat/completions"
+        request_digest = hashlib.sha256(request_bytes).hexdigest()
         request = urllib.request.Request(
             endpoint, data=request_bytes,
             headers={"Content-Type": "application/json", "Accept": "application/json"},
@@ -136,6 +139,8 @@ class ColibriAdapter:
             raise ValueError("response.usage must be an object when present")
         observation = {
             "response_id": response_id,
+            "request_sha256": request_digest,
+            "endpoint": endpoint,
             "model": result.get("model", self.model),
             "message": message,
             "finish_reason": choices[0].get("finish_reason"),
