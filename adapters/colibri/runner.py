@@ -75,7 +75,14 @@ class ColibriAdapter:
             raise RuntimeError("effect must be dispatched before Colibri execution")
         if not isinstance(self.timeout_seconds, (int, float)) or isinstance(self.timeout_seconds, bool) or not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
-        if (not isinstance(self.max_request_bytes, int) or isinstance(self.max_request_bytes, bool) or self.max_request_bytes < 1\n                or not isinstance(self.max_response_bytes, int) or isinstance(self.max_response_bytes, bool) or self.max_response_bytes < 1):
+        if (
+            not isinstance(self.max_request_bytes, int)
+            or isinstance(self.max_request_bytes, bool)
+            or self.max_request_bytes < 1
+            or not isinstance(self.max_response_bytes, int)
+            or isinstance(self.max_response_bytes, bool)
+            or self.max_response_bytes < 1
+        ):
             raise ValueError("request and response limits must be positive")
 
         payload = effect.get("payload")
