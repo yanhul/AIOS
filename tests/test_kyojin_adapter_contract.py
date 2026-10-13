@@ -1,5 +1,49 @@
+import json
 import unittest
 
+from adapters.kyojin import KyojinAdapter
+
+
 class KyojinAdapterContractTests(unittest.TestCase):
-    def test_placeholder(self):
-        self.assertTrue(True)
+    def test_valid_response_is_bound_to_effect(self):
+        def transport(url, body, headers, timeout, limit):
+            self.assertTrue(url.endswith("/chat/completions"))
+            self.assertEqual(json.loads(body)["model"], "test-model")
+            return 200, b'{"choices":[{"message":{"content":"OK"}}],"usage":{"total_tokens":1}}'
+
+        adapter = KyojinAdapter(model="test-model", transport=transport)
+        receipt = adapter.execute(
+            contract={
+                "scope": "Reply OK",
+                "capabilities": ["kyojin.inference@1"],
+            },
+            effect={"effect_id": "effect-1", "attempt_id": "attempt-1"},
+            attempt_id="attempt-1",
+        )
+        self.assertEqual(receipt.outcome, "OBSERVED_SUCCESS")
+        self.assertEqual(receipt.effect_id, "effect-1")
+        self.assertEqual(receipt.observation["kyojin_receipt"]["output"], "OK")
+
+    def test_missing_capability_fails_before_transport(self):
+        calls = []
+        adapter = KyojinAdapter(model="test-model", transport=lambda *args: calls.append(args))
+        with self.assertRaises(PermissionError):
+            adapter.execute(
+                contract={"scope": "prompt", "capabilities": []},
+                effect={"effect_id": "effect-1", "attempt_id": "attempt-1"},
+                attempt_id="attempt-1",
+            )
+        self.assertEqual(calls, [])
+
+    def test_non_success_status_is_not_reported_as_success(self):
+        adapter = KyojinAdapter(model="test-model", transport=lambda *args: (503, b"error"))
+        with self.assertRaises(RuntimeError):
+            adapter.execute(
+                contract={"scope": "prompt", "capabilities": ["kyojin.inference@1"]},
+                effect={"effect_id": "effect-1", "attempt_id": "attempt-1"},
+                attempt_id="attempt-1",
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()
