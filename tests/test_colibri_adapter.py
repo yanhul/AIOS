@@ -1,3 +1,8 @@
+# AIOS-CONTRACT: One authorized, bounded inference request yields a receipt bound to its effect and attempt.
+# AIOS-REGRESSION: Prevent unauthorized capability use, malformed provider output, and unbounded I/O.
+# AIOS-OWNER: AIOS capability/runtime boundary; Colibri remains an external inference provider.
+# AIOS-COVERAGE-GAP: Hermetic fake-server tests do not prove a real model/server integration.
+# AIOS-BASELINE: Colibri source revision bf2442915d6e3dd4cdfd2eb9c2a3d2aa44a25850; adapter contract v1.
 """Conformance tests for the governed Colibri adapter; no model download required."""
 import json
 
@@ -130,3 +135,9 @@ def test_request_size_is_bounded():
         adapter(max_request_bytes=20).execute(
             contract=authorized_contract(), effect=effect(), attempt_id="attempt-1"
         )
+
+
+def test_provider_name_matches_aios_capability_resolution():
+    from core.runtime import _provider_authorized
+    assert _provider_authorized(authorized_contract(), "colibri.inference") is True
+    assert _provider_authorized(authorized_contract(), "colibri") is False
