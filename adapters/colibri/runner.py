@@ -28,6 +28,13 @@ def _nonempty(value: object, name: str) -> str:
     return value
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Prevent a local endpoint from redirecting prompts to a remote host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def _loopback_url(value: str) -> str:
     parsed = urlparse(value)
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
@@ -62,9 +69,15 @@ class ColibriAdapter:
         _nonempty(attempt_id, "attempt_id")
         if not isinstance(contract, dict) or not contract:
             raise ValueError("contract must be a non-empty object")
-        if COLIBRI_CAPABILITY not in contract.get("capabilities", []):
+        capabilities = contract.get("capabilities", [])
+        if not isinstance(capabilities, list) or any(not isinstance(item, str) for item in capabilities):
+            raise ValueError("contract.capabilities must be a list of strings")
+        if COLIBRI_CAPABILITY not in capabilities:
             raise PermissionError("Colibri inference capability is not granted by contract")
-        if "external_effect" not in contract.get("allowed_effects", []):
+        allowed_effects = contract.get("allowed_effects", [])
+        if not isinstance(allowed_effects, list) or any(not isinstance(item, str) for item in allowed_effects):
+            raise ValueError("contract.allowed_effects must be a list of strings")
+        if "external_effect" not in allowed_effects:
             raise PermissionError("external effect is not authorized by contract")
         if not isinstance(effect, dict) or not effect:
             raise ValueError("effect must be a non-empty object")
@@ -116,7 +129,7 @@ class ColibriAdapter:
             headers={"Content-Type": "application/json", "Accept": "application/json"},
             method="POST",
         )
-        opener = self.opener or urllib.request.urlopen
+        opener = self.opener or urllib.request.build_opener(_NoRedirectHandler()).open
         try:
             with opener(request, timeout=self.timeout_seconds) as response:
                 status = getattr(response, "status", 200)
@@ -144,11 +157,13 @@ class ColibriAdapter:
         usage = result.get("usage")
         if usage is not None and not isinstance(usage, dict):
             raise ValueError("response.usage must be an object when present")
+        response_model = result.get("model", self.model)
+        _nonempty(response_model, "response.model")
         observation = {
             "response_id": response_id,
             "request_sha256": request_digest,
             "endpoint": endpoint,
-            "model": result.get("model", self.model),
+            "model": response_model,
             "message": message,
             "finish_reason": choices[0].get("finish_reason"),
         }
