@@ -1,5 +1,4 @@
 """Conformance tests for the governed Colibri adapter; no model download required."""
-import io
 import json
 
 import pytest
@@ -60,7 +59,7 @@ def adapter(body=None, **kwargs):
 
 def test_valid_response_is_bound_to_effect_and_attempt():
     receipt = adapter().execute(contract=authorized_contract(), effect=effect(), attempt_id="attempt-1")
-    assert receipt.provider == "colibri"
+    assert receipt.provider == "colibri.inference"
     assert receipt.effect_id == "effect-1"
     assert receipt.attempt_id == "attempt-1"
     assert receipt.outcome == "OBSERVED_SUCCESS"
