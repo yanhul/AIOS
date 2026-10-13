@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import math
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -48,7 +49,7 @@ class ColibriAdapter:
 
     model: str
     base_url: str = "http://127.0.0.1:8000/v1"
-    name: str = "colibri"
+    name: str = "colibri.inference"
     timeout_seconds: float = 60.0
     max_request_bytes: int = _DEFAULT_MAX_REQUEST_BYTES
     max_response_bytes: int = _DEFAULT_MAX_RESPONSE_BYTES
@@ -71,9 +72,9 @@ class ColibriAdapter:
             raise ValueError("effect attempt binding mismatch")
         if effect.get("state") not in ("DISPATCHED", "EXECUTING"):
             raise RuntimeError("effect must be dispatched before Colibri execution")
-        if not isinstance(self.timeout_seconds, (int, float)) or isinstance(self.timeout_seconds, bool) or self.timeout_seconds <= 0:
+        if not isinstance(self.timeout_seconds, (int, float)) or isinstance(self.timeout_seconds, bool) or not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
-        if self.max_request_bytes < 1 or self.max_response_bytes < 1:
+        if (not isinstance(self.max_request_bytes, int) or isinstance(self.max_request_bytes, bool) or self.max_request_bytes < 1\n                or not isinstance(self.max_response_bytes, int) or isinstance(self.max_response_bytes, bool) or self.max_response_bytes < 1):
             raise ValueError("request and response limits must be positive")
 
         payload = effect.get("payload")
