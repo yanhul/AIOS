@@ -1,7 +1,7 @@
 # AIOS-CONTRACT: Capability-granted adapter returns an effect/attempt-bound ProviderReceipt.
 # AIOS-REGRESSION: Ambiguous transport, malformed response, and HTTP errors must not become success.
 # AIOS-OWNER: AIOS runtime owns authorization, durable state, retries, and semantic verification.
-# AIOS-COVERAGE-GAP: Fake transport only; live Kyojin, hardware performance, and restart recovery are untested.
+# AIOS-COVERAGE-GAP: Local HTTP integration is hardware-free; live Kyojin interoperability and restart recovery remain untested.
 # AIOS-BASELINE: core/runtime.py ProviderReceipt contract and scripts/test_audit_gate.py authoring requirements.
 import json
 import threading
