@@ -124,6 +124,8 @@ class CapabilityRegistry:
         capability = self._capabilities.get(key)
         if capability is None:
             raise CapabilityError(f"capability is not registered: {key}")
+        if capability.status == "CANDIDATE":
+            raise CapabilityError(f"capability is not promoted ACTIVE: {key}")
         if capability.status == "DEPRECATED":
             raise CapabilityError(f"capability is deprecated: {key}")
         return capability
