@@ -7,6 +7,18 @@ status: normative
 # A manifest may be published by the workload repository or by its AIOS adapter
 # when the workload is external and cannot be modified as part of this repository.
 capabilities:
+  - capability_id: kyojin.inference
+    version: "1"
+    kind: inference_provider
+    owner: Yamz-Labs/kyojin
+    source: https://github.com/Yamz-Labs/kyojin
+    manifest: adapters/kyojin/workload.json
+    inputs: [inference_prompt, model_configuration]
+    outputs: [model_output, output_digest, usage, provider_receipt]
+    verification: [provider_response_shape, output_digest, independent_semantic_verification, provenance]
+    context: [model_revision, endpoint, environment, attempt_id]
+    terminal_states: [AVAILABLE, BLOCKED, INCONCLUSIVE]
+
   - capability_id: try.research
     version: "1"
     kind: research_workload

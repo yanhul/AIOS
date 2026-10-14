@@ -1,0 +1,17 @@
+{
+  "protocol_version": 1,
+  "capability": "kyojin.inference@1",
+  "owner": "Yamz-Labs/kyojin",
+  "source": "https://github.com/Yamz-Labs/kyojin",
+  "aios_authority": "yanhul/AIOS",
+  "role": "inference_provider",
+  "adapter": "internal",
+  "entrypoint": "adapters.kyojin.KyojinAdapter",
+  "terminal_states": ["AVAILABLE", "BLOCKED", "INCONCLUSIVE"],
+  "verification_classes": ["provider_response_shape", "output_digest", "usage", "provenance"],
+  "durable_loop": ["AUTHORIZE", "DISPATCH", "EXECUTE_ATTEMPT", "OBSERVE", "VERIFY", "RECONCILE", "PERSIST", "RESUME"],
+  "agent_may_modify_policy": false,
+  "agent_may_modify_terminal_conditions": false,
+  "semantic_verification": "external AIOS verifier required",
+  "performance_claims": "not made by adapter tests"
+}
