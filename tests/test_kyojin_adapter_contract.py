@@ -4,7 +4,9 @@
 # AIOS-COVERAGE-GAP: Fake transport only; live Kyojin, hardware performance, and restart recovery are untested.
 # AIOS-BASELINE: core/runtime.py ProviderReceipt contract and scripts/test_audit_gate.py authoring requirements.
 import json
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from adapters.kyojin import KyojinAdapter
 
@@ -29,6 +31,44 @@ class KyojinAdapterContractTests(unittest.TestCase):
         self.assertEqual(receipt.observation["kyojin_receipt"]["output"], "OK")
         self.assertEqual(receipt.observation["kyojin_receipt"]["usage"]["total_tokens"], 1)
         self.assertEqual(len(receipt.observation["kyojin_receipt"]["output_sha256"]), 64)
+
+    def test_real_http_transport_round_trip_without_gpu_or_kyojin(self):
+        response_body = b'{"choices":[{"message":{"content":"wire-ok"}}],"usage":{"total_tokens":2}}'
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.server.seen_path = self.path
+                self.server.seen_body = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(response_body)))
+                self.end_headers()
+                self.wfile.write(response_body)
+
+            def log_message(self, format, *args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            adapter = KyojinAdapter(
+                model="test-model",
+                base_url=f"http://127.0.0.1:{server.server_port}/v1",
+            )
+            receipt = adapter.execute(
+                contract={"scope": "wire test", "capabilities": ["kyojin.inference@1"]},
+                effect={"effect_id": "effect-wire", "attempt_id": "attempt-wire"},
+                attempt_id="attempt-wire",
+            )
+            self.assertEqual(server.seen_path, "/v1/chat/completions")
+            self.assertEqual(json.loads(server.seen_body)["messages"][0]["content"], "wire test")
+            self.assertEqual(receipt.observation["kyojin_receipt"]["output"], "wire-ok")
+            self.assertEqual(receipt.attempt_id, "attempt-wire")
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
 
     def test_missing_capability_fails_before_transport(self):
         calls = []
