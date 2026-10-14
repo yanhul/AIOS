@@ -37,7 +37,7 @@ def test_graph_requires_registered_nodes_and_preserves_evidence_level():
 
 def test_invalid_relation_and_unregistered_endpoint_fail_closed():
     registry = CapabilityRegistry()
-    registry.register(cap("a"))
+    registry.register(cap("a", status="ACTIVE"))
     try:
         registry.add_edge(CapabilityEdge("a@1", "unknown", "a@1"))
         assert False
@@ -93,3 +93,30 @@ def test_contract_capabilities_must_resolve_to_registered_version(tmp_path):
         assert False
     except CapabilityError:
         pass
+
+
+def test_candidate_capability_is_discoverable_but_not_authorizable():
+    registry = CapabilityRegistry()
+    candidate = cap("repo_patch", status="CANDIDATE")
+    registry.register(candidate)
+
+    # Discovery is descriptive; it must not be confused with authority.
+    assert registry.discover(kind="workload") == [candidate]
+    try:
+        registry.require(candidate.key)
+        assert False, "candidate capability must not cross the authority boundary"
+    except CapabilityError as exc:
+        assert "not promoted ACTIVE" in str(exc)
+
+
+def test_contract_resolution_rejects_candidate_and_deprecated_capabilities():
+    registry = CapabilityRegistry()
+    registry.register(cap("candidate.workload", status="CANDIDATE"))
+    registry.register(cap("old.workload", status="DEPRECATED"))
+
+    for key in ("candidate.workload@1", "old.workload@1"):
+        try:
+            registry.resolve_contract({"capabilities": [key]})
+            assert False, f"{key} must not authorize a contract"
+        except CapabilityError:
+            pass
