@@ -137,6 +137,12 @@ class KyojinAdapter:
             self.timeout_seconds,
             self.max_response_bytes,
         )
+        if not isinstance(status, int) or isinstance(status, bool):
+            raise ValueError("provider transport returned an invalid HTTP status")
+        if not isinstance(raw, bytes):
+            raise ValueError("provider transport must return response bytes")
+        if len(raw) > self.max_response_bytes:
+            raise ValueError("provider response exceeds configured size limit")
         if not 200 <= status < 300:
             # Preserve uncertainty: the runtime's exception path records UNKNOWN.
             raise RuntimeError(f"Kyojin returned HTTP {status}; outcome not promoted")
