@@ -28,16 +28,28 @@ authority and durable-state owner.
 python -m pytest -q tests/test_kyojin_adapter_contract.py
 ```
 
-The tests use a fake transport; they do not require ROCm, GPU hardware, Kyojin,
-or model weights. A live smoke test and benchmark on supported AMD Strix Halo
-hardware remain separate acceptance gates.
+The tests include both deterministic fake-transport cases and a real local
+HTTP round trip using Python's standard-library HTTP server. They do not require
+ROCm, GPU hardware, Kyojin, or model weights. This validates HTTP framing,
+request serialization, response parsing, and receipt binding, but is not proof
+of compatibility with a live Kyojin server.
 
 ## Absorb gate
 
-Do not treat this provider as fully absorbed until AIOS authorization and
-durable execution are exercised end-to-end, including restart/reconciliation
-of an ambiguous attempt, a live Kyojin response, and independently verified
-output evidence. No performance claims are made by these adapter tests.
+Acceptance is split into two tracks:
+
+- **CPU-only integration capability:** contract tests plus a real local HTTP
+  round trip, AIOS authorization/dispatch/runtime path, receipt validation,
+  durable persistence, and restart/reconciliation of an ambiguous attempt.
+  This track does not require GPU hardware and is the gate for declaring the
+  software integration usable against a compatible OpenAI-style endpoint.
+- **Kyojin deployment qualification:** a live response from the target Kyojin
+  version is an interoperability check when an endpoint becomes available.
+  Benchmarking on AMD Strix Halo/ROCm is optional performance evidence, not a
+  blocker for the CPU-only integration capability. Do not claim Kyojin-specific
+  interoperability or hardware performance before those checks are actually run.
+
+No performance claims are made by these adapter tests.
 
 ## Runtime boundary
 
