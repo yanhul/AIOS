@@ -1,3 +1,8 @@
+# AIOS-CONTRACT: Capability registration is descriptive; only ACTIVE capabilities may resolve into authority-bearing contracts.
+# AIOS-REGRESSION: A registered CANDIDATE must remain discoverable but must fail require() and resolve_contract().
+# AIOS-OWNER: AIOS capability registry and authority boundary.
+# AIOS-COVERAGE-GAP: Previously CANDIDATE status was accepted by require(), allowing unpromoted capability references into contracts.
+# AIOS-BASELINE: Existing ACTIVE capability resolution, version pinning, persistence, and DEPRECATED rejection must remain unchanged.
 from core.capabilities import Capability, CapabilityEdge, CapabilityError, CapabilityRegistry
 
 
