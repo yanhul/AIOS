@@ -38,3 +38,11 @@ Do not treat this provider as fully absorbed until AIOS authorization and
 durable execution are exercised end-to-end, including restart/reconciliation
 of an ambiguous attempt, a live Kyojin response, and independently verified
 output evidence. No performance claims are made by these adapter tests.
+
+## Runtime boundary
+
+Invoke through the existing `core.runtime.execute_attempt` path only after
+AIOS has authorized and dispatched the effect. Do not call `KyojinAdapter.execute`
+as an authorization substitute. The runtime validates the returned
+`ProviderReceipt`, persists an observation, and converts adapter exceptions into
+`UNKNOWN`; retries require a separately authorized retry attempt.
