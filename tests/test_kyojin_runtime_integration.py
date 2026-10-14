@@ -1,4 +1,8 @@
-# AIOS-CONTRACT: Kyojin provider must execute through core.runtime.execute/execute_attempt.\n# AIOS-REGRESSION: Ambiguous timeout is UNKNOWN and must not trigger implicit retry.\n# AIOS-OWNER: Authority/effect storage is isolated; durable crash/restart is a separate gate.\n# AIOS-COVERAGE-GAP: These tests do not prove persistence or process-restart recovery.\n# AIOS-BASELINE: core/runtime.py provider receipt and effect-state transition contract.\n"""Kyojin through the authoritative AIOS runtime boundary.
+# AIOS-CONTRACT: Kyojin provider must execute through core.runtime.execute/execute_attempt.
+# AIOS-REGRESSION: Ambiguous timeout is UNKNOWN and must not trigger implicit retry.
+# AIOS-OWNER: Authority/effect storage is isolated; durable crash/restart is a separate gate.
+# AIOS-COVERAGE-GAP: These tests do not prove persistence or process-restart recovery.
+# AIOS-BASELINE: core/runtime.py provider receipt and effect-state transition contract.\n"""Kyojin through the authoritative AIOS runtime boundary.
 
 These tests isolate the authority/effect storage boundary but exercise the real
 core.runtime.execute -> execute_attempt orchestration and real localhost HTTP
