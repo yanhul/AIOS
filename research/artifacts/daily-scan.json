@@ -6,50 +6,50 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "converge-ai-labs/agent-foundation",
-      "source_digest": "9658ba54c7096d432899a0538a80df99358aa812c5bedbcc5ddd2cf7213edb03",
+      "source_digest": "e97cd9209bf02dde848c1fd8f06f23122627c13b6b0e08f81493141eae4d8592",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "stars": 187,
-      "updated_at": "2026-10-13T09:27:01Z"
+      "stars": 188,
+      "updated_at": "2026-10-14T07:05:51Z"
     },
     {
-      "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
+      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
       "query": "agent harness durable execution",
       "ref": "main",
-      "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "698955944b1c5793fd951157e4ff53f20d321a82a551bccaa2d4a457c5ed8e5d",
-      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
-      "stars": 0,
-      "updated_at": "2026-10-13T00:54:04Z"
+      "repo": "Root1V/aeon-agent-harness",
+      "source_digest": "52633a662203624eb516ee13b4a4d097221b95b206ffa3af84c183d75864928d",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
+      "stars": 1,
+      "updated_at": "2026-10-14T02:15:20Z"
     },
     {
-      "description": "Durable workflow execution, fencing and recovery runtime for the Agent & Creative v1 subsystem (Node 22, SQLite)",
+      "description": "A production-oriented TypeScript agent runtime reference implementation with durable sessions and bounded execution.",
       "query": "agent harness durable execution",
       "ref": "main",
-      "repo": "Jevelopers-neatHack-2026/agent-harness",
-      "source_digest": "2665a2d55f9399bb42a558f676f8ae9ed0e84ba6eab990e91409174853eaddc8",
-      "source_ref": "https://github.com/Jevelopers-neatHack-2026/agent-harness",
-      "stars": 0,
-      "updated_at": "2026-10-12T23:32:57Z"
+      "repo": "cacohe/agent-harness",
+      "source_digest": "a732222de9eb535d341320601b3d05046d22f144c27be244efdab95e2c431c24",
+      "source_ref": "https://github.com/cacohe/agent-harness",
+      "stars": 1,
+      "updated_at": "2026-10-14T06:35:55Z"
     },
     {
-      "description": "Durable agent runs for local fleets, built on the DeepSeek Harness (dsh). Streamlined Orchestra rewrite: one execution path, stdlib Python, SQLite, three-file console.",
+      "description": "Week 3 AI Agent bootcamp: bounded agent loops, tool execution, state, and durable memory.",
       "query": "agent harness durable execution",
       "ref": "main",
-      "repo": "batteryshark/orchestra-next",
-      "source_digest": "6e226a8b113245234c5cc1c112045bcee8416482237f9c155f6710f3e41e107b",
-      "source_ref": "https://github.com/batteryshark/orchestra-next",
+      "repo": "Harold-z0808/repo-03-agent-harness",
+      "source_digest": "979f59cb380ec755666eaf71ade65f39107db51306f7fc793c093ca25de9f8a3",
+      "source_ref": "https://github.com/Harold-z0808/repo-03-agent-harness",
       "stars": 0,
-      "updated_at": "2026-10-12T13:38:47Z"
+      "updated_at": "2026-10-13T22:50:07Z"
     },
     {
-      "description": "An in-progress coding-agent harness for long-running tasks, controlled tool access, and durable execution.",
+      "description": "Keel, a durable execution runtime for AI agents, and Crashproof, the harness that tries to break it and everyone else's.",
       "query": "agent harness durable execution",
       "ref": "main",
-      "repo": "julianthant/tether",
-      "source_digest": "d983fb2816a7b0f3ddde6623c79d2cdd46a74e59b0f4dbedc394f2f8ec8a19d5",
-      "source_ref": "https://github.com/julianthant/tether",
+      "repo": "keshav9926/drydock",
+      "source_digest": "f726d9bb9b397f600325b5a74f780d7602355f5fa4976a466184a453dc515b30",
+      "source_ref": "https://github.com/keshav9926/drydock",
       "stars": 0,
-      "updated_at": "2026-10-12T08:59:28Z"
+      "updated_at": "2026-10-13T12:58:07Z"
     },
     {
       "description": "OmniResearch is an autonomous multi-agent AI framework that automates the AI/ML research lifecycle\u2014from planning and literature discovery to dataset selection, experimentation, analysis, verification, and research report generation using LangGraph, multimodal RAG, and research memory.",
