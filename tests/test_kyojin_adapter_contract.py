@@ -25,6 +25,7 @@ class KyojinAdapterContractTests(unittest.TestCase):
             effect={"effect_id": "effect-1", "attempt_id": "attempt-1"},
             attempt_id="attempt-1",
         )
+        assert receipt.outcome == "OBSERVED_SUCCESS"
         self.assertEqual(receipt.outcome, "OBSERVED_SUCCESS")
         self.assertEqual(receipt.effect_id, "effect-1")
         self.assertEqual(receipt.observation["kyojin_receipt"]["output"], "OK")
