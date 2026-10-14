@@ -3,6 +3,8 @@
 # AIOS-OWNER: AIOS capability registry and authority boundary.
 # AIOS-COVERAGE-GAP: Previously CANDIDATE status was accepted by require(), allowing unpromoted capability references into contracts.
 # AIOS-BASELINE: Existing ACTIVE capability resolution, version pinning, persistence, and DEPRECATED rejection must remain unchanged.
+from pathlib import Path
+
 from core.capabilities import Capability, CapabilityEdge, CapabilityError, CapabilityRegistry
 
 
@@ -125,3 +127,17 @@ def test_contract_resolution_rejects_candidate_and_deprecated_capabilities():
             assert False, f"{key} must not authorize a contract"
         except CapabilityError:
             pass
+
+
+def test_shipped_repo_patch_capability_is_registered_but_not_promoted():
+    registry = CapabilityRegistry.load(Path(__file__).resolve().parents[1])
+    candidate = registry.get("repo_patch", "1")
+    assert candidate is not None
+    assert candidate.status == "CANDIDATE"
+    assert "persisted OBSERVED_SUCCESS effect" in candidate.evidence_requirements
+    assert "governance promotion decision" in candidate.evidence_requirements
+    try:
+        registry.resolve_contract({"capabilities": ["repo_patch@1"]})
+        assert False, "repo_patch must remain unauthorized until independently promoted"
+    except CapabilityError as exc:
+        assert "not promoted ACTIVE" in str(exc)
