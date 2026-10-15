@@ -4,29 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-591bfa69e3071262",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "1fac6231bd484a88273e1b92ee7d079240d25162a373b2131d5a1e965309a806",
-      "source_ref": "https://github.com/nasoler123/ai-agent-harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-121310b7ba626c7d",
+      "candidate_id": "cand-15fac77866283980",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "memory",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "401bd830a61fa4bb8a54c86ef5374a41c447706285e1ec987189f1eccff1aad1",
+      "source_digest": "e0df017dc6befa12e8bb591be8c5ffe62e9d33209ff834b426c03adec7759c39",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -34,14 +19,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-2a941180c6f06304",
+      "candidate_id": "cand-c06e5e19bd199739",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "73758821ac56c59cf1f63227777de09f45bc1ffb7f9f0853df02b31620410ede",
+      "source_digest": "c822626dcd9d0558ba7e8976063fd8a987af630fc8d7d15e344e88b72490d175",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -73,6 +58,21 @@
       "ref": "master",
       "source_digest": "e105fa4dd12081095ca68b2ed5125160db86314e255ce514b29468eea06cc3cb",
       "source_ref": "https://github.com/dazhi666666/science-harness",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-81b4dcfc1535ccf8",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "981f88e00cb52d5880f58cdee8271f8b465937514afc98ebfa6fd744922382ff",
+      "source_ref": "https://github.com/cacohe/agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
