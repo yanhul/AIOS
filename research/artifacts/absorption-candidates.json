@@ -4,15 +4,30 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-32ae1010766928d9",
+      "candidate_id": "cand-3d3ac4db061dfa53",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "memory",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "1dc09ec41f4f57c8c1316e409036d0fa0c00ac9960aae3f5f46d40ffca83b10e",
+      "source_digest": "aafa7250250e93ddfc3061baef8f44e2196399c27db7e12659e7829b79ef0b10",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-c3cd1cb1bc6c861d",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "1359c7e1b89c9f29905a735ea97acd27421854034d5461aa77e7cf153e2bda9e",
+      "source_ref": "https://github.com/nasoler123/ai-agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -43,21 +58,6 @@
       "ref": "main",
       "source_digest": "e8f46b09ce66576a76e46ff7d00416d31f7f188db515ee0986276d76475ce8c6",
       "source_ref": "https://github.com/dev-resolute/resolute-harness-go",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-2ce3e92060e545a1",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "e904c3c39da8576abdf1faf19b1b44eba607de975f99ca80eb8c64cdaf6b074a",
-      "source_ref": "https://github.com/nasoler123/ai-agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
