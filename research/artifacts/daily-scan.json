@@ -2,24 +2,24 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
-      "description": "a13n - An open-source library and self-hosted platform for building and running your own agent systems\u2014with managed agents, memory, sandboxes, computer use, and durable execution. Commercial Friendly. Built With Love \ud83d\udc9c @converge-ai-labs.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "converge-ai-labs/agent-foundation",
-      "source_digest": "f349ee3cdc430815af5f2db149112efd23def7adef49f72b9c965cce303efe2f",
-      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "stars": 195,
-      "updated_at": "2026-10-15T09:32:49Z"
-    },
-    {
       "description": "Agent harness case study: skill registry, controlled tool dispatch, context budgets, prompt caching and durable execution.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "nasoler123/ai-agent-harness",
-      "source_digest": "1359c7e1b89c9f29905a735ea97acd27421854034d5461aa77e7cf153e2bda9e",
+      "source_digest": "1fac6231bd484a88273e1b92ee7d079240d25162a373b2131d5a1e965309a806",
       "source_ref": "https://github.com/nasoler123/ai-agent-harness",
       "stars": 0,
-      "updated_at": "2026-10-15T09:25:10Z"
+      "updated_at": "2026-10-15T09:42:31Z"
+    },
+    {
+      "description": "a13n - An open-source library and self-hosted platform for building and running your own agent systems\u2014with managed agents, memory, sandboxes, computer use, and durable execution. Commercial Friendly. Built With Love \ud83d\udc9c @converge-ai-labs.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "converge-ai-labs/agent-foundation",
+      "source_digest": "401bd830a61fa4bb8a54c86ef5374a41c447706285e1ec987189f1eccff1aad1",
+      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
+      "stars": 195,
+      "updated_at": "2026-10-15T09:36:38Z"
     },
     {
       "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",

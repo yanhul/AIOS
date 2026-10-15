@@ -4,30 +4,30 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-a616887f3d6af03c",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "memory",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "f349ee3cdc430815af5f2db149112efd23def7adef49f72b9c965cce303efe2f",
-      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-c3cd1cb1bc6c861d",
+      "candidate_id": "cand-591bfa69e3071262",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "1359c7e1b89c9f29905a735ea97acd27421854034d5461aa77e7cf153e2bda9e",
+      "source_digest": "1fac6231bd484a88273e1b92ee7d079240d25162a373b2131d5a1e965309a806",
       "source_ref": "https://github.com/nasoler123/ai-agent-harness",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-121310b7ba626c7d",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "memory",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "401bd830a61fa4bb8a54c86ef5374a41c447706285e1ec987189f1eccff1aad1",
+      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {

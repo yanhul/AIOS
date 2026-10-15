@@ -6,21 +6,21 @@
     {
       "action": "PROMOTE_TO_ABSORBED_REGISTRY",
       "allowed": true,
-      "candidate_id": "cand-a616887f3d6af03c",
+      "candidate_id": "cand-591bfa69e3071262",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38714125800",
-      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
+      "run_id": "38716306589",
+      "source_ref": "https://github.com/nasoler123/ai-agent-harness",
       "verdict": "PROMOTE"
     },
     {
       "action": "PROMOTE_TO_ABSORBED_REGISTRY",
       "allowed": true,
-      "candidate_id": "cand-c3cd1cb1bc6c861d",
+      "candidate_id": "cand-121310b7ba626c7d",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38714125800",
-      "source_ref": "https://github.com/nasoler123/ai-agent-harness",
+      "run_id": "38716306589",
+      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
       "verdict": "PROMOTE"
     },
     {
@@ -29,7 +29,7 @@
       "candidate_id": "cand-2a941180c6f06304",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38714125800",
+      "run_id": "38716306589",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "verdict": "PROMOTE"
     },
@@ -39,7 +39,7 @@
       "candidate_id": "cand-f324ec9af773a044",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38714125800",
+      "run_id": "38716306589",
       "source_ref": "https://github.com/dev-resolute/resolute-harness-go",
       "verdict": "PROMOTE"
     },
@@ -49,7 +49,7 @@
       "candidate_id": "cand-afe105b657c6e265",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38714125800",
+      "run_id": "38716306589",
       "source_ref": "https://github.com/dazhi666666/science-harness",
       "verdict": "PROMOTE"
     },
@@ -59,7 +59,7 @@
       "candidate_id": "cand-1027cf1c004699b9",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38714125800",
+      "run_id": "38716306589",
       "source_ref": "https://github.com/abhijeetchaubey/OmniResearch",
       "verdict": "PROMOTE"
     },
@@ -69,7 +69,7 @@
       "candidate_id": "cand-cf205bb56d75a71a",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38714125800",
+      "run_id": "38716306589",
       "source_ref": "https://github.com/yethikrishna/Yethanus",
       "verdict": "PROMOTE"
     },
@@ -79,7 +79,7 @@
       "candidate_id": "cand-0add7f9b6b6185d4",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38714125800",
+      "run_id": "38716306589",
       "source_ref": "https://github.com/Yash-Kavaiya/auto-cxas-scrapi",
       "verdict": "PROMOTE"
     },
@@ -89,7 +89,7 @@
       "candidate_id": "cand-6f7829bdde923e42",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38714125800",
+      "run_id": "38716306589",
       "source_ref": "https://github.com/yanghangAI/MultiAgentAutoResearch",
       "verdict": "PROMOTE"
     },
@@ -99,7 +99,7 @@
       "candidate_id": "cand-64ccfaf6076d226c",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38714125800",
+      "run_id": "38716306589",
       "source_ref": "https://github.com/kp-krish/AutoResearch",
       "verdict": "PROMOTE"
     },
@@ -109,7 +109,7 @@
       "candidate_id": "cand-ef7628557ff5494d",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38714125800",
+      "run_id": "38716306589",
       "source_ref": "https://github.com/teolex2020/aura-memory",
       "verdict": "PROMOTE"
     },
@@ -119,7 +119,7 @@
       "candidate_id": "cand-f459c8f25e57a975",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38714125800",
+      "run_id": "38716306589",
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
       "verdict": "PROMOTE"
     },
@@ -129,7 +129,7 @@
       "candidate_id": "cand-3710b57258764f25",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38714125800",
+      "run_id": "38716306589",
       "source_ref": "https://github.com/ver-cy/vercy-py",
       "verdict": "PROMOTE"
     },
@@ -139,7 +139,7 @@
       "candidate_id": "cand-8a8a11a9c5886077",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38714125800",
+      "run_id": "38716306589",
       "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
       "verdict": "PROMOTE"
     },
@@ -149,7 +149,7 @@
       "candidate_id": "cand-88e3118a6802a77b",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "level": "VERIFIED_DIGITAL",
-      "run_id": "38714125800",
+      "run_id": "38716306589",
       "source_ref": "https://github.com/qingyou0420/trueheart-core",
       "verdict": "PROMOTE"
     }
@@ -160,7 +160,7 @@
   "kind": "AIOS_ABSORPTION_PROMOTION",
   "overall": "PASS",
   "promoted_count": 15,
-  "run_id": "38714125800",
+  "run_id": "38716306589",
   "schema_version": 2,
   "source_mutation": false
 }
