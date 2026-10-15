@@ -94,10 +94,10 @@ class CapabilityEdge:
     verification_level: str = "OBSERVED"
 
     def __post_init__(self) -> None:
+        if not all(isinstance(v, str) and v.strip() for v in (self.source, self.relation, self.target, self.verification_level)):
+            raise CapabilityError("edge source, relation, target, and verification level must be non-empty strings")
         if self.relation not in ALLOWED_EDGE_TYPES:
             raise CapabilityError(f"unsupported relationship: {self.relation}")
-        if not self.source or not self.target:
-            raise CapabilityError("edge endpoints are required")
         if self.verification_level not in VERIFICATION_LEVELS:
             raise CapabilityError("invalid verification level")
 
