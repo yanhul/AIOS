@@ -99,8 +99,8 @@ jobs:
           AIOS_REPAIR_ATTEMPT: "1"
           AIOS_REPAIR_LOG: ${{ runner.temp }}/ci-failure.log
           GITHUB_REPOSITORY: ${{ github.repository }}
-          TRY_REPAIR_PROVIDER_URL: ${{ secrets.TRY_REPAIR_PROVIDER_URL }}
-          TRY_REPAIR_PROVIDER_TOKEN: ${{ secrets.TRY_REPAIR_PROVIDER_TOKEN }}
+          TRY_REPAIR_WORKER_URL: ${{ vars.TRY_REPAIR_WORKER_URL }}
+          TRY_PROVIDER_TOKEN: ${{ secrets.TRY_PROVIDER_TOKEN }}
         run: |
           export AIOS_REPAIR_RUN_ID="$CI_RUN_ID"
           PYTHONPATH=. python scripts/ci_repair_propose.py
@@ -196,8 +196,8 @@ jobs:
           AIOS_REPAIR_LOG: ${{ runner.temp }}/ci-failure.log
           AIOS_REPAIR_PREVIOUS_RESULT: ${{ github.workspace }}/prior/repair-result-1.json
           GITHUB_REPOSITORY: ${{ github.repository }}
-          TRY_REPAIR_PROVIDER_URL: ${{ secrets.TRY_REPAIR_PROVIDER_URL }}
-          TRY_REPAIR_PROVIDER_TOKEN: ${{ secrets.TRY_REPAIR_PROVIDER_TOKEN }}
+          TRY_REPAIR_WORKER_URL: ${{ vars.TRY_REPAIR_WORKER_URL }}
+          TRY_PROVIDER_TOKEN: ${{ secrets.TRY_PROVIDER_TOKEN }}
         run: |
           export AIOS_REPAIR_RUN_ID="$RUN_ID"
           PYTHONPATH=. python scripts/ci_repair_propose.py
@@ -287,8 +287,8 @@ jobs:
           AIOS_REPAIR_LOG: ${{ runner.temp }}/ci-failure.log
           AIOS_REPAIR_PREVIOUS_RESULT: ${{ github.workspace }}/prior/repair-result-2.json
           GITHUB_REPOSITORY: ${{ github.repository }}
-          TRY_REPAIR_PROVIDER_URL: ${{ secrets.TRY_REPAIR_PROVIDER_URL }}
-          TRY_REPAIR_PROVIDER_TOKEN: ${{ secrets.TRY_REPAIR_PROVIDER_TOKEN }}
+          TRY_REPAIR_WORKER_URL: ${{ vars.TRY_REPAIR_WORKER_URL }}
+          TRY_PROVIDER_TOKEN: ${{ secrets.TRY_PROVIDER_TOKEN }}
         run: |
           export AIOS_REPAIR_RUN_ID="$RUN_ID"
           PYTHONPATH=. python scripts/ci_repair_propose.py

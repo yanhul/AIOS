@@ -69,8 +69,8 @@ def _open(req: urllib.request.Request, timeout: int):
 
 
 def health() -> dict[str, Any]:
-    url = os.environ.get("TRY_REPAIR_PROVIDER_URL", "").strip()
-    token = os.environ.get("TRY_REPAIR_PROVIDER_TOKEN", "").strip()
+    url = os.environ.get("TRY_REPAIR_WORKER_URL", "").strip()
+    token = os.environ.get("TRY_PROVIDER_TOKEN", "").strip()
     if not url or not token:
         raise TryRepairProviderError("TRY provider endpoint/token not configured")
     req = urllib.request.Request(
@@ -90,8 +90,8 @@ def health() -> dict[str, Any]:
 
 def propose(*, request_id: str, repository: str, sha: str, attempt: int,
             failure: Mapping[str, Any], source: Mapping[str, str]) -> dict[str, Any]:
-    url = os.environ.get("TRY_REPAIR_PROVIDER_URL", "").strip()
-    token = os.environ.get("TRY_REPAIR_PROVIDER_TOKEN", "")
+    url = os.environ.get("TRY_REPAIR_WORKER_URL", "").strip()
+    token = os.environ.get("TRY_PROVIDER_TOKEN", "")
     if not url or not token:
         raise TryRepairProviderError("TRY provider endpoint/token not configured")
     if not isinstance(request_id, str) or not request_id.strip() or not isinstance(repository, str) or not repository.strip():
