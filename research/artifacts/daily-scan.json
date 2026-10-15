@@ -6,50 +6,50 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "converge-ai-labs/agent-foundation",
-      "source_digest": "e97cd9209bf02dde848c1fd8f06f23122627c13b6b0e08f81493141eae4d8592",
+      "source_digest": "1dc09ec41f4f57c8c1316e409036d0fa0c00ac9960aae3f5f46d40ffca83b10e",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "stars": 188,
-      "updated_at": "2026-10-14T07:05:51Z"
+      "stars": 193,
+      "updated_at": "2026-10-15T06:46:59Z"
     },
     {
       "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "Root1V/aeon-agent-harness",
-      "source_digest": "52633a662203624eb516ee13b4a4d097221b95b206ffa3af84c183d75864928d",
+      "source_digest": "73758821ac56c59cf1f63227777de09f45bc1ffb7f9f0853df02b31620410ede",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "stars": 1,
-      "updated_at": "2026-10-14T02:15:20Z"
+      "updated_at": "2026-10-15T03:13:10Z"
     },
     {
-      "description": "A production-oriented TypeScript agent runtime reference implementation with durable sessions and bounded execution.",
+      "description": "Agent harness framework for Go \u2014 durable execution, event-sourced conversations, sessions, and HTTP exposure for agents built on resolute-agent-core-go",
       "query": "agent harness durable execution",
       "ref": "main",
-      "repo": "cacohe/agent-harness",
-      "source_digest": "a732222de9eb535d341320601b3d05046d22f144c27be244efdab95e2c431c24",
-      "source_ref": "https://github.com/cacohe/agent-harness",
+      "repo": "dev-resolute/resolute-harness-go",
+      "source_digest": "e8f46b09ce66576a76e46ff7d00416d31f7f188db515ee0986276d76475ce8c6",
+      "source_ref": "https://github.com/dev-resolute/resolute-harness-go",
+      "stars": 0,
+      "updated_at": "2026-10-15T00:01:03Z"
+    },
+    {
+      "description": "Agent harness case study: skill registry, controlled tool dispatch, context budgets, prompt caching and durable execution.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "nasoler123/ai-agent-harness",
+      "source_digest": "e904c3c39da8576abdf1faf19b1b44eba607de975f99ca80eb8c64cdaf6b074a",
+      "source_ref": "https://github.com/nasoler123/ai-agent-harness",
+      "stars": 0,
+      "updated_at": "2026-10-14T18:05:07Z"
+    },
+    {
+      "description": "A plugin-oriented foundation for configurable scientific Agent organizations, durable execution Providers, resource control, result provenance, cancellation, and restart reconciliation.",
+      "query": "agent harness durable execution",
+      "ref": "master",
+      "repo": "dazhi666666/science-harness",
+      "source_digest": "e105fa4dd12081095ca68b2ed5125160db86314e255ce514b29468eea06cc3cb",
+      "source_ref": "https://github.com/dazhi666666/science-harness",
       "stars": 1,
-      "updated_at": "2026-10-14T06:35:55Z"
-    },
-    {
-      "description": "Week 3 AI Agent bootcamp: bounded agent loops, tool execution, state, and durable memory.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "Harold-z0808/repo-03-agent-harness",
-      "source_digest": "979f59cb380ec755666eaf71ade65f39107db51306f7fc793c093ca25de9f8a3",
-      "source_ref": "https://github.com/Harold-z0808/repo-03-agent-harness",
-      "stars": 0,
-      "updated_at": "2026-10-13T22:50:07Z"
-    },
-    {
-      "description": "Keel, a durable execution runtime for AI agents, and Crashproof, the harness that tries to break it and everyone else's.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "keshav9926/drydock",
-      "source_digest": "f726d9bb9b397f600325b5a74f780d7602355f5fa4976a466184a453dc515b30",
-      "source_ref": "https://github.com/keshav9926/drydock",
-      "stars": 0,
-      "updated_at": "2026-10-13T12:58:07Z"
+      "updated_at": "2026-10-14T13:38:38Z"
     },
     {
       "description": "OmniResearch is an autonomous multi-agent AI framework that automates the AI/ML research lifecycle\u2014from planning and literature discovery to dataset selection, experimentation, analysis, verification, and research report generation using LangGraph, multimodal RAG, and research memory.",
@@ -116,7 +116,7 @@
       "query": "agent memory provenance governance",
       "ref": "main",
       "repo": "jermayne36/heartwood-memory",
-      "source_digest": "a2c4bfd5bc9192dfa20fe94908f76b48b77580a5f5983d26299a7e0f1004c6b6",
+      "source_digest": "82feee46878cb87530058e2442a593868fa11510547e52ca22741dd70d93fcc4",
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
       "stars": 0,
       "updated_at": "2026-10-09T21:55:34Z"
@@ -146,7 +146,7 @@
       "query": "agent memory provenance governance",
       "ref": "main",
       "repo": "qingyou0420/trueheart-core",
-      "source_digest": "20d8fbfbdc7056deb9a1f42d05e647f08db7fd2506f5764b36757d3dcc4e4486",
+      "source_digest": "2960be8f9f2fd1ccb216d7ef946e8914da2c0b20a17feb7d11741dd9c7ab90a5",
       "source_ref": "https://github.com/qingyou0420/trueheart-core",
       "stars": 0,
       "updated_at": "2026-08-20T06:38:46Z"

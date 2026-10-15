@@ -4,14 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-bed996ecfe2f8d24",
+      "candidate_id": "cand-32ae1010766928d9",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "memory",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "e97cd9209bf02dde848c1fd8f06f23122627c13b6b0e08f81493141eae4d8592",
+      "source_digest": "1dc09ec41f4f57c8c1316e409036d0fa0c00ac9960aae3f5f46d40ffca83b10e",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -19,14 +19,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-d081a85187410b21",
+      "candidate_id": "cand-2a941180c6f06304",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "52633a662203624eb516ee13b4a4d097221b95b206ffa3af84c183d75864928d",
+      "source_digest": "73758821ac56c59cf1f63227777de09f45bc1ffb7f9f0853df02b31620410ede",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -34,45 +34,45 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-300165989bdc669b",
+      "candidate_id": "cand-f324ec9af773a044",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "a732222de9eb535d341320601b3d05046d22f144c27be244efdab95e2c431c24",
-      "source_ref": "https://github.com/cacohe/agent-harness",
+      "source_digest": "e8f46b09ce66576a76e46ff7d00416d31f7f188db515ee0986276d76475ce8c6",
+      "source_ref": "https://github.com/dev-resolute/resolute-harness-go",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-4f9b7c6b9b0a5d82",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "memory",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "979f59cb380ec755666eaf71ade65f39107db51306f7fc793c093ca25de9f8a3",
-      "source_ref": "https://github.com/Harold-z0808/repo-03-agent-harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-54bbd8793b793dd1",
+      "candidate_id": "cand-2ce3e92060e545a1",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "f726d9bb9b397f600325b5a74f780d7602355f5fa4976a466184a453dc515b30",
-      "source_ref": "https://github.com/keshav9926/drydock",
+      "source_digest": "e904c3c39da8576abdf1faf19b1b44eba607de975f99ca80eb8c64cdaf6b074a",
+      "source_ref": "https://github.com/nasoler123/ai-agent-harness",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-afe105b657c6e265",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "master",
+      "source_digest": "e105fa4dd12081095ca68b2ed5125160db86314e255ce514b29468eea06cc3cb",
+      "source_ref": "https://github.com/dazhi666666/science-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -169,14 +169,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-6974473888e7b063",
+      "candidate_id": "cand-f459c8f25e57a975",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "a2c4bfd5bc9192dfa20fe94908f76b48b77580a5f5983d26299a7e0f1004c6b6",
+      "source_digest": "82feee46878cb87530058e2442a593868fa11510547e52ca22741dd70d93fcc4",
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -214,14 +214,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-5880e46e9c31e1ce",
+      "candidate_id": "cand-88e3118a6802a77b",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "20d8fbfbdc7056deb9a1f42d05e647f08db7fd2506f5764b36757d3dcc4e4486",
+      "source_digest": "2960be8f9f2fd1ccb216d7ef946e8914da2c0b20a17feb7d11741dd9c7ab90a5",
       "source_ref": "https://github.com/qingyou0420/trueheart-core",
       "status": "UNTRUSTED_EVIDENCE"
     }
