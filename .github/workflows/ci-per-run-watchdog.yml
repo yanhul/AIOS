@@ -200,7 +200,7 @@ jobs:
               )
           }
           assert not invalid, f"unexpected registered workload outcomes: {invalid}"
-          print("EVIDENCE_WATCHDOG=PASS")
+          print(json.dumps({"EVIDENCE_WATCHDOG": "PASS", "registered_workload_receipts": statuses, "rx50_engineering_readiness": "BLOCKED" if statuses.get("yanhul/RX50") == "BLOCKED" else statuses.get("yanhul/RX50")}, sort_keys=True))
           PY
           else
             echo "CI_TERMINAL_FAILURE=$conclusion -> repair/diagnosis wake"
