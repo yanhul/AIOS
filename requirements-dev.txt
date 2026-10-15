@@ -1,0 +1,4 @@
+# Test/runtime dependencies used by the repository CI and Python test suite.
+# Keep this range constrained; exact reproducibility can be added with a generated lockfile.
+pytest>=8,<9
+PyYAML>=6,<7
