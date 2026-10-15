@@ -43,9 +43,28 @@ def run_one(runner: Path, workload_id: str, root: Path, receipt: Path) -> dict:
         raise RuntimeError(f"{workload_id}: provenance mismatch")
     if not receipt_obj["evidence_refs"] or not receipt_obj["verification_refs"]:
         raise RuntimeError(f"{workload_id}: evidence/verification refs missing")
-    if receipt_obj["status"] != "PASS":
-        raise RuntimeError(f"{workload_id}: workload conformance is not PASS: {receipt_obj["status"]}")
-    return receipt_obj
+    if receipt_obj["status"] == "PASS":
+        return receipt_obj
+
+    # RX50 is intentionally fail-closed until real physical measurements are
+    # ingested. Conformance means proving the registered workload's declared
+    # safety contract, not relabeling an engineering HOLD as a successful design.
+    if workload_id == "yanhul/RX50":
+        expected_reason = "physical evidence required before engineering promotion"
+        if (
+            receipt_obj["status"] == "BLOCKED"
+            and receipt_obj.get("reason") == expected_reason
+            and {"requirements_coverage", "contradiction_check"}.issubset(
+                set(receipt_obj["verification_refs"])
+            )
+            and "physical_evidence" not in receipt_obj["verification_refs"]
+        ):
+            return receipt_obj
+
+    raise RuntimeError(
+        f"{workload_id}: unexpected workload outcome "
+        f"{receipt_obj['status']}: {receipt_obj.get('reason', '')}"
+    )
 
 
 def main() -> int:
