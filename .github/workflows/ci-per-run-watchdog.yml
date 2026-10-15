@@ -180,8 +180,26 @@ jobs:
               assert obj.get("verification_refs"), path.name
               statuses[expected_workload] = obj["status"]
           print(json.dumps({"PRODUCT_E2E_RECEIPT_STATUSES": statuses}, sort_keys=True))
-          blocked = {name: status for name, status in statuses.items() if status != "PASS"}
-          assert not blocked, f"registered workload conformance not PASS: {blocked}"
+          rx50_blocked_is_valid = False
+          # A BLOCKED RX50 receipt is conformant only for the exact fail-closed
+          # physical-evidence contract; it never means engineering readiness.
+          rx50_path = root / "yanhul__RX50.json"
+          rx50 = json.loads(rx50_path.read_text())
+          rx50_blocked_is_valid = (
+              rx50.get("status") == "BLOCKED"
+              and rx50.get("reason") == "physical evidence required before engineering promotion"
+              and {"requirements_coverage", "contradiction_check"}.issubset(
+                  set(rx50.get("verification_refs", []))
+              )
+              and "physical_evidence" not in rx50.get("verification_refs", [])
+          )
+          invalid = {
+              name: status for name, status in statuses.items()
+              if status != "PASS" and not (
+                  name == "yanhul/RX50" and rx50_blocked_is_valid
+              )
+          }
+          assert not invalid, f"unexpected registered workload outcomes: {invalid}"
           print("EVIDENCE_WATCHDOG=PASS")
           PY
           else
