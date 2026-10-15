@@ -141,3 +141,51 @@ def test_shipped_repo_patch_capability_is_registered_but_not_promoted():
         assert False, "repo_patch must remain unauthorized until independently promoted"
     except CapabilityError as exc:
         assert "not promoted ACTIVE" in str(exc)
+
+
+def test_registry_load_rejects_non_object_root_and_wrong_collection_types(tmp_path):
+    path = tmp_path / "capabilities"
+    path.mkdir()
+    registry_file = path / "capability_registry.json"
+    for payload, expected in (
+        ("[]", "root must be an object"),
+        ('{"schema_version":1,"capabilities":{},"edges":[]}', "must be lists"),
+        ('{"schema_version":1,"capabilities":[],"edges":{}}', "must be lists"),
+    ):
+        registry_file.write_text(payload, encoding="utf-8")
+        try:
+            CapabilityRegistry.load(tmp_path)
+            assert False, f"malformed registry must fail closed: {payload}"
+        except CapabilityError as exc:
+            assert expected in str(exc)
+
+
+def test_registry_load_rejects_string_instead_of_sequence_fields(tmp_path):
+    path = tmp_path / "capabilities"
+    path.mkdir()
+    registry_file = path / "capability_registry.json"
+    registry_file.write_text(
+        '{"schema_version":1,"capabilities":[{"capability_id":"x","version":"1",'
+        '"owner":"test","kind":"workload","inputs":"repository.patch"}],"edges":[]}',
+        encoding="utf-8",
+    )
+    try:
+        CapabilityRegistry.load(tmp_path)
+        assert False, "string fields must not be silently split into characters"
+    except CapabilityError as exc:
+        assert "inputs must be a list" in str(exc)
+
+
+def test_registry_load_rejects_duplicate_capability_records(tmp_path):
+    path = tmp_path / "capabilities"
+    path.mkdir()
+    item = '{"capability_id":"x","version":"1","owner":"test","kind":"workload","status":"CANDIDATE"}'
+    (path / "capability_registry.json").write_text(
+        '{"schema_version":1,"capabilities":[' + item + ',' + item + '],"edges":[]}',
+        encoding="utf-8",
+    )
+    try:
+        CapabilityRegistry.load(tmp_path)
+        assert False, "duplicate records must not be silently accepted"
+    except CapabilityError as exc:
+        assert "duplicate capability record" in str(exc)
