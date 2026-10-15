@@ -6,10 +6,10 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "converge-ai-labs/agent-foundation",
-      "source_digest": "aafa7250250e93ddfc3061baef8f44e2196399c27db7e12659e7829b79ef0b10",
+      "source_digest": "f349ee3cdc430815af5f2db149112efd23def7adef49f72b9c965cce303efe2f",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
       "stars": 195,
-      "updated_at": "2026-10-15T09:26:21Z"
+      "updated_at": "2026-10-15T09:32:49Z"
     },
     {
       "description": "Agent harness case study: skill registry, controlled tool dispatch, context budgets, prompt caching and durable execution.",

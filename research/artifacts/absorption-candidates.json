@@ -4,14 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-3d3ac4db061dfa53",
+      "candidate_id": "cand-a616887f3d6af03c",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "memory",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "aafa7250250e93ddfc3061baef8f44e2196399c27db7e12659e7829b79ef0b10",
+      "source_digest": "f349ee3cdc430815af5f2db149112efd23def7adef49f72b9c965cce303efe2f",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
       "status": "UNTRUSTED_EVIDENCE"
     },
