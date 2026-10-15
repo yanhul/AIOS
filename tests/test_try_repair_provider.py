@@ -1,3 +1,8 @@
+# AIOS-CONTRACT: TRY provider client must fail closed on missing config and invalid/untrusted responses.
+# AIOS-REGRESSION: Canonical Worker URL/token names must work without legacy configuration aliases.
+# AIOS-OWNER: core.try_repair_provider public health/propose boundary.
+# AIOS-COVERAGE-GAP: Live Worker/Gemini and GitHub secret availability are not covered by unit tests.
+# AIOS-BASELINE: Existing schema-2 proposal, HOLD, identity, path-safety, and retry contracts remain enforced.
 import json
 
 import pytest
