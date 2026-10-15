@@ -57,6 +57,23 @@ class Capability:
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "Capability":
+        if not isinstance(value, dict):
+            raise CapabilityError("invalid persisted capability: record must be an object")
+        sequence_fields = (
+            "inputs", "outputs", "permissions", "environments",
+            "verification_methods", "evidence_requirements", "provenance", "dependencies",
+        )
+        for field in sequence_fields:
+            raw = value.get(field, ())
+            if not isinstance(raw, (list, tuple)) or any(not isinstance(item, str) or not item.strip() for item in raw):
+                raise CapabilityError(f"invalid persisted capability: {field} must be a list of non-empty strings")
+        metadata = value.get("metadata", ())
+        if not isinstance(metadata, (list, tuple)) or any(
+            not isinstance(item, (list, tuple)) or len(item) != 2
+            or any(not isinstance(part, str) or not part for part in item)
+            for item in metadata
+        ):
+            raise CapabilityError("invalid persisted capability: metadata must be key/value string pairs")
         try:
             return cls(capability_id=value["capability_id"], version=value["version"], owner=value["owner"], kind=value["kind"],
                        inputs=tuple(value.get("inputs", ())), outputs=tuple(value.get("outputs", ())),
@@ -90,6 +107,11 @@ class CapabilityEdge:
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "CapabilityEdge":
+        if not isinstance(value, dict):
+            raise CapabilityError("invalid persisted capability edge: record must be an object")
+        refs = value.get("evidence_refs", ())
+        if not isinstance(refs, (list, tuple)) or any(not isinstance(item, str) or not item.strip() for item in refs):
+            raise CapabilityError("invalid persisted capability edge: evidence_refs must be a list of non-empty strings")
         try:
             return cls(source=value["source"], relation=value["relation"], target=value["target"],
                        evidence_refs=tuple(value.get("evidence_refs", ())),
@@ -180,13 +202,32 @@ class CapabilityRegistry:
             raise CapabilityError(f"capability registry not found: {filename}")
         try:
             data = json.loads(filename.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             raise CapabilityError(f"invalid capability registry JSON: {exc}") from exc
+        if not isinstance(data, dict):
+            raise CapabilityError("invalid capability registry: root must be an object")
         if data.get("schema_version") != 1:
             raise CapabilityError("unsupported capability registry schema_version")
+        capabilities = data.get("capabilities", [])
+        edges = data.get("edges", [])
+        if not isinstance(capabilities, list) or not isinstance(edges, list):
+            raise CapabilityError("invalid capability registry: capabilities and edges must be lists")
         registry = cls()
-        for raw in data.get("capabilities", []): registry.register(Capability.from_dict(raw))
-        for raw in data.get("edges", []): registry.add_edge(CapabilityEdge.from_dict(raw))
+        seen_capabilities: set[str] = set()
+        for raw in capabilities:
+            capability = Capability.from_dict(raw)
+            if capability.key in seen_capabilities:
+                raise CapabilityError(f"duplicate capability record: {capability.key}")
+            seen_capabilities.add(capability.key)
+            registry.register(capability)
+        seen_edges: set[tuple[str, str, str]] = set()
+        for raw in edges:
+            edge = CapabilityEdge.from_dict(raw)
+            key = (edge.source, edge.relation, edge.target)
+            if key in seen_edges:
+                raise CapabilityError(f"duplicate capability edge: {key}")
+            seen_edges.add(key)
+            registry.add_edge(edge)
         return registry
 
 __all__ = ["Capability", "CapabilityEdge", "CapabilityError", "CapabilityRegistry", "ALLOWED_EDGE_TYPES", "VERIFICATION_LEVELS", "CAPABILITY_STATE_FILE"]
