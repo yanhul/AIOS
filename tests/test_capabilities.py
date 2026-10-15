@@ -189,3 +189,18 @@ def test_registry_load_rejects_duplicate_capability_records(tmp_path):
         assert False, "duplicate records must not be silently accepted"
     except CapabilityError as exc:
         assert "duplicate capability record" in str(exc)
+
+
+def test_registry_load_rejects_malformed_edge_types_as_capability_error(tmp_path):
+    path = tmp_path / "capabilities"
+    path.mkdir()
+    (path / "capability_registry.json").write_text(
+        '{"schema_version":1,"capabilities":[],"edges":[{"source":"x@1",'
+        '"relation":[],"target":"y@1"}]}',
+        encoding="utf-8",
+    )
+    try:
+        CapabilityRegistry.load(tmp_path)
+        assert False, "malformed edge types must fail closed"
+    except CapabilityError as exc:
+        assert "must be non-empty strings" in str(exc)
