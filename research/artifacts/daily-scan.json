@@ -6,20 +6,40 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "converge-ai-labs/agent-foundation",
-      "source_digest": "e0df017dc6befa12e8bb591be8c5ffe62e9d33209ff834b426c03adec7759c39",
+      "source_digest": "885119c1acea91e0960655e9a3915713d7a3f911bc00ec611026a307088930be",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "stars": 197,
-      "updated_at": "2026-10-15T12:38:08Z"
+      "stars": 205,
+      "updated_at": "2026-10-16T07:00:54Z"
+    },
+    {
+      "description": "A production-oriented TypeScript agent runtime reference implementation with durable sessions and bounded execution.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "cacohe/agent-harness",
+      "source_digest": "04b5d63c6a6f60d1908e273c4eec75ba257b25eaffb8edffcd9a73471ab934b6",
+      "source_ref": "https://github.com/cacohe/agent-harness",
+      "stars": 1,
+      "updated_at": "2026-10-16T03:58:02Z"
+    },
+    {
+      "description": "Durable workflow execution, fencing and recovery runtime for the Agent & Creative v1 subsystem (Node 22, SQLite)",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "Jevelopers-neatHack-2026/agent-harness",
+      "source_digest": "11b656c8326298dbb8e080cd0b904d3592e6cbd7a6ee6aab8d67948f8166ccfb",
+      "source_ref": "https://github.com/Jevelopers-neatHack-2026/agent-harness",
+      "stars": 0,
+      "updated_at": "2026-10-15T15:44:31Z"
     },
     {
       "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "Root1V/aeon-agent-harness",
-      "source_digest": "c822626dcd9d0558ba7e8976063fd8a987af630fc8d7d15e344e88b72490d175",
+      "source_digest": "ec07ca82c0bfca50a3186b3344521824a2d6554709df03cb061e356c831eb199",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "stars": 1,
-      "updated_at": "2026-10-15T11:22:42Z"
+      "updated_at": "2026-10-15T14:16:08Z"
     },
     {
       "description": "Agent harness framework for Go \u2014 durable execution, event-sourced conversations, sessions, and HTTP exposure for agents built on resolute-agent-core-go",
@@ -30,26 +50,6 @@
       "source_ref": "https://github.com/dev-resolute/resolute-harness-go",
       "stars": 0,
       "updated_at": "2026-10-15T00:01:03Z"
-    },
-    {
-      "description": "A plugin-oriented foundation for configurable scientific Agent organizations, durable execution Providers, resource control, result provenance, cancellation, and restart reconciliation.",
-      "query": "agent harness durable execution",
-      "ref": "master",
-      "repo": "dazhi666666/science-harness",
-      "source_digest": "e105fa4dd12081095ca68b2ed5125160db86314e255ce514b29468eea06cc3cb",
-      "source_ref": "https://github.com/dazhi666666/science-harness",
-      "stars": 1,
-      "updated_at": "2026-10-14T13:38:38Z"
-    },
-    {
-      "description": "A production-oriented TypeScript agent runtime reference implementation with durable sessions and bounded execution.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "cacohe/agent-harness",
-      "source_digest": "981f88e00cb52d5880f58cdee8271f8b465937514afc98ebfa6fd744922382ff",
-      "source_ref": "https://github.com/cacohe/agent-harness",
-      "stars": 1,
-      "updated_at": "2026-10-14T09:56:18Z"
     },
     {
       "description": "OmniResearch is an autonomous multi-agent AI framework that automates the AI/ML research lifecycle\u2014from planning and literature discovery to dataset selection, experimentation, analysis, verification, and research report generation using LangGraph, multimodal RAG, and research memory.",
