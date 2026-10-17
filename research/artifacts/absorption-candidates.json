@@ -4,14 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-0386b958335331f4",
+      "candidate_id": "cand-e37fb4b3d04c0b49",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "memory",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "885119c1acea91e0960655e9a3915713d7a3f911bc00ec611026a307088930be",
+      "source_digest": "4ca989400f073aa225d14a0d99689ff9e83cc21776ebec25fda3178777c30756",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -19,14 +19,29 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-4a3b928dc94a7097",
+      "candidate_id": "cand-1210ca521f80fe66",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "04b5d63c6a6f60d1908e273c4eec75ba257b25eaffb8edffcd9a73471ab934b6",
+      "source_digest": "4e68aa01b79547e12140b10ab02f542f038a744b8fcf39ca02ba476220d205c5",
+      "source_ref": "https://github.com/julianthant/tether",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-bde737b40a8bb4e8",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "a3169fec12992b741a6070d205e189f9ab9f7be3676015f45c38a88b2eb74e24",
       "source_ref": "https://github.com/cacohe/agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -58,21 +73,6 @@
       "ref": "main",
       "source_digest": "ec07ca82c0bfca50a3186b3344521824a2d6554709df03cb061e356c831eb199",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-f324ec9af773a044",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "e8f46b09ce66576a76e46ff7d00416d31f7f188db515ee0986276d76475ce8c6",
-      "source_ref": "https://github.com/dev-resolute/resolute-harness-go",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -199,14 +199,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-8a8a11a9c5886077",
+      "candidate_id": "cand-bafafb3a94ba62d0",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "vaixlns-architecture",
-      "source_digest": "b2c8871ee134b22587e4b621bb03241db96aea44283448a0c609c0c02bd3f009",
+      "source_digest": "e218cb3e385fd01cf433fe86bcd6728221341c8a6e17460a13d79ef3f43f23b0",
       "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
       "status": "UNTRUSTED_EVIDENCE"
     },
