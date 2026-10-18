@@ -4,15 +4,30 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-e37fb4b3d04c0b49",
+      "candidate_id": "cand-6f8aef1ed28ff5a1",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "memory",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "4ca989400f073aa225d14a0d99689ff9e83cc21776ebec25fda3178777c30756",
+      "source_digest": "7940b9aca6919bc9f5b565b6cd4bb0ee02581aea4dd7d49a97b3b514fa6ee9ae",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-081eab076b629e90",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "f3b1872379d21e21d86a1d7b654f3ff0e9ef5960f4412be59f02beff35b56761",
+      "source_ref": "https://github.com/jaydubya818/Agentic-Pi-Harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -58,21 +73,6 @@
       "ref": "main",
       "source_digest": "11b656c8326298dbb8e080cd0b904d3592e6cbd7a6ee6aab8d67948f8166ccfb",
       "source_ref": "https://github.com/Jevelopers-neatHack-2026/agent-harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-8a832e9c2dc30ff3",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "ec07ca82c0bfca50a3186b3344521824a2d6554709df03cb061e356c831eb199",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {

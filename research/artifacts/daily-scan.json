@@ -6,10 +6,20 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "converge-ai-labs/agent-foundation",
-      "source_digest": "4ca989400f073aa225d14a0d99689ff9e83cc21776ebec25fda3178777c30756",
+      "source_digest": "7940b9aca6919bc9f5b565b6cd4bb0ee02581aea4dd7d49a97b3b514fa6ee9ae",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "stars": 210,
-      "updated_at": "2026-10-17T04:53:05Z"
+      "stars": 213,
+      "updated_at": "2026-10-18T05:52:07Z"
+    },
+    {
+      "description": "Governed agent execution harness with versioned contracts, durable state, policy enforcement, replay, provenance, and bounded worker runtimes.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "jaydubya818/Agentic-Pi-Harness",
+      "source_digest": "f3b1872379d21e21d86a1d7b654f3ff0e9ef5960f4412be59f02beff35b56761",
+      "source_ref": "https://github.com/jaydubya818/Agentic-Pi-Harness",
+      "stars": 2,
+      "updated_at": "2026-10-17T16:54:06Z"
     },
     {
       "description": "An in-progress coding-agent harness for long-running tasks, controlled tool access, and durable execution.",
@@ -40,16 +50,6 @@
       "source_ref": "https://github.com/Jevelopers-neatHack-2026/agent-harness",
       "stars": 0,
       "updated_at": "2026-10-15T15:44:31Z"
-    },
-    {
-      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "Root1V/aeon-agent-harness",
-      "source_digest": "ec07ca82c0bfca50a3186b3344521824a2d6554709df03cb061e356c831eb199",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "stars": 1,
-      "updated_at": "2026-10-15T14:16:08Z"
     },
     {
       "description": "OmniResearch is an autonomous multi-agent AI framework that automates the AI/ML research lifecycle\u2014from planning and literature discovery to dataset selection, experimentation, analysis, verification, and research report generation using LangGraph, multimodal RAG, and research memory.",
