@@ -118,9 +118,17 @@ jobs:
               and "physical_evidence" not in rx50.get("verification_refs", [])
           )
           for name, obj in results.items():
-              if obj.get("status") == "PASS":
+              if name == "yanhul__RX50.json":
+                  rx50_pass_is_valid = (
+                      obj.get("status") == "PASS"
+                      and "physical_evidence" in obj.get("evidence_refs", [])
+                      and "physical_evidence" in obj.get("verification_refs", [])
+                  )
+                  if rx50_blocked_is_valid or rx50_pass_is_valid:
+                      continue
+                  invalid[name] = obj.get("status")
                   continue
-              if name == "yanhul__RX50.json" and rx50_blocked_is_valid:
+              if obj.get("status") == "PASS":
                   continue
               invalid[name] = obj.get("status")
           assert not invalid, f"unexpected product conformance outcomes: {invalid}"
