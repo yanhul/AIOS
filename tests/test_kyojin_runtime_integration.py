@@ -2,7 +2,8 @@
 # AIOS-REGRESSION: Ambiguous timeout is UNKNOWN and must not trigger implicit retry.
 # AIOS-OWNER: Authority/effect storage is isolated; durable crash/restart is a separate gate.
 # AIOS-COVERAGE-GAP: These tests do not prove persistence or process-restart recovery.
-# AIOS-BASELINE: core/runtime.py provider receipt and effect-state transition contract.\n"""Kyojin through the authoritative AIOS runtime boundary.
+# AIOS-BASELINE: core/runtime.py provider receipt and effect-state transition contract.
+"""Kyojin through the authoritative AIOS runtime boundary.
 
 These tests isolate the authority/effect storage boundary but exercise the real
 core.runtime.execute -> execute_attempt orchestration and real localhost HTTP
@@ -112,7 +113,8 @@ class KyojinRuntimeIntegrationTests(unittest.TestCase):
                 json.loads(server.seen_body)["messages"][0]["content"],
                 "integration prompt",
             )
-            self.assertEqual(result["state"], "OBSERVED_SUCCESS")\n            assert result["state"] == "OBSERVED_SUCCESS"
+            self.assertEqual(result["state"], "OBSERVED_SUCCESS")
+            assert result["state"] == "OBSERVED_SUCCESS"
             self.assertEqual(len(observed_calls), 1)
             self.assertEqual(observed_calls[0][1], "effect-kyojin-test")
             self.assertEqual(unknown_calls, [])
@@ -151,7 +153,8 @@ class KyojinRuntimeIntegrationTests(unittest.TestCase):
                 adapter,
             )
 
-        self.assertEqual(result["state"], "UNKNOWN")\n        assert result["state"] == "UNKNOWN"
+        self.assertEqual(result["state"], "UNKNOWN")
+        assert result["state"] == "UNKNOWN"
         self.assertEqual(len(transport_calls), 1, "adapter/runtime must not auto-retry")
         self.assertEqual(len(unknown_calls), 1)
         self.assertEqual(observed_calls, [])
