@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: Capability registry must distinguish discovery from execution authority.
+# AIOS-REGRESSION: CANDIDATE capabilities must never pass require() or contract resolution.
+# AIOS-OWNER: AIOS governance boundary; promotion requires independent evidence and approval.
+# AIOS-COVERAGE-GAP: Prior require() accepted CANDIDATE status, allowing unpromoted capability references into contracts.
+# AIOS-BASELINE: Preserve ACTIVE resolution, version pinning, persistence, discovery, and DEPRECATED rejection.
+
 from core.capabilities import Capability, CapabilityEdge, CapabilityError, CapabilityRegistry
 
 
