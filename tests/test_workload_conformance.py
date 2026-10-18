@@ -58,6 +58,6 @@ def test_rx50_unexpected_outcomes_remain_blocked_from_conformance(monkeypatch, b
 def test_rx50_pass_requires_physical_evidence_in_both_reference_sets(monkeypatch):
     value = receipt(status="PASS", reason=None,
                     verification_refs=["requirements_coverage", "contradiction_check", "physical_evidence"])
-    value["evidence_refs"] = ["physical_evidence.json"]
+    value["evidence_refs"] = ["physical_evidence"]
     result = run_with_receipt(monkeypatch, value)
     assert result["status"] == "PASS"
