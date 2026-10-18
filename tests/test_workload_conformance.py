@@ -53,3 +53,11 @@ def test_rx50_expected_physical_evidence_hold_is_accepted_without_becoming_pass(
 def test_rx50_unexpected_outcomes_remain_blocked_from_conformance(monkeypatch, bad):
     with pytest.raises(RuntimeError, match="unexpected workload outcome"):
         run_with_receipt(monkeypatch, bad)
+
+
+def test_rx50_pass_requires_physical_evidence_in_both_reference_sets(monkeypatch):
+    value = receipt(status="PASS", reason=None,
+                    verification_refs=["requirements_coverage", "contradiction_check", "physical_evidence"])
+    value["evidence_refs"] = ["physical_evidence.json"]
+    result = run_with_receipt(monkeypatch, value)
+    assert result["status"] == "PASS"
