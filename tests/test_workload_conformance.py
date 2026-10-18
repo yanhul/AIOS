@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: Three-workload conformance may accept only PASS or the exact declared RX50 physical-evidence hold.
+# AIOS-REGRESSION: An engineering HOLD must remain BLOCKED and must never be relabeled PASS.
+# AIOS-OWNER: AIOS workload-conformance boundary.
+# AIOS-COVERAGE-GAP: The runner's narrow RX50 BLOCKED exception previously lacked direct regression tests.
+# AIOS-BASELINE: Preserve receipt identity, provenance, evidence references, and fail-closed outcomes.
+
 import json
 import subprocess
 from pathlib import Path
