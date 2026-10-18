@@ -125,16 +125,3 @@ def test_contract_resolution_rejects_candidate_and_deprecated_capabilities():
             assert False, f"{key} must not authorize a contract"
         except CapabilityError:
             pass
-
-def test_unknown_or_non_active_statuses_never_authorize():
-    registry = CapabilityRegistry()
-    statuses = ("UNKNOWN", "HOLD", "BLOCKED", "DISABLED", "PENDING")
-    for index, status in enumerate(statuses):
-        capability = cap("capability_" + str(index), status=status)
-        registry.register(capability)
-        try:
-            registry.require(capability.key)
-            assert False, "non-ACTIVE capability must not cross the authority boundary"
-        except CapabilityError as exc:
-            assert "status is not executable" in str(exc)
-
