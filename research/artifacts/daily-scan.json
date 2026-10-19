@@ -6,10 +6,10 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "converge-ai-labs/agent-foundation",
-      "source_digest": "f3bfd831815f02b7d536778ca84bebc651e93c6e9e65ff81733d0f8db31f24e5",
+      "source_digest": "1f35fb0178f38b627ded99e9e9be036e5a8c87b7cb4bc5bd0603e14e6c2c9434",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
       "stars": 214,
-      "updated_at": "2026-10-19T13:24:31Z"
+      "updated_at": "2026-10-19T14:20:03Z"
     },
     {
       "description": "A production-oriented TypeScript agent runtime reference implementation with durable sessions and bounded execution.",
