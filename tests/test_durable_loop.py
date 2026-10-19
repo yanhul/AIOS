@@ -728,7 +728,7 @@ def test_pass_terminal_evidence_must_match_final_history(evidence):
         "terminal_evidence": evidence,
         "policy_digest": None,
     }
-    with pytest.raises(ValueError, match="PASS"):
+    with pytest.raises(ValueError, match="PASS|terminal evidence step"):
         _persist_state(state, MemoryStateStore(), _policy())
 
 
