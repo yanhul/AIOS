@@ -12,7 +12,7 @@
     {
       "absorption_kind": "AIOS_NATIVE_PRIMITIVE_REGISTRY",
       "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-d9018be73c37a77b",
+      "candidate_id": "cand-cdbe2da99d1aa7e7",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "evidence_digest": "7f77a38e09fdf60ae55494eae484e5ac5ec9627546a76d2bdfd0253dc7ea3819",
       "external_code_copy": false,
@@ -20,7 +20,7 @@
       "implementation_status": "IMPLEMENTED_AND_CONFORMANT",
       "primitive": "memory",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "39218752047",
+      "run_id": "39262227350",
       "runtime_proof": "b5c16bd37dbe1c220df8ff9b1659b1f584b2cfdd7d3ac89cb8f2e4b85920221e",
       "runtime_status": "PROVEN",
       "signals": [
@@ -29,18 +29,18 @@
         "memory",
         "harness"
       ],
-      "source_digest": "af25e94c28f284dfa304dea760aa548fafe4763c109727d9f96022c2d6478763",
+      "source_digest": "22bcef70a7c7903ba4f269a23785db76d552d68bbe15f42166f9753ab3988ad4",
       "source_mutation": false,
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
       "status": "ABSORBED",
       "target_surface": "new AIOS adapter/task only",
-      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
+      "test_digest": "3079bb83b75e960ccf401af223b750ac6ec7e5a319e33939ecd8e651c0da69a5",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
       "absorption_kind": "AIOS_NATIVE_PRIMITIVE_REGISTRY",
       "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-0abe1fd0401c3531",
+      "candidate_id": "cand-0433a22e9976bd63",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "evidence_digest": "c6b3e1fd471b21c321e88abb17542c523a61574db212804603ba3cb5b6f7b17a",
       "external_code_copy": false,
@@ -48,7 +48,7 @@
       "implementation_status": "IMPLEMENTED_AND_CONFORMANT",
       "primitive": "durable_execution",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "39218752047",
+      "run_id": "39262227350",
       "runtime_proof": "b5c16bd37dbe1c220df8ff9b1659b1f584b2cfdd7d3ac89cb8f2e4b85920221e",
       "runtime_status": "PROVEN",
       "signals": [
@@ -57,12 +57,12 @@
         "harness",
         "governance"
       ],
-      "source_digest": "176b39b48d003966480487eef21bb4cf455460873487ff8af8dc9ee440a5c1fd",
+      "source_digest": "a072525295fe2b0ad48cb31c6f545919546cafdf456d6157874a42a4c51a3e1a",
       "source_mutation": false,
       "source_ref": "https://github.com/cacohe/agent-harness",
       "status": "ABSORBED",
       "target_surface": "new AIOS adapter/task only",
-      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
+      "test_digest": "3079bb83b75e960ccf401af223b750ac6ec7e5a319e33939ecd8e651c0da69a5",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -76,7 +76,7 @@
       "implementation_status": "IMPLEMENTED_AND_CONFORMANT",
       "primitive": "evidence_provenance",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "39218752047",
+      "run_id": "39262227350",
       "runtime_proof": "b5c16bd37dbe1c220df8ff9b1659b1f584b2cfdd7d3ac89cb8f2e4b85920221e",
       "runtime_status": "PROVEN",
       "signals": [
@@ -93,7 +93,7 @@
       "source_ref": "https://github.com/jaydubya818/Agentic-Pi-Harness",
       "status": "ABSORBED",
       "target_surface": "new AIOS adapter/task only",
-      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
+      "test_digest": "3079bb83b75e960ccf401af223b750ac6ec7e5a319e33939ecd8e651c0da69a5",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -107,7 +107,7 @@
       "implementation_status": "IMPLEMENTED_AND_CONFORMANT",
       "primitive": "durable_execution",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "39218752047",
+      "run_id": "39262227350",
       "runtime_proof": "b5c16bd37dbe1c220df8ff9b1659b1f584b2cfdd7d3ac89cb8f2e4b85920221e",
       "runtime_status": "PROVEN",
       "signals": [
@@ -120,7 +120,7 @@
       "source_ref": "https://github.com/julianthant/tether",
       "status": "ABSORBED",
       "target_surface": "new AIOS adapter/task only",
-      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
+      "test_digest": "3079bb83b75e960ccf401af223b750ac6ec7e5a319e33939ecd8e651c0da69a5",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -134,7 +134,7 @@
       "implementation_status": "IMPLEMENTED_AND_CONFORMANT",
       "primitive": "durable_execution",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "39218752047",
+      "run_id": "39262227350",
       "runtime_proof": "b5c16bd37dbe1c220df8ff9b1659b1f584b2cfdd7d3ac89cb8f2e4b85920221e",
       "runtime_status": "PROVEN",
       "signals": [
@@ -149,7 +149,7 @@
       "source_ref": "https://github.com/Jevelopers-neatHack-2026/agent-harness",
       "status": "ABSORBED",
       "target_surface": "new AIOS adapter/task only",
-      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
+      "test_digest": "3079bb83b75e960ccf401af223b750ac6ec7e5a319e33939ecd8e651c0da69a5",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -163,7 +163,7 @@
       "implementation_status": "IMPLEMENTED_AND_CONFORMANT",
       "primitive": "research_harness",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "39218752047",
+      "run_id": "39262227350",
       "runtime_proof": "b5c16bd37dbe1c220df8ff9b1659b1f584b2cfdd7d3ac89cb8f2e4b85920221e",
       "runtime_status": "PROVEN",
       "signals": [
@@ -174,7 +174,7 @@
       "source_ref": "https://github.com/abhijeetchaubey/OmniResearch",
       "status": "ABSORBED",
       "target_surface": "new AIOS adapter/task only",
-      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
+      "test_digest": "3079bb83b75e960ccf401af223b750ac6ec7e5a319e33939ecd8e651c0da69a5",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -188,7 +188,7 @@
       "implementation_status": "IMPLEMENTED_AND_CONFORMANT",
       "primitive": "research_harness",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "39218752047",
+      "run_id": "39262227350",
       "runtime_proof": "b5c16bd37dbe1c220df8ff9b1659b1f584b2cfdd7d3ac89cb8f2e4b85920221e",
       "runtime_status": "PROVEN",
       "signals": [
@@ -200,7 +200,7 @@
       "source_ref": "https://github.com/yethikrishna/Yethanus",
       "status": "ABSORBED",
       "target_surface": "new AIOS adapter/task only",
-      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
+      "test_digest": "3079bb83b75e960ccf401af223b750ac6ec7e5a319e33939ecd8e651c0da69a5",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -214,7 +214,7 @@
       "implementation_status": "IMPLEMENTED_AND_CONFORMANT",
       "primitive": "research_harness",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "39218752047",
+      "run_id": "39262227350",
       "runtime_proof": "b5c16bd37dbe1c220df8ff9b1659b1f584b2cfdd7d3ac89cb8f2e4b85920221e",
       "runtime_status": "PROVEN",
       "signals": [
@@ -227,7 +227,7 @@
       "source_ref": "https://github.com/Yash-Kavaiya/auto-cxas-scrapi",
       "status": "ABSORBED",
       "target_surface": "new AIOS adapter/task only",
-      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
+      "test_digest": "3079bb83b75e960ccf401af223b750ac6ec7e5a319e33939ecd8e651c0da69a5",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -241,7 +241,7 @@
       "implementation_status": "IMPLEMENTED_AND_CONFORMANT",
       "primitive": "research_harness",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "39218752047",
+      "run_id": "39262227350",
       "runtime_proof": "b5c16bd37dbe1c220df8ff9b1659b1f584b2cfdd7d3ac89cb8f2e4b85920221e",
       "runtime_status": "PROVEN",
       "signals": [
@@ -254,7 +254,7 @@
       "source_ref": "https://github.com/yanghangAI/MultiAgentAutoResearch",
       "status": "ABSORBED",
       "target_surface": "new AIOS adapter/task only",
-      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
+      "test_digest": "3079bb83b75e960ccf401af223b750ac6ec7e5a319e33939ecd8e651c0da69a5",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -268,7 +268,7 @@
       "implementation_status": "IMPLEMENTED_AND_CONFORMANT",
       "primitive": "research_harness",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "39218752047",
+      "run_id": "39262227350",
       "runtime_proof": "b5c16bd37dbe1c220df8ff9b1659b1f584b2cfdd7d3ac89cb8f2e4b85920221e",
       "runtime_status": "PROVEN",
       "signals": [
@@ -279,7 +279,7 @@
       "source_ref": "https://github.com/kp-krish/AutoResearch",
       "status": "ABSORBED",
       "target_surface": "new AIOS adapter/task only",
-      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
+      "test_digest": "3079bb83b75e960ccf401af223b750ac6ec7e5a319e33939ecd8e651c0da69a5",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -293,7 +293,7 @@
       "implementation_status": "IMPLEMENTED_AND_CONFORMANT",
       "primitive": "evidence_provenance",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "39218752047",
+      "run_id": "39262227350",
       "runtime_proof": "b5c16bd37dbe1c220df8ff9b1659b1f584b2cfdd7d3ac89cb8f2e4b85920221e",
       "runtime_status": "PROVEN",
       "signals": [
@@ -309,7 +309,7 @@
       "source_ref": "https://github.com/teolex2020/aura-memory",
       "status": "ABSORBED",
       "target_surface": "new AIOS adapter/task only",
-      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
+      "test_digest": "3079bb83b75e960ccf401af223b750ac6ec7e5a319e33939ecd8e651c0da69a5",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -323,7 +323,7 @@
       "implementation_status": "IMPLEMENTED_AND_CONFORMANT",
       "primitive": "evidence_provenance",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "39218752047",
+      "run_id": "39262227350",
       "runtime_proof": "b5c16bd37dbe1c220df8ff9b1659b1f584b2cfdd7d3ac89cb8f2e4b85920221e",
       "runtime_status": "PROVEN",
       "signals": [
@@ -337,7 +337,7 @@
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
       "status": "ABSORBED",
       "target_surface": "new AIOS adapter/task only",
-      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
+      "test_digest": "3079bb83b75e960ccf401af223b750ac6ec7e5a319e33939ecd8e651c0da69a5",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -351,7 +351,7 @@
       "implementation_status": "IMPLEMENTED_AND_CONFORMANT",
       "primitive": "evidence_provenance",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "39218752047",
+      "run_id": "39262227350",
       "runtime_proof": "b5c16bd37dbe1c220df8ff9b1659b1f584b2cfdd7d3ac89cb8f2e4b85920221e",
       "runtime_status": "PROVEN",
       "signals": [
@@ -364,7 +364,7 @@
       "source_ref": "https://github.com/ver-cy/vercy-py",
       "status": "ABSORBED",
       "target_surface": "new AIOS adapter/task only",
-      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
+      "test_digest": "3079bb83b75e960ccf401af223b750ac6ec7e5a319e33939ecd8e651c0da69a5",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -378,7 +378,7 @@
       "implementation_status": "IMPLEMENTED_AND_CONFORMANT",
       "primitive": "evidence_provenance",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "39218752047",
+      "run_id": "39262227350",
       "runtime_proof": "b5c16bd37dbe1c220df8ff9b1659b1f584b2cfdd7d3ac89cb8f2e4b85920221e",
       "runtime_status": "PROVEN",
       "signals": [
@@ -389,7 +389,7 @@
       "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
       "status": "ABSORBED",
       "target_surface": "new AIOS adapter/task only",
-      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
+      "test_digest": "3079bb83b75e960ccf401af223b750ac6ec7e5a319e33939ecd8e651c0da69a5",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -403,7 +403,7 @@
       "implementation_status": "IMPLEMENTED_AND_CONFORMANT",
       "primitive": "evidence_provenance",
       "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-      "run_id": "39218752047",
+      "run_id": "39262227350",
       "runtime_proof": "b5c16bd37dbe1c220df8ff9b1659b1f584b2cfdd7d3ac89cb8f2e4b85920221e",
       "runtime_status": "PROVEN",
       "signals": [
@@ -417,11 +417,11 @@
       "source_ref": "https://github.com/qingyou0420/trueheart-core",
       "status": "ABSORBED",
       "target_surface": "new AIOS adapter/task only",
-      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
+      "test_digest": "3079bb83b75e960ccf401af223b750ac6ec7e5a319e33939ecd8e651c0da69a5",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     }
   ],
-  "run_id": "39218752047",
+  "run_id": "39262227350",
   "schema_version": 2,
   "source_mutation": false
 }

@@ -6,20 +6,20 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "converge-ai-labs/agent-foundation",
-      "source_digest": "af25e94c28f284dfa304dea760aa548fafe4763c109727d9f96022c2d6478763",
+      "source_digest": "22bcef70a7c7903ba4f269a23785db76d552d68bbe15f42166f9753ab3988ad4",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
       "stars": 214,
-      "updated_at": "2026-10-19T07:51:11Z"
+      "updated_at": "2026-10-19T13:24:31Z"
     },
     {
       "description": "A production-oriented TypeScript agent runtime reference implementation with durable sessions and bounded execution.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "cacohe/agent-harness",
-      "source_digest": "176b39b48d003966480487eef21bb4cf455460873487ff8af8dc9ee440a5c1fd",
+      "source_digest": "a072525295fe2b0ad48cb31c6f545919546cafdf456d6157874a42a4c51a3e1a",
       "source_ref": "https://github.com/cacohe/agent-harness",
       "stars": 1,
-      "updated_at": "2026-10-19T07:25:13Z"
+      "updated_at": "2026-10-19T08:51:18Z"
     },
     {
       "description": "Governed agent execution harness with versioned contracts, durable state, policy enforcement, replay, provenance, and bounded worker runtimes.",

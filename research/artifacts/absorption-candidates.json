@@ -4,14 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-d9018be73c37a77b",
+      "candidate_id": "cand-cdbe2da99d1aa7e7",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "memory",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "af25e94c28f284dfa304dea760aa548fafe4763c109727d9f96022c2d6478763",
+      "source_digest": "22bcef70a7c7903ba4f269a23785db76d552d68bbe15f42166f9753ab3988ad4",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -19,14 +19,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-0abe1fd0401c3531",
+      "candidate_id": "cand-0433a22e9976bd63",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "176b39b48d003966480487eef21bb4cf455460873487ff8af8dc9ee440a5c1fd",
+      "source_digest": "a072525295fe2b0ad48cb31c6f545919546cafdf456d6157874a42a4c51a3e1a",
       "source_ref": "https://github.com/cacohe/agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
