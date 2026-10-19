@@ -59,10 +59,12 @@ jobs:
       - name: Checkout registered workloads
         run: |
           git clone --depth 1 --no-checkout https://github.com/yanhul/try.git "$RUNNER_TEMP/try"
-          git -C "$RUNNER_TEMP/try" fetch --depth 1 origin refs/heads/absorb/verl-strict-outcomes:refs/remotes/origin/absorb/verl-strict-outcomes
-          git -C "$RUNNER_TEMP/try" checkout --detach refs/remotes/origin/absorb/verl-strict-outcomes
-          TRY_AUTHORITY_SHA="$(git -C "$RUNNER_TEMP/try" rev-parse HEAD)"
-          test -n "$TRY_AUTHORITY_SHA"
+          # Pin the registered TRY workload to the reviewed immutable main SHA.
+          # Update this pin only after the new TRY revision passes its own strict gates.
+          TRY_AUTHORITY_SHA="c667122241aa2574fa274c9c7035dd6c7cdecd06"
+          git -C "$RUNNER_TEMP/try" fetch --depth 1 origin "$TRY_AUTHORITY_SHA"
+          git -C "$RUNNER_TEMP/try" checkout --detach "$TRY_AUTHORITY_SHA"
+          test "$(git -C "$RUNNER_TEMP/try" rev-parse HEAD)" = "$TRY_AUTHORITY_SHA"
           echo "TRY_AUTHORITY_SHA=$TRY_AUTHORITY_SHA"
           git clone --depth 1 --no-checkout https://github.com/yanhul/android-ai-assistant.git "$RUNNER_TEMP/android-ai-assistant"
           git -C "$RUNNER_TEMP/android-ai-assistant" fetch --depth 1 origin refs/heads/aios-conformance/android:refs/remotes/origin/aios-conformance/android
