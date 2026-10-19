@@ -127,8 +127,25 @@ def _validate_terminal_evidence(state: Mapping[str, Any]) -> None:
         raise ValueError("terminal evidence status does not match state")
     if not isinstance(evidence.get("step"), int) or evidence["step"] != state.get("step"):
         raise ValueError("terminal evidence step does not match state")
-    if "verification" not in evidence:
-        raise ValueError("terminal evidence verification is missing")
+    verification = evidence.get("verification")
+    if not isinstance(verification, Mapping):
+        raise ValueError("terminal evidence verification is missing or invalid")
+    if state.get("status") == "PASS":
+        if not verification:
+            raise ValueError("PASS terminal evidence requires non-empty verification evidence")
+        if set(verification) == {"reason"}:
+            raise ValueError("PASS cannot use synthesized reason-only terminal evidence")
+        history = state.get("history")
+        if not isinstance(history, list) or not history:
+            raise ValueError("PASS terminal evidence requires a matching final history entry")
+        final_entry = history[-1]
+        if (
+            not isinstance(final_entry, Mapping)
+            or final_entry.get("step") != state.get("step")
+            or not isinstance(final_entry.get("verification"), Mapping)
+            or dict(final_entry["verification"]) != dict(verification)
+        ):
+            raise ValueError("PASS terminal evidence does not match final history verification")
 
 @dataclass
 class MemoryStateStore:
@@ -236,12 +253,16 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
 def _persist_state(state: dict[str, Any], store: StateStore, policy: LoopPolicy) -> None:
     """Persist a complete durable snapshot with its continuation projection."""
     candidate = deepcopy(state)
+    if candidate.get("status") == "PASS" and not isinstance(candidate.get("terminal_evidence"), Mapping):
+        raise ValueError("PASS cannot be persisted without immutable terminal evidence")
     if candidate.get("status") in policy.terminal_states and not isinstance(candidate.get("terminal_evidence"), Mapping):
         candidate["terminal_evidence"] = {
             "step": candidate.get("step", 0),
             "status": candidate["status"],
             "verification": {"reason": candidate.get("block_reason", "TERMINAL_STATE")},
         }
+    if candidate.get("status") == "PASS":
+        _validate_terminal_evidence(candidate)
     if policy.continue_contract_builder is not None:
         contract = policy.continue_contract_builder(deepcopy(candidate))
         if not isinstance(contract, Mapping):
@@ -282,6 +303,11 @@ def _persist_or_fail_closed(state: dict[str, Any], store: StateStore, policy: Lo
         fallback = deepcopy(state)
         fallback["status"] = policy.failure_state
         fallback["block_reason"] = f"durable persistence failed: {type(exc).__name__}: {exc}"
+        fallback["terminal_evidence"] = {
+            "step": fallback.get("step", 0),
+            "status": policy.failure_state,
+            "verification": {"reason": fallback["block_reason"]},
+        }
         try:
             _persist_raw_state(fallback, store)
         except Exception as raw_exc:
@@ -318,6 +344,11 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
     except Exception as exc:
         state["status"] = policy.failure_state
         state["block_reason"] = f"invalid durable state: {type(exc).__name__}: {exc}"
+        state["terminal_evidence"] = {
+            "step": state.get("step", 0),
+            "status": policy.failure_state,
+            "verification": {"reason": state["block_reason"]},
+        }
         _persist_raw_state(state, store)
         return state
     if state["status"] in policy.terminal_states:
