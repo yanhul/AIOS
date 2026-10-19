@@ -702,3 +702,48 @@ def test_reconciliation_runs_provider_receipt_validator_before_authorization():
 
     assert calls == [("validator", "attempt-reconcile-validator")]
     assert store.load() == original
+
+
+def test_pass_cannot_be_persisted_without_terminal_evidence():
+    state = {
+        "step": 1,
+        "status": "PASS",
+        "history": [{"step": 1, "verification": {"value": "verified"}}],
+        "policy_digest": None,
+    }
+    with pytest.raises(ValueError, match="without immutable terminal evidence"):
+        _persist_state(state, MemoryStateStore(), _policy())
+
+
+@pytest.mark.parametrize("evidence", [
+    {"step": 1, "status": "PASS", "verification": {"reason": "synthetic"}},
+    {"step": 1, "status": "PASS", "verification": {"value": "fabricated"}},
+    {"step": 2, "status": "PASS", "verification": {"value": "verified"}},
+])
+def test_pass_terminal_evidence_must_match_final_history(evidence):
+    state = {
+        "step": 1,
+        "status": "PASS",
+        "history": [{"step": 1, "verification": {"value": "verified"}}],
+        "terminal_evidence": evidence,
+        "policy_digest": None,
+    }
+    with pytest.raises(ValueError, match="PASS"):
+        _persist_state(state, MemoryStateStore(), _policy())
+
+
+def test_invalid_persisted_pass_is_reconciled_to_blocked_with_fresh_evidence():
+    store = MemoryStateStore({
+        "step": 1,
+        "status": "PASS",
+        "history": [{"step": 1, "verification": {"value": "verified"}}],
+        "terminal_evidence": {
+            "step": 1, "status": "PASS", "verification": {"reason": "fabricated"}
+        },
+    })
+    result = run_durable_loop(FakeExecutor(), store, _policy())
+    assert result["status"] == "BLOCKED"
+    assert result["terminal_evidence"]["status"] == "BLOCKED"
+    assert result["terminal_evidence"]["step"] == result["step"]
+    assert result["terminal_evidence"]["verification"]["reason"].startswith("invalid durable state:")
+    assert store.load() == result
