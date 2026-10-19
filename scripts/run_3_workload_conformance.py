@@ -43,13 +43,21 @@ def run_one(runner: Path, workload_id: str, root: Path, receipt: Path) -> dict:
         raise RuntimeError(f"{workload_id}: provenance mismatch")
     if not receipt_obj["evidence_refs"] or not receipt_obj["verification_refs"]:
         raise RuntimeError(f"{workload_id}: evidence/verification refs missing")
-    if receipt_obj["status"] == "PASS":
+    # RX50 must not pass conformance on digital checks alone. A PASS requires
+    # explicit physical evidence in both the evidence and verification refs.
+    if workload_id != "yanhul/RX50" and receipt_obj["status"] == "PASS":
         return receipt_obj
 
     # RX50 is intentionally fail-closed until real physical measurements are
-    # ingested. Conformance means proving the registered workload's declared
-    # safety contract, not relabeling an engineering HOLD as a successful design.
+    # ingested. Conformance may accept the exact declared physical-evidence
+    # hold, but the returned receipt remains BLOCKED.
     if workload_id == "yanhul/RX50":
+        if (
+            receipt_obj["status"] == "PASS"
+            and "physical_evidence" in receipt_obj["evidence_refs"]
+            and "physical_evidence" in receipt_obj["verification_refs"]
+        ):
+            return receipt_obj
         expected_reason = "physical evidence required before engineering promotion"
         if (
             receipt_obj["status"] == "BLOCKED"

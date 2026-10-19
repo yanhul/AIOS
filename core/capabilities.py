@@ -124,8 +124,12 @@ class CapabilityRegistry:
         capability = self._capabilities.get(key)
         if capability is None:
             raise CapabilityError(f"capability is not registered: {key}")
+        if capability.status == "CANDIDATE":
+            raise CapabilityError(f"capability is not promoted ACTIVE: {key}")
         if capability.status == "DEPRECATED":
             raise CapabilityError(f"capability is deprecated: {key}")
+        if capability.status != "ACTIVE":
+            raise CapabilityError(f"capability status is not executable: {key} ({capability.status})")
         return capability
 
     def resolve_contract(self, contract: dict[str, Any]) -> tuple[Capability, ...]:

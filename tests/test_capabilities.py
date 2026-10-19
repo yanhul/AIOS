@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: Capability registry must distinguish discovery from execution authority.
+# AIOS-REGRESSION: CANDIDATE capabilities must never pass require() or contract resolution.
+# AIOS-OWNER: AIOS governance boundary; promotion requires independent evidence and approval.
+# AIOS-COVERAGE-GAP: Prior require() accepted CANDIDATE status, allowing unpromoted capability references into contracts.
+# AIOS-BASELINE: Preserve ACTIVE resolution, version pinning, persistence, discovery, and DEPRECATED rejection.
+
 from core.capabilities import Capability, CapabilityEdge, CapabilityError, CapabilityRegistry
 
 
@@ -93,3 +99,29 @@ def test_contract_capabilities_must_resolve_to_registered_version(tmp_path):
         assert False
     except CapabilityError:
         pass
+
+def test_candidate_capability_is_discoverable_but_not_authorizable():
+    registry = CapabilityRegistry()
+    candidate = cap("repo_patch", status="CANDIDATE")
+    registry.register(candidate)
+
+    # Discovery is descriptive; it must not be confused with authority.
+    assert registry.discover(kind="workload") == [candidate]
+    try:
+        registry.require(candidate.key)
+        assert False, "candidate capability must not cross the authority boundary"
+    except CapabilityError as exc:
+        assert "not promoted ACTIVE" in str(exc)
+
+
+def test_contract_resolution_rejects_candidate_and_deprecated_capabilities():
+    registry = CapabilityRegistry()
+    registry.register(cap("candidate.workload", status="CANDIDATE"))
+    registry.register(cap("old.workload", status="DEPRECATED"))
+
+    for key in ("candidate.workload@1", "old.workload@1"):
+        try:
+            registry.resolve_contract({"capabilities": [key]})
+            assert False, f"{key} must not authorize a contract"
+        except CapabilityError:
+            pass
