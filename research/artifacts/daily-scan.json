@@ -6,10 +6,40 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "converge-ai-labs/agent-foundation",
-      "source_digest": "1f35fb0178f38b627ded99e9e9be036e5a8c87b7cb4bc5bd0603e14e6c2c9434",
+      "source_digest": "f7dc2d7e7f91dcfebbe6dc481b903f9477c3c90a2a23dac2b6ef0eb448dcbf84",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "stars": 214,
-      "updated_at": "2026-10-19T14:20:03Z"
+      "stars": 219,
+      "updated_at": "2026-10-20T07:39:00Z"
+    },
+    {
+      "description": "Python/FastAPI agent harness with LangGraph, durable execution, tenant-isolated memory, policy-gated identity operations, human approvals, verified tool outcomes, and replayable LLM security evaluations.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "JatinF/identityguard-agent-platform",
+      "source_digest": "86170491064ff35d79f419618a7bc3de6a8843238b1f9a91f3b6b2f98e11a94b",
+      "source_ref": "https://github.com/JatinF/identityguard-agent-platform",
+      "stars": 0,
+      "updated_at": "2026-10-20T04:13:53Z"
+    },
+    {
+      "description": "Golang agent harness & framework. Multi-agent architecture, built on Durable Execution(Dex/Temporal), to build cloud based agents",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "superdurable/superagent",
+      "source_digest": "7b00c1db7ab9852fbfc9ae343ee8659a8d6642540694681d54ed16e05b28a592",
+      "source_ref": "https://github.com/superdurable/superagent",
+      "stars": 11,
+      "updated_at": "2026-10-19T21:35:05Z"
+    },
+    {
+      "description": "Experimental TypeScript agent execution harness with durable history, human approvals, sandboxed file operations, context protection, and bounded outcome correction.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "Icema159/agent-foundry",
+      "source_digest": "93a5405a76eb9e0096b4a521236551ba2f0dbe638a8323581e07b131d910bde4",
+      "source_ref": "https://github.com/Icema159/agent-foundry",
+      "stars": 0,
+      "updated_at": "2026-10-19T15:52:27Z"
     },
     {
       "description": "A production-oriented TypeScript agent runtime reference implementation with durable sessions and bounded execution.",
@@ -20,36 +50,6 @@
       "source_ref": "https://github.com/cacohe/agent-harness",
       "stars": 1,
       "updated_at": "2026-10-19T08:51:18Z"
-    },
-    {
-      "description": "Governed agent execution harness with versioned contracts, durable state, policy enforcement, replay, provenance, and bounded worker runtimes.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "jaydubya818/Agentic-Pi-Harness",
-      "source_digest": "91f3eae21c84a6970bde025d39d338b3f01ccdb9c72f142dda7cbc6dd1511bdd",
-      "source_ref": "https://github.com/jaydubya818/Agentic-Pi-Harness",
-      "stars": 2,
-      "updated_at": "2026-10-18T17:35:31Z"
-    },
-    {
-      "description": "An in-progress coding-agent harness for long-running tasks, controlled tool access, and durable execution.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "julianthant/tether",
-      "source_digest": "4e68aa01b79547e12140b10ab02f542f038a744b8fcf39ca02ba476220d205c5",
-      "source_ref": "https://github.com/julianthant/tether",
-      "stars": 0,
-      "updated_at": "2026-10-17T04:04:33Z"
-    },
-    {
-      "description": "Durable workflow execution, fencing and recovery runtime for the Agent & Creative v1 subsystem (Node 22, SQLite)",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "Jevelopers-neatHack-2026/agent-harness",
-      "source_digest": "11b656c8326298dbb8e080cd0b904d3592e6cbd7a6ee6aab8d67948f8166ccfb",
-      "source_ref": "https://github.com/Jevelopers-neatHack-2026/agent-harness",
-      "stars": 0,
-      "updated_at": "2026-10-15T15:44:31Z"
     },
     {
       "description": "OmniResearch is an autonomous multi-agent AI framework that automates the AI/ML research lifecycle\u2014from planning and literature discovery to dataset selection, experimentation, analysis, verification, and research report generation using LangGraph, multimodal RAG, and research memory.",
@@ -106,10 +106,10 @@
       "query": "agent memory provenance governance",
       "ref": "main",
       "repo": "teolex2020/aura-memory",
-      "source_digest": "d30838976d786d28d8f78638530e9d644b845223b01542a7ccbe83871cc898f5",
+      "source_digest": "964d0e09a173e6100754a017949e6a71e1d35c597fd2b3f3fc8d5950db5d32be",
       "source_ref": "https://github.com/teolex2020/aura-memory",
       "stars": 85,
-      "updated_at": "2026-10-11T12:09:48Z"
+      "updated_at": "2026-10-20T07:24:19Z"
     },
     {
       "description": "Heartwood Memory \u2014 governed memory for AI agents. Provenance-first recall, policy-gated retrieval, tenant isolation.",

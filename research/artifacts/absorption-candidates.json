@@ -4,15 +4,60 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-f3a60c6b35f8c5ff",
+      "candidate_id": "cand-a55072ff50f57b4d",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "memory",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "1f35fb0178f38b627ded99e9e9be036e5a8c87b7cb4bc5bd0603e14e6c2c9434",
+      "source_digest": "f7dc2d7e7f91dcfebbe6dc481b903f9477c3c90a2a23dac2b6ef0eb448dcbf84",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-c24cdc315a7537ec",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "memory",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "86170491064ff35d79f419618a7bc3de6a8843238b1f9a91f3b6b2f98e11a94b",
+      "source_ref": "https://github.com/JatinF/identityguard-agent-platform",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-7258b700c0540087",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "7b00c1db7ab9852fbfc9ae343ee8659a8d6642540694681d54ed16e05b28a592",
+      "source_ref": "https://github.com/superdurable/superagent",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-b08afd7e13156c34",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "research_harness",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "93a5405a76eb9e0096b4a521236551ba2f0dbe638a8323581e07b131d910bde4",
+      "source_ref": "https://github.com/Icema159/agent-foundry",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -28,51 +73,6 @@
       "ref": "main",
       "source_digest": "a072525295fe2b0ad48cb31c6f545919546cafdf456d6157874a42a4c51a3e1a",
       "source_ref": "https://github.com/cacohe/agent-harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-6d933ebbbc2bb467",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "91f3eae21c84a6970bde025d39d338b3f01ccdb9c72f142dda7cbc6dd1511bdd",
-      "source_ref": "https://github.com/jaydubya818/Agentic-Pi-Harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-1210ca521f80fe66",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "4e68aa01b79547e12140b10ab02f542f038a744b8fcf39ca02ba476220d205c5",
-      "source_ref": "https://github.com/julianthant/tether",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-ea60d0c5d43df4b4",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "11b656c8326298dbb8e080cd0b904d3592e6cbd7a6ee6aab8d67948f8166ccfb",
-      "source_ref": "https://github.com/Jevelopers-neatHack-2026/agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -154,14 +154,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-ef7628557ff5494d",
+      "candidate_id": "cand-d257c54d2ec8e8c3",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "d30838976d786d28d8f78638530e9d644b845223b01542a7ccbe83871cc898f5",
+      "source_digest": "964d0e09a173e6100754a017949e6a71e1d35c597fd2b3f3fc8d5950db5d32be",
       "source_ref": "https://github.com/teolex2020/aura-memory",
       "status": "UNTRUSTED_EVIDENCE"
     },
