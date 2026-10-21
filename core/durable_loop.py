@@ -568,6 +568,10 @@ def reconcile_in_flight_attempt(
     This is the explicit recovery path for a crash after a provider effect but
     before its receipt was durably committed. It never guesses or retries.
     """
+    if not policy.require_execution_receipt:
+        raise ValueError("reconciliation requires receipt-governed execution policy")
+    if policy.execution_receipt_validator is None or policy.state_patch_validator is None:
+        raise ValueError("reconciliation requires receipt and state-patch validators")
     if not callable(authorizer):
         raise ValueError("reconciliation requires an authority callback")
     loaded = store.load()
