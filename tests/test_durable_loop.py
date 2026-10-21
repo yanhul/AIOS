@@ -747,3 +747,25 @@ def test_invalid_persisted_pass_is_reconciled_to_blocked_with_fresh_evidence():
     assert result["terminal_evidence"]["step"] == result["step"]
     assert result["terminal_evidence"]["verification"]["reason"].startswith("invalid durable state:")
     assert store.load() == result
+
+
+def test_reconciliation_rejects_policy_without_execution_receipts_before_loading_state():
+    class ExplodingStore:
+        def load(self):
+            raise AssertionError("state must not be read under a non-receipt policy")
+
+        def save(self, state):
+            raise AssertionError("state must not be mutated under a non-receipt policy")
+
+    with pytest.raises(ValueError, match="requires receipt-governed execution policy"):
+        reconcile_in_flight_attempt(
+            ExplodingStore(),
+            _policy(require_execution_receipt=False),
+            {
+                "effect_id": "effect-unbound",
+                "attempt_id": "attempt-unbound",
+                "status": "OBSERVED",
+                "evidence": {"provider_receipt": "receipt"},
+            },
+            authorizer=lambda intent, receipt: None,
+        )
