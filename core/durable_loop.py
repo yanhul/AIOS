@@ -564,6 +564,8 @@ def reconcile_in_flight_attempt(
     """
     if not callable(authorizer):
         raise ValueError("reconciliation requires an authority callback")
+    if not policy.require_execution_receipt:
+        raise ValueError("reconciliation requires receipt-governed execution policy")
     loaded = store.load()
     if not isinstance(loaded, Mapping):
         raise ValueError("cannot reconcile without durable state")
