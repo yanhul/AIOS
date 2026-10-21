@@ -139,3 +139,5 @@ if result["status"] != "BLOCKED":
 '''
     result = _run_mutant("core/durable_loop.py", mutation, harness)
     assert result.returncode != 0, result.stdout + result.stderr
+
+# CI verification branch: mutation proof must remain executable.
