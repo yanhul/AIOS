@@ -598,6 +598,58 @@ def test_unknown_receipt_cannot_persist_verifier_state_patch():
     assert "continuation" not in store.load()
 
 
+def test_reconciliation_rejects_policy_without_receipts_before_store_access():
+    class ExplodingStore:
+        def load(self):
+            pytest.fail("store must not be read without receipt-governed policy")
+
+        def save(self, state):
+            pytest.fail("store must not be written without receipt-governed policy")
+
+    with pytest.raises(ValueError, match="receipt-governed execution policy"):
+        reconcile_in_flight_attempt(
+            ExplodingStore(),
+            _policy(),
+            {
+                "effect_id": "effect-not-governed",
+                "attempt_id": "attempt-not-governed",
+                "status": "OBSERVED",
+                "evidence": {"provider_receipt": "untrusted"},
+            },
+            authorizer=lambda intent, receipt: None,
+        )
+
+
+def test_reconciliation_requires_both_receipt_and_patch_validators_before_store_access():
+    class ExplodingStore:
+        def load(self):
+            pytest.fail("store must not be read without both validators")
+
+        def save(self, state):
+            pytest.fail("store must not be written without both validators")
+
+    policy = LoopPolicy(
+        max_steps=1,
+        terminal_evaluator=lambda verification, state: None,
+        action_authorizer=lambda decision, state: None,
+        require_execution_receipt=True,
+        execution_receipt_validator=lambda receipt, state: None,
+        state_patch_validator=None,
+    )
+    with pytest.raises(ValueError, match="receipt and state-patch validators"):
+        reconcile_in_flight_attempt(
+            ExplodingStore(),
+            policy,
+            {
+                "effect_id": "effect-no-patch-validator",
+                "attempt_id": "attempt-no-patch-validator",
+                "status": "OBSERVED",
+                "evidence": {"provider_receipt": "untrusted"},
+            },
+            authorizer=lambda intent, receipt: None,
+        )
+
+
 def test_resume_blocks_in_flight_attempt_until_explicit_observed_reconciliation():
     class NoReplayExecutor(FakeExecutor):
         def __init__(self):
