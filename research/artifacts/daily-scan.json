@@ -6,10 +6,30 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "converge-ai-labs/agent-foundation",
-      "source_digest": "f7dc2d7e7f91dcfebbe6dc481b903f9477c3c90a2a23dac2b6ef0eb448dcbf84",
+      "source_digest": "9806c674cea604baf3bb755722f8c3ad678d12a22b920ed50144ecbb038b5433",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "stars": 219,
-      "updated_at": "2026-10-20T07:39:00Z"
+      "stars": 221,
+      "updated_at": "2026-10-21T06:55:57Z"
+    },
+    {
+      "description": "The long-horizon computer-use harness. Run AI agents across desktop apps and the CLI for extended periods while preserving task state and making reliable progress on complex workflows. Features fresh-context execution, durable verified state, independent auditing, recoverable progress, and native Claude Code / Codex / OpenClaw integration.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "AMAP-ML/LongHorizon-Harness",
+      "source_digest": "35d4e5c2677d5bc61f397b7402b8db5db4f11b22bd82de6eed92f6be36bb03bd",
+      "source_ref": "https://github.com/AMAP-ML/LongHorizon-Harness",
+      "stars": 1761,
+      "updated_at": "2026-10-21T06:30:36Z"
+    },
+    {
+      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "Root1V/aeon-agent-harness",
+      "source_digest": "72a92545794926eb8f43ec928eb2adc9671535f5b94b4f716bdcb3e13a83f375",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
+      "stars": 1,
+      "updated_at": "2026-10-21T01:55:52Z"
     },
     {
       "description": "Python/FastAPI agent harness with LangGraph, durable execution, tenant-isolated memory, policy-gated identity operations, human approvals, verified tool outcomes, and replayable LLM security evaluations.",
@@ -30,26 +50,6 @@
       "source_ref": "https://github.com/superdurable/superagent",
       "stars": 11,
       "updated_at": "2026-10-19T21:35:05Z"
-    },
-    {
-      "description": "Experimental TypeScript agent execution harness with durable history, human approvals, sandboxed file operations, context protection, and bounded outcome correction.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "Icema159/agent-foundry",
-      "source_digest": "93a5405a76eb9e0096b4a521236551ba2f0dbe638a8323581e07b131d910bde4",
-      "source_ref": "https://github.com/Icema159/agent-foundry",
-      "stars": 0,
-      "updated_at": "2026-10-19T15:52:27Z"
-    },
-    {
-      "description": "A production-oriented TypeScript agent runtime reference implementation with durable sessions and bounded execution.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "cacohe/agent-harness",
-      "source_digest": "a072525295fe2b0ad48cb31c6f545919546cafdf456d6157874a42a4c51a3e1a",
-      "source_ref": "https://github.com/cacohe/agent-harness",
-      "stars": 1,
-      "updated_at": "2026-10-19T08:51:18Z"
     },
     {
       "description": "OmniResearch is an autonomous multi-agent AI framework that automates the AI/ML research lifecycle\u2014from planning and literature discovery to dataset selection, experimentation, analysis, verification, and research report generation using LangGraph, multimodal RAG, and research memory.",
@@ -106,7 +106,7 @@
       "query": "agent memory provenance governance",
       "ref": "main",
       "repo": "teolex2020/aura-memory",
-      "source_digest": "964d0e09a173e6100754a017949e6a71e1d35c597fd2b3f3fc8d5950db5d32be",
+      "source_digest": "e181658eb6bf1cf35d624a6d28e8d337c5ed4f53b3d41fdbc068b12bec22ae16",
       "source_ref": "https://github.com/teolex2020/aura-memory",
       "stars": 85,
       "updated_at": "2026-10-20T07:24:19Z"

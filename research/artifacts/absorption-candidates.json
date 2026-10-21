@@ -4,15 +4,45 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-a55072ff50f57b4d",
+      "candidate_id": "cand-480d540db4fe7ba9",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "memory",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "f7dc2d7e7f91dcfebbe6dc481b903f9477c3c90a2a23dac2b6ef0eb448dcbf84",
+      "source_digest": "9806c674cea604baf3bb755722f8c3ad678d12a22b920ed50144ecbb038b5433",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-e79fd58eb6e7406b",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "durable_execution",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "35d4e5c2677d5bc61f397b7402b8db5db4f11b22bd82de6eed92f6be36bb03bd",
+      "source_ref": "https://github.com/AMAP-ML/LongHorizon-Harness",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-adc03564628c1858",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "72a92545794926eb8f43ec928eb2adc9671535f5b94b4f716bdcb3e13a83f375",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -43,36 +73,6 @@
       "ref": "main",
       "source_digest": "7b00c1db7ab9852fbfc9ae343ee8659a8d6642540694681d54ed16e05b28a592",
       "source_ref": "https://github.com/superdurable/superagent",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-b08afd7e13156c34",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "research_harness",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "93a5405a76eb9e0096b4a521236551ba2f0dbe638a8323581e07b131d910bde4",
-      "source_ref": "https://github.com/Icema159/agent-foundry",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-0433a22e9976bd63",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "a072525295fe2b0ad48cb31c6f545919546cafdf456d6157874a42a4c51a3e1a",
-      "source_ref": "https://github.com/cacohe/agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -154,14 +154,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-d257c54d2ec8e8c3",
+      "candidate_id": "cand-2a092694c6f194f7",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "964d0e09a173e6100754a017949e6a71e1d35c597fd2b3f3fc8d5950db5d32be",
+      "source_digest": "e181658eb6bf1cf35d624a6d28e8d337c5ed4f53b3d41fdbc068b12bec22ae16",
       "source_ref": "https://github.com/teolex2020/aura-memory",
       "status": "UNTRUSTED_EVIDENCE"
     },
