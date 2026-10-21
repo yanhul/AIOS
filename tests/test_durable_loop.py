@@ -704,6 +704,45 @@ def test_reconciliation_runs_provider_receipt_validator_before_authorization():
     assert store.load() == original
 
 
+def test_resume_revalidates_persisted_provider_receipts_before_any_action():
+    receipt = {
+        "effect_id": "effect-persisted-auth",
+        "attempt_id": "attempt-persisted-auth",
+        "status": "OBSERVED",
+        "evidence": {"provider_receipt": "stored-but-not-authenticated"},
+    }
+    store = MemoryStateStore({
+        "step": 1,
+        "status": "RUNNING",
+        "history": [{"step": 1, "verification": {"receipt": receipt}}],
+    })
+    calls = []
+
+    class NoActExecutor(FakeExecutor):
+        def act(self, decision, state):
+            pytest.fail("resumed work must not act after receipt authentication fails")
+
+    def reject_receipt(receipt, state):
+        calls.append(receipt["attempt_id"])
+        raise PermissionError("persisted provider receipt signature invalid")
+
+    result = run_durable_loop(
+        NoActExecutor(),
+        store,
+        _policy(
+            max_steps=2,
+            require_execution_receipt=True,
+            execution_receipt_validator=reject_receipt,
+            terminal_evaluator=lambda verification, state: None,
+        ),
+    )
+
+    assert result["status"] == "BLOCKED"
+    assert "persisted provider receipt signature invalid" in result["block_reason"]
+    assert calls == ["attempt-persisted-auth"]
+    assert store.load()["status"] == "BLOCKED"
+
+
 def test_pass_cannot_be_persisted_without_terminal_evidence():
     state = {
         "step": 1,
