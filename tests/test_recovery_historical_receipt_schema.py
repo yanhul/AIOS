@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: persisted execution receipt schema is validated on resume
+# AIOS-REGRESSION: Reject historical receipts missing evidence
+# AIOS-OWNER: AIOS durable execution recovery boundary
+# AIOS-COVERAGE-GAP: Historical receipt evidence was not checked by the canonical validator
+# AIOS-BASELINE: Regression must fail closed before resumed execution
+
 import pytest
 
 from core.durable_loop import LoopPolicy, _validate_loaded_state
@@ -31,3 +37,5 @@ def test_resume_rejects_historical_receipt_without_evidence():
 
     with pytest.raises(ValueError, match="evidence is missing or empty"):
         _validate_loaded_state(state, policy)
+
+    assert state["history"][0]["verification"]["receipt"]["status"] == "OBSERVED"
