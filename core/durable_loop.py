@@ -187,6 +187,9 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
             raise ValueError(f"persisted receipt lineage is incomplete at history[{index}]")
         if receipt.get("status") not in {"OBSERVED", "UNKNOWN"}:
             raise ValueError(f"persisted receipt status is invalid at history[{index}]")
+        # Historical receipts must satisfy the same structural/evidence contract
+        # as fresh receipts before provider authenticity is checked.
+        _validate_execution_receipt({"receipt": receipt})
         # Persisted shape and lineage are not proof of provider authenticity.
         # Revalidate every historical receipt before any resumed work can proceed.
         if policy.require_execution_receipt:
