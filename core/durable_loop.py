@@ -187,6 +187,12 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
             raise ValueError(f"persisted receipt lineage is incomplete at history[{index}]")
         if receipt.get("status") not in {"OBSERVED", "UNKNOWN"}:
             raise ValueError(f"persisted receipt status is invalid at history[{index}]")
+        # Persisted shape and lineage are not proof of provider authenticity.
+        # Revalidate every historical receipt before any resumed work can proceed.
+        if policy.require_execution_receipt:
+            validation_result = policy.execution_receipt_validator(deepcopy(dict(receipt)), deepcopy(state))
+            if validation_result is not None:
+                raise ValueError("execution_receipt_validator must return None or raise to reject")
         if effect_id in seen_effect_ids:
             raise ValueError(f"duplicate persisted effect_id in history: {effect_id}")
         if attempt_id in seen_attempt_ids:
