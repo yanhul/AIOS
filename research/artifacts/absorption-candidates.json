@@ -4,14 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-480d540db4fe7ba9",
+      "candidate_id": "cand-c06d560e4ffc24bd",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "memory",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "9806c674cea604baf3bb755722f8c3ad678d12a22b920ed50144ecbb038b5433",
+      "source_digest": "5480257538b743441ca9d7512fdb011e10da2fa9adb06aa716e6acc2532fba9a",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -19,14 +19,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-e79fd58eb6e7406b",
+      "candidate_id": "cand-8f788c51a43b6fcd",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "35d4e5c2677d5bc61f397b7402b8db5db4f11b22bd82de6eed92f6be36bb03bd",
+      "source_digest": "6ca59c9fc441b31646ce195f9961ff85a7cf761bdc6304f574523c7b82fd5d26",
       "source_ref": "https://github.com/AMAP-ML/LongHorizon-Harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -154,6 +154,21 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
+      "candidate_id": "cand-aa260b1b4bae9c8d",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "f06467d2dd05c6da590d29419eea49b05becccb0336563b01c8ca17bd435e11d",
+      "source_ref": "https://github.com/ver-cy/vercy-py",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
       "candidate_id": "cand-2a092694c6f194f7",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
@@ -184,21 +199,6 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-3710b57258764f25",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "66d82d25abc4141c5d749bd8ce28debf4093dbbbcea974b79ad43968260d9e6f",
-      "source_ref": "https://github.com/ver-cy/vercy-py",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
       "candidate_id": "cand-bafafb3a94ba62d0",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
@@ -214,14 +214,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-88e3118a6802a77b",
+      "candidate_id": "cand-5f71e9713128c676",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "2960be8f9f2fd1ccb216d7ef946e8914da2c0b20a17feb7d11741dd9c7ab90a5",
+      "source_digest": "29aca72eeeb2df6dad0d368d4357c99f6e5fdcbdd1dc8929d4ebc8b62d6ee064",
       "source_ref": "https://github.com/qingyou0420/trueheart-core",
       "status": "UNTRUSTED_EVIDENCE"
     }
