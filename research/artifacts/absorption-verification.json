@@ -1,10 +1,10 @@
 {
   "candidate_count": 15,
-  "digest": "679fb4857bd7adf41309c781860adec20c6236df93c4943fb3baf0c07e8f97db",
+  "digest": "edd9800f4b40f062d6399d95db3505390233d454f66deea206e97c8612cff3d2",
   "failure_count": 0,
   "failures": [],
   "independent_tests": {
-    "digest": "4cf35b46e796ca82fdd7f0f4811f75c43f3c85f0135dabd5469f95f55304e9e0",
+    "digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
     "passed": true
   },
   "kind": "AIOS_ABSORPTION_INDEPENDENT_VERIFICATION",
@@ -12,30 +12,58 @@
   "records": [
     {
       "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-c06d560e4ffc24bd",
+      "candidate_id": "cand-7ed5da1768a0437d",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "evidence_digest": "7f77a38e09fdf60ae55494eae484e5ac5ec9627546a76d2bdfd0253dc7ea3819",
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "39742042898",
-      "source_digest": "5480257538b743441ca9d7512fdb011e10da2fa9adb06aa716e6acc2532fba9a",
+      "run_id": "39918970385",
+      "source_digest": "88042bc030ec399359d8c04b3b13117bb3bb84a05373902607603c08fc96990f",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "test_digest": "4cf35b46e796ca82fdd7f0f4811f75c43f3c85f0135dabd5469f95f55304e9e0",
+      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
       "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-8f788c51a43b6fcd",
+      "candidate_id": "cand-45b6d3177d94db28",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "evidence_digest": "b52383af9c167b3e2860fb88c90a91f6488ccf42475313df9475829bc685b5cd",
+      "external_code_copy": false,
+      "external_code_execution": false,
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "39918970385",
+      "source_digest": "013aac8863cb6d61d0c5beeb8ac5ce7397e66bd82c08d025dabf49cb1f008d04",
+      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
+      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
+      "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
+    },
+    {
+      "authority": "AIOS_CONTROL_PLANE",
+      "candidate_id": "cand-989823a871e8c1d7",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "evidence_digest": "371074f8eadbf3f152b7f87d4f4c5da883f731d5431f5868dc39587420434c9e",
+      "external_code_copy": false,
+      "external_code_execution": false,
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "39918970385",
+      "source_digest": "6a0c8e6577500a824f3748cea8d43c4ad080ec72f64e85197ac0c5483ee5259d",
+      "source_ref": "https://github.com/someoneexistsontheinternet/bloom-harness",
+      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
+      "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
+    },
+    {
+      "authority": "AIOS_CONTROL_PLANE",
+      "candidate_id": "cand-42aeb0434e8cdc29",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "evidence_digest": "3125d2068c5358c23b35ab5477e5f3478babdd418ca83a05b3ee37ddfaaf29bb",
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "39742042898",
-      "source_digest": "6ca59c9fc441b31646ce195f9961ff85a7cf761bdc6304f574523c7b82fd5d26",
+      "run_id": "39918970385",
+      "source_digest": "eff1d5bf88474d65b53b21d742f987d1ed5baf02485c65222251242cfc5b3c38",
       "source_ref": "https://github.com/AMAP-ML/LongHorizon-Harness",
-      "test_digest": "4cf35b46e796ca82fdd7f0f4811f75c43f3c85f0135dabd5469f95f55304e9e0",
+      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -46,38 +74,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "39742042898",
+      "run_id": "39918970385",
       "source_digest": "72a92545794926eb8f43ec928eb2adc9671535f5b94b4f716bdcb3e13a83f375",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "test_digest": "4cf35b46e796ca82fdd7f0f4811f75c43f3c85f0135dabd5469f95f55304e9e0",
-      "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
-    },
-    {
-      "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-c24cdc315a7537ec",
-      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
-      "evidence_digest": "34a7d2e420aa1e03de753e8579cd2d66f026714b798ac1b2596787c9b52c3a28",
-      "external_code_copy": false,
-      "external_code_execution": false,
-      "level": "VERIFIED_DIGITAL",
-      "run_id": "39742042898",
-      "source_digest": "86170491064ff35d79f419618a7bc3de6a8843238b1f9a91f3b6b2f98e11a94b",
-      "source_ref": "https://github.com/JatinF/identityguard-agent-platform",
-      "test_digest": "4cf35b46e796ca82fdd7f0f4811f75c43f3c85f0135dabd5469f95f55304e9e0",
-      "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
-    },
-    {
-      "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-7258b700c0540087",
-      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
-      "evidence_digest": "3f804519cc47edc1653362f65b841b740d3d4eecd83536ba2555cdce5854b1d6",
-      "external_code_copy": false,
-      "external_code_execution": false,
-      "level": "VERIFIED_DIGITAL",
-      "run_id": "39742042898",
-      "source_digest": "7b00c1db7ab9852fbfc9ae343ee8659a8d6642540694681d54ed16e05b28a592",
-      "source_ref": "https://github.com/superdurable/superagent",
-      "test_digest": "4cf35b46e796ca82fdd7f0f4811f75c43f3c85f0135dabd5469f95f55304e9e0",
+      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -88,10 +88,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "39742042898",
+      "run_id": "39918970385",
       "source_digest": "e67355e27882e4fb67cd2a849a4c08575169a99c17d4a217a1ecab46f7f134b2",
       "source_ref": "https://github.com/abhijeetchaubey/OmniResearch",
-      "test_digest": "4cf35b46e796ca82fdd7f0f4811f75c43f3c85f0135dabd5469f95f55304e9e0",
+      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -102,10 +102,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "39742042898",
+      "run_id": "39918970385",
       "source_digest": "ebb09ee5914b6e8bba2fe90a69694aa9e348cfb6f18996e511a084e35ae65165",
       "source_ref": "https://github.com/yethikrishna/Yethanus",
-      "test_digest": "4cf35b46e796ca82fdd7f0f4811f75c43f3c85f0135dabd5469f95f55304e9e0",
+      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -116,10 +116,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "39742042898",
+      "run_id": "39918970385",
       "source_digest": "4b3fe2fe2a775115db1a41476b924ba6b5d132ca00a7da67fdf6485fe0b6befc",
       "source_ref": "https://github.com/Yash-Kavaiya/auto-cxas-scrapi",
-      "test_digest": "4cf35b46e796ca82fdd7f0f4811f75c43f3c85f0135dabd5469f95f55304e9e0",
+      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -130,10 +130,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "39742042898",
+      "run_id": "39918970385",
       "source_digest": "9716dab55dc592817a54a87bfce7cb244d2713b570d724683a0cfb9cc771cfa3",
       "source_ref": "https://github.com/yanghangAI/MultiAgentAutoResearch",
-      "test_digest": "4cf35b46e796ca82fdd7f0f4811f75c43f3c85f0135dabd5469f95f55304e9e0",
+      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -144,10 +144,24 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "39742042898",
+      "run_id": "39918970385",
       "source_digest": "65f113e6207c42700139b62edd50a37b5e6227de2a5019fc0102cd845653ee42",
       "source_ref": "https://github.com/kp-krish/AutoResearch",
-      "test_digest": "4cf35b46e796ca82fdd7f0f4811f75c43f3c85f0135dabd5469f95f55304e9e0",
+      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
+      "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
+    },
+    {
+      "authority": "AIOS_CONTROL_PLANE",
+      "candidate_id": "cand-de9280e77bf592b3",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "evidence_digest": "ed4daab4e7a0355013e4d099fa1ba296bff49d1df4f81e1d2bd1e6b65e278e74",
+      "external_code_copy": false,
+      "external_code_execution": false,
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "39918970385",
+      "source_digest": "1708a5a8b8719e2d7025e6ab1f63fe163a3fe7426d3cb034121333ca8deaefc9",
+      "source_ref": "https://github.com/jermayne36/heartwood-memory",
+      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -158,10 +172,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "39742042898",
+      "run_id": "39918970385",
       "source_digest": "f06467d2dd05c6da590d29419eea49b05becccb0336563b01c8ca17bd435e11d",
       "source_ref": "https://github.com/ver-cy/vercy-py",
-      "test_digest": "4cf35b46e796ca82fdd7f0f4811f75c43f3c85f0135dabd5469f95f55304e9e0",
+      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -172,24 +186,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "39742042898",
+      "run_id": "39918970385",
       "source_digest": "e181658eb6bf1cf35d624a6d28e8d337c5ed4f53b3d41fdbc068b12bec22ae16",
       "source_ref": "https://github.com/teolex2020/aura-memory",
-      "test_digest": "4cf35b46e796ca82fdd7f0f4811f75c43f3c85f0135dabd5469f95f55304e9e0",
-      "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
-    },
-    {
-      "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-f459c8f25e57a975",
-      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
-      "evidence_digest": "ed4daab4e7a0355013e4d099fa1ba296bff49d1df4f81e1d2bd1e6b65e278e74",
-      "external_code_copy": false,
-      "external_code_execution": false,
-      "level": "VERIFIED_DIGITAL",
-      "run_id": "39742042898",
-      "source_digest": "82feee46878cb87530058e2442a593868fa11510547e52ca22741dd70d93fcc4",
-      "source_ref": "https://github.com/jermayne36/heartwood-memory",
-      "test_digest": "4cf35b46e796ca82fdd7f0f4811f75c43f3c85f0135dabd5469f95f55304e9e0",
+      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -200,10 +200,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "39742042898",
+      "run_id": "39918970385",
       "source_digest": "e218cb3e385fd01cf433fe86bcd6728221341c8a6e17460a13d79ef3f43f23b0",
       "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
-      "test_digest": "4cf35b46e796ca82fdd7f0f4811f75c43f3c85f0135dabd5469f95f55304e9e0",
+      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -214,14 +214,14 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "39742042898",
+      "run_id": "39918970385",
       "source_digest": "29aca72eeeb2df6dad0d368d4357c99f6e5fdcbdd1dc8929d4ebc8b62d6ee064",
       "source_ref": "https://github.com/qingyou0420/trueheart-core",
-      "test_digest": "4cf35b46e796ca82fdd7f0f4811f75c43f3c85f0135dabd5469f95f55304e9e0",
+      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     }
   ],
-  "run_id": "39742042898",
+  "run_id": "39918970385",
   "schema_version": 1,
   "verified_count": 15
 }
