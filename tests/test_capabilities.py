@@ -1,3 +1,12 @@
+# AIOS-CONTRACT: Capability registration is descriptive; only ACTIVE capabilities may resolve into authority-bearing contracts.
+# AIOS-REGRESSION: A registered CANDIDATE must remain discoverable but must fail require() and resolve_contract().
+# AIOS-OWNER: AIOS capability registry and authority boundary.
+# AIOS-COVERAGE-GAP: Previously malformed registry data could be coerced into valid-looking capability fields.
+# AIOS-BASELINE: Existing ACTIVE capability resolution, version pinning, persistence, and DEPRECATED rejection must remain unchanged.
+from pathlib import Path
+
+import pytest
+
 # AIOS-CONTRACT: Capability registry must distinguish discovery from execution authority.
 # AIOS-REGRESSION: CANDIDATE capabilities must never pass require() or contract resolution.
 # AIOS-OWNER: AIOS governance boundary; promotion requires independent evidence and approval.
@@ -43,7 +52,7 @@ def test_graph_requires_registered_nodes_and_preserves_evidence_level():
 
 def test_invalid_relation_and_unregistered_endpoint_fail_closed():
     registry = CapabilityRegistry()
-    registry.register(cap("a"))
+    registry.register(cap("a", status="ACTIVE"))
     try:
         registry.add_edge(CapabilityEdge("a@1", "unknown", "a@1"))
         assert False
@@ -125,3 +134,82 @@ def test_contract_resolution_rejects_candidate_and_deprecated_capabilities():
             assert False, f"{key} must not authorize a contract"
         except CapabilityError:
             pass
+
+
+def test_candidate_capability_is_discoverable_but_not_authorizable():
+    registry = CapabilityRegistry()
+    candidate = cap("repo_patch", status="CANDIDATE")
+    registry.register(candidate)
+    assert registry.discover(kind="workload") == [candidate]
+    with pytest.raises(CapabilityError, match="not promoted ACTIVE"):
+        registry.require(candidate.key)
+
+
+def test_contract_resolution_rejects_candidate_and_deprecated_capabilities():
+    registry = CapabilityRegistry()
+    registry.register(cap("candidate.workload", status="CANDIDATE"))
+    registry.register(cap("old.workload", status="DEPRECATED"))
+    for key in ("candidate.workload@1", "old.workload@1"):
+        with pytest.raises(CapabilityError):
+            registry.resolve_contract({"capabilities": [key]})
+
+
+def test_shipped_repo_patch_capability_is_registered_but_not_promoted():
+    registry = CapabilityRegistry.load(Path(__file__).resolve().parents[1])
+    candidate = registry.get("repo_patch", "1")
+    assert candidate is not None
+    assert candidate.status == "CANDIDATE"
+    assert "persisted OBSERVED_SUCCESS effect" in candidate.evidence_requirements
+    assert "governance promotion decision" in candidate.evidence_requirements
+    with pytest.raises(CapabilityError, match="not promoted ACTIVE"):
+        registry.resolve_contract({"capabilities": ["repo_patch@1"]})
+
+
+def test_registry_load_rejects_non_object_root_and_wrong_collection_types(tmp_path):
+    path = tmp_path / "capabilities"
+    path.mkdir()
+    registry_file = path / "capability_registry.json"
+    for payload, expected in (
+        ("[]", "root must be an object"),
+        ('{"schema_version":1,"capabilities":{},"edges":[]}', "must be lists"),
+        ('{"schema_version":1,"capabilities":[],"edges":{}}', "must be lists"),
+    ):
+        registry_file.write_text(payload, encoding="utf-8")
+        with pytest.raises(CapabilityError, match=expected):
+            CapabilityRegistry.load(tmp_path)
+
+
+def test_registry_load_rejects_string_instead_of_sequence_fields(tmp_path):
+    path = tmp_path / "capabilities"
+    path.mkdir()
+    (path / "capability_registry.json").write_text(
+        '{"schema_version":1,"capabilities":[{"capability_id":"x","version":"1",'
+        '"owner":"test","kind":"workload","inputs":"repository.patch"}],"edges":[]}',
+        encoding="utf-8",
+    )
+    with pytest.raises(CapabilityError, match="inputs must be a list"):
+        CapabilityRegistry.load(tmp_path)
+
+
+def test_registry_load_rejects_duplicate_capability_records(tmp_path):
+    path = tmp_path / "capabilities"
+    path.mkdir()
+    item = '{"capability_id":"x","version":"1","owner":"test","kind":"workload","status":"CANDIDATE"}'
+    (path / "capability_registry.json").write_text(
+        '{"schema_version":1,"capabilities":[' + item + ',' + item + '],"edges":[]}',
+        encoding="utf-8",
+    )
+    with pytest.raises(CapabilityError, match="duplicate capability record"):
+        CapabilityRegistry.load(tmp_path)
+
+
+def test_registry_load_rejects_malformed_edge_types_as_capability_error(tmp_path):
+    path = tmp_path / "capabilities"
+    path.mkdir()
+    (path / "capability_registry.json").write_text(
+        '{"schema_version":1,"capabilities":[],"edges":[{"source":"x@1",'
+        '"relation":[],"target":"y@1"}]}',
+        encoding="utf-8",
+    )
+    with pytest.raises(CapabilityError, match="must be non-empty strings"):
+        CapabilityRegistry.load(tmp_path)

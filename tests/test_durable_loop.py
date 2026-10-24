@@ -598,6 +598,28 @@ def test_unknown_receipt_cannot_persist_verifier_state_patch():
     assert "continuation" not in store.load()
 
 
+def test_reconciliation_rejects_policy_without_receipts_before_store_access():
+    class ExplodingStore:
+        def load(self):
+            pytest.fail("store must not be read without receipt-governed policy")
+
+        def save(self, state):
+            pytest.fail("store must not be written without receipt-governed policy")
+
+    with pytest.raises(ValueError, match="receipt-governed execution policy"):
+        reconcile_in_flight_attempt(
+            ExplodingStore(),
+            _policy(),
+            {
+                "effect_id": "effect-not-governed",
+                "attempt_id": "attempt-not-governed",
+                "status": "OBSERVED",
+                "evidence": {"provider_receipt": "untrusted"},
+            },
+            authorizer=lambda intent, receipt: None,
+        )
+
+
 def test_resume_blocks_in_flight_attempt_until_explicit_observed_reconciliation():
     class NoReplayExecutor(FakeExecutor):
         def __init__(self):
@@ -702,6 +724,45 @@ def test_reconciliation_runs_provider_receipt_validator_before_authorization():
 
     assert calls == [("validator", "attempt-reconcile-validator")]
     assert store.load() == original
+
+
+def test_resume_revalidates_persisted_provider_receipts_before_any_action():
+    receipt = {
+        "effect_id": "effect-persisted-auth",
+        "attempt_id": "attempt-persisted-auth",
+        "status": "OBSERVED",
+        "evidence": {"provider_receipt": "stored-but-not-authenticated"},
+    }
+    store = MemoryStateStore({
+        "step": 1,
+        "status": "RUNNING",
+        "history": [{"step": 1, "verification": {"receipt": receipt}}],
+    })
+    calls = []
+
+    class NoActExecutor(FakeExecutor):
+        def act(self, decision, state):
+            pytest.fail("resumed work must not act after receipt authentication fails")
+
+    def reject_receipt(receipt, state):
+        calls.append(receipt["attempt_id"])
+        raise PermissionError("persisted provider receipt signature invalid")
+
+    result = run_durable_loop(
+        NoActExecutor(),
+        store,
+        _policy(
+            max_steps=2,
+            require_execution_receipt=True,
+            execution_receipt_validator=reject_receipt,
+            terminal_evaluator=lambda verification, state: None,
+        ),
+    )
+
+    assert result["status"] == "BLOCKED"
+    assert "persisted provider receipt signature invalid" in result["block_reason"]
+    assert calls == ["attempt-persisted-auth"]
+    assert store.load()["status"] == "BLOCKED"
 
 
 def test_pass_cannot_be_persisted_without_terminal_evidence():
