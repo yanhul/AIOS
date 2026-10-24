@@ -1,10 +1,10 @@
 {
   "candidate_count": 15,
-  "digest": "53314b308efe3e2337936eaa984dca1fc72dcc69e2efb2a1edcabf70227a699f",
+  "digest": "9019a35cbd16acc9fed4c5178ed16be54ae958a313d0102557c9d6734dfb316b",
   "failure_count": 0,
   "failures": [],
   "independent_tests": {
-    "digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
+    "digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
     "passed": true
   },
   "kind": "AIOS_ABSORPTION_INDEPENDENT_VERIFICATION",
@@ -12,16 +12,16 @@
   "records": [
     {
       "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-29f739f8ad802438",
+      "candidate_id": "cand-4dc792196b1e9e68",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "evidence_digest": "b52383af9c167b3e2860fb88c90a91f6488ccf42475313df9475829bc685b5cd",
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40055419980",
-      "source_digest": "f04253c5e12a582d0f392923148c69b626e23d0a44a48d9eeaaa990ca9e6a8b5",
+      "run_id": "40055598768",
+      "source_digest": "c96690351eea4142db93ed68f6f158e111a95da4854b5b5a02a7d3091adc35ec",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
-      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
+      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -32,10 +32,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40055419980",
+      "run_id": "40055598768",
       "source_digest": "e9ec6d4f3afcd24278103c94da2b7c6b1c1296e17a4f7db117b7e362bb5d1246",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
+      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -46,10 +46,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40055419980",
+      "run_id": "40055598768",
       "source_digest": "6a0c8e6577500a824f3748cea8d43c4ad080ec72f64e85197ac0c5483ee5259d",
       "source_ref": "https://github.com/someoneexistsontheinternet/bloom-harness",
-      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
+      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -60,10 +60,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40055419980",
+      "run_id": "40055598768",
       "source_digest": "0014077e603c67eda07e1b7d44fc34da1ecf566b316c08ae1670c762d91a148f",
       "source_ref": "https://github.com/AMAP-ML/LongHorizon-Harness",
-      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
+      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -74,10 +74,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40055419980",
+      "run_id": "40055598768",
       "source_digest": "72a92545794926eb8f43ec928eb2adc9671535f5b94b4f716bdcb3e13a83f375",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
+      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -88,10 +88,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40055419980",
+      "run_id": "40055598768",
       "source_digest": "e67355e27882e4fb67cd2a849a4c08575169a99c17d4a217a1ecab46f7f134b2",
       "source_ref": "https://github.com/abhijeetchaubey/OmniResearch",
-      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
+      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -102,10 +102,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40055419980",
+      "run_id": "40055598768",
       "source_digest": "ebb09ee5914b6e8bba2fe90a69694aa9e348cfb6f18996e511a084e35ae65165",
       "source_ref": "https://github.com/yethikrishna/Yethanus",
-      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
+      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -116,10 +116,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40055419980",
+      "run_id": "40055598768",
       "source_digest": "4b3fe2fe2a775115db1a41476b924ba6b5d132ca00a7da67fdf6485fe0b6befc",
       "source_ref": "https://github.com/Yash-Kavaiya/auto-cxas-scrapi",
-      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
+      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -130,10 +130,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40055419980",
+      "run_id": "40055598768",
       "source_digest": "9716dab55dc592817a54a87bfce7cb244d2713b570d724683a0cfb9cc771cfa3",
       "source_ref": "https://github.com/yanghangAI/MultiAgentAutoResearch",
-      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
+      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -144,10 +144,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40055419980",
+      "run_id": "40055598768",
       "source_digest": "65f113e6207c42700139b62edd50a37b5e6227de2a5019fc0102cd845653ee42",
       "source_ref": "https://github.com/kp-krish/AutoResearch",
-      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
+      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -158,10 +158,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40055419980",
+      "run_id": "40055598768",
       "source_digest": "1708a5a8b8719e2d7025e6ab1f63fe163a3fe7426d3cb034121333ca8deaefc9",
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
-      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
+      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -172,10 +172,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40055419980",
+      "run_id": "40055598768",
       "source_digest": "f06467d2dd05c6da590d29419eea49b05becccb0336563b01c8ca17bd435e11d",
       "source_ref": "https://github.com/ver-cy/vercy-py",
-      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
+      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -186,10 +186,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40055419980",
+      "run_id": "40055598768",
       "source_digest": "e181658eb6bf1cf35d624a6d28e8d337c5ed4f53b3d41fdbc068b12bec22ae16",
       "source_ref": "https://github.com/teolex2020/aura-memory",
-      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
+      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -200,10 +200,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40055419980",
+      "run_id": "40055598768",
       "source_digest": "e218cb3e385fd01cf433fe86bcd6728221341c8a6e17460a13d79ef3f43f23b0",
       "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
-      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
+      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -214,14 +214,14 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40055419980",
+      "run_id": "40055598768",
       "source_digest": "29aca72eeeb2df6dad0d368d4357c99f6e5fdcbdd1dc8929d4ebc8b62d6ee064",
       "source_ref": "https://github.com/qingyou0420/trueheart-core",
-      "test_digest": "a25e52abed2db7cabc46417c3910548a4478b0290c51771e894c8f37dcfde5db",
+      "test_digest": "c3e03173e5a1de31aefda6ea69f6678eb9c5216050375a6221875e8bc45aa2b6",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     }
   ],
-  "run_id": "40055419980",
+  "run_id": "40055598768",
   "schema_version": 1,
   "verified_count": 15
 }
