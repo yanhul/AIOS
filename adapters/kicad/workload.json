@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "capability_id": "kicad.eda",
+  "version": "1",
+  "kind": "eda_capability",
+  "status": "CANDIDATE",
+  "owner": "yanhul/AIOS",
+  "entrypoint": "adapters/kicad/adapter.py",
+  "inputs": [".kicad_pro", ".kicad_sch", ".kicad_pcb"],
+  "operations": ["project_inspect", "erc_check", "drc_check"],
+  "outputs": ["provider_receipt", "erc_report", "drc_report", "provenance"],
+  "verification": ["receipt_binding", "project_hash_unchanged", "process_exit_code", "artifact_hash", "durable_recovery"],
+  "authority": "AIOS_CONTROL_PLANE",
+  "mutation_enabled": false,
+  "manufacturing_export_enabled": false,
+  "terminal_states": ["OBSERVED_SUCCESS", "OBSERVED_FAILURE", "UNKNOWN", "BLOCKED"]
+}
