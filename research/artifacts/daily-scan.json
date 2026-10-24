@@ -2,24 +2,24 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
-      "description": "a13n - An open-source library and self-hosted platform for building and running your own agent systems\u2014with managed agents, memory, sandboxes, computer use, and durable execution. Commercial Friendly. Built With Love \ud83d\udc9c @converge-ai-labs.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "converge-ai-labs/agent-foundation",
-      "source_digest": "88042bc030ec399359d8c04b3b13117bb3bb84a05373902607603c08fc96990f",
-      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "stars": 223,
-      "updated_at": "2026-10-23T06:35:19Z"
-    },
-    {
       "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "013aac8863cb6d61d0c5beeb8ac5ce7397e66bd82c08d025dabf49cb1f008d04",
+      "source_digest": "f04253c5e12a582d0f392923148c69b626e23d0a44a48d9eeaaa990ca9e6a8b5",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "stars": 0,
-      "updated_at": "2026-10-23T04:33:04Z"
+      "updated_at": "2026-10-24T02:31:38Z"
+    },
+    {
+      "description": "a13n - An open-source library and self-hosted platform for building and running your own agent systems\u2014with managed agents, memory, sandboxes, computer use, and durable execution. Commercial Friendly. Built With Love \ud83d\udc9c @converge-ai-labs.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "converge-ai-labs/agent-foundation",
+      "source_digest": "e9ec6d4f3afcd24278103c94da2b7c6b1c1296e17a4f7db117b7e362bb5d1246",
+      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
+      "stars": 223,
+      "updated_at": "2026-10-24T01:41:05Z"
     },
     {
       "description": "A persistent personal agent harness for macOS, with delegated workers, source-backed memory and durable execution records.",
@@ -36,10 +36,10 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "AMAP-ML/LongHorizon-Harness",
-      "source_digest": "eff1d5bf88474d65b53b21d742f987d1ed5baf02485c65222251242cfc5b3c38",
+      "source_digest": "0014077e603c67eda07e1b7d44fc34da1ecf566b316c08ae1670c762d91a148f",
       "source_ref": "https://github.com/AMAP-ML/LongHorizon-Harness",
-      "stars": 1766,
-      "updated_at": "2026-10-23T06:15:48Z"
+      "stars": 1771,
+      "updated_at": "2026-10-23T23:29:14Z"
     },
     {
       "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",

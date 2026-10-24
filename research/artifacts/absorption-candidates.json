@@ -4,30 +4,30 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-7ed5da1768a0437d",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "memory",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "88042bc030ec399359d8c04b3b13117bb3bb84a05373902607603c08fc96990f",
-      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-45b6d3177d94db28",
+      "candidate_id": "cand-29f739f8ad802438",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "013aac8863cb6d61d0c5beeb8ac5ce7397e66bd82c08d025dabf49cb1f008d04",
+      "source_digest": "f04253c5e12a582d0f392923148c69b626e23d0a44a48d9eeaaa990ca9e6a8b5",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-06108a8b9307385b",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "memory",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "e9ec6d4f3afcd24278103c94da2b7c6b1c1296e17a4f7db117b7e362bb5d1246",
+      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -49,14 +49,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-42aeb0434e8cdc29",
+      "candidate_id": "cand-0593081d9ca41d17",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "eff1d5bf88474d65b53b21d742f987d1ed5baf02485c65222251242cfc5b3c38",
+      "source_digest": "0014077e603c67eda07e1b7d44fc34da1ecf566b316c08ae1670c762d91a148f",
       "source_ref": "https://github.com/AMAP-ML/LongHorizon-Harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
