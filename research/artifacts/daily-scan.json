@@ -6,20 +6,20 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "c96690351eea4142db93ed68f6f158e111a95da4854b5b5a02a7d3091adc35ec",
+      "source_digest": "aec7795e2ffce49ac244b8e5a1df7d937060599bcbd84df9073441ad31cf8534",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "stars": 0,
-      "updated_at": "2026-10-24T02:31:38Z"
+      "updated_at": "2026-10-24T07:08:30Z"
     },
     {
       "description": "a13n - An open-source library and self-hosted platform for building and running your own agent systems\u2014with managed agents, memory, sandboxes, computer use, and durable execution. Commercial Friendly. Built With Love \ud83d\udc9c @converge-ai-labs.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "converge-ai-labs/agent-foundation",
-      "source_digest": "e9ec6d4f3afcd24278103c94da2b7c6b1c1296e17a4f7db117b7e362bb5d1246",
+      "source_digest": "8ddafa73d23869fa7e6b4c2d6463a259d599051a3932f9932999b2dce8346f79",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "stars": 223,
-      "updated_at": "2026-10-24T01:41:05Z"
+      "stars": 225,
+      "updated_at": "2026-10-24T04:40:36Z"
     },
     {
       "description": "A persistent personal agent harness for macOS, with delegated workers, source-backed memory and durable execution records.",
