@@ -187,6 +187,17 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
             raise ValueError(f"persisted receipt lineage is incomplete at history[{index}]")
         if receipt.get("status") not in {"OBSERVED", "UNKNOWN"}:
             raise ValueError(f"persisted receipt status is invalid at history[{index}]")
+        # Historical receipts must satisfy the same structural/evidence contract
+        # as fresh receipts before provider authenticity is checked.
+        _validate_execution_receipt({"receipt": receipt})
+        # Persisted shape and lineage are not proof of provider authenticity.
+        # Revalidate every historical receipt before any resumed work can proceed.
+        if policy.require_execution_receipt:
+            if policy.execution_receipt_validator is None:
+                raise ValueError("persisted receipt authenticity validator is required")
+            validation_result = policy.execution_receipt_validator(deepcopy(dict(receipt)), deepcopy(state))
+            if validation_result is not None:
+                raise ValueError("execution_receipt_validator must return None or raise to reject")
         if effect_id in seen_effect_ids:
             raise ValueError(f"duplicate persisted effect_id in history: {effect_id}")
         if attempt_id in seen_attempt_ids:
@@ -562,6 +573,10 @@ def reconcile_in_flight_attempt(
     This is the explicit recovery path for a crash after a provider effect but
     before its receipt was durably committed. It never guesses or retries.
     """
+    if not policy.require_execution_receipt:
+        raise ValueError("reconciliation requires receipt-governed execution policy")
+    if policy.execution_receipt_validator is None or policy.state_patch_validator is None:
+        raise ValueError("reconciliation requires receipt and state-patch validators")
     if not callable(authorizer):
         raise ValueError("reconciliation requires an authority callback")
     loaded = store.load()
