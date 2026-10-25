@@ -4,14 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-42e0f1592239d594",
+      "candidate_id": "cand-3b86ed712fef4ed2",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "aec7795e2ffce49ac244b8e5a1df7d937060599bcbd84df9073441ad31cf8534",
+      "source_digest": "42cb87fc0b396e4ecb6c82a982041d44f456a83b146061a2a7206b66a9d0e433",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -19,15 +19,30 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-ace1f205b983364c",
+      "candidate_id": "cand-12d55da0044115b6",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "memory",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "8ddafa73d23869fa7e6b4c2d6463a259d599051a3932f9932999b2dce8346f79",
+      "source_digest": "c2ee6eced0d46c35ca44126fc04d9f21d580439e5aff66b9dd18d8c534deb3ab",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-ba5d9189b8f35ada",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "ab53c71d36e8567abcec7677c683a7e7f8478f7c63fe11c121f7af09b52a0f08",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -49,30 +64,15 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-0593081d9ca41d17",
+      "candidate_id": "cand-a9bc9b594dd008c7",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "0014077e603c67eda07e1b7d44fc34da1ecf566b316c08ae1670c762d91a148f",
+      "source_digest": "1a9cbbecc46cd7c94b6ff8a02adfb3b8682974451aacae1e1a132fcfc73f5044",
       "source_ref": "https://github.com/AMAP-ML/LongHorizon-Harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-adc03564628c1858",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "72a92545794926eb8f43ec928eb2adc9671535f5b94b4f716bdcb3e13a83f375",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -199,14 +199,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-bafafb3a94ba62d0",
+      "candidate_id": "cand-8b8873c0b322696d",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "vaixlns-architecture",
-      "source_digest": "e218cb3e385fd01cf433fe86bcd6728221341c8a6e17460a13d79ef3f43f23b0",
+      "source_digest": "df3d418a22c0e4c371c8639f05f499350230d13120426501e2f098cfbff6a5d0",
       "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
       "status": "UNTRUSTED_EVIDENCE"
     },

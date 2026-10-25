@@ -6,20 +6,30 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "aec7795e2ffce49ac244b8e5a1df7d937060599bcbd84df9073441ad31cf8534",
+      "source_digest": "42cb87fc0b396e4ecb6c82a982041d44f456a83b146061a2a7206b66a9d0e433",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "stars": 0,
-      "updated_at": "2026-10-24T07:08:30Z"
+      "updated_at": "2026-10-25T06:58:28Z"
     },
     {
       "description": "a13n - An open-source library and self-hosted platform for building and running your own agent systems\u2014with managed agents, memory, sandboxes, computer use, and durable execution. Commercial Friendly. Built With Love \ud83d\udc9c @converge-ai-labs.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "converge-ai-labs/agent-foundation",
-      "source_digest": "8ddafa73d23869fa7e6b4c2d6463a259d599051a3932f9932999b2dce8346f79",
+      "source_digest": "c2ee6eced0d46c35ca44126fc04d9f21d580439e5aff66b9dd18d8c534deb3ab",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "stars": 225,
-      "updated_at": "2026-10-24T04:40:36Z"
+      "stars": 226,
+      "updated_at": "2026-10-25T02:18:25Z"
+    },
+    {
+      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "Root1V/aeon-agent-harness",
+      "source_digest": "ab53c71d36e8567abcec7677c683a7e7f8478f7c63fe11c121f7af09b52a0f08",
+      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
+      "stars": 1,
+      "updated_at": "2026-10-24T17:19:15Z"
     },
     {
       "description": "A persistent personal agent harness for macOS, with delegated workers, source-backed memory and durable execution records.",
@@ -36,20 +46,10 @@
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "AMAP-ML/LongHorizon-Harness",
-      "source_digest": "0014077e603c67eda07e1b7d44fc34da1ecf566b316c08ae1670c762d91a148f",
+      "source_digest": "1a9cbbecc46cd7c94b6ff8a02adfb3b8682974451aacae1e1a132fcfc73f5044",
       "source_ref": "https://github.com/AMAP-ML/LongHorizon-Harness",
-      "stars": 1771,
-      "updated_at": "2026-10-23T23:29:14Z"
-    },
-    {
-      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "Root1V/aeon-agent-harness",
-      "source_digest": "72a92545794926eb8f43ec928eb2adc9671535f5b94b4f716bdcb3e13a83f375",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "stars": 1,
-      "updated_at": "2026-10-21T01:55:52Z"
+      "stars": 1774,
+      "updated_at": "2026-10-24T10:02:01Z"
     },
     {
       "description": "OmniResearch is an autonomous multi-agent AI framework that automates the AI/ML research lifecycle\u2014from planning and literature discovery to dataset selection, experimentation, analysis, verification, and research report generation using LangGraph, multimodal RAG, and research memory.",
@@ -136,10 +136,10 @@
       "query": "agent memory provenance governance",
       "ref": "vaixlns-architecture",
       "repo": "VAIXLNS/VAIXLNS",
-      "source_digest": "e218cb3e385fd01cf433fe86bcd6728221341c8a6e17460a13d79ef3f43f23b0",
+      "source_digest": "df3d418a22c0e4c371c8639f05f499350230d13120426501e2f098cfbff6a5d0",
       "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
-      "stars": 6,
-      "updated_at": "2026-10-16T20:04:16Z"
+      "stars": 7,
+      "updated_at": "2026-10-24T16:32:58Z"
     },
     {
       "description": "A model-independent memory governance core for AI agents: provenance, scope isolation, retention, lineage, and non-resurrection.",
