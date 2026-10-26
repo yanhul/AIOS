@@ -4,29 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-3b86ed712fef4ed2",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "42cb87fc0b396e4ecb6c82a982041d44f456a83b146061a2a7206b66a9d0e433",
-      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-12d55da0044115b6",
+      "candidate_id": "cand-3b71372009650135",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "memory",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "c2ee6eced0d46c35ca44126fc04d9f21d580439e5aff66b9dd18d8c534deb3ab",
+      "source_digest": "761704332e262daa6f0a4d743362f469d5b6a4bb69241fa60ebf072dbf723c7e",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -34,14 +19,44 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-ba5d9189b8f35ada",
+      "candidate_id": "cand-828b001b866fb28e",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "research_harness",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "9b1f91f8ee7a62f5a4245c25d0ea3882554836c9a03340505b49b58ccccfa209",
+      "source_ref": "https://github.com/Youzini-afk/Varin",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-015ec5954b3def5e",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "ab53c71d36e8567abcec7677c683a7e7f8478f7c63fe11c121f7af09b52a0f08",
+      "source_digest": "46d1f5e684dfadecc35adf2f140bcdad93999c94fc68f0d8c1f397bc46a99e00",
+      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-4d760b82423b2f95",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "ef7c277ad609304cd5a39b2384b290d1a4af3ddeafbe29b36fe07c0d430b5f02",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -58,21 +73,6 @@
       "ref": "main",
       "source_digest": "6a0c8e6577500a824f3748cea8d43c4ad080ec72f64e85197ac0c5483ee5259d",
       "source_ref": "https://github.com/someoneexistsontheinternet/bloom-harness",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-a9bc9b594dd008c7",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "durable_execution",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "1a9cbbecc46cd7c94b6ff8a02adfb3b8682974451aacae1e1a132fcfc73f5044",
-      "source_ref": "https://github.com/AMAP-ML/LongHorizon-Harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
@@ -154,6 +154,36 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
+      "candidate_id": "cand-d09b913b22524c3f",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "7478825ec841b7c3e8ca0f99dd6dd83fbf7fcae311c7ee57db97c42e12b24367",
+      "source_ref": "https://github.com/gladkiandrew/agent-os",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-d319c72a37dbc480",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "f54a6af6f7444d639a1ad2926e474b8a4078a3b8f1233ce3cd9060805cd1941d",
+      "source_ref": "https://github.com/teolex2020/aura-memory",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
       "candidate_id": "cand-de9280e77bf592b3",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
@@ -184,21 +214,6 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-2a092694c6f194f7",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "e181658eb6bf1cf35d624a6d28e8d337c5ed4f53b3d41fdbc068b12bec22ae16",
-      "source_ref": "https://github.com/teolex2020/aura-memory",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
       "candidate_id": "cand-8b8873c0b322696d",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
@@ -208,21 +223,6 @@
       "ref": "vaixlns-architecture",
       "source_digest": "df3d418a22c0e4c371c8639f05f499350230d13120426501e2f098cfbff6a5d0",
       "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-5f71e9713128c676",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "29aca72eeeb2df6dad0d368d4357c99f6e5fdcbdd1dc8929d4ebc8b62d6ee064",
-      "source_ref": "https://github.com/qingyou0420/trueheart-core",
       "status": "UNTRUSTED_EVIDENCE"
     }
   ],
