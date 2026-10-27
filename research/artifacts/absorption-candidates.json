@@ -4,29 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-3b71372009650135",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "memory",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "761704332e262daa6f0a4d743362f469d5b6a4bb69241fa60ebf072dbf723c7e",
-      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-828b001b866fb28e",
+      "candidate_id": "cand-3a6d29e8b918aa1a",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "research_harness",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "9b1f91f8ee7a62f5a4245c25d0ea3882554836c9a03340505b49b58ccccfa209",
+      "source_digest": "9a13b295a32c23c3c9e70337c94d93df8ea8b2e2d501a948407afe905ff9b2a7",
       "source_ref": "https://github.com/Youzini-afk/Varin",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -34,14 +19,29 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-015ec5954b3def5e",
+      "candidate_id": "cand-1e2c8d1e5e634be7",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "memory",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "a16def5bfdc257b0d78c948c073f37c04d93ed7eef0a69641c97df6b5ecf9d82",
+      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-08abf05ab2c565f5",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "46d1f5e684dfadecc35adf2f140bcdad93999c94fc68f0d8c1f397bc46a99e00",
+      "source_digest": "4bab67202a7aec282f77858d6426b14d1a8f3fcc6e86cb0134dbbbf52fe4bf3a",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "status": "UNTRUSTED_EVIDENCE"
     },

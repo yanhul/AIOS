@@ -2,34 +2,34 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
-      "description": "a13n - An open-source library and self-hosted platform for building and running your own agent systems\u2014with managed agents, memory, sandboxes, computer use, and durable execution. Commercial Friendly. Built With Love \ud83d\udc9c @converge-ai-labs.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "converge-ai-labs/agent-foundation",
-      "source_digest": "761704332e262daa6f0a4d743362f469d5b6a4bb69241fa60ebf072dbf723c7e",
-      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "stars": 230,
-      "updated_at": "2026-10-26T07:38:51Z"
-    },
-    {
       "description": "The open-source agent harness, ready out of the box and customizable in depth. Tools, context, durable execution, permissions and recovery for code, research and office work.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "Youzini-afk/Varin",
-      "source_digest": "9b1f91f8ee7a62f5a4245c25d0ea3882554836c9a03340505b49b58ccccfa209",
+      "source_digest": "9a13b295a32c23c3c9e70337c94d93df8ea8b2e2d501a948407afe905ff9b2a7",
       "source_ref": "https://github.com/Youzini-afk/Varin",
       "stars": 26,
-      "updated_at": "2026-10-26T07:28:29Z"
+      "updated_at": "2026-10-27T07:47:01Z"
+    },
+    {
+      "description": "a13n - An open-source library and self-hosted platform for building and running your own agent systems\u2014with managed agents, memory, sandboxes, computer use, and durable execution. Commercial Friendly. Built With Love \ud83d\udc9c @converge-ai-labs.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "converge-ai-labs/agent-foundation",
+      "source_digest": "a16def5bfdc257b0d78c948c073f37c04d93ed7eef0a69641c97df6b5ecf9d82",
+      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
+      "stars": 235,
+      "updated_at": "2026-10-27T07:32:56Z"
     },
     {
       "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "46d1f5e684dfadecc35adf2f140bcdad93999c94fc68f0d8c1f397bc46a99e00",
+      "source_digest": "4bab67202a7aec282f77858d6426b14d1a8f3fcc6e86cb0134dbbbf52fe4bf3a",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "stars": 0,
-      "updated_at": "2026-10-26T03:18:07Z"
+      "updated_at": "2026-10-27T01:27:57Z"
     },
     {
       "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
