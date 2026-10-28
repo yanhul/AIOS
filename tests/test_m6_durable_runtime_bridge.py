@@ -10,7 +10,7 @@ from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.durable_runtime import RuntimeSubmission
-from core.effect_authority import create_effect, dispatch, transition
+from core.effect_authority import create_effect, dispatch, transition, issue_retry_authorization
 from core.policy_registry import persist_policy
 from core.runtime import ProviderReceipt, execute, execute_retry_attempt, resume_attempt
 
@@ -111,14 +111,16 @@ def test_resume_reuses_exact_dispatched_attempt_after_ambiguous_submission(tmp_p
     assert runtime.resumed == (effect["effect_id"], attempt_id)
 
 
-def test_retry_bridges_explicit_bounded_retry(tmp_path):
+def test_retry_bridges_explicit_bounded_retry(tmp_path, monkeypatch):
+    secret = "test-only-authority-secret"
+    monkeypatch.setenv("AIOS_AUTHORITY_SECRET", secret)
     cid, pid = setup(tmp_path, max_attempts=2)
     effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test",
                         unknown_reason="timeout")
-    effect["retry_authorization"] = {"mode": "EXPLICIT", "effect_id": effect["effect_id"], "attempt": 2}
+    effect["retry_authorization"] = issue_retry_authorization(str(tmp_path), effect["effect_id"], "agent:test", 2, secret)
     result = execute_retry_attempt(
         str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
         f"{effect['effect_id']}:attempt:2", 2, GoodRuntime()
