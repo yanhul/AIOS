@@ -4,29 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-3a6d29e8b918aa1a",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "research_harness",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "9a13b295a32c23c3c9e70337c94d93df8ea8b2e2d501a948407afe905ff9b2a7",
-      "source_ref": "https://github.com/Youzini-afk/Varin",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-1e2c8d1e5e634be7",
+      "candidate_id": "cand-9ea0ebbce45a6d5f",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "memory",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "a16def5bfdc257b0d78c948c073f37c04d93ed7eef0a69641c97df6b5ecf9d82",
+      "source_digest": "63905e9d393b68bff911c0e8ca8cd97afe764e656813200a708b25333a4f8209",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -34,14 +19,29 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-08abf05ab2c565f5",
+      "candidate_id": "cand-57982f0cbcd6a423",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "research_harness",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "97d4ce4674d76f4bdc0f25735d0272b62ada2cd54103027e569152dfbf579db4",
+      "source_ref": "https://github.com/Youzini-afk/Varin",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-3e7c77255723a11d",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "4bab67202a7aec282f77858d6426b14d1a8f3fcc6e86cb0134dbbbf52fe4bf3a",
+      "source_digest": "fa57ec23fb56b19c01f06089535d9e8234e8f4c0e0b3c59871ae4e97629d390f",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -154,6 +154,21 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
+      "candidate_id": "cand-82dbd5e486dcc227",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "1506d8701393a2f3b009dee18f14790a2af6b3fb08704a3636a2c3d94d083df9",
+      "source_ref": "https://github.com/rahulsub/synapse-mem",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
       "candidate_id": "cand-d09b913b22524c3f",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
@@ -208,21 +223,6 @@
       "ref": "main",
       "source_digest": "f06467d2dd05c6da590d29419eea49b05becccb0336563b01c8ca17bd435e11d",
       "source_ref": "https://github.com/ver-cy/vercy-py",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-8b8873c0b322696d",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "vaixlns-architecture",
-      "source_digest": "df3d418a22c0e4c371c8639f05f499350230d13120426501e2f098cfbff6a5d0",
-      "source_ref": "https://github.com/VAIXLNS/VAIXLNS",
       "status": "UNTRUSTED_EVIDENCE"
     }
   ],
