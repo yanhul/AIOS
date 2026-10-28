@@ -91,7 +91,7 @@ def test_retry_rejects_self_asserted_explicit_dict(tmp_path, monkeypatch):
              f"{effect['effect_id']}:attempt:1", "provider-1")
     unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
     forged = {"mode": "EXPLICIT", "effect_id": effect["effect_id"], "attempt": 2}
-    with pytest.raises(TransitionError, match="authenticated retry authorization"):
+    with pytest.raises(TransitionError, match="retry authorization schema mismatch"):
         retry_dispatch(str(tmp_path), effect["effect_id"], "agent-1",
                        f"{effect['effect_id']}:attempt:2", "provider-1", 2, forged)
 
