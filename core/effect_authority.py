@@ -12,6 +12,7 @@ the explicit retry path, subject to the contract attempt budget.
 """
 
 import hashlib
+import hmac
 import json
 import os
 
@@ -83,6 +84,73 @@ def _validate_persisted_effect(aios_dir, effect):
 
 def _attempt_id(effect_id, attempt):
     return f"{effect_id}:attempt:{attempt}"
+
+
+def _retry_authorization_payload(effect, actor, attempt):
+    """Canonical fields an external authority must approve for one retry."""
+    return {
+        "authorization_type": "AIOS_EFFECT_RETRY_AUTHORIZATION",
+        "mode": "EXPLICIT",
+        "effect_id": effect["effect_id"],
+        "contract_id": effect["contract_id"],
+        "permit_id": effect["permit_id"],
+        "policy_digest": effect["policy_digest"],
+        "actor": actor,
+        "attempt": attempt,
+    }
+
+
+def issue_retry_authorization(aios_dir, effect_id, actor, attempt, secret):
+    """Issue a deployment-authenticated retry authorization.
+
+    Call only from a trusted authority after an explicit retry decision.
+    The secret must be deployment-managed, not supplied by an agent.
+    """
+    _validate_strings(("effect_id", effect_id), ("actor", actor), ("secret", secret))
+    if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 2:
+        raise ValueError("retry attempt must be an integer >= 2")
+    recover_pending(aios_dir)
+    path = _path(aios_dir, effect_id)
+    if not os.path.exists(path):
+        raise KeyError(f"unknown effect: {effect_id}")
+    current = _load(path)
+    _validate_persisted_effect(aios_dir, current)
+    if actor != current.get("actor"):
+        raise TransitionError("retry authorization actor does not match effect owner")
+    if current.get("state") != "UNKNOWN":
+        raise TransitionError("retry authorization requires UNKNOWN effect")
+    expected = current["attempt"] + 1
+    if attempt != expected:
+        raise TransitionError(f"retry authorization attempt must be {expected}, got {attempt}")
+    if attempt > current["max_attempts"]:
+        raise TransitionError("retry authorization exceeds contract attempt budget")
+    payload = _retry_authorization_payload(current, actor, attempt)
+    signature = hmac.new(
+        secret.encode("utf-8"), canonical_json(payload).encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+    return {**payload, "algorithm": "HMAC-SHA256", "signature": signature}
+
+
+def _verify_retry_authorization(current, actor, attempt, authorization, secret):
+    if not isinstance(secret, str) or not secret:
+        raise TransitionError("retry authorization secret is not configured")
+    if not isinstance(authorization, dict):
+        raise TransitionError("UNKNOWN retry requires authenticated retry authorization")
+    expected = _retry_authorization_payload(current, actor, attempt)
+    if set(authorization) != set(expected) | {"algorithm", "signature"}:
+        raise TransitionError("retry authorization schema mismatch")
+    if any(authorization.get(key) != value for key, value in expected.items()):
+        raise TransitionError("retry authorization binding mismatch")
+    if authorization.get("algorithm") != "HMAC-SHA256":
+        raise TransitionError("retry authorization algorithm mismatch")
+    signature = authorization.get("signature")
+    if not isinstance(signature, str) or not signature:
+        raise TransitionError("retry authorization signature missing")
+    expected_signature = hmac.new(
+        secret.encode("utf-8"), canonical_json(expected).encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+    if not hmac.compare_digest(signature, expected_signature):
+        raise TransitionError("retry authorization signature invalid")
 
 
 def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id, effect_type):
@@ -174,6 +242,8 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
         raise KeyError(f"unknown effect: {effect_id}")
     current = _load(path)
     _validate_persisted_effect(aios_dir, current)
+    if actor != current.get("actor"):
+        raise TransitionError("dispatch actor does not match effect owner")
     if current.get("state") != "PLANNED":
         raise TransitionError(f"initial dispatch requires PLANNED effect, got {current.get('state')}")
     expected = _attempt_id(effect_id, 1)
@@ -208,13 +278,8 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
         raise TransitionError("retry exceeds contract attempt budget")
     if attempt_id != _attempt_id(effect_id, attempt):
         raise ValueError("attempt_id does not match retry attempt")
-    if not isinstance(retry_authorization, dict) or retry_authorization.get("mode") != "EXPLICIT":
-        raise TransitionError("UNKNOWN retry requires explicit retry authorization")
-    if retry_authorization.get("effect_id") != effect_id:
-        raise TransitionError("retry authorization effect binding mismatch")
-    if retry_authorization.get("attempt") != attempt:
-        raise TransitionError("retry authorization attempt mismatch")
-    contract, _permit = _validate_persisted_effect(aios_dir, current)
+    secret = os.environ.get("AIOS_AUTHORITY_SECRET")
+    _verify_retry_authorization(current, actor, attempt, retry_authorization, secret)
     return _transition_dispatch(aios_dir, effect_id, actor,
                                 attempt=attempt, attempt_id=attempt_id, provider=provider)
 
@@ -253,4 +318,4 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
     return transition(aios_dir, effect_id, outcome, actor, provider_observation=provider_observation)
 
 
-__all__ = ["STATES", "create_effect", "transition", "dispatch", "retry_dispatch", "unknown", "observe"]
+__all__ = ["STATES", "create_effect", "transition", "dispatch", "retry_dispatch", "issue_retry_authorization", "unknown", "observe"]
