@@ -55,7 +55,7 @@ def _sexpr_blocks(text: str, head: str):
         while i < len(text):
             char = text[i]
             if in_string:
-                if char == "\\\\":
+                if char == "\\":
                     i += 1
                 elif char == '"':
                     in_string = False
