@@ -89,6 +89,8 @@ def _source_review_errors(record: dict) -> list[str]:
         and all(c in "0123456789abcdef" for c in f["sha256"].lower()) for f in (files or [])
     ):
         errors.append("source_review reviewed_files must list paths and valid SHA-256 digests")
+    elif review.get("source_code_digest") != _digest(files):
+        errors.append("source_code_digest does not match the reviewed file path/hash manifest")
     if review.get("review_decision") != "ACCEPTED":
         errors.append("source_review must contain an explicit ACCEPTED decision")
     errors.extend(_file_ref_errors(review.get("implementation_refs"), label="implementation_refs"))
