@@ -62,7 +62,7 @@ def run_independent_tests() -> tuple[bool, str]:
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", "tests/test_absorption_executor.py",
          "tests/test_absorption_pipeline.py", "tests/test_absorption_verifier.py",
-         "tests/test_absorption_repair.py", "-v"],
+         "tests/test_absorption_repair.py", "tests/test_absorption_source_review.py", "-v"],
         cwd=ROOT, capture_output=True, text=True, timeout=180,
     )
     output = (proc.stdout or "") + (proc.stderr or "")
