@@ -1,4 +1,10 @@
 """Regression tests for the PCB-agent validation helpers absorbed into AIOS."""
+
+# AIOS-CONTRACT: a narrow PASS may assert only the exact connectivity or pin/pad check.
+# AIOS-REGRESSION: changed connectivity/component metadata and pad mismatches must block.
+# AIOS-OWNER: AIOS owns the test contract; upstream code is reference material only.
+# AIOS-COVERAGE-GAP: real KiCad version coverage and physical/electrical validity remain unproven.
+# AIOS-BASELINE: synthetic, minimal KiCad XML and board fixtures; not a production design.
 from __future__ import annotations
 
 import json
