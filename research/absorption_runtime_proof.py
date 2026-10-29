@@ -113,7 +113,8 @@ def run():
         "evidence_provenance": _evidence_probe(),
         "retry_provider_lineage": _runtime_probe(),
     }
-    verification = json.loads(VERIFY_IN.read_text(encoding="utf-8")) if VERIFY_IN.exists() else {}
+    verify_in = Path(os.environ.get("AIOS_ABSORPTION_VERIFY_IN", str(VERIFY_IN)))
+    verification = json.loads(verify_in.read_text(encoding="utf-8")) if verify_in.exists() else {}
     candidate_proofs, candidate_failures, candidate_ok = _candidate_proofs(verification)
     # With no verified candidates this artifact proves only generic AIOS probes;
     # promotion still requires verification PASS and a matching candidate proof.
