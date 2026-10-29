@@ -33,7 +33,9 @@ def absorb(executor, verification, promotion, runtime, *, run_id):
         cid=d.get("candidate_id"); e=exec_by_id.get(cid); v=verified.get(cid); rp=runtime_by_id.get(cid)
         if not e or not v or not rp:
             blocked.append({"candidate_id":cid,"verdict":"HOLD","reason":"missing candidate-specific executor, verification, or runtime proof"}); continue
-        if rp.get("status") != "PASS" or rp.get("source_commit") != v.get("source_commit") or rp.get("test_digest") != v.get("test_digest"):
+        if (rp.get("status") != "PASS" or rp.get("source_commit") != v.get("source_commit")
+                or rp.get("test_digest") != v.get("test_digest")
+                or rp.get("candidate_test_digest") != v.get("candidate_test_digest")):
             blocked.append({"candidate_id":cid,"verdict":"HOLD","reason":"candidate runtime proof failed or does not match verified source/test lineage"}); continue
         lineage=v.get("authority_receipt_lineage") or {}
         if rp.get("effect_id") != lineage.get("effect_id") or rp.get("attempt_id") != lineage.get("attempt_id") or rp.get("receipt_id") != lineage.get("receipt_id"):
