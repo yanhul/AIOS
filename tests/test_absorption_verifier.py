@@ -14,9 +14,12 @@ def _review():
         "source_code_digest": "c" * 64,
         "candidate_primitive": "durable_execution",
         "implementation_refs": ["core/durable_runtime.py"],
-        "candidate_test_refs": ["tests/test_candidate_adapter.py"],
+        "candidate_test_refs": ["tests/test_absorption_executor.py"],
         "conformance_run_id": "run-1",
         "log_digest": "d" * 64,
+        "reviewer": "test-reviewer",
+        "review_decision": "ACCEPTED",
+        "reviewed_at": "2026-10-29T00:00:00Z",
         "authority_receipt_lineage": {
             "effect_id": "effect-1", "attempt_id": "attempt-1",
             "receipt_id": "receipt-1", "evidence_digest": "e" * 64,
