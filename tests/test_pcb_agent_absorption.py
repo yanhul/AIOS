@@ -19,8 +19,8 @@ def netlist(a_pin: str = "1", b_pin: str = "2", value: str = "10k") -> str:
  <comp ref="R1"><value>{value}</value><footprint>Resistor_SMD:R_0603_1608Metric</footprint></comp>
  <comp ref="J1"><value>Conn_01x02</value><footprint>Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical</footprint></comp>
 </components><nets>
- <net name="GND" code="1"><node ref="R1" pin="{a_pin}"/></net>
- <net name="SIG" code="2"><node ref="J1" pin="{b_pin}"/></net>
+ <net name="GND" code="1"><node ref="R1" pin="{a_pin}"/><node ref="J1" pin="1"/></net>
+ <net name="SIG" code="2"><node ref="R1" pin="2"/><node ref="J1" pin="{b_pin}"/></net>
 </nets></export>'''
 
 
