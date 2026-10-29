@@ -37,7 +37,7 @@ def test_absorb_blocks_missing_lineage(tmp_path, monkeypatch):
 def test_absorb_accepts_matching_candidate_proof(tmp_path, monkeypatch):
     monkeypatch.setenv("AIOS_ABSORPTION_OUTCOME",str(tmp_path/"absorption.json"))
     runtime={"overall":"PASS","candidate_proofs":[{"candidate_id":"c1","status":"PASS",
-        "source_commit":"a"*40,"test_digest":"td","candidate_test_digest":"candidate-td","source_code_digest":"c"*64,"reviewed_files":[{"path":"src/x.py","sha256":"b"*64],"effect_id":"e1","attempt_id":"a1",
+        "source_commit":"a"*40,"test_digest":"td","candidate_test_digest":"candidate-td","source_code_digest":"c"*64,"reviewed_files":[{"path":"src/x.py","sha256":"b"*64}],"effect_id":"e1","attempt_id":"a1",
         "receipt_id":"r1","proof_digest":"proof"}]}
     result=absorb(_executor(),_verification(),_promotion(),runtime,run_id="run-1")
     assert result["overall"]=="PASS" and result["absorbed_count"]==1
