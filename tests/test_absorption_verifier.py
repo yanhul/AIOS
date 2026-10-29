@@ -1,3 +1,8 @@
+# AIOS-CONTRACT: Verification must bind each candidate to immutable reviewed source, candidate tests, and effect-attempt-receipt-evidence lineage.
+# AIOS-REGRESSION: README-only metadata and incomplete or mutable source/lineage records must remain BLOCKED.
+# AIOS-OWNER: research.absorption_verifier / AIOS evidence promotion gate.
+# AIOS-COVERAGE-GAP: Shared tests and metadata-only provenance previously could be mistaken for candidate-specific source verification.
+# AIOS-BASELINE: Existing verifier accepted proposal-level provenance; regression tests require candidate-specific review evidence.
 from research.absorption_verifier import verify
 from research.absorption_promotion import promote
 import pytest
