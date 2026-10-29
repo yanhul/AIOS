@@ -5,13 +5,13 @@
 # AIOS-BASELINE: Existing verifier accepted proposal-level provenance; regression tests require candidate-specific review evidence.
 from research.absorption_verifier import verify
 from research.absorption_promotion import promote
-import pytest
+import hashlib, json, pytest
 
 def _review():
     return {
         "source_commit": "a" * 40,
         "reviewed_files": [{"path": "src/agent.py", "sha256": "b" * 64}],
-        "source_code_digest": "c" * 64,
+        "source_code_digest": hashlib.sha256(json.dumps([{"path": "src/agent.py", "sha256": "b" * 64}], sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
         "candidate_primitive": "durable_execution",
         "implementation_refs": ["core/durable_runtime.py"],
         "candidate_test_refs": ["tests/test_absorption_executor.py"],
