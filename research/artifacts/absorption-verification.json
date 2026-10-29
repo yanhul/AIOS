@@ -1,10 +1,10 @@
 {
   "candidate_count": 15,
-  "digest": "c57a4463f8d60090f3cd123e80d4f499a27e0b73ebf0b0cff6fe8fa7ab4e76e7",
+  "digest": "a28107ea5880c44f51928821b0a16300f0b85cd2d566d218eba0a2ee3ef4b79b",
   "failure_count": 0,
   "failures": [],
   "independent_tests": {
-    "digest": "35a79426085a4849a131d2fd7ced39b81774f8b328c8dc877dac59065cf44706",
+    "digest": "44dbc4af0d4c58e904105f8f1b88e90f5c21a56a63ff97d3e966bddb3a738fe9",
     "passed": true
   },
   "kind": "AIOS_ABSORPTION_INDEPENDENT_VERIFICATION",
@@ -12,44 +12,58 @@
   "records": [
     {
       "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-9ea0ebbce45a6d5f",
-      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
-      "evidence_digest": "7f77a38e09fdf60ae55494eae484e5ac5ec9627546a76d2bdfd0253dc7ea3819",
-      "external_code_copy": false,
-      "external_code_execution": false,
-      "level": "VERIFIED_DIGITAL",
-      "run_id": "40658312724",
-      "source_digest": "63905e9d393b68bff911c0e8ca8cd97afe764e656813200a708b25333a4f8209",
-      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "test_digest": "35a79426085a4849a131d2fd7ced39b81774f8b328c8dc877dac59065cf44706",
-      "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
-    },
-    {
-      "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-57982f0cbcd6a423",
+      "candidate_id": "cand-b1d666d1e4c24e6e",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "evidence_digest": "9a3de52b5565344c7af77fcd75a7d97c27f9ff7ed4187b213f8700183d04edba",
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40658312724",
-      "source_digest": "97d4ce4674d76f4bdc0f25735d0272b62ada2cd54103027e569152dfbf579db4",
+      "run_id": "40843307079",
+      "source_digest": "a162c94fdc45d611a60ad7e382bfbd7cb32f4f4971add9cfe99e783c4c35f2d4",
       "source_ref": "https://github.com/Youzini-afk/Varin",
-      "test_digest": "35a79426085a4849a131d2fd7ced39b81774f8b328c8dc877dac59065cf44706",
+      "test_digest": "44dbc4af0d4c58e904105f8f1b88e90f5c21a56a63ff97d3e966bddb3a738fe9",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
       "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-3e7c77255723a11d",
+      "candidate_id": "cand-c1e635408a1634c2",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "evidence_digest": "827089f363a278ae30f6bfa5ead1cbfa137041e98fb37c395be9672abc2e9902",
+      "external_code_copy": false,
+      "external_code_execution": false,
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "40843307079",
+      "source_digest": "7223b73344cb183c52865eacd494a1ce631f8cac3da5554f3f61063baa516606",
+      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
+      "test_digest": "44dbc4af0d4c58e904105f8f1b88e90f5c21a56a63ff97d3e966bddb3a738fe9",
+      "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
+    },
+    {
+      "authority": "AIOS_CONTROL_PLANE",
+      "candidate_id": "cand-99ab955fc68958bf",
+      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
+      "evidence_digest": "dcd5370eb39454249da0796bed8e478e5c5325ad6780837563402f66d606b13b",
+      "external_code_copy": false,
+      "external_code_execution": false,
+      "level": "VERIFIED_DIGITAL",
+      "run_id": "40843307079",
+      "source_digest": "5f776c3df1fad57c33f35ab529ca8ffe6dca4d43a44c3e20ba061147ebfed053",
+      "source_ref": "https://github.com/CKKKK101/agent-harness-workbench",
+      "test_digest": "44dbc4af0d4c58e904105f8f1b88e90f5c21a56a63ff97d3e966bddb3a738fe9",
+      "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
+    },
+    {
+      "authority": "AIOS_CONTROL_PLANE",
+      "candidate_id": "cand-e9a6991ce81e22d7",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "evidence_digest": "47ee1f7c0e7f3704e46889230741561b3833d62f4f95d54d05a59f99ad7f0046",
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40658312724",
-      "source_digest": "fa57ec23fb56b19c01f06089535d9e8234e8f4c0e0b3c59871ae4e97629d390f",
+      "run_id": "40843307079",
+      "source_digest": "e8c66091b5a9aec99fa4062a5af675eba8ad2d02018b1a5c6910205f3dc07a63",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
-      "test_digest": "35a79426085a4849a131d2fd7ced39b81774f8b328c8dc877dac59065cf44706",
+      "test_digest": "44dbc4af0d4c58e904105f8f1b88e90f5c21a56a63ff97d3e966bddb3a738fe9",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -60,24 +74,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40658312724",
+      "run_id": "40843307079",
       "source_digest": "ef7c277ad609304cd5a39b2384b290d1a4af3ddeafbe29b36fe07c0d430b5f02",
       "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "test_digest": "35a79426085a4849a131d2fd7ced39b81774f8b328c8dc877dac59065cf44706",
-      "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
-    },
-    {
-      "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-989823a871e8c1d7",
-      "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
-      "evidence_digest": "371074f8eadbf3f152b7f87d4f4c5da883f731d5431f5868dc39587420434c9e",
-      "external_code_copy": false,
-      "external_code_execution": false,
-      "level": "VERIFIED_DIGITAL",
-      "run_id": "40658312724",
-      "source_digest": "6a0c8e6577500a824f3748cea8d43c4ad080ec72f64e85197ac0c5483ee5259d",
-      "source_ref": "https://github.com/someoneexistsontheinternet/bloom-harness",
-      "test_digest": "35a79426085a4849a131d2fd7ced39b81774f8b328c8dc877dac59065cf44706",
+      "test_digest": "44dbc4af0d4c58e904105f8f1b88e90f5c21a56a63ff97d3e966bddb3a738fe9",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -88,10 +88,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40658312724",
+      "run_id": "40843307079",
       "source_digest": "e67355e27882e4fb67cd2a849a4c08575169a99c17d4a217a1ecab46f7f134b2",
       "source_ref": "https://github.com/abhijeetchaubey/OmniResearch",
-      "test_digest": "35a79426085a4849a131d2fd7ced39b81774f8b328c8dc877dac59065cf44706",
+      "test_digest": "44dbc4af0d4c58e904105f8f1b88e90f5c21a56a63ff97d3e966bddb3a738fe9",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -102,10 +102,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40658312724",
+      "run_id": "40843307079",
       "source_digest": "ebb09ee5914b6e8bba2fe90a69694aa9e348cfb6f18996e511a084e35ae65165",
       "source_ref": "https://github.com/yethikrishna/Yethanus",
-      "test_digest": "35a79426085a4849a131d2fd7ced39b81774f8b328c8dc877dac59065cf44706",
+      "test_digest": "44dbc4af0d4c58e904105f8f1b88e90f5c21a56a63ff97d3e966bddb3a738fe9",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -116,10 +116,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40658312724",
+      "run_id": "40843307079",
       "source_digest": "4b3fe2fe2a775115db1a41476b924ba6b5d132ca00a7da67fdf6485fe0b6befc",
       "source_ref": "https://github.com/Yash-Kavaiya/auto-cxas-scrapi",
-      "test_digest": "35a79426085a4849a131d2fd7ced39b81774f8b328c8dc877dac59065cf44706",
+      "test_digest": "44dbc4af0d4c58e904105f8f1b88e90f5c21a56a63ff97d3e966bddb3a738fe9",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -130,10 +130,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40658312724",
+      "run_id": "40843307079",
       "source_digest": "9716dab55dc592817a54a87bfce7cb244d2713b570d724683a0cfb9cc771cfa3",
       "source_ref": "https://github.com/yanghangAI/MultiAgentAutoResearch",
-      "test_digest": "35a79426085a4849a131d2fd7ced39b81774f8b328c8dc877dac59065cf44706",
+      "test_digest": "44dbc4af0d4c58e904105f8f1b88e90f5c21a56a63ff97d3e966bddb3a738fe9",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -144,24 +144,24 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40658312724",
+      "run_id": "40843307079",
       "source_digest": "65f113e6207c42700139b62edd50a37b5e6227de2a5019fc0102cd845653ee42",
       "source_ref": "https://github.com/kp-krish/AutoResearch",
-      "test_digest": "35a79426085a4849a131d2fd7ced39b81774f8b328c8dc877dac59065cf44706",
+      "test_digest": "44dbc4af0d4c58e904105f8f1b88e90f5c21a56a63ff97d3e966bddb3a738fe9",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
       "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-82dbd5e486dcc227",
+      "candidate_id": "cand-6409d4a717ebbeda",
       "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
       "evidence_digest": "665a6d36b1ccee0abc66cabb853e5aab896f62468a24b5a20e50faa67f656f16",
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40658312724",
-      "source_digest": "1506d8701393a2f3b009dee18f14790a2af6b3fb08704a3636a2c3d94d083df9",
+      "run_id": "40843307079",
+      "source_digest": "6d9b2840c9582d058ffbf1e5529e8e3aedd9ac611f8d44b743e760e7d7ec605c",
       "source_ref": "https://github.com/rahulsub/synapse-mem",
-      "test_digest": "35a79426085a4849a131d2fd7ced39b81774f8b328c8dc877dac59065cf44706",
+      "test_digest": "44dbc4af0d4c58e904105f8f1b88e90f5c21a56a63ff97d3e966bddb3a738fe9",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -172,10 +172,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40658312724",
+      "run_id": "40843307079",
       "source_digest": "7478825ec841b7c3e8ca0f99dd6dd83fbf7fcae311c7ee57db97c42e12b24367",
       "source_ref": "https://github.com/gladkiandrew/agent-os",
-      "test_digest": "35a79426085a4849a131d2fd7ced39b81774f8b328c8dc877dac59065cf44706",
+      "test_digest": "44dbc4af0d4c58e904105f8f1b88e90f5c21a56a63ff97d3e966bddb3a738fe9",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -186,10 +186,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40658312724",
+      "run_id": "40843307079",
       "source_digest": "f54a6af6f7444d639a1ad2926e474b8a4078a3b8f1233ce3cd9060805cd1941d",
       "source_ref": "https://github.com/teolex2020/aura-memory",
-      "test_digest": "35a79426085a4849a131d2fd7ced39b81774f8b328c8dc877dac59065cf44706",
+      "test_digest": "44dbc4af0d4c58e904105f8f1b88e90f5c21a56a63ff97d3e966bddb3a738fe9",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -200,10 +200,10 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40658312724",
+      "run_id": "40843307079",
       "source_digest": "1708a5a8b8719e2d7025e6ab1f63fe163a3fe7426d3cb034121333ca8deaefc9",
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
-      "test_digest": "35a79426085a4849a131d2fd7ced39b81774f8b328c8dc877dac59065cf44706",
+      "test_digest": "44dbc4af0d4c58e904105f8f1b88e90f5c21a56a63ff97d3e966bddb3a738fe9",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     },
     {
@@ -214,14 +214,14 @@
       "external_code_copy": false,
       "external_code_execution": false,
       "level": "VERIFIED_DIGITAL",
-      "run_id": "40658312724",
+      "run_id": "40843307079",
       "source_digest": "f06467d2dd05c6da590d29419eea49b05becccb0336563b01c8ca17bd435e11d",
       "source_ref": "https://github.com/ver-cy/vercy-py",
-      "test_digest": "35a79426085a4849a131d2fd7ced39b81774f8b328c8dc877dac59065cf44706",
+      "test_digest": "44dbc4af0d4c58e904105f8f1b88e90f5c21a56a63ff97d3e966bddb3a738fe9",
       "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE"
     }
   ],
-  "run_id": "40658312724",
+  "run_id": "40843307079",
   "schema_version": 1,
   "verified_count": 15
 }
