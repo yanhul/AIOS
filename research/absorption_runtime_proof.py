@@ -91,6 +91,8 @@ def _candidate_proofs(verification):
             "candidate_id": cid, "status": status, "source_commit": commit,
             "test_digest": record.get("test_digest"),
             "candidate_test_digest": actual_test_digest,
+            "source_code_digest": record.get("source_code_digest"),
+            "reviewed_files": record.get("reviewed_files"),
             "effect_id": lineage.get("effect_id"), "attempt_id": lineage.get("attempt_id"),
             "receipt_id": lineage.get("receipt_id"), "evidence_digest": lineage.get("evidence_digest"),
             "implementation_refs": refs, "candidate_test_refs": record.get("candidate_test_refs", []),
