@@ -1,3 +1,8 @@
+# AIOS-CONTRACT: Absorption output must require candidate-specific runtime proof and matching receipt lineage.
+# AIOS-REGRESSION: Generic runtime PASS or mismatched effect/attempt/receipt must never materialize ABSORBED.
+# AIOS-OWNER: research.absorption_apply / AIOS promotion boundary.
+# AIOS-COVERAGE-GAP: Previously a generic runtime digest could stand in for candidate conformance evidence.
+# AIOS-BASELINE: Existing gate only checked generic verification/runtime PASS; tests now enforce candidate-bound proof.
 from research.absorption_apply import absorb
 import pytest
 
