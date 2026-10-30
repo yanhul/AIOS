@@ -2,54 +2,54 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
-      "description": "The open-source agent harness, ready out of the box and customizable in depth. Tools, context, durable execution, permissions and recovery for code, research and office work.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "Youzini-afk/Varin",
-      "source_digest": "a162c94fdc45d611a60ad7e382bfbd7cb32f4f4971add9cfe99e783c4c35f2d4",
-      "source_ref": "https://github.com/Youzini-afk/Varin",
-      "stars": 27,
-      "updated_at": "2026-10-29T08:33:07Z"
-    },
-    {
       "description": "a13n - An open-source library and self-hosted platform for building and running your own agent systems\u2014with managed agents, memory, sandboxes, computer use, and durable execution. Commercial Friendly. Built With Love \ud83d\udc9c @converge-ai-labs.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "converge-ai-labs/agent-foundation",
-      "source_digest": "7223b73344cb183c52865eacd494a1ce631f8cac3da5554f3f61063baa516606",
+      "source_digest": "b645d539dd31971a3d56645bf43abbbb3589f1d346640ae2cced5bf85f5abbe6",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "stars": 241,
-      "updated_at": "2026-10-29T08:26:33Z"
+      "stars": 245,
+      "updated_at": "2026-10-30T08:37:20Z"
     },
     {
-      "description": "A resumable agent workbench with durable execution, tool recovery, and a web UI.",
+      "description": "The open-source agent harness, ready out of the box and customizable in depth. Tools, context, durable execution, permissions and recovery for code, research and office work.",
       "query": "agent harness durable execution",
       "ref": "main",
-      "repo": "CKKKK101/agent-harness-workbench",
-      "source_digest": "5f776c3df1fad57c33f35ab529ca8ffe6dca4d43a44c3e20ba061147ebfed053",
-      "source_ref": "https://github.com/CKKKK101/agent-harness-workbench",
+      "repo": "Youzini-afk/Varin",
+      "source_digest": "351c880b81fffb1bd4a5f0e0c55334a7975349165edb89bd19fed6bc2200a874",
+      "source_ref": "https://github.com/Youzini-afk/Varin",
+      "stars": 27,
+      "updated_at": "2026-10-30T08:25:11Z"
+    },
+    {
+      "description": "Open-source Native Harness packages for durable Agent execution, Node adapters, and React task UI",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "kingsoftcloud/ksadk-harness",
+      "source_digest": "f457da00ef165a3c1919b7862d91a68f6b9b5d07e3fd2343d13ddfc7f5125191",
+      "source_ref": "https://github.com/kingsoftcloud/ksadk-harness",
       "stars": 0,
-      "updated_at": "2026-10-29T07:15:59Z"
+      "updated_at": "2026-10-30T07:40:41Z"
     },
     {
       "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "e8c66091b5a9aec99fa4062a5af675eba8ad2d02018b1a5c6910205f3dc07a63",
+      "source_digest": "f101638c291a671706ceef94358688a00eeb0c04f3c97dc65a6ae93b7c0c9cc7",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "stars": 0,
-      "updated_at": "2026-10-29T06:30:40Z"
+      "updated_at": "2026-10-30T04:35:58Z"
     },
     {
-      "description": "Self-hosted agent harness platform: durable Temporal execution, typed context/evidence, policy enforcement outside the model, governed memory, and native interop with LangGraph, CrewAI, OpenAI Agents SDK, Microsoft Agent Framework, and Claude Agent SDK.",
+      "description": "Governed agent execution harness with versioned contracts, durable state, policy enforcement, replay, provenance, and bounded worker runtimes.",
       "query": "agent harness durable execution",
       "ref": "main",
-      "repo": "Root1V/aeon-agent-harness",
-      "source_digest": "ef7c277ad609304cd5a39b2384b290d1a4af3ddeafbe29b36fe07c0d430b5f02",
-      "source_ref": "https://github.com/Root1V/aeon-agent-harness",
-      "stars": 1,
-      "updated_at": "2026-10-26T02:35:11Z"
+      "repo": "jaydubya818/Agentic-Pi-Harness",
+      "source_digest": "292e9f5da9ad53f88dbcbefa916810e540a7b74011bfa009dec08205f1493e90",
+      "source_ref": "https://github.com/jaydubya818/Agentic-Pi-Harness",
+      "stars": 2,
+      "updated_at": "2026-10-29T15:59:18Z"
     },
     {
       "description": "OmniResearch is an autonomous multi-agent AI framework that automates the AI/ML research lifecycle\u2014from planning and literature discovery to dataset selection, experimentation, analysis, verification, and research report generation using LangGraph, multimodal RAG, and research memory.",
@@ -116,10 +116,10 @@
       "query": "agent memory provenance governance",
       "ref": "main",
       "repo": "gladkiandrew/agent-os",
-      "source_digest": "7478825ec841b7c3e8ca0f99dd6dd83fbf7fcae311c7ee57db97c42e12b24367",
+      "source_digest": "b990cdc158f158349e485fae08523ee64d32514089082ea1437648df3397a837",
       "source_ref": "https://github.com/gladkiandrew/agent-os",
-      "stars": 0,
-      "updated_at": "2026-10-25T19:42:12Z"
+      "stars": 1,
+      "updated_at": "2026-10-30T05:06:08Z"
     },
     {
       "description": "Local cognitive memory runtime for AI agents \u2014 durable recall, temporal versioning, provenance, contradiction governance, and portable encrypted storage. Pure Rust, offline-first, with no required LLM or cloud. Patent pending.",
