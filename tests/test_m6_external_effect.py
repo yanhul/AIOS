@@ -14,7 +14,7 @@ from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.policy_registry import persist_policy
 from core.external_effect import ExternalEffectError, create_effect, load_effects, record_dispatch, record_observation, record_unknown
-from core.effect_authority import retry_dispatch
+from core.effect_authority import retry_dispatch, issue_retry_authorization
 
 
 def evidence(provider="provider:test"):
@@ -30,6 +30,8 @@ def evidence(provider="provider:test"):
 
 class TestExternalEffect(unittest.TestCase):
     def setUp(self):
+        self._old_authority_secret = os.environ.get("AIOS_AUTHORITY_SECRET")
+        os.environ["AIOS_AUTHORITY_SECRET"] = "test-only-authority-secret"
         self.tmp = tempfile.mkdtemp()
         self.aios = os.path.join(self.tmp, ".aios")
 
@@ -52,6 +54,10 @@ class TestExternalEffect(unittest.TestCase):
     def tearDown(self):
         import shutil
         shutil.rmtree(self.tmp, ignore_errors=True)
+        if self._old_authority_secret is None:
+            os.environ.pop("AIOS_AUTHORITY_SECRET", None)
+        else:
+            os.environ["AIOS_AUTHORITY_SECRET"] = self._old_authority_secret
 
     def test_requires_observation_for_success(self):
         cid, pid = self._setup_authority()
@@ -69,7 +75,8 @@ class TestExternalEffect(unittest.TestCase):
         record_unknown(self.aios, e["effect_id"], "agent:a", "provider timeout")
         self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "UNKNOWN")
         retry_attempt = f"{e['effect_id']}:attempt:2"
-        retry_dispatch(self.aios, e["effect_id"], "agent:a", retry_attempt, "provider:test", 2, {"mode":"EXPLICIT","effect_id":e["effect_id"],"attempt":2})
+        authorization = issue_retry_authorization(self.aios, e["effect_id"], "agent:a", 2, os.environ["AIOS_AUTHORITY_SECRET"])
+        retry_dispatch(self.aios, e["effect_id"], "agent:a", retry_attempt, "provider:test", 2, authorization)
         record_observation(self.aios, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {
             "attempt_id": retry_attempt, "provider": "provider:test", "evidence": evidence()
         })
