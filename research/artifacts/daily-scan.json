@@ -2,44 +2,44 @@
   "kind": "AIOS_DAILY_RESEARCH",
   "records": [
     {
-      "description": "a13n - An open-source library and self-hosted platform for building and running your own agent systems\u2014with managed agents, memory, sandboxes, computer use, and durable execution. Commercial Friendly. Built With Love \ud83d\udc9c @converge-ai-labs.",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "converge-ai-labs/agent-foundation",
-      "source_digest": "b645d539dd31971a3d56645bf43abbbb3589f1d346640ae2cced5bf85f5abbe6",
-      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "stars": 245,
-      "updated_at": "2026-10-30T08:37:20Z"
-    },
-    {
       "description": "The open-source agent harness, ready out of the box and customizable in depth. Tools, context, durable execution, permissions and recovery for code, research and office work.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "Youzini-afk/Varin",
-      "source_digest": "351c880b81fffb1bd4a5f0e0c55334a7975349165edb89bd19fed6bc2200a874",
+      "source_digest": "e2bb8c3dc35f162c6481d773e0311831f55120956f54f420c2c94d4ed488fbce",
       "source_ref": "https://github.com/Youzini-afk/Varin",
       "stars": 27,
-      "updated_at": "2026-10-30T08:25:11Z"
-    },
-    {
-      "description": "Open-source Native Harness packages for durable Agent execution, Node adapters, and React task UI",
-      "query": "agent harness durable execution",
-      "ref": "main",
-      "repo": "kingsoftcloud/ksadk-harness",
-      "source_digest": "f457da00ef165a3c1919b7862d91a68f6b9b5d07e3fd2343d13ddfc7f5125191",
-      "source_ref": "https://github.com/kingsoftcloud/ksadk-harness",
-      "stars": 0,
-      "updated_at": "2026-10-30T07:40:41Z"
+      "updated_at": "2026-10-31T08:22:57Z"
     },
     {
       "description": "Provider-neutral, contract-first engineering workflow for AI coding agents. AEW adds durable project state, Ticket/Story/Epic orchestration, review and verification gates, provenance, resumable execution, and pluggable tool/model capabilities without coupling the process to a single harness.",
       "query": "agent harness durable execution",
       "ref": "main",
       "repo": "JonSmithTLT/Agentic-Engineering-Workflow",
-      "source_digest": "f101638c291a671706ceef94358688a00eeb0c04f3c97dc65a6ae93b7c0c9cc7",
+      "source_digest": "76fd02d242881322e5b89a922984533789dc8d9b8c67ca54bb18630996ab91c9",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
       "stars": 0,
-      "updated_at": "2026-10-30T04:35:58Z"
+      "updated_at": "2026-10-30T23:52:36Z"
+    },
+    {
+      "description": "Open-source Native Harness packages for durable Agent execution, Node adapters, and React task UI",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "kingsoftcloud/ksadk-harness",
+      "source_digest": "95787015744027caf60a8b517649bd3a593bc83b6327328476daba3858696ab4",
+      "source_ref": "https://github.com/kingsoftcloud/ksadk-harness",
+      "stars": 1,
+      "updated_at": "2026-10-30T15:31:32Z"
+    },
+    {
+      "description": "a13n - An open-source library and self-hosted platform for building and running your own agent systems\u2014with managed agents, memory, sandboxes, computer use, and durable execution. Commercial Friendly. Built With Love \ud83d\udc9c @converge-ai-labs.",
+      "query": "agent harness durable execution",
+      "ref": "main",
+      "repo": "converge-ai-labs/agent-foundation",
+      "source_digest": "ac8a8dd11815b7be86e54e55744ac730625d7c4a016390ec0d880f3ff78e3cc6",
+      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
+      "stars": 247,
+      "updated_at": "2026-10-30T19:24:32Z"
     },
     {
       "description": "Governed agent execution harness with versioned contracts, durable state, policy enforcement, replay, provenance, and bounded worker runtimes.",

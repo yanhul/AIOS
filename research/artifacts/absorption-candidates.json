@@ -4,29 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-9986eb33e3fff56c",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "memory",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "b645d539dd31971a3d56645bf43abbbb3589f1d346640ae2cced5bf85f5abbe6",
-      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-466a984ccf0187e1",
+      "candidate_id": "cand-234bf0ae29d6eb63",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "research_harness",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "351c880b81fffb1bd4a5f0e0c55334a7975349165edb89bd19fed6bc2200a874",
+      "source_digest": "e2bb8c3dc35f162c6481d773e0311831f55120956f54f420c2c94d4ed488fbce",
       "source_ref": "https://github.com/Youzini-afk/Varin",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -34,14 +19,29 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-03afa47c2a68b34f",
+      "candidate_id": "cand-c19154a663eb8fa8",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "evidence_provenance",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "76fd02d242881322e5b89a922984533789dc8d9b8c67ca54bb18630996ab91c9",
+      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-1bcac2785cc61dd6",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "f457da00ef165a3c1919b7862d91a68f6b9b5d07e3fd2343d13ddfc7f5125191",
+      "source_digest": "95787015744027caf60a8b517649bd3a593bc83b6327328476daba3858696ab4",
       "source_ref": "https://github.com/kingsoftcloud/ksadk-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -49,15 +49,15 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-6485869f2ecadb28",
+      "candidate_id": "cand-b5b15e3c07fa1fc9",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
+      "primitive": "memory",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "f101638c291a671706ceef94358688a00eeb0c04f3c97dc65a6ae93b7c0c9cc7",
-      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
+      "source_digest": "ac8a8dd11815b7be86e54e55744ac730625d7c4a016390ec0d880f3ff78e3cc6",
+      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {

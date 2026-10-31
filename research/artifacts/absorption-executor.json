@@ -11,38 +11,6 @@
         "adaptation": "AIOS_NATIVE_PROPOSAL_ONLY",
         "external_code_copy": false,
         "external_code_execution": false,
-        "primitive": "memory",
-        "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-        "required_checks": [
-          "source_evidence_digest",
-          "AIOS_conformance",
-          "independent_tests",
-          "evidence_promotion_gate"
-        ],
-        "signals": [
-          "evidence",
-          "durable",
-          "memory",
-          "harness"
-        ],
-        "target_surface": "new AIOS adapter/task only"
-      },
-      "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-9986eb33e3fff56c",
-      "evidence_digest": "827089f363a278ae30f6bfa5ead1cbfa137041e98fb37c395be9672abc2e9902",
-      "evidence_status": "COLLECTED",
-      "evidence_url": "https://raw.githubusercontent.com/converge-ai-labs/agent-foundation/main/README.md",
-      "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "41028304059",
-      "source_digest": "b645d539dd31971a3d56645bf43abbbb3589f1d346640ae2cced5bf85f5abbe6",
-      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
-      "status": "RESEARCHED_ADAPTATION_PROPOSED"
-    },
-    {
-      "adaptation": {
-        "adaptation": "AIOS_NATIVE_PROPOSAL_ONLY",
-        "external_code_copy": false,
-        "external_code_execution": false,
         "primitive": "research_harness",
         "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
         "required_checks": [
@@ -60,44 +28,14 @@
         "target_surface": "new AIOS adapter/task only"
       },
       "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-466a984ccf0187e1",
+      "candidate_id": "cand-234bf0ae29d6eb63",
       "evidence_digest": "9a3de52b5565344c7af77fcd75a7d97c27f9ff7ed4187b213f8700183d04edba",
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/Youzini-afk/Varin/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "41028304059",
-      "source_digest": "351c880b81fffb1bd4a5f0e0c55334a7975349165edb89bd19fed6bc2200a874",
+      "run_id": "41184789289",
+      "source_digest": "e2bb8c3dc35f162c6481d773e0311831f55120956f54f420c2c94d4ed488fbce",
       "source_ref": "https://github.com/Youzini-afk/Varin",
-      "status": "RESEARCHED_ADAPTATION_PROPOSED"
-    },
-    {
-      "adaptation": {
-        "adaptation": "AIOS_NATIVE_PROPOSAL_ONLY",
-        "external_code_copy": false,
-        "external_code_execution": false,
-        "primitive": "durable_execution",
-        "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
-        "required_checks": [
-          "source_evidence_digest",
-          "AIOS_conformance",
-          "independent_tests",
-          "evidence_promotion_gate"
-        ],
-        "signals": [
-          "provenance",
-          "harness"
-        ],
-        "target_surface": "new AIOS adapter/task only"
-      },
-      "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-03afa47c2a68b34f",
-      "evidence_digest": "17e0c5f15360db93d068dc13656df8ce2fc8ee71b32f46475993e0da3d665881",
-      "evidence_status": "COLLECTED",
-      "evidence_url": "https://raw.githubusercontent.com/kingsoftcloud/ksadk-harness/main/README.md",
-      "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "41028304059",
-      "source_digest": "f457da00ef165a3c1919b7862d91a68f6b9b5d07e3fd2343d13ddfc7f5125191",
-      "source_ref": "https://github.com/kingsoftcloud/ksadk-harness",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
     },
     {
@@ -121,14 +59,76 @@
         "target_surface": "new AIOS adapter/task only"
       },
       "authority": "AIOS_CONTROL_PLANE",
-      "candidate_id": "cand-6485869f2ecadb28",
+      "candidate_id": "cand-c19154a663eb8fa8",
       "evidence_digest": "47ee1f7c0e7f3704e46889230741561b3833d62f4f95d54d05a59f99ad7f0046",
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/JonSmithTLT/Agentic-Engineering-Workflow/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "41028304059",
-      "source_digest": "f101638c291a671706ceef94358688a00eeb0c04f3c97dc65a6ae93b7c0c9cc7",
+      "run_id": "41184789289",
+      "source_digest": "76fd02d242881322e5b89a922984533789dc8d9b8c67ca54bb18630996ab91c9",
       "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
+      "status": "RESEARCHED_ADAPTATION_PROPOSED"
+    },
+    {
+      "adaptation": {
+        "adaptation": "AIOS_NATIVE_PROPOSAL_ONLY",
+        "external_code_copy": false,
+        "external_code_execution": false,
+        "primitive": "durable_execution",
+        "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
+        "required_checks": [
+          "source_evidence_digest",
+          "AIOS_conformance",
+          "independent_tests",
+          "evidence_promotion_gate"
+        ],
+        "signals": [
+          "provenance",
+          "harness"
+        ],
+        "target_surface": "new AIOS adapter/task only"
+      },
+      "authority": "AIOS_CONTROL_PLANE",
+      "candidate_id": "cand-1bcac2785cc61dd6",
+      "evidence_digest": "c39fe6e28bb6941c0d6f56446ac44f713f482c4a5810aa7fcbe8044a87300c54",
+      "evidence_status": "COLLECTED",
+      "evidence_url": "https://raw.githubusercontent.com/kingsoftcloud/ksadk-harness/main/README.md",
+      "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
+      "run_id": "41184789289",
+      "source_digest": "95787015744027caf60a8b517649bd3a593bc83b6327328476daba3858696ab4",
+      "source_ref": "https://github.com/kingsoftcloud/ksadk-harness",
+      "status": "RESEARCHED_ADAPTATION_PROPOSED"
+    },
+    {
+      "adaptation": {
+        "adaptation": "AIOS_NATIVE_PROPOSAL_ONLY",
+        "external_code_copy": false,
+        "external_code_execution": false,
+        "primitive": "memory",
+        "proposal": "derive an AIOS-native interface from independently verified behavior; do not import source code",
+        "required_checks": [
+          "source_evidence_digest",
+          "AIOS_conformance",
+          "independent_tests",
+          "evidence_promotion_gate"
+        ],
+        "signals": [
+          "evidence",
+          "durable",
+          "memory",
+          "harness"
+        ],
+        "target_surface": "new AIOS adapter/task only"
+      },
+      "authority": "AIOS_CONTROL_PLANE",
+      "candidate_id": "cand-b5b15e3c07fa1fc9",
+      "evidence_digest": "827089f363a278ae30f6bfa5ead1cbfa137041e98fb37c395be9672abc2e9902",
+      "evidence_status": "COLLECTED",
+      "evidence_url": "https://raw.githubusercontent.com/converge-ai-labs/agent-foundation/main/README.md",
+      "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
+      "run_id": "41184789289",
+      "source_digest": "ac8a8dd11815b7be86e54e55744ac730625d7c4a016390ec0d880f3ff78e3cc6",
+      "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
     },
     {
@@ -161,7 +161,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/jaydubya818/Agentic-Pi-Harness/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "41028304059",
+      "run_id": "41184789289",
       "source_digest": "292e9f5da9ad53f88dbcbefa916810e540a7b74011bfa009dec08205f1493e90",
       "source_ref": "https://github.com/jaydubya818/Agentic-Pi-Harness",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -190,7 +190,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/abhijeetchaubey/OmniResearch/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "41028304059",
+      "run_id": "41184789289",
       "source_digest": "e67355e27882e4fb67cd2a849a4c08575169a99c17d4a217a1ecab46f7f134b2",
       "source_ref": "https://github.com/abhijeetchaubey/OmniResearch",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -220,7 +220,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/yethikrishna/Yethanus/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "41028304059",
+      "run_id": "41184789289",
       "source_digest": "ebb09ee5914b6e8bba2fe90a69694aa9e348cfb6f18996e511a084e35ae65165",
       "source_ref": "https://github.com/yethikrishna/Yethanus",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -251,7 +251,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/Yash-Kavaiya/auto-cxas-scrapi/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "41028304059",
+      "run_id": "41184789289",
       "source_digest": "4b3fe2fe2a775115db1a41476b924ba6b5d132ca00a7da67fdf6485fe0b6befc",
       "source_ref": "https://github.com/Yash-Kavaiya/auto-cxas-scrapi",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -282,7 +282,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/yanghangAI/MultiAgentAutoResearch/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "41028304059",
+      "run_id": "41184789289",
       "source_digest": "9716dab55dc592817a54a87bfce7cb244d2713b570d724683a0cfb9cc771cfa3",
       "source_ref": "https://github.com/yanghangAI/MultiAgentAutoResearch",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -311,7 +311,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/kp-krish/AutoResearch/master/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "41028304059",
+      "run_id": "41184789289",
       "source_digest": "65f113e6207c42700139b62edd50a37b5e6227de2a5019fc0102cd845653ee42",
       "source_ref": "https://github.com/kp-krish/AutoResearch",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -341,7 +341,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/rahulsub/synapse-mem/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "41028304059",
+      "run_id": "41184789289",
       "source_digest": "6d9b2840c9582d058ffbf1e5529e8e3aedd9ac611f8d44b743e760e7d7ec605c",
       "source_ref": "https://github.com/rahulsub/synapse-mem",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -374,7 +374,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/gladkiandrew/agent-os/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "41028304059",
+      "run_id": "41184789289",
       "source_digest": "b990cdc158f158349e485fae08523ee64d32514089082ea1437648df3397a837",
       "source_ref": "https://github.com/gladkiandrew/agent-os",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -408,7 +408,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/teolex2020/aura-memory/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "41028304059",
+      "run_id": "41184789289",
       "source_digest": "f54a6af6f7444d639a1ad2926e474b8a4078a3b8f1233ce3cd9060805cd1941d",
       "source_ref": "https://github.com/teolex2020/aura-memory",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -440,7 +440,7 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/jermayne36/heartwood-memory/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "41028304059",
+      "run_id": "41184789289",
       "source_digest": "1708a5a8b8719e2d7025e6ab1f63fe163a3fe7426d3cb034121333ca8deaefc9",
       "source_ref": "https://github.com/jermayne36/heartwood-memory",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
@@ -471,13 +471,13 @@
       "evidence_status": "COLLECTED",
       "evidence_url": "https://raw.githubusercontent.com/ver-cy/vercy-py/main/README.md",
       "promotion": "REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE",
-      "run_id": "41028304059",
+      "run_id": "41184789289",
       "source_digest": "f06467d2dd05c6da590d29419eea49b05becccb0336563b01c8ca17bd435e11d",
       "source_ref": "https://github.com/ver-cy/vercy-py",
       "status": "RESEARCHED_ADAPTATION_PROPOSED"
     }
   ],
-  "run_id": "41028304059",
+  "run_id": "41184789289",
   "schema_version": 2,
   "truncated": false
 }
