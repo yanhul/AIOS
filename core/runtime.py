@@ -187,12 +187,12 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
     # effect carries an explicit, governed retry authorization. A provider timeout
     # alone is not proof that no external effect occurred.
     retry_auth = effect.get("retry_authorization")
-    if not isinstance(retry_auth, dict) or retry_auth.get("mode") != "EXPLICIT":
-        raise PermissionError("UNKNOWN effect requires explicit retry authorization")
-    if retry_auth.get("effect_id") != effect.get("effect_id"):
-        raise PermissionError("retry authorization effect binding mismatch")
-    if retry_auth.get("attempt") != attempt:
-        raise PermissionError("retry authorization attempt mismatch")
+    # A self-asserted dictionary is not an authority credential. Until the
+    # independent issuer/verifier integration exists, never submit a retry
+    # to a runtime or provider from UNKNOWN.
+    raise PermissionError(
+        "UNKNOWN retry BLOCKED: independent issuer verification is not configured"
+    )
 
     authorize(aios_dir, contract_id, permit_id)
     contract = load_contract(aios_dir, contract_id)
