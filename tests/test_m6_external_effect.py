@@ -15,6 +15,7 @@ from core.contract import contract_identity
 from core.policy_registry import persist_policy
 from core.external_effect import ExternalEffectError, create_effect, load_effects, record_dispatch, record_observation, record_unknown
 from core.effect_authority import retry_dispatch
+from core.mutation import TransitionError
 
 
 def evidence(provider="provider:test"):
@@ -69,11 +70,13 @@ class TestExternalEffect(unittest.TestCase):
         record_unknown(self.aios, e["effect_id"], "agent:a", "provider timeout")
         self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "UNKNOWN")
         retry_attempt = f"{e['effect_id']}:attempt:2"
-        retry_dispatch(self.aios, e["effect_id"], "agent:a", retry_attempt, "provider:test", 2, {"mode":"EXPLICIT","effect_id":e["effect_id"],"attempt":2})
-        record_observation(self.aios, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {
-            "attempt_id": retry_attempt, "provider": "provider:test", "evidence": evidence()
-        })
-        self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "OBSERVED_SUCCESS")
+        with self.assertRaisesRegex(TransitionError, "independent issuer verification"):
+            retry_dispatch(self.aios, e["effect_id"], "agent:a", retry_attempt,
+                           "provider:test", 2,
+                           {"mode":"EXPLICIT","effect_id":e["effect_id"],"attempt":2})
+        persisted = load_effects(self.aios)[e["effect_id"]]
+        self.assertEqual(persisted["state"], "UNKNOWN")
+        self.assertEqual(persisted["attempt"], 1)
 
     def test_attempt_mismatch_is_rejected(self):
         cid, pid = self._setup_authority()
