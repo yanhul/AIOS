@@ -111,7 +111,7 @@ def test_resume_reuses_exact_dispatched_attempt_after_ambiguous_submission(tmp_p
     assert runtime.resumed == (effect["effect_id"], attempt_id)
 
 
-def test_retry_bridges_explicit_bounded_retry(tmp_path):
+def test_self_asserted_retry_dictionary_is_blocked_before_runtime_or_provider(tmp_path):
     cid, pid = setup(tmp_path, max_attempts=2)
     effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
@@ -119,12 +119,32 @@ def test_retry_bridges_explicit_bounded_retry(tmp_path):
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test",
                         unknown_reason="timeout")
     effect["retry_authorization"] = {"mode": "EXPLICIT", "effect_id": effect["effect_id"], "attempt": 2}
-    result = execute_retry_attempt(
-        str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
-        f"{effect['effect_id']}:attempt:2", 2, GoodRuntime()
+
+    class CountingAdapter(GoodAdapter):
+        calls = 0
+        def execute(self, **kwargs):
+            self.calls += 1
+            return super().execute(**kwargs)
+
+    class CountingRuntime(GoodRuntime):
+        retries = 0
+        def retry(self, *, effect, attempt_id, attempt):
+            self.retries += 1
+            return super().retry(effect=effect, attempt_id=attempt_id, attempt=attempt)
+
+    adapter, runtime = CountingAdapter(), CountingRuntime()
+    with pytest.raises(PermissionError, match="independent issuer verification"):
+        execute_retry_attempt(
+            str(tmp_path), cid, pid, effect, "agent:test", adapter,
+            f"{effect['effect_id']}:attempt:2", 2, runtime
+        )
+    assert adapter.calls == 0
+    assert runtime.retries == 0
+    persisted = __import__("json").loads(
+        (tmp_path / "effects" / (effect["effect_id"] + ".json")).read_text()
     )
-    assert result["state"] == "OBSERVED_SUCCESS"
-    assert result["attempt"] == 2
+    assert persisted["state"] == "UNKNOWN"
+    assert persisted["attempt"] == 1
 
 
 def test_unknown_retry_requires_explicit_authorization(tmp_path):
