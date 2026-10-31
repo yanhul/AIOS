@@ -166,10 +166,11 @@ def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: 
 
 def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapter, attempt_id, attempt,
                           durable_runtime: DurableRuntime | None = None):
-    """Authorize, dispatch and execute one explicit retry of an UNKNOWN effect.
+    """Fail closed on UNKNOWN retries until an independent issuer is integrated.
 
-    The external runtime may schedule/persist the attempt, but AIOS remains the
-    authority boundary for authorization, attempt bounds and evidence acceptance.
+    UNKNOWN is ambiguous: a caller-provided dictionary or a provider timeout is
+    not proof that retrying cannot duplicate an external effect. This boundary
+    deliberately refuses before runtime submission or provider execution.
     """
     _text(actor, "actor")
     _text(attempt_id, "attempt_id")
@@ -183,38 +184,9 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
         raise PermissionError("effect actor does not match execution actor")
     if effect.get("state") != "UNKNOWN":
         raise RuntimeError("effect must be UNKNOWN before retry")
-    # UNKNOWN is ambiguous by definition: retry is forbidden unless the persisted
-    # effect carries an explicit, governed retry authorization. A provider timeout
-    # alone is not proof that no external effect occurred.
-    retry_auth = effect.get("retry_authorization")
-    # A self-asserted dictionary is not an authority credential. Until the
-    # independent issuer/verifier integration exists, never submit a retry
-    # to a runtime or provider from UNKNOWN.
     raise PermissionError(
         "UNKNOWN retry BLOCKED: independent issuer verification is not configured"
     )
-
-    authorize(aios_dir, contract_id, permit_id)
-    contract = load_contract(aios_dir, contract_id)
-    permit = load_permit(aios_dir, permit_id)
-    if permit["actor"] != actor or contract["actor"] != actor:
-        raise PermissionError("actor does not match authorized contract")
-    max_attempts = contract.get("max_attempts")
-    if not isinstance(max_attempts, int) or isinstance(max_attempts, bool) or max_attempts < 1:
-        raise ValueError("contract max_attempts must be a positive integer")
-    if attempt > max_attempts:
-        raise PermissionError("retry exceeds contract max_attempts")
-    provider_name = _text(getattr(adapter, "name", None), "adapter.name")
-    if not _provider_authorized(contract, provider_name):
-        raise PermissionError("provider capability is not authorized by contract")
-    if "external_effect" not in contract["allowed_effects"]:
-        raise PermissionError("external effect is not authorized by contract")
-
-    dispatched = retry_dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name, attempt, retry_authorization=retry_auth)
-    _submit_runtime(durable_runtime, "retry", dispatched, attempt_id, provider_name, attempt=attempt)
-    return execute_attempt(aios_dir, contract, dispatched, actor, adapter, attempt_id)
-
-
 def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapter,
             durable_runtime: DurableRuntime | None = None):
     """Authorize/create/dispatch the first attempt, then delegate execution."""
