@@ -4,14 +4,14 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-234bf0ae29d6eb63",
+      "candidate_id": "cand-8839af5237a5329d",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "research_harness",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "e2bb8c3dc35f162c6481d773e0311831f55120956f54f420c2c94d4ed488fbce",
+      "source_digest": "f68690ddac4f043c47ac86b933cb1f9ada9b59086339729daa3f6b0aadd017a8",
       "source_ref": "https://github.com/Youzini-afk/Varin",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -19,44 +19,44 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-c19154a663eb8fa8",
-      "external_code_copy": false,
-      "mutation_authority": "AIOS",
-      "next_action": "RESEARCH_AND_VERIFY",
-      "primitive": "evidence_provenance",
-      "promotion_required": true,
-      "ref": "main",
-      "source_digest": "76fd02d242881322e5b89a922984533789dc8d9b8c67ca54bb18630996ab91c9",
-      "source_ref": "https://github.com/JonSmithTLT/Agentic-Engineering-Workflow",
-      "status": "UNTRUSTED_EVIDENCE"
-    },
-    {
-      "bounded_surface": [
-        "new AIOS adapter/task only"
-      ],
-      "candidate_id": "cand-1bcac2785cc61dd6",
+      "candidate_id": "cand-f41e95c038c2b802",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "durable_execution",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "95787015744027caf60a8b517649bd3a593bc83b6327328476daba3858696ab4",
-      "source_ref": "https://github.com/kingsoftcloud/ksadk-harness",
+      "source_digest": "dcfe2c68a2edbea13e82801d304ee441afc45c2758dbbc3e24d0fa7ec2eec4b9",
+      "source_ref": "https://github.com/Platato-DA/dsh-task-center",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-b5b15e3c07fa1fc9",
+      "candidate_id": "cand-6dcb50aea96517e4",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "memory",
       "promotion_required": true,
       "ref": "main",
-      "source_digest": "ac8a8dd11815b7be86e54e55744ac730625d7c4a016390ec0d880f3ff78e3cc6",
+      "source_digest": "1039b849567f6815d749fdfde96cb3226a8b1ec189a17e31b8490d0461932ce6",
+      "source_ref": "https://github.com/gopalcb/deep-agent-harness-with-codex",
+      "status": "UNTRUSTED_EVIDENCE"
+    },
+    {
+      "bounded_surface": [
+        "new AIOS adapter/task only"
+      ],
+      "candidate_id": "cand-344864c12d43cb55",
+      "external_code_copy": false,
+      "mutation_authority": "AIOS",
+      "next_action": "RESEARCH_AND_VERIFY",
+      "primitive": "memory",
+      "promotion_required": true,
+      "ref": "main",
+      "source_digest": "1bf0c1bf8c28058fd7b60d75df13c33bdef7c1995ed572b188bb269e0384cdcf",
       "source_ref": "https://github.com/converge-ai-labs/agent-foundation",
       "status": "UNTRUSTED_EVIDENCE"
     },
@@ -64,15 +64,15 @@
       "bounded_surface": [
         "new AIOS adapter/task only"
       ],
-      "candidate_id": "cand-52177dc23e3a07a8",
+      "candidate_id": "cand-02da9c3d5758087f",
       "external_code_copy": false,
       "mutation_authority": "AIOS",
       "next_action": "RESEARCH_AND_VERIFY",
       "primitive": "evidence_provenance",
       "promotion_required": true,
-      "ref": "main",
-      "source_digest": "292e9f5da9ad53f88dbcbefa916810e540a7b74011bfa009dec08205f1493e90",
-      "source_ref": "https://github.com/jaydubya818/Agentic-Pi-Harness",
+      "ref": "master",
+      "source_digest": "2a2bed684307f8bf1580fcdadc74f91029c1a8ab908f45020b741912f27cf21f",
+      "source_ref": "https://github.com/dazhi666666/science-harness",
       "status": "UNTRUSTED_EVIDENCE"
     },
     {
