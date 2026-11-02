@@ -1,8 +1,6 @@
 name: Product E2E Conformance
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -29,7 +27,7 @@ jobs:
           name: aios-durable-crash-recovery-${{ github.run_id }}
           path: artifacts/conformance/durable-crash-recovery.json
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 3
       - name: Require durable crash/recovery conformance
         run: |
           python - <<'PY'
