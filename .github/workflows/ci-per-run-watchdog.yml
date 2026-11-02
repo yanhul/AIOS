@@ -1,9 +1,7 @@
 name: AIOS CI Per-Run Watchdog
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [requested]
+  workflow_dispatch:
 
 permissions:
   actions: write
