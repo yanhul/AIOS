@@ -1,12 +1,6 @@
 name: AIOS CI Autonomous Repair
 
 on:
-  push:
-    branches:
-      - 'aios/autorepair/g4a-live'
-  workflow_run:
-    workflows: ["CI", "G4A CI"]
-    types: [completed]
   workflow_dispatch:
     inputs:
       run_id:
