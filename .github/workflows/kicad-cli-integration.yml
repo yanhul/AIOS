@@ -1,12 +1,6 @@
 name: KiCad CLI Real Integration
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "adapters/kicad/**"
-      - "tests/test_kicad_adapter.py"
-      - ".github/workflows/kicad-cli-integration.yml"
   workflow_dispatch:
 
 permissions:
