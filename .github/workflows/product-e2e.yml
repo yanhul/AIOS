@@ -92,7 +92,7 @@ jobs:
           name: aios-product-e2e-${{ github.run_id }}
           path: artifacts/conformance/*.json
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 3
       - name: Require registered workload conformance
         run: |
           python - <<'PY'
