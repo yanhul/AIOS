@@ -1,9 +1,6 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -42,5 +39,3 @@ jobs:
           MINIMIND_ROOT: ${{ runner.temp }}/minimind
           MINIMIND_EXPECTED_REV: 6fc918beb68a0d8c40452338df6319fe168014ba
         run: python scripts/check_minimind_capability.py --root "$RUNNER_TEMP/minimind"
-
-# AIOS-REGRESSION: retain PR-triggered CI as the verification boundary for adaptation commits.
