@@ -1,9 +1,6 @@
 name: G4A CI
 
 on:
-  push:
-    branches:
-      - 'aios/autorepair/g4a-live'
   workflow_dispatch:
 
 permissions:
