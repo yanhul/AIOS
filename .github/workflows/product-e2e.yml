@@ -2,6 +2,10 @@ name: Product E2E Conformance
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/product-e2e.yml
 
 permissions:
   contents: read
