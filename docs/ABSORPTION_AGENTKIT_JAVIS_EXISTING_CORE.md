@@ -36,7 +36,16 @@ Rejected: a second SQLite authority/queue inside AIOS, silent requeue after ambi
 
 Scheduling/worker leases belong to the execution runtime. AIOS validates authority, effect identity, receipt/evidence, verification and promotion. An expired or ambiguous effect must remain UNKNOWN until explicit reconciliation and authorization.
 
-## 3. Verification evidence already present
+## 3. The three-repository decision
+
+The audited set was **AgentKit, Javis OS, and AIOS**. These are not three external libraries to vendor:
+- AgentKit is the orchestration-pattern source.
+- Javis OS is the task-runtime/lifecycle-pattern source.
+- AIOS is the destination and authority/evidence/verification/promotion control plane being extended.
+
+TRY remains the research and execution-side consumer. Google AI Pro automation was explicitly excluded from this three-repository adaptation set.
+
+## 4. Verification evidence already present
 
 The following existing tests cover the canonical implementation paths; they are not evidence of a live external provider run:
 
@@ -49,12 +58,10 @@ The following existing tests cover the canonical implementation paths; they are 
 - `tests/test_m6_durable_runtime_bridge.py`
 - `tests/test_execution_lineage.py`
 
-The previous PR #124 added a second plan/review data model rather than integrating these canonical modules. Keep it unmerged and use this ledger as the absorption decision.
+The previous PR #124 added a second plan/review data model rather than integrating these canonical modules. It has been closed unmerged; its branch is retained for reference. Use this ledger as the absorption decision.
 
-## 4. Remaining integration gap
+## 5. Remaining integration gap
 
-The canonical AIOS runtime protocol exists, but each TRY execution adapter still needs an explicit implementation that binds its provider submission and receipt to the AIOS `effect_id`, `attempt_id`, and provider identity. This must be tested against the pinned AIOS revision and the real authority/effect APIs—not a caller-supplied capability list or mocked verifier alone.
+The canonical AIOS runtime protocol exists. TRY now has a cross-repository integration test against the pinned AIOS contract/permit/effect/runtime APIs using a fake provider and fake durable runtime. This proves boundary wiring and effect/attempt identity in that fixture only. It does not prove a production provider adapter, durable scheduler, live external side effect, or reconciliation workflow.
 
-## 5. Source inventory limitation
-
-The recoverable audit record names AgentKit and Javis OS as upstream pattern sources and AIOS/TRY as the destination architecture. A third independent upstream repository name/URL is not present in that record; it is intentionally not guessed here. No upstream source is vendored by this change.
+Production adapters must bind provider submission and receipt to the AIOS `effect_id`, `attempt_id`, and provider identity. They must be tested against the pinned AIOS revision and real authority/effect APIs—not a caller-supplied capability list or mocked verifier alone.
