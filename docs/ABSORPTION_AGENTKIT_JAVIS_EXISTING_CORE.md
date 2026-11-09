@@ -23,22 +23,18 @@ Relevant files include `python/coinbase-agentkit/coinbase_agentkit/action_provid
 
 Destination: AIOS `core/capabilities.py` / `core/capability_store.py` remain the authority for registered capabilities. This PR does not implement a Coinbase wallet or a new action-provider runtime.
 
-## 2. Javis OS — task/runtime patterns
+## 2. Javis OS — source identity unresolved; prior attribution withdrawn
 
-Upstream: https://github.com/blogminhquy/javis-os
+**Status: UNKNOWN.** The repository previously cited as `https://github.com/blogminhquy/javis-os` is not the Javis OS source the project owner intended. The earlier source-specific file paths and implementation claims in this section are withdrawn and must not be treated as verified upstream facts.
 
-The audited implementation includes a durable SQLite task store (`server/task_store.py`), assistant job aggregation (`server/agent_jobs.py`), background workers and loop diagnostics (`server/loop_watch.py`). The task store documents transactional mutations using `BEGIN IMMEDIATE`, compare-and-set transitions, idempotency keys, claim expiry and heartbeat fields.
+A GitHub repository search also surfaced `dodungvanphong/javis-os`, but its README identifies itself as a copy pointing back to `blogminhquy/javis-os`; it is not accepted as the intended source. No alternative repository has yet been verified against the original audit.
 
-**Accept as design references:** transactional state transitions, stable task identity, bounded status vocabulary, claim/lease expiry, heartbeat, explicit worker roles, observable stale-worker conditions and separation of runtime state from portable knowledge data.
+**Absorb decision: BLOCKED pending source identity.** Do not attribute SQLite task-store, atomic-claim, lease, heartbeat, once-only ledger, checkpoint, MCP or memory patterns to Javis OS until the correct repository and commit are identified and audited.
 
-**Reject:** copying Javis's application/dashboard, its multi-provider agent runtime, its SQLite schema wholesale, or treating a task-store state as proof that an external effect succeeded.
-
-Destination boundary:
-- AIOS `core/effect_authority.py`, `core/durable_loop.py`, `core/durable_wal.py`, `core/durable_runtime.py` and `core/execution_lineage.py` own authorization, effect/attempt identity, durable evidence and governed state.
+The AIOS/TRY ownership boundary below remains an independent architectural decision, not evidence derived from Javis OS:
+- AIOS owns authority, effect/attempt identity, durable evidence and governed reconciliation.
 - TRY owns provider execution and any future worker scheduling/lease implementation.
-- An expired or ambiguous external effect remains UNKNOWN until AIOS-authorized reconciliation; a queue lease expiry alone must never create a new authorized attempt.
-
-No second SQLite authority/queue is added to AIOS. No production TRY worker scheduler is claimed by this ledger.
+- An expired or ambiguous external effect remains UNKNOWN; a queue lease expiry alone must never authorize a new attempt.
 
 ## 3. Three-repository decision
 
