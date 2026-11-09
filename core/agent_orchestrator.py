@@ -45,7 +45,7 @@ def validate_review(review: ReviewRecord) -> None:
         raise ValueError("review lineage fields are required")
     if review.executor_id == review.reviewer_id:
         raise PermissionError("executor cannot independently review its own work")
-    if review.decision not in {"APPROVED_FOR_AI0S_VERIFICATION", "CHANGES_REQUESTED", "BLOCKED"}:
+    if review.decision not in {"APPROVED_FOR_AIOS_VERIFICATION", "CHANGES_REQUESTED", "BLOCKED"}:
         raise ValueError("review cannot set PASS or an unsupported decision")
     if not review.evidence_refs or any(not r.strip() for r in review.evidence_refs):
         raise ValueError("review requires explicit evidence references")
