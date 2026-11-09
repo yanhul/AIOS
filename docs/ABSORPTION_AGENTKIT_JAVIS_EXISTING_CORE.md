@@ -1,67 +1,69 @@
-# Absorption ledger: AgentKit and Javis OS patterns
+# Absorption ledger: AgentKit and Javis OS
 
-Status: **ADAPT into existing AIOS core; do not add a parallel agent runtime.**
+Status: **selective ADAPT; no upstream runtime vendoring and no production completion claim.**
 
-This ledger records where the accepted patterns belong in the current AIOS architecture. It is an implementation map, not a claim that upstream code was copied or that production integration is complete.
+This ledger distinguishes upstream facts from architectural decisions. The source repositories are Coinbase AgentKit and Javis OS; AIOS is the destination authority/evidence control plane.
 
-## 1. AgentKit-style orchestration
+## 1. Coinbase AgentKit — correct source classification
 
-| Pattern | Canonical AIOS implementation | Boundary |
-|---|---|---|
-| Governed execution loop | `core/orchestrator.py`, `core/durable_loop.py` | AIOS controls the loop and re-authorizes on resume |
-| Role handoff / delegation | `core/delegation.py` | A delegation is a proposal, not a permit or execution |
-| Capability scoping | `core/capabilities.py`, `core/capability_store.py` | Only registered, active capabilities may be delegated |
-| Independent verification | `core/verification.py`, `core/evidence.py`, `core/acceptance.py` | Executor review cannot self-certify AIOS PASS |
-| Immutable execution context | `core/execution_lineage.py` | Lineage is provenance, never authority |
+Upstream: https://github.com/coinbase/agentkit
 
-Accepted: explicit plans/handoffs, scoped capabilities, separate execution and verification roles, artifact/evidence references.
+Coinbase AgentKit is a wallet and on-chain action toolkit, not a general-purpose agent orchestration framework. Its Python implementation exposes:
+- `ActionProvider` and `Action` abstractions;
+- decorator-registered action metadata;
+- Pydantic argument schemas;
+- wallet-provider injection and network support checks;
+- framework extensions for agent integrations.
 
-Rejected: treating an agent's own review as independent evidence; allowing orchestration to mint permits, mutate policy, execute arbitrary shell/worktrees, or promote its own result.
+Relevant files include `python/coinbase-agentkit/coinbase_agentkit/action_providers/action_provider.py` and `action_decorator.py`.
 
-Do **not** add a second `core/agent_orchestrator.py` beside the existing orchestrator/delegation modules. The earlier draft implementation in PR #124 was a duplicate boundary prototype and is superseded by this mapping.
+**Accept as design references only:** typed action metadata, explicit argument schemas, provider capability declarations and network/provider compatibility checks. These may inform future capability-adapter contracts.
 
-## 2. Javis OS-style durable worker lifecycle
+**Reject for current AIOS scope:** Coinbase wallet implementations, signing, on-chain transaction execution, token/payment actions, wallet credentials and any implication that AgentKit supplied AIOS's orchestrator/delegation design. No AgentKit orchestration engine was identified in the audited source.
 
-| Pattern | Canonical AIOS implementation | Boundary |
-|---|---|---|
-| Durable state machine / resume | `core/durable_loop.py` | State transitions are bounded and revalidated |
-| Crash-safe append-only journal | `core/durable_wal.py` | WAL replay is not an execution receipt |
-| External effect authorization | `core/effect_authority.py` | Contract + permit gate every effect transition |
-| Runtime adapter contract | `core/durable_runtime.py`, `core/runtime.py` | Runtime acknowledges effect/attempt/provider; AIOS retains authority |
-| Attempt provenance | `core/execution_lineage.py` | Immutable policy/provider/environment/attempt lineage |
+Destination: AIOS `core/capabilities.py` / `core/capability_store.py` remain the authority for registered capabilities. This PR does not implement a Coinbase wallet or a new action-provider runtime.
 
-Accepted: durable transitions, replay, idempotent effect identity, explicit attempts, checkpoint/resume and evidence-bound observations.
+## 2. Javis OS — task/runtime patterns
 
-Rejected: a second SQLite authority/queue inside AIOS, silent requeue after ambiguous execution, automatic retry of UNKNOWN, unrestricted plugins/shell, plaintext credentials, and claims of exactly-once execution based only on an idempotency key.
+Upstream: https://github.com/blogminhquy/javis-os
 
-Scheduling/worker leases belong to the execution runtime. AIOS validates authority, effect identity, receipt/evidence, verification and promotion. An expired or ambiguous effect must remain UNKNOWN until explicit reconciliation and authorization.
+The audited implementation includes a durable SQLite task store (`server/task_store.py`), assistant job aggregation (`server/agent_jobs.py`), background workers and loop diagnostics (`server/loop_watch.py`). The task store documents transactional mutations using `BEGIN IMMEDIATE`, compare-and-set transitions, idempotency keys, claim expiry and heartbeat fields.
 
-## 3. The three-repository decision
+**Accept as design references:** transactional state transitions, stable task identity, bounded status vocabulary, claim/lease expiry, heartbeat, explicit worker roles, observable stale-worker conditions and separation of runtime state from portable knowledge data.
 
-The audited set was **AgentKit, Javis OS, and AIOS**. These are not three external libraries to vendor:
-- AgentKit is the orchestration-pattern source.
-- Javis OS is the task-runtime/lifecycle-pattern source.
-- AIOS is the destination and authority/evidence/verification/promotion control plane being extended.
+**Reject:** copying Javis's application/dashboard, its multi-provider agent runtime, its SQLite schema wholesale, or treating a task-store state as proof that an external effect succeeded.
 
-TRY remains the research and execution-side consumer. Google AI Pro automation was explicitly excluded from this three-repository adaptation set.
+Destination boundary:
+- AIOS `core/effect_authority.py`, `core/durable_loop.py`, `core/durable_wal.py`, `core/durable_runtime.py` and `core/execution_lineage.py` own authorization, effect/attempt identity, durable evidence and governed state.
+- TRY owns provider execution and any future worker scheduling/lease implementation.
+- An expired or ambiguous external effect remains UNKNOWN until AIOS-authorized reconciliation; a queue lease expiry alone must never create a new authorized attempt.
 
-## 4. Verification evidence already present
+No second SQLite authority/queue is added to AIOS. No production TRY worker scheduler is claimed by this ledger.
 
-The following existing tests cover the canonical implementation paths; they are not evidence of a live external provider run:
+## 3. Three-repository decision
 
-- `tests/test_orchestrator.py`
-- `tests/test_delegation.py`
-- `tests/test_durable_loop.py`
-- `tests/test_durable_loop_crash_recovery.py`
-- `tests/test_durable_wal.py`
-- `tests/test_m6_effect_authority.py`
-- `tests/test_m6_durable_runtime_bridge.py`
-- `tests/test_execution_lineage.py`
+The decision set is **Coinbase AgentKit, Javis OS and AIOS**:
+- Coinbase AgentKit: typed action-provider interface patterns only; wallet/on-chain implementation rejected for current scope.
+- Javis OS: task-store/worker lifecycle patterns only; application runtime not vendored.
+- AIOS: destination authority, evidence, verification and promotion control plane.
 
-The previous PR #124 added a second plan/review data model rather than integrating these canonical modules. It has been closed unmerged; its branch is retained for reference. Use this ledger as the absorption decision.
+TRY remains the research/provider-execution consumer. Google AI Pro automation is outside this decision set.
 
-## 5. Remaining integration gap
+## 4. Existing AIOS implementation evidence
 
-The canonical AIOS runtime protocol exists. TRY now has a cross-repository integration test against the pinned AIOS contract/permit/effect/runtime APIs using a fake provider and fake durable runtime. This proves boundary wiring and effect/attempt identity in that fixture only. It does not prove a production provider adapter, durable scheduler, live external side effect, or reconciliation workflow.
+The canonical modules/tests already present include:
+- `core/orchestrator.py`, `core/delegation.py`
+- `core/durable_loop.py`, `core/durable_loop_crash_recovery` coverage
+- `core/durable_wal.py`
+- `core/effect_authority.py`
+- `core/durable_runtime.py`
+- `core/execution_lineage.py`
+- `tests/test_orchestrator.py`, `tests/test_delegation.py`, `tests/test_durable_loop.py`, `tests/test_durable_wal.py`, `tests/test_m6_effect_authority.py`, `tests/test_m6_durable_runtime_bridge.py`, `tests/test_execution_lineage.py`
 
-Production adapters must bind provider submission and receipt to the AIOS `effect_id`, `attempt_id`, and provider identity. They must be tested against the pinned AIOS revision and real authority/effect APIs—not a caller-supplied capability list or mocked verifier alone.
+These tests cover AIOS's own governed primitives; they do not prove that upstream AgentKit or Javis OS code was imported or that production TRY adapters are complete.
+
+## 5. Remaining work / status
+
+This PR is an evidence-corrected architecture decision record only. It does not change AIOS runtime code. TRY PR #63 adds a cross-repository fixture test against a pinned AIOS revision using a fake provider/runtime. That test demonstrates boundary identity checks and UNKNOWN handling in the fixture, not live provider behavior, production scheduling, lease recovery or reconciliation.
+
+Production integration still requires a TRY-owned runtime adapter that binds provider submission and receipt to the AIOS `effect_id`, `attempt_id` and provider identity, then persists verifiable receipt/evidence and exercises explicit UNKNOWN reconciliation.
