@@ -12,8 +12,8 @@ def test_plan_rejects_unsafe_worktree_and_unapproved_capability():
         validate_plan(OrchestrationPlan("t1", "a"*40, "worktrees/t1", ("inspect",), ("shell.unrestricted",)), set())
 
 def test_review_must_be_independent_and_cannot_claim_pass():
-    validate_review(ReviewRecord("t1", "executor", "reviewer", "APPROVED_FOR_AI0S_VERIFICATION", ("artifact://diff",)))
+    validate_review(ReviewRecord("t1", "executor", "reviewer", "APPROVED_FOR_AIOS_VERIFICATION", ("artifact://diff",)))
     with pytest.raises(PermissionError):
-        validate_review(ReviewRecord("t1", "same", "same", "APPROVED_FOR_AI0S_VERIFICATION", ("artifact://diff",)))
+        validate_review(ReviewRecord("t1", "same", "same", "APPROVED_FOR_AIOS_VERIFICATION", ("artifact://diff",)))
     with pytest.raises(ValueError):
         validate_review(ReviewRecord("t1", "executor", "reviewer", "PASS", ("artifact://diff",)))
