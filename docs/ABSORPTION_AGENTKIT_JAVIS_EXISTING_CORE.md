@@ -71,3 +71,29 @@ These tests cover AIOS's own governed primitives; they do not prove that upstrea
 This PR is an evidence-corrected architecture decision record only. It does not change AIOS runtime code. TRY PR #63 adds a cross-repository fixture test against a pinned AIOS revision using a fake provider/runtime. That test demonstrates boundary identity checks and UNKNOWN handling in the fixture, not live provider behavior, production scheduling, lease recovery or reconciliation.
 
 Production integration still requires a TRY-owned runtime adapter that binds provider submission and receipt to the AIOS `effect_id`, `attempt_id` and provider identity, then persists verifiable receipt/evidence and exercises explicit UNKNOWN reconciliation.
+
+
+## 6. Upstream Javis OS audit — corrected source and expanded findings
+
+The earlier fork-only audit above remains valid for the pinned Minh Quý fork. It is **not** a complete description of current upstream.
+
+- Upstream: https://github.com/blogminhquy/javis-os
+- Audited upstream ref: `f1bc4c3e52b4bda71d229e780da3b23a3ededa60` (main, observed 2026-11-10).
+- The fork snapshot and upstream are separate audit targets; do not merge their findings.
+
+Additional upstream files directly inspected:
+- `server/once_ledger.py` (blob `ed524ed57bd52c09fe0c77326c07942fe9c0b17a`): persistent per-job tool-call fingerprint ledger with STARTED/SUCCEEDED/FAILED/UNKNOWN. A prior SUCCEEDED fingerprint is reused; uncertain timeout/connection-loss and prior-process STARTED are treated as UNKNOWN and not automatically invoked again. This is an application-level duplicate-call guard, not provider-enforced exactly-once.
+- `server/workflow_runs.py` (blob `22abc6e99d9f50fe8cb94ba817585c4c563bc472`): separate SQLite WAL workflow-run history store; intentionally distinct from the Kanban queue.
+- `server/workflow_runtime.py` (blob `51b875d92a9fb8f99596b55f758581a302c462fc`): checkpointed workflow graph; completed nodes are retained on resume; write nodes stop for user approval; nested workflows require pinned revision. The declared policy defaults are off / zero allocation / writes disabled, so module presence does not prove production rollout.
+- `server/context_runtime.py` (blob `79ec95812bbf4a54445c54096520bd3997a1781f`): durable tables for capability leases, invocations, evidence and checkpoints; write invocations have PREPARED/RUNNING/UNKNOWN and retain resource locks while UNKNOWN; restart sweep converts stale RUNNING writes to UNKNOWN rather than retrying.
+- `server/capability_executor.py` (blob `99c70b4b7c1096003fe215dd2cef3996f08433e2`): capability lease validation, schema/scope checks, revision pinning and invocation/evidence handling.
+- `server/incident_desk.py` (blob `43ad51d962a1a12878e98da5e06ecf085314b2f3`) and `server/sentinel.py` (blob `2edb511dbe82f0217e66d6695a04cd36a2ee1359`): incident triage/retry gate and read-only grouped health scan.
+
+### Updated ADAPT decision
+1. **AIOS already owns the authoritative part**: `core/effect_authority.py`, `core/runtime.py`, `core/durable_runtime.py`, durable loop/WAL and evidence modules implement contract/permit-bound effect identity, attempt identity, provider receipt validation, UNKNOWN and explicit bounded retry. Do not copy Javis once-ledger or write ledger as a second authority store.
+2. **TRY is the proper scheduler boundary**: the AIOS `DurableRuntime` protocol deliberately leaves scheduling/persistence/retry timing to an external runtime. Javis bounded dispatcher, queue claim, run history and dependency promotion are candidate scheduler patterns, not authority semantics.
+3. **Workflow checkpointing is optional orchestration state**, not a replacement for AIOS effect ledger. A completed workflow node must still reference its AIOS effect/attempt and evidence; a checkpoint cannot independently declare an external effect successful.
+4. **Javis once-ledger is a useful defense-in-depth pattern**, but its fingerprint is based on job/tool/normalized arguments and its state is local to Javis. It cannot prove provider acceptance or replace AIOS effect identity and receipt evidence.
+5. **Do not vendor or deploy a Javis queue in this change**: TRY's currently verified integration surface is the AIOS runtime protocol/fixture, not a production Javis worker deployment. No production scheduler adapter is claimed.
+
+This expanded upstream audit is source inspection, not a Javis test-suite run. No Javis CI/test result is claimed.
