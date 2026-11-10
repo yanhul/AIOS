@@ -40,7 +40,7 @@ def _run_adapter(monkeypatch, receipt):
 def test_blocked_capability_is_never_emitted_as_check_pass(monkeypatch, capsys):
     _run_adapter(monkeypatch, _receipt())
 
-    assert check.main() == 0
+    assert check.main() == 2  # BLOCKED is a failed capability gate
     output = json.loads(capsys.readouterr().out)
     assert output["MINIMIND_CAPABILITY_CHECK"]["status"] == "BLOCKED"
     assert "MINIMIND_CAPABILITY_CHECK_PASS" not in output
@@ -52,3 +52,12 @@ def test_capability_receipt_rejects_non_list_refs(monkeypatch, field):
 
     with pytest.raises(SystemExit, match="must be a non-empty list of strings"):
         check.main()
+
+
+@pytest.mark.parametrize(("status", "expected_exit"), [("AVAILABLE", 0), ("BLOCKED", 2), ("INCONCLUSIVE", 3)])
+def test_exit_code_tracks_capability_verdict(monkeypatch, capsys, status, expected_exit):
+    _run_adapter(monkeypatch, _receipt(status=status))
+
+    assert check.main() == expected_exit
+    output = json.loads(capsys.readouterr().out)
+    assert output["MINIMIND_CAPABILITY_CHECK"]["status"] == status
