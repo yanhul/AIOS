@@ -189,18 +189,24 @@ def test_nested_lock_is_reentrant_and_exclusive(tmp_path):
 
 
 def test_forged_caller_contract_cannot_grant_provider_capability(tmp_path):
-    """The provider grant must come from AIOS persisted authority, never caller input."""
-    contract, _cid, _pid, eff = dispatched(tmp_path)
+    """A forged caller grant cannot authorize a provider absent from stored policy."""
+    contract, cid, pid = setup_authority(tmp_path)
+    eff = create_effect(str(tmp_path), cid, "forged-provider-op", ACTOR, pid, "external_effect")
+    unauthorized = "unauthorized-provider"
+    aid = eff["effect_id"] + ":attempt:1"
+    # Dispatch deliberately records the requested provider; execution claim
+    # must independently check that provider against the persisted contract.
+    eff = dispatch(str(tmp_path), eff["effect_id"], ACTOR, aid, unauthorized)
     forged = dict(contract)
-    forged["capabilities"] = list(contract.get("capabilities", [])) + ["unauthorized-provider@1"]
+    forged["capabilities"] = list(contract.get("capabilities", [])) + [unauthorized + "@1"]
 
     class UnauthorizedAdapter(LedgerAdapter):
-        name = "unauthorized-provider"
+        name = unauthorized
 
     ledger = tmp_path / "forged-contract-ledger"
     with pytest.raises(ExecutionClaimRejected, match="persisted contract"):
         execute_attempt(str(tmp_path), forged, eff, ACTOR,
-                        UnauthorizedAdapter(ledger), eff["attempt_id"])
+                        UnauthorizedAdapter(ledger), aid)
     assert calls(ledger) == 0
     rec = load_effects(str(tmp_path))[eff["effect_id"]]
     assert "execution_claim" not in rec
