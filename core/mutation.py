@@ -354,10 +354,18 @@ def _recover_pending_unlocked(aios_dir):
                 if os.path.exists(dest):
                     with open(dest, "rb") as fh:
                         actual = _digest_bytes(fh.read())
-                    if actual != op["digest"]:
+                    if actual == op["digest"]:
+                        continue  # this rename already completed before the crash
+                    previous_digest = op.get("previous_digest")
+                    if previous_digest is None or actual != previous_digest or not os.path.exists(tmp):
                         raise StateConflictError(
                             f"committed file diverges from journal: {dest}"
                         )
+                    # The destination is still exactly the pre-commit version.
+                    # Complete the journaled replacement instead of treating
+                    # the expected old bytes as an external state conflict.
+                    _replace(tmp, dest)
+                    _fsync_dir(os.path.dirname(dest))
                 elif os.path.exists(tmp):
                     os.makedirs(os.path.dirname(dest), exist_ok=True)
                     _replace(tmp, dest)
@@ -441,10 +449,16 @@ def commit_batch(aios_dir, payloads):
             payload = (canonical_json(obj) + "\n").encode("utf-8")
             tmp = os.path.join(batch_dir, f"{uuid.uuid4().hex}.tmp")
             _write_staged(tmp, payload)
+            dest = os.path.join(aios_dir, rel_dest)
+            previous_digest = None
+            if os.path.exists(dest):
+                with open(dest, "rb") as existing:
+                    previous_digest = _digest_bytes(existing.read())
             ops.append({
                 "tmp": tmp,
-                "dest": os.path.join(aios_dir, rel_dest),
+                "dest": dest,
                 "digest": _digest_bytes(payload),
+                "previous_digest": previous_digest,
             })
 
         journal_path = os.path.join(batch_dir, _JOURNAL_NAME)

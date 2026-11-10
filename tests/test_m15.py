@@ -319,6 +319,27 @@ class TestAtomicity(Base):
             self.assertEqual(len(res["replayed"]), 2)
             self.assertEqual(self.pending_batches(aios), [])
 
+    def test_existing_destination_rolls_forward_after_pre_rename_crash(self):
+        destination = os.path.join(self.aios, "mutable-record.json")
+        os.makedirs(self.aios, exist_ok=True)
+        with open(destination, "wb") as fh:
+            fh.write(b'{"version":"old"}' + bytes([10]))
+
+        with self.assertRaises(RuntimeError):
+            with mock.patch.object(mutation, "_replace",
+                                   side_effect=RuntimeError("crash before first rename")):
+                mutation.commit_batch(self.aios, [("mutable-record.json", {"version": "new"})])
+
+        # The old destination is still present and a durable journal exists.
+        with open(destination, "rb") as fh:
+            self.assertEqual(fh.read(), b'{"version":"old"}' + bytes([10]))
+        self.assertEqual(len(self.pending_batches(self.aios)), 1)
+
+        recover_pending(self.aios)
+        with open(destination, "r", encoding="utf-8") as fh:
+            self.assertEqual(json.load(fh), {"version": "new"})
+        self.assertEqual(self.pending_batches(self.aios), [])
+
     def test_failure_before_staging_leaves_disk_untouched(self):
         good = make_entity(eid="D-01")
         bad = make_entity(eid="BAD ID")  # contract failure aborts whole batch
