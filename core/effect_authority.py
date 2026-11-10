@@ -22,6 +22,7 @@ attempt_id. Missing receipts never become success.
 import hashlib
 import json
 import os
+import re
 
 from .authority import authorize, load_contract, load_permit
 from .contract import verify_permit
@@ -52,6 +53,10 @@ _ALLOWED = {
 def _id(contract_id, logical_operation_id, actor):
     value = {"contract_id": contract_id, "logical_operation_id": logical_operation_id, "actor": actor}
     return "EF-" + hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+
+
+_EFFECT_ID_RE = re.compile(r"EF-[0-9a-f]{64}")
+_RECEIPT_ID_RE = re.compile(r"RC-[0-9a-f]{64}")
 
 
 def _path(aios_dir, effect_id):
@@ -513,6 +518,8 @@ def _verify_receipt_attestation(aios_dir, receipt, effect):
 def load_receipt(aios_dir, receipt_id, *, require_sealed=True, require_provider_signed=False):
     """Load a persisted receipt and verify content, seal and receipt-of-record binding."""
     _validate_strings(("receipt_id", receipt_id))
+    if not _RECEIPT_ID_RE.fullmatch(receipt_id):
+        raise ValueError("receipt_id is not a well-formed receipt id")
     recover_pending(aios_dir)  # never read a half-applied batch
     path = os.path.join(aios_dir, _receipt_relpath(receipt_id))
     if not os.path.exists(path):
@@ -533,7 +540,23 @@ def load_receipt(aios_dir, receipt_id, *, require_sealed=True, require_provider_
         raise TransitionError("persisted receipt identity does not match its content")
     if evidence.get("run_id") != receipt.get("attempt_id") or evidence.get("provider") != receipt.get("provider"):
         raise TransitionError("persisted receipt evidence is not bound to its attempt/provider")
-    effect = _load(_path(aios_dir, receipt["effect_id"]))
+    effect_id = receipt.get("effect_id")
+    if not isinstance(effect_id, str) or not _EFFECT_ID_RE.fullmatch(effect_id):
+        # Checked before the id is turned into a path: an unsealed receipt is
+        # attacker-writable and must not steer the effect read (PR #126 @9ce0f2d).
+        raise TransitionError("persisted receipt effect_id is not a well-formed effect id")
+    try:
+        # The same validated loader every state transition uses: re-authorizes the
+        # contract/permit and re-binds provider + attempt identity to the contract,
+        # and checks the record's effect_id matches its path (PR #126 @9ce0f2d P1).
+        effect = _load_current(aios_dir, effect_id)
+    except TransitionError:
+        raise
+    except KeyError as exc:
+        raise TransitionError("persisted receipt references an unknown effect") from exc
+    except (OSError, ValueError) as exc:
+        # Missing/corrupt contract, permit or effect JSON: fail closed with one error type.
+        raise TransitionError(f"persisted receipt effect failed authority validation: {exc}") from exc
     if effect.get("receipt_id") != receipt_id:
         raise TransitionError("persisted receipt is not the receipt of record for its effect")
     for field in ("attempt_id", "attempt", "contract_id", "provider"):
@@ -577,6 +600,10 @@ def _reconciliation_payload(effect_id, attempt_id, provider, verdict, evidence, 
 
 def load_reconciliation(aios_dir, effect_id, attempt):
     """Return the sealed reconciliation for an attempt, or None. Forged/unsealed records raise."""
+    if not isinstance(effect_id, str) or not _EFFECT_ID_RE.fullmatch(effect_id):
+        raise ValueError("effect_id is not a well-formed effect id")
+    if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 1:
+        raise ValueError("reconciliation attempt must be a positive integer")
     recover_pending(aios_dir)
     path = os.path.join(aios_dir, _reconciliation_relpath(effect_id, attempt))
     if not os.path.exists(path):
