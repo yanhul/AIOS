@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, fix/effect-cas-execution-claim]
   pull_request:
   workflow_dispatch:
 
