@@ -13,6 +13,7 @@ from core.durable_runtime import RuntimeSubmission
 from core.effect_authority import create_effect, dispatch, transition
 from core.policy_registry import persist_policy
 from core.runtime import ProviderReceipt, execute, execute_retry_attempt, resume_attempt
+from tests.effect_reconcile_helpers import reconcile_not_applied
 
 
 def make_contract(policy_digest, max_attempts=1):
@@ -119,6 +120,7 @@ def test_retry_bridges_explicit_bounded_retry(tmp_path):
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test",
                         unknown_reason="timeout")
     effect["retry_authorization"] = {"mode": "EXPLICIT", "effect_id": effect["effect_id"], "attempt": 2}
+    reconcile_not_applied(tmp_path, effect["effect_id"], "agent:test")
     result = execute_retry_attempt(
         str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
         f"{effect['effect_id']}:attempt:2", 2, GoodRuntime()

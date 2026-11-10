@@ -12,7 +12,10 @@ import json
 from .evidence import EvidenceRecord
 from .authority import authorize, load_contract, load_permit
 from .durable_runtime import DurableRuntime, validate_submission
-from .effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
+from .effect_authority import (
+    create_effect, dispatch, load_reconciliation, observe, reconcile_effect, recover_interrupted,
+    retry_dispatch, unknown, _load_current,
+)
 
 
 @dataclass(frozen=True)
@@ -23,6 +26,19 @@ class ProviderReceipt:
     provider_operation_id: str
     outcome: str
     observation: dict
+
+
+@dataclass(frozen=True)
+class ReconciliationReport:
+    """Provider-side answer to "did attempt X take effect?".
+
+    ``verdict`` is APPLIED, NOT_APPLIED or INCONCLUSIVE. ``evidence`` must be an
+    AIOS evidence record bound to the queried attempt. APPLIED must also carry
+    the ProviderReceipt for the operation that was found.
+    """
+    verdict: str
+    evidence: dict
+    receipt: "ProviderReceipt | None" = None
 
 
 class ProviderAdapter(Protocol):
@@ -77,35 +93,7 @@ def validate_receipt(receipt, effect, attempt_id, provider_name):
         raise ValueError("receipt observation must be a non-empty dict")
 
 
-def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
-    """Execute exactly one dispatched attempt and record its observation."""
-    _text(actor, "actor")
-    _text(attempt_id, "attempt_id")
-    if not isinstance(contract, dict) or not contract:
-        raise ValueError("contract must be a non-empty dict")
-    if not isinstance(effect, dict) or not effect:
-        raise ValueError("effect must be a non-empty dict")
-    if effect.get("state") != "DISPATCHED":
-        raise RuntimeError("effect must be DISPATCHED before execute_attempt")
-    if effect.get("actor") != actor:
-        raise PermissionError("effect actor does not match execution actor")
-    if effect.get("attempt_id") != attempt_id:
-        raise RuntimeError("attempt_id does not match dispatched effect")
-    if not hasattr(adapter, "name"):
-        raise ValueError("adapter must expose a provider name")
-    provider_name = _text(adapter.name, "adapter.name")
-    if not _provider_authorized(contract, provider_name):
-        raise PermissionError("provider capability is not authorized by contract")
-    if "external_effect" not in contract.get("allowed_effects", []):
-        raise PermissionError("external effect is not authorized by contract")
-
-    try:
-        receipt = adapter.execute(contract=dict(contract), effect=dict(effect), attempt_id=attempt_id)
-        validate_receipt(receipt, effect, attempt_id, provider_name)
-    except Exception as exc:
-        return unknown(aios_dir, effect["effect_id"], actor,
-                       f"provider ambiguity: {type(exc).__name__}: {exc}")
-
+def _provider_observation(receipt):
     provider_observation = {
         "provider": receipt.provider,
         "provider_operation_id": receipt.provider_operation_id,
@@ -139,6 +127,39 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
             provider=receipt.provider,
             artifact_ref=raw_digest,
         ).as_record()
+    return provider_observation
+
+
+def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
+    """Execute exactly one dispatched attempt and record its observation."""
+    _text(actor, "actor")
+    _text(attempt_id, "attempt_id")
+    if not isinstance(contract, dict) or not contract:
+        raise ValueError("contract must be a non-empty dict")
+    if not isinstance(effect, dict) or not effect:
+        raise ValueError("effect must be a non-empty dict")
+    if effect.get("state") != "DISPATCHED":
+        raise RuntimeError("effect must be DISPATCHED before execute_attempt")
+    if effect.get("actor") != actor:
+        raise PermissionError("effect actor does not match execution actor")
+    if effect.get("attempt_id") != attempt_id:
+        raise RuntimeError("attempt_id does not match dispatched effect")
+    if not hasattr(adapter, "name"):
+        raise ValueError("adapter must expose a provider name")
+    provider_name = _text(adapter.name, "adapter.name")
+    if not _provider_authorized(contract, provider_name):
+        raise PermissionError("provider capability is not authorized by contract")
+    if "external_effect" not in contract.get("allowed_effects", []):
+        raise PermissionError("external effect is not authorized by contract")
+
+    try:
+        receipt = adapter.execute(contract=dict(contract), effect=dict(effect), attempt_id=attempt_id)
+        validate_receipt(receipt, effect, attempt_id, provider_name)
+    except Exception as exc:
+        return unknown(aios_dir, effect["effect_id"], actor,
+                       f"provider ambiguity: {type(exc).__name__}: {exc}")
+
+    provider_observation = _provider_observation(receipt)
     return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, provider_observation)
 
 
@@ -215,6 +236,40 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
     return execute_attempt(aios_dir, contract, dispatched, actor, adapter, attempt_id)
 
 
+def reconcile_unknown_attempt(aios_dir, effect_id, actor, adapter):
+    """Ask the provider whether the current UNKNOWN attempt took effect.
+
+    Never re-executes the provider operation. A probe that raises, returns a
+    malformed report, or cannot bind its answer to the exact attempt leaves the
+    effect UNKNOWN and records nothing (retry remains blocked).
+    """
+    _text(actor, "actor")
+    effect = _load_current(aios_dir, effect_id)
+    if effect.get("state") != "UNKNOWN":
+        raise RuntimeError("reconciliation requires an UNKNOWN effect")
+    provider_name = _text(getattr(adapter, "name", None), "adapter.name")
+    if provider_name != effect.get("provider"):
+        raise PermissionError("reconciliation adapter is not the dispatched provider")
+    probe = getattr(adapter, "reconcile", None)
+    if not callable(probe):
+        return {"verdict": "INCONCLUSIVE", "recorded": False, "reason": "provider has no reconciliation probe"}
+    try:
+        report = probe(effect=dict(effect), attempt_id=effect["attempt_id"])
+        if not isinstance(report, ReconciliationReport):
+            raise ValueError("provider must return ReconciliationReport")
+        if report.verdict == "APPLIED":
+            validate_receipt(report.receipt, effect, effect["attempt_id"], provider_name)
+            return reconcile_effect(aios_dir, effect_id, actor, "APPLIED", report.evidence,
+                                    outcome=report.receipt.outcome,
+                                    provider_observation=_provider_observation(report.receipt))
+        if report.receipt is not None:
+            raise ValueError("only APPLIED reconciliation may carry a receipt")
+        return reconcile_effect(aios_dir, effect_id, actor, report.verdict, report.evidence)
+    except Exception as exc:  # fail closed: stay UNKNOWN
+        return {"verdict": "INCONCLUSIVE", "recorded": False,
+                "reason": f"reconciliation probe failed: {type(exc).__name__}: {exc}"}
+
+
 def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapter,
             durable_runtime: DurableRuntime | None = None):
     """Authorize/create/dispatch the first attempt, then delegate execution."""
@@ -246,6 +301,7 @@ def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapt
 
 
 __all__ = [
-    "ProviderReceipt", "ProviderAdapter", "validate_receipt",
+    "ProviderReceipt", "ProviderAdapter", "ReconciliationReport", "validate_receipt",
+    "reconcile_unknown_attempt", "recover_interrupted",
     "execute_attempt", "resume_attempt", "execute_retry_attempt", "execute",
 ]

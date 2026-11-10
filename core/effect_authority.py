@@ -7,8 +7,16 @@ are immutable after creation; attempt IDs are deterministic and tied to the
 effect/attempt number; observations must carry AIOS-owned cryptographic
 evidence bound to the executing provider and attempt.
 
-UNKNOWN is deliberately non-terminal. It can only re-enter DISPATCHED through
-the explicit retry path, subject to the contract attempt budget.
+UNKNOWN is deliberately non-terminal. It can leave UNKNOWN only through
+AIOS reconciliation: a provider-evidenced APPLIED verdict records the
+observation (no retry), NOT_APPLIED is the *only* thing that unlocks the
+explicit retry path (with a new attempt identity, within the contract attempt
+budget), and INCONCLUSIVE keeps the effect blocked. Caller-supplied retry
+authorization dictionaries are never sufficient on their own.
+
+Every accepted observation persists an immutable provider receipt whose
+``receipt_id`` is derived from, and bound to, the exact effect_id and
+attempt_id. Missing receipts never become success.
 """
 
 import hashlib
@@ -126,6 +134,10 @@ def transition(aios_dir, effect_id, target, actor, **fields):
         raise TransitionError("effect transition attempted to mutate protected or unsupported fields")
     if target == "DISPATCHED":
         raise TransitionError("undefined external-effect transition: direct DISPATCHED entry is not allowed")
+    if target in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
+        # Observed outcomes require verified evidence and a persisted receipt;
+        # the generic transition path performs neither check.
+        raise TransitionError("observed outcomes must be recorded through observe() or reconciliation")
     recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
     if not os.path.exists(path):
@@ -214,6 +226,17 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
         raise TransitionError("retry authorization effect binding mismatch")
     if retry_authorization.get("attempt") != attempt:
         raise TransitionError("retry authorization attempt mismatch")
+    # The caller-supplied authorization is necessary but never sufficient: AIOS
+    # must hold a persisted, provider-evidenced NOT_APPLIED reconciliation for
+    # the exact UNKNOWN attempt being replaced.
+    previous = int(current.get("attempt", 0))
+    rec = load_reconciliation(aios_dir, effect_id, previous)
+    if not isinstance(rec, dict) or rec.get("verdict") != "NOT_APPLIED":
+        raise TransitionError("UNKNOWN retry requires a persisted NOT_APPLIED reconciliation")
+    if rec.get("attempt_id") != current.get("attempt_id") or rec.get("effect_id") != effect_id:
+        raise TransitionError("reconciliation is not bound to the UNKNOWN attempt")
+    if not isinstance(rec.get("evidence"), dict) or not verify_evidence(rec["evidence"]):
+        raise TransitionError("reconciliation evidence is invalid")
     contract, _permit = _validate_persisted_effect(aios_dir, current)
     return _transition_dispatch(aios_dir, effect_id, actor,
                                 attempt=attempt, attempt_id=attempt_id, provider=provider)
@@ -224,33 +247,196 @@ def unknown(aios_dir, effect_id, actor, reason):
     return transition(aios_dir, effect_id, "UNKNOWN", actor, unknown_reason=reason)
 
 
-def observe(aios_dir, effect_id, actor, outcome, provider_observation):
-    if outcome not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
-        raise ValueError("invalid observation outcome")
-    if not isinstance(provider_observation, dict) or not provider_observation:
-        raise ValueError("provider_observation must be a non-empty dict")
+def _receipt_relpath(receipt_id):
+    return os.path.join("receipts", receipt_id + ".json")
+
+
+def _reconciliation_relpath(effect_id, attempt):
+    return os.path.join("reconciliations", f"{effect_id}-attempt-{attempt}.json")
+
+
+def receipt_id_for(effect_id, attempt_id, provider, provider_operation_id, outcome, evidence_digest):
+    """Deterministic receipt identity bound to the exact effect and attempt."""
+    value = {"effect_id": effect_id, "attempt_id": attempt_id, "provider": provider,
+             "provider_operation_id": provider_operation_id, "outcome": outcome,
+             "evidence_digest": evidence_digest}
+    return "RC-" + hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def _load_current(aios_dir, effect_id):
     recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
     if not os.path.exists(path):
         raise KeyError(f"unknown effect: {effect_id}")
     current = _load(path)
     _validate_persisted_effect(aios_dir, current)
-    if actor != current.get("actor"):
-        raise TransitionError("observation actor does not match effect owner")
+    return current
+
+
+def _validated_observation(current, outcome, provider_observation):
+    if outcome not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
+        raise ValueError("invalid observation outcome")
+    if not isinstance(provider_observation, dict) or not provider_observation:
+        raise ValueError("provider_observation must be a non-empty dict")
     attempt_id = provider_observation.get("attempt_id")
     provider = provider_observation.get("provider")
     evidence = provider_observation.get("evidence")
-    if current.get("state") != "DISPATCHED":
-        raise TransitionError("observation requires a currently DISPATCHED attempt")
     if attempt_id != current.get("attempt_id"):
         raise TransitionError("observation attempt does not match dispatched attempt")
     if provider != current.get("provider"):
         raise TransitionError("observation provider does not match dispatched provider")
+    if "effect_id" in provider_observation and provider_observation["effect_id"] != current["effect_id"]:
+        raise TransitionError("observation effect does not match effect")
     if not isinstance(evidence, dict) or not verify_evidence(evidence):
         raise ValueError("observation requires a valid AIOS evidence record")
     if evidence.get("provider") != provider:
         raise ValueError("evidence provider does not match effect provider")
-    return transition(aios_dir, effect_id, outcome, actor, provider_observation=provider_observation)
+    op_id = provider_observation.get("provider_operation_id")
+    if op_id is not None and (not isinstance(op_id, str) or not op_id.strip()):
+        raise ValueError("provider_operation_id must be a non-empty string when present")
+    return attempt_id, provider, evidence, op_id
 
 
-__all__ = ["STATES", "create_effect", "transition", "dispatch", "retry_dispatch", "unknown", "observe"]
+def _commit_observation(aios_dir, current, actor, outcome, provider_observation, via, extra=()):
+    attempt_id, provider, evidence, op_id = _validated_observation(current, outcome, provider_observation)
+    effect_id = current["effect_id"]
+    rid = receipt_id_for(effect_id, attempt_id, provider, op_id, outcome, evidence["digest"])
+    receipt = {
+        "record_type": "PROVIDER_RECEIPT", "receipt_id": rid, "effect_id": effect_id,
+        "attempt_id": attempt_id, "attempt": current["attempt"], "contract_id": current["contract_id"],
+        "provider": provider, "provider_operation_id": op_id, "outcome": outcome,
+        "evidence": evidence, "recorded_via": via,
+    }
+    receipt_path = os.path.join(aios_dir, _receipt_relpath(rid))
+    if os.path.exists(receipt_path):
+        raise TransitionError("provider receipt already recorded; duplicate observation rejected")
+    updated = dict(current)
+    updated.update({"state": outcome, "provider_observation": provider_observation, "receipt_id": rid})
+    event = {
+        "kind": "external_effect", "action": "observe", "effect_id": effect_id,
+        "from_state": current["state"], "to_state": outcome, "actor": actor,
+        "attempt": current["attempt"], "attempt_id": attempt_id, "receipt_id": rid, "via": via,
+    }
+    commit_batch(aios_dir, [
+        *extra,
+        (_receipt_relpath(rid), receipt),
+        (os.path.join("effects", effect_id + ".json"), updated),
+        (os.path.join("events", "effect-" + effect_id + "-" + outcome + ".json"), event),
+    ])
+    return updated
+
+
+def observe(aios_dir, effect_id, actor, outcome, provider_observation):
+    if outcome not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
+        raise ValueError("invalid observation outcome")
+    if not isinstance(provider_observation, dict) or not provider_observation:
+        raise ValueError("provider_observation must be a non-empty dict")
+    current = _load_current(aios_dir, effect_id)
+    if actor != current.get("actor"):
+        raise TransitionError("observation actor does not match effect owner")
+    if current.get("state") != "DISPATCHED":
+        raise TransitionError("observation requires a currently DISPATCHED attempt")
+    return _commit_observation(aios_dir, current, actor, outcome, provider_observation, "observe")
+
+
+def load_receipt(aios_dir, receipt_id):
+    """Load a persisted receipt and verify it is still bound to its effect."""
+    _validate_strings(("receipt_id", receipt_id))
+    path = os.path.join(aios_dir, _receipt_relpath(receipt_id))
+    if not os.path.exists(path):
+        raise KeyError(f"unknown receipt: {receipt_id}")
+    receipt = _load(path)
+    evidence = receipt.get("evidence")
+    if not isinstance(evidence, dict) or not verify_evidence(evidence):
+        raise TransitionError("persisted receipt evidence is invalid")
+    expected = receipt_id_for(receipt.get("effect_id"), receipt.get("attempt_id"), receipt.get("provider"),
+                              receipt.get("provider_operation_id"), receipt.get("outcome"), evidence["digest"])
+    if expected != receipt_id or receipt.get("receipt_id") != receipt_id:
+        raise TransitionError("persisted receipt identity does not match its content")
+    effect = _load(_path(aios_dir, receipt["effect_id"]))
+    if effect.get("receipt_id") != receipt_id or effect.get("attempt_id") != receipt["attempt_id"]:
+        raise TransitionError("persisted receipt is not the receipt of record for its effect")
+    if effect.get("state") != receipt["outcome"]:
+        raise TransitionError("persisted receipt outcome differs from effect state")
+    return receipt
+
+
+def recover_interrupted(aios_dir, effect_id, actor, reason="interrupted before receipt persistence"):
+    """Fail a DISPATCHED effect with no receipt into UNKNOWN after a crash.
+
+    AIOS cannot distinguish "crashed before the provider call" from "provider
+    applied the effect, then the process died" without asking the provider,
+    so both become UNKNOWN and must be reconciled before any retry.
+    """
+    current = _load_current(aios_dir, effect_id)
+    if current.get("state") != "DISPATCHED":
+        raise TransitionError(f"interrupted recovery requires DISPATCHED effect, got {current.get('state')}")
+    if current.get("receipt_id"):
+        raise TransitionError("dispatched effect already carries a receipt")
+    return unknown(aios_dir, effect_id, actor, reason)
+
+
+RECONCILIATION_VERDICTS = ("APPLIED", "NOT_APPLIED", "INCONCLUSIVE")
+
+
+def load_reconciliation(aios_dir, effect_id, attempt):
+    path = os.path.join(aios_dir, _reconciliation_relpath(effect_id, attempt))
+    if not os.path.exists(path):
+        return None
+    return _load(path)
+
+
+def reconcile_effect(aios_dir, effect_id, actor, verdict, provider_evidence, *,
+                     outcome=None, provider_observation=None):
+    """Record an AIOS reconciliation verdict for the current UNKNOWN attempt.
+
+    * APPLIED: requires ``outcome`` and a full ``provider_observation``; the
+      effect leaves UNKNOWN with a persisted receipt. It is never retried.
+    * NOT_APPLIED: requires provider evidence bound to the exact attempt; this
+      record is the only artefact that unlocks ``retry_dispatch``.
+    * INCONCLUSIVE: recorded as negative evidence; the effect stays UNKNOWN
+      and retry stays blocked.
+    """
+    if verdict not in RECONCILIATION_VERDICTS:
+        raise ValueError("invalid reconciliation verdict")
+    current = _load_current(aios_dir, effect_id)
+    if actor != current.get("actor"):
+        raise TransitionError("reconciliation actor does not match effect owner")
+    if current.get("state") != "UNKNOWN":
+        raise TransitionError(f"reconciliation requires UNKNOWN effect, got {current.get('state')}")
+    attempt = current["attempt"]
+    attempt_id = current.get("attempt_id")
+    provider = current.get("provider")
+    if not isinstance(provider_evidence, dict) or not verify_evidence(provider_evidence):
+        raise ValueError("reconciliation requires a valid AIOS evidence record")
+    if provider_evidence.get("provider") != provider:
+        raise ValueError("reconciliation evidence provider does not match effect provider")
+    if provider_evidence.get("run_id") != attempt_id:
+        raise ValueError("reconciliation evidence is not bound to the UNKNOWN attempt")
+    existing = load_reconciliation(aios_dir, effect_id, attempt)
+    if existing is not None and existing.get("verdict") in ("APPLIED", "NOT_APPLIED"):
+        raise TransitionError("attempt already has a decisive reconciliation verdict")
+    record = {
+        "record_type": "EFFECT_RECONCILIATION", "effect_id": effect_id, "attempt": attempt,
+        "attempt_id": attempt_id, "provider": provider, "verdict": verdict,
+        "evidence": provider_evidence, "actor": actor,
+        "supersedes": existing.get("evidence", {}).get("digest") if existing else None,
+    }
+    rel = _reconciliation_relpath(effect_id, attempt)
+    if verdict == "APPLIED":
+        if outcome is None or provider_observation is None:
+            raise ValueError("APPLIED reconciliation requires outcome and provider_observation")
+        return _commit_observation(aios_dir, current, actor, outcome, provider_observation,
+                                   "reconciliation", extra=[(rel, record)])
+    if outcome is not None or provider_observation is not None:
+        raise ValueError("only APPLIED reconciliation may carry an observation")
+    event = {"kind": "external_effect", "action": "reconcile", "effect_id": effect_id,
+             "attempt": attempt, "attempt_id": attempt_id, "verdict": verdict, "actor": actor}
+    commit_batch(aios_dir, [(rel, record),
+                            (os.path.join("events", f"effect-{effect_id}-reconcile-{attempt}-{verdict}.json"), event)])
+    return record
+
+
+__all__ = ["STATES", "RECONCILIATION_VERDICTS", "create_effect", "transition", "dispatch", "retry_dispatch",
+           "unknown", "observe", "receipt_id_for", "load_receipt", "recover_interrupted",
+           "reconcile_effect", "load_reconciliation"]

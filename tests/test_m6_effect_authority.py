@@ -14,6 +14,7 @@ from core.policy_registry import persist_policy
 from core.effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
 from core.evidence import EvidenceRecord
 from core.mutation import TransitionError
+from tests.effect_reconcile_helpers import reconcile_not_applied
 
 
 def _effect(tmp_path):
@@ -56,6 +57,7 @@ def test_effect_transition_is_atomic_and_audited(tmp_path):
     assert effect["state"] == "PLANNED"
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1")
     unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
+    reconcile_not_applied(tmp_path, effect["effect_id"], "agent-1")
     retry_dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:2", "provider-1", 2, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":2})
     done = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", _observation(effect["effect_id"], attempt=2))
     assert done["state"] == "OBSERVED_SUCCESS"

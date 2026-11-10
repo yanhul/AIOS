@@ -22,6 +22,7 @@ from core.effect_authority import (
 from core.evidence import EvidenceRecord
 from core.mutation import TransitionError
 from core.policy_registry import persist_policy
+from tests.effect_reconcile_helpers import reconcile_not_applied
 
 
 def make_authorized(td):
@@ -98,6 +99,7 @@ def test_unknown_can_only_return_to_dispatch_through_bounded_retry():
         unknown(td, effect["effect_id"], "bc-controller", "provider timeout")
         with pytest.raises(TransitionError):
             dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:2", "provider-a")
+        reconcile_not_applied(td, effect["effect_id"], "bc-controller")
         retried = retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:2", "provider-a", 2, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":2})
         assert retried["state"] == "DISPATCHED"
         with pytest.raises(TransitionError):
