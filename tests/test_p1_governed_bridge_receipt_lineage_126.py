@@ -24,6 +24,8 @@ import pytest
 from core.durable_loop import reconcile_in_flight_attempt
 from core.effect_authority import load_receipt
 from core.orchestrator import run_governed_execution
+from core.runtime import execute
+from tests.test_p0_receipt_lineage_crash_recovery import ACTOR
 from tests.test_p1_governed_bridge_effect_authority_126 import (
     Verifier, _authority, _effect_file, _executor, _policy,
 )
@@ -72,10 +74,18 @@ def test_receipt_mode_is_refused_before_provider_and_before_any_loop_state(tmp_p
     assert JsonStateStore(store.path).load() is None             # no uuid intent persisted
 
 
-def test_persisted_loop_intent_from_a_receipt_mode_run_blocks_resume(tmp_path):
-    """Crash recovery: a RUNNING snapshot that crossed the write-ahead intent must not be resumed past."""
+def test_persisted_loop_intent_after_provider_effect_blocks_duplicate_resume(tmp_path):
+    """Crash after the real provider effect, before loop commit: resume must not execute it again."""
     aios, contract_id, permit_id, digest = _authority(tmp_path / "authority")
     store = JsonStateStore(tmp_path / "loop-state.json")
+    provider = Provider()
+    # Reproduce the dangerous crash window: effect authority has committed a real
+    # OBSERVED_SUCCESS + sealed receipt, but the durable loop still has only its
+    # pre-provider UUID intent (not the EF-/attempt identity).
+    applied = execute(aios, contract_id, permit_id, "op-1", ACTOR, provider)
+    assert applied["state"] == "OBSERVED_SUCCESS"
+    assert load_receipt(aios, applied["receipt_id"])["outcome"] == "OBSERVED_SUCCESS"
+    assert provider.calls == 1
     store.save({  # exactly what the pre-fix bridge persisted just before calling the provider
         "contract_id": contract_id, "permit_id": permit_id, "policy_digest": digest, "step": 0,
         "status": "RUNNING", "history": [],
@@ -83,13 +93,14 @@ def test_persisted_loop_intent_from_a_receipt_mode_run_blocks_resume(tmp_path):
                               "decision": {"logical_operation_id": "op-1"}, "observation": {"ready": True},
                               "status": "PREPARED"},
     })
-    provider = Provider()
     result = run_governed_execution(executor=_executor(aios, contract_id, permit_id, provider, Verifier()),
                                     store=JsonStateStore(store.path), policy=_policy(digest))
     assert result["status"] == "BLOCKED"
     assert "in-flight" in result["block_reason"]
     assert provider.calls == 0
-    assert not os.path.exists(os.path.join(aios, "effects"))
+    # The existing authority effect remains observed; no second provider invocation occurred.
+    assert provider.calls == 1
+    assert _effect_file(aios)["state"] == "OBSERVED_SUCCESS"
     reloaded = JsonStateStore(store.path).load()
     assert reloaded["status"] == "BLOCKED" and reloaded["terminal_evidence"]["status"] == "BLOCKED"
     # A later run stays terminal and still does not touch the provider.
