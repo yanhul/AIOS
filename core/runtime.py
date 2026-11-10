@@ -21,6 +21,7 @@ from .effect_authority import (
 )
 from .mutation import TransitionError, canonical_json, commit_batch
 from .provider_trust import ProviderTrustError
+from .record_seal import seal, require_seal
 
 
 @dataclass(frozen=True)
@@ -225,10 +226,14 @@ def _claim_execution(aios_dir, persisted, digest, actor):
     """
     rel = _claim_relpath(persisted["effect_id"], persisted.get("attempt", 0))
     claim = {
+        "record_type": "EXECUTION_CLAIM",
         "kind": "execution_claim", "effect_id": persisted["effect_id"],
         "attempt": persisted.get("attempt"), "attempt_id": persisted["attempt_id"],
         "provider": persisted["provider"], "actor": actor,
     }
+    # Claims authorize the runtime-internal observation path; unlike ordinary
+    # telemetry, they must never be persisted without the deployment seal.
+    claim = seal(claim)
     try:
         commit_batch(aios_dir, [(rel, claim)],
                      expect={_effect_rel(persisted["effect_id"]): digest, rel: None})
@@ -249,7 +254,11 @@ def _ensure_claim(aios_dir, persisted, digest, actor):
         return
     with open(path, "r", encoding="utf-8") as fh:
         claim = json.load(fh)
-    if (claim.get("attempt_id") != persisted["attempt_id"] or claim.get("provider") != persisted["provider"]
+    require_seal(claim, "execution claim")
+    if (claim.get("record_type") != "EXECUTION_CLAIM" or claim.get("kind") != "execution_claim"
+            or claim.get("effect_id") != persisted["effect_id"]
+            or claim.get("attempt") != persisted.get("attempt")
+            or claim.get("attempt_id") != persisted["attempt_id"] or claim.get("provider") != persisted["provider"]
             or claim.get("actor") != actor):
         raise PermissionError("existing execution claim is bound to another attempt/provider/actor")
 
