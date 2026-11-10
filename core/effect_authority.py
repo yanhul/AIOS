@@ -7,6 +7,16 @@ are immutable after creation; attempt IDs are deterministic and tied to the
 effect/attempt number; observations must carry AIOS-owned cryptographic
 evidence bound to the executing provider and attempt.
 
+Every read-validate-write below runs under the AIOS state-tree mutation lock,
+so each transition is a compare-and-set against the persisted record (no
+lost updates between concurrent processes). ``claim_execution`` is the
+single-use execution authorization: it atomically re-reads the persisted
+effect, requires it to still be DISPATCHED for the exact attempt/provider/
+actor (and the supplied snapshot identity), and records a claim so a second
+caller for the same attempt is refused. It does not make provider execution
+exactly-once; it only guarantees at most one AIOS-authorized invocation per
+attempt and that a revoked/transitioned effect cannot be authorized.
+
 UNKNOWN is deliberately non-terminal. It can only re-enter DISPATCHED through
 the explicit retry path, subject to the contract attempt budget.
 """
@@ -14,11 +24,12 @@ the explicit retry path, subject to the contract attempt budget.
 import hashlib
 import json
 import os
+import uuid
 
 from .authority import authorize, load_contract, load_permit
 from .contract import verify_permit
 from .evidence import verify_evidence
-from .mutation import TransitionError, canonical_json, commit_batch, recover_pending
+from .mutation import TransitionError, canonical_json, commit_batch, mutation_lock, recover_pending
 
 STATES = ("PLANNED", "DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE")
 _ALLOWED = {
@@ -85,7 +96,7 @@ def _attempt_id(effect_id, attempt):
     return f"{effect_id}:attempt:{attempt}"
 
 
-def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id, effect_type):
+def _create_effect_unlocked(aios_dir, contract_id, logical_operation_id, actor, permit_id, effect_type):
     _validate_strings(("contract_id", contract_id), ("logical_operation_id", logical_operation_id),
                       ("actor", actor), ("permit_id", permit_id), ("effect_type", effect_type))
     contract, _permit = _authorized_contract(aios_dir, contract_id, permit_id, actor, effect_type)
@@ -112,7 +123,7 @@ def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id,
     return rec
 
 
-def transition(aios_dir, effect_id, target, actor, **fields):
+def _transition_unlocked(aios_dir, effect_id, target, actor, **fields):
     _validate_strings(("effect_id", effect_id), ("actor", actor))
     if target not in STATES:
         raise ValueError("invalid effect state")
@@ -149,24 +160,34 @@ def transition(aios_dir, effect_id, target, actor, **fields):
     return updated
 
 
-def _transition_dispatch(aios_dir, effect_id, actor, *, attempt, attempt_id, provider):
-    """Internal dispatch mutation after authority checks."""
+def _transition_dispatch(aios_dir, effect_id, actor, *, attempt, attempt_id, provider,
+                         handoff_runtime=None):
+    """Internal dispatch mutation after authority checks (caller holds the lock)."""
+    if handoff_runtime is not None:
+        _validate_strings(("handoff_runtime", handoff_runtime))
     path = _path(aios_dir, effect_id)
     current = _load(path)
     updated = dict(current)
     updated.update({"state": "DISPATCHED", "attempt": attempt,
                     "attempt_id": attempt_id, "provider": provider})
+    # A new attempt never inherits a previous attempt's execution claim.
+    updated.pop("execution_claim", None)
+    if handoff_runtime is not None:
+        updated["handoff_runtime"] = handoff_runtime
+    else:
+        updated.pop("handoff_runtime", None)
     event = {
         "kind": "external_effect", "action": "dispatch", "effect_id": effect_id,
         "from_state": current["state"], "to_state": "DISPATCHED", "actor": actor,
         "attempt": attempt, "attempt_id": attempt_id, "provider": provider,
+        "handoff_runtime": handoff_runtime,
     }
     commit_batch(aios_dir, [(os.path.join("effects", effect_id + ".json"), updated),
                             (os.path.join("events", "effect-" + effect_id + "-DISPATCHED-attempt-" + str(attempt) + ".json"), event)])
     return updated
 
 
-def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
+def _dispatch_unlocked(aios_dir, effect_id, actor, attempt_id, provider, handoff_runtime=None):
     _validate_strings(("attempt_id", attempt_id), ("provider", provider))
     recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
@@ -182,10 +203,12 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
     if int(current.get("max_attempts", 0)) < 1:
         raise TransitionError("effect has no authorized execution attempts")
     return _transition_dispatch(aios_dir, effect_id, actor,
-                                attempt=1, attempt_id=attempt_id, provider=provider)
+                                attempt=1, attempt_id=attempt_id, provider=provider,
+                                handoff_runtime=handoff_runtime)
 
 
-def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
+def _retry_dispatch_unlocked(aios_dir, effect_id, actor, attempt_id, provider, attempt,
+                             handoff_runtime=None):
     """Explicitly dispatch the next attempt for an UNKNOWN effect."""
     _validate_strings(("effect_id", effect_id), ("actor", actor),
                       ("attempt_id", attempt_id), ("provider", provider))
@@ -210,7 +233,107 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt):
         raise ValueError("attempt_id does not match retry attempt")
     contract, _permit = _validate_persisted_effect(aios_dir, current)
     return _transition_dispatch(aios_dir, effect_id, actor,
-                                attempt=attempt, attempt_id=attempt_id, provider=provider)
+                                attempt=attempt, attempt_id=attempt_id, provider=provider,
+                                handoff_runtime=handoff_runtime)
+
+
+def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id, effect_type):
+    with mutation_lock(aios_dir):
+        return _create_effect_unlocked(aios_dir, contract_id, logical_operation_id, actor,
+                                       permit_id, effect_type)
+
+
+def transition(aios_dir, effect_id, target, actor, **fields):
+    with mutation_lock(aios_dir):
+        return _transition_unlocked(aios_dir, effect_id, target, actor, **fields)
+
+
+def dispatch(aios_dir, effect_id, actor, attempt_id, provider, handoff_runtime=None):
+    """CAS PLANNED -> DISPATCHED(attempt 1).
+
+    ``handoff_runtime`` durably names the external runtime that must schedule
+    this attempt, so a crash between this commit and the runtime enqueue is
+    recoverable from AIOS alone (see the runtime's reconciliation).
+    """
+    with mutation_lock(aios_dir):
+        return _dispatch_unlocked(aios_dir, effect_id, actor, attempt_id, provider,
+                                  handoff_runtime=handoff_runtime)
+
+
+def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, handoff_runtime=None):
+    """CAS UNKNOWN -> DISPATCHED(attempt N); concurrent retries cannot both win."""
+    with mutation_lock(aios_dir):
+        return _retry_dispatch_unlocked(aios_dir, effect_id, actor, attempt_id, provider, attempt,
+                                        handoff_runtime=handoff_runtime)
+
+
+def observe(aios_dir, effect_id, actor, outcome, provider_observation):
+    with mutation_lock(aios_dir):
+        return _observe_unlocked(aios_dir, effect_id, actor, outcome, provider_observation)
+
+
+class ExecutionClaimRejected(TransitionError):
+    """AIOS refused to authorize provider execution; the provider was not called."""
+
+
+_CLAIM_BINDING = ("effect_id", "attempt_id", "attempt", "provider", "actor",
+                  "contract_id", "permit_id", "effect_type", "policy_digest")
+
+
+def claim_execution(aios_dir, effect_id, attempt_id, provider, actor, holder, expected=None):
+    """Atomically authorize exactly one provider invocation for one attempt.
+
+    Under the mutation lock: recover journals, reload the persisted effect,
+    re-validate contract/permit authority, require state DISPATCHED bound to
+    exactly ``(effect_id, attempt_id, provider, actor)`` (and every identity
+    field of ``expected`` when given), refuse an existing claim for the same
+    attempt, then durably record the claim. Returns the claimed record, which
+    is the only snapshot a caller may hand to the provider.
+    """
+    _validate_strings(("effect_id", effect_id), ("attempt_id", attempt_id),
+                      ("provider", provider), ("actor", actor), ("holder", holder))
+    with mutation_lock(aios_dir):
+        recover_pending(aios_dir)
+        path = _path(aios_dir, effect_id)
+        if not os.path.exists(path):
+            raise ExecutionClaimRejected(f"unknown effect: {effect_id}")
+        current = _load(path)
+        try:
+            _validate_persisted_effect(aios_dir, current)
+        except Exception as exc:
+            raise ExecutionClaimRejected(f"authority no longer valid: {exc}") from exc
+        if current.get("state") != "DISPATCHED":
+            raise ExecutionClaimRejected(
+                f"execution requires DISPATCHED, persisted state is {current.get('state')}")
+        attempt = current.get("attempt")
+        checks = {"effect_id": effect_id, "attempt_id": attempt_id,
+                  "provider": provider, "actor": actor}
+        if expected is not None:
+            for key in _CLAIM_BINDING:
+                if key in expected:
+                    checks.setdefault(key, expected[key])
+                    if expected[key] != checks[key]:
+                        raise ExecutionClaimRejected(f"snapshot {key} conflicts with request")
+        for key, value in checks.items():
+            if current.get(key) != value:
+                raise ExecutionClaimRejected(f"persisted {key} does not match execution request")
+        if attempt_id != _attempt_id(effect_id, attempt):
+            raise ExecutionClaimRejected("persisted attempt_id is not bound to attempt number")
+        prior = current.get("execution_claim")
+        if isinstance(prior, dict) and prior.get("attempt_id") == attempt_id:
+            raise ExecutionClaimRejected("attempt already claimed for execution")
+        claim = {"attempt_id": attempt_id, "attempt": attempt, "provider": provider,
+                 "actor": actor, "holder": holder, "claim_id": "XC-" + uuid.uuid4().hex}
+        updated = dict(current)
+        updated["execution_claim"] = claim
+        event = {"kind": "external_effect", "action": "execution_claim", "effect_id": effect_id,
+                 "state": "DISPATCHED", "actor": actor, "attempt": attempt,
+                 "attempt_id": attempt_id, "provider": provider, "holder": holder,
+                 "claim_id": claim["claim_id"]}
+        commit_batch(aios_dir, [
+            (os.path.join("effects", effect_id + ".json"), updated),
+            (os.path.join("events", f"effect-{effect_id}-EXECUTION-CLAIM-attempt-{attempt}.json"), event)])
+        return updated
 
 
 def unknown(aios_dir, effect_id, actor, reason):
@@ -218,7 +341,7 @@ def unknown(aios_dir, effect_id, actor, reason):
     return transition(aios_dir, effect_id, "UNKNOWN", actor, unknown_reason=reason)
 
 
-def observe(aios_dir, effect_id, actor, outcome, provider_observation):
+def _observe_unlocked(aios_dir, effect_id, actor, outcome, provider_observation):
     if outcome not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
         raise ValueError("invalid observation outcome")
     if not isinstance(provider_observation, dict) or not provider_observation:
@@ -244,7 +367,8 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
         raise ValueError("observation requires a valid AIOS evidence record")
     if evidence.get("provider") != provider:
         raise ValueError("evidence provider does not match effect provider")
-    return transition(aios_dir, effect_id, outcome, actor, provider_observation=provider_observation)
+    return _transition_unlocked(aios_dir, effect_id, outcome, actor, provider_observation=provider_observation)
 
 
-__all__ = ["STATES", "create_effect", "transition", "dispatch", "retry_dispatch", "unknown", "observe"]
+__all__ = ["STATES", "create_effect", "transition", "dispatch", "retry_dispatch", "unknown", "observe",
+           "claim_execution", "ExecutionClaimRejected"]

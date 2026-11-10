@@ -8,11 +8,14 @@ from dataclasses import dataclass
 from typing import Protocol
 import hashlib
 import json
+import os
+import uuid
 
 from .evidence import EvidenceRecord
 from .authority import authorize, load_contract, load_permit
 from .durable_runtime import DurableRuntime, validate_submission
-from .effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
+from .effect_authority import (ExecutionClaimRejected, claim_execution, create_effect, dispatch,
+                               observe, retry_dispatch, unknown)
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,11 @@ def _submit_runtime(runtime, method, effect, attempt_id, provider_name, **kwargs
     return submission
 
 
+def _runtime_name(runtime):
+    name = getattr(runtime, "name", None) if runtime is not None else None
+    return name if isinstance(name, str) and name.strip() else None
+
+
 def validate_receipt(receipt, effect, attempt_id, provider_name):
     """Fail closed unless the provider explicitly observed a bound outcome."""
     if not isinstance(receipt, ProviderReceipt):
@@ -77,8 +85,16 @@ def validate_receipt(receipt, effect, attempt_id, provider_name):
         raise ValueError("receipt observation must be a non-empty dict")
 
 
-def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
-    """Execute exactly one dispatched attempt and record its observation."""
+def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id, *, holder=None):
+    """Execute one dispatched attempt and record its observation.
+
+    The supplied ``effect`` is only a request. Immediately before the provider
+    call AIOS atomically claims execution against the *persisted* record
+    (``claim_execution``); if the effect was revoked, transitioned (e.g. to
+    UNKNOWN), re-dispatched, or already claimed, ``ExecutionClaimRejected`` is
+    raised and the provider is not called. The provider receives the claimed
+    record, never the caller's snapshot.
+    """
     _text(actor, "actor")
     _text(attempt_id, "attempt_id")
     if not isinstance(contract, dict) or not contract:
@@ -99,6 +115,11 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
     if "external_effect" not in contract.get("allowed_effects", []):
         raise PermissionError("external effect is not authorized by contract")
 
+    if holder is None:
+        holder = f"aios-runtime:{os.getpid()}:{uuid.uuid4().hex}"
+    # Linearization point for authorization. Raises before any provider call.
+    effect = claim_execution(aios_dir, effect["effect_id"], attempt_id, provider_name, actor,
+                             holder, expected=effect)
     try:
         receipt = adapter.execute(contract=dict(contract), effect=dict(effect), attempt_id=attempt_id)
         validate_receipt(receipt, effect, attempt_id, provider_name)
@@ -178,7 +199,8 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
     if "external_effect" not in contract["allowed_effects"]:
         raise PermissionError("external effect is not authorized by contract")
 
-    dispatched = retry_dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name, attempt)
+    dispatched = retry_dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name, attempt,
+                                handoff_runtime=_runtime_name(durable_runtime))
     _submit_runtime(durable_runtime, "retry", dispatched, attempt_id, provider_name, attempt=attempt)
     return execute_attempt(aios_dir, contract, dispatched, actor, adapter, attempt_id)
 
@@ -208,12 +230,13 @@ def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapt
     if effect["state"] != "PLANNED":
         raise RuntimeError("logical operation already has a non-planned effect")
     attempt_id = f"{effect['effect_id']}:attempt:1"
-    effect = dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name)
+    effect = dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name,
+                      handoff_runtime=_runtime_name(durable_runtime))
     _submit_runtime(durable_runtime, "submit", effect, attempt_id, provider_name)
     return execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id)
 
 
 __all__ = [
     "ProviderReceipt", "ProviderAdapter", "validate_receipt",
-    "execute_attempt", "execute_retry_attempt", "execute",
+    "execute_attempt", "execute_retry_attempt", "execute", "ExecutionClaimRejected",
 ]

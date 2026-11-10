@@ -31,6 +31,7 @@ import datetime
 import hashlib
 import json
 import os
+import threading
 import re
 import shutil
 import uuid
@@ -38,6 +39,7 @@ import uuid
 from . import state as state_layout
 
 __all__ = [
+    "mutation_lock",
     "MutationError",
     "ActorError",
     "ContractError",
@@ -243,13 +245,34 @@ def _mutation_lock_path(aios_dir):
     return os.path.join(os.path.dirname(aios_dir), ".aios.mutation.lock")
 
 
+_LOCK_DEPTH = threading.local()
+
+
+def _lock_key(aios_dir):
+    return os.path.realpath(_mutation_lock_path(aios_dir))
+
+
 class _MutationLock:
-    """Cross-platform exclusive lock for one AIOS state tree."""
+    """Cross-platform exclusive lock for one AIOS state tree.
+
+    Re-entrant per thread (so a compare-and-set section can call
+    ``commit_batch``/``recover_pending``) and exclusive across threads and
+    processes via ``flock``/``msvcrt`` on a fresh file description.
+    """
     def __init__(self, aios_dir):
         self.aios_dir = aios_dir
         self.fh = None
+        self._nested = False
 
     def __enter__(self):
+        depth = getattr(_LOCK_DEPTH, "d", None)
+        if depth is None:
+            depth = _LOCK_DEPTH.d = {}
+        key = _lock_key(self.aios_dir)
+        if depth.get(key, 0) > 0:
+            depth[key] += 1
+            self._nested = True
+            return self
         state_layout.ensure_state_dirs(self.aios_dir)
         os.makedirs(os.path.dirname(_mutation_lock_path(self.aios_dir)), exist_ok=True)
         self.fh = open(_mutation_lock_path(self.aios_dir), "a+b")
@@ -265,9 +288,14 @@ class _MutationLock:
         else:
             import fcntl
             fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX)
+        depth[key] = 1
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        key = _lock_key(self.aios_dir)
+        _LOCK_DEPTH.d[key] -= 1
+        if self._nested:
+            return False
         try:
             if os.name == "nt":
                 import msvcrt
@@ -392,6 +420,11 @@ def _require_committed_event(aios_dir, entity):
         f"committed entity {entity['entity_type']} {entity['entity_id']} "
         f"has no matching audit event; state was tampered with or predates "
         f"M1.5")
+
+
+def mutation_lock(aios_dir):
+    """Hold the AIOS state-tree mutation lock for a read-validate-write (CAS) section."""
+    return _MutationLock(aios_dir)
 
 
 def commit_batch(aios_dir, payloads):
