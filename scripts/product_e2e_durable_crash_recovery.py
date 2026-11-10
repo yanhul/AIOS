@@ -90,6 +90,10 @@ class RecordingRuntime:
 
 class Provider:
     name = PROVIDER
+    # This fixture has no external side effect and returns a deterministic
+    # result per attempt_id, so re-sending the same attempt is genuinely
+    # idempotent. Non-idempotent providers are reconciled instead of resumed.
+    idempotent_attempt_ids = True
 
     def execute(self, *, contract, effect, attempt_id):
         return ProviderReceipt(

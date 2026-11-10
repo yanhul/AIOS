@@ -134,7 +134,7 @@ def test_tampered_receipt_is_rejected(tmp_path):
     rec = json.load(open(path))
     rec["attempt_id"] = rec["attempt_id"].replace(":1", ":9")
     json.dump(rec, open(path, "w"))
-    with pytest.raises(TransitionError, match="identity"):
+    with pytest.raises(TransitionError, match="seal|identity"):
         load_receipt(aios, done["receipt_id"])
 
 
@@ -154,10 +154,10 @@ def test_crash_before_provider_execution_reconciles_then_retries_with_new_attemp
 
     def die(*a, **k):
         raise Crash()
-    monkeypatch.setattr(runtime, "execute_attempt", die)
-    with pytest.raises(Crash):
-        execute(aios, cid, pid, "op-1", ACTOR, prov)
-    monkeypatch.undo()
+    with monkeypatch.context() as m:
+        m.setattr(runtime, "execute_attempt", die)
+        with pytest.raises(Crash):
+            execute(aios, cid, pid, "op-1", ACTOR, prov)
 
     eff_id = next(iter(os.listdir(os.path.join(aios, "effects")))).removesuffix(".json")
     assert _effect(aios, eff_id)["state"] == "DISPATCHED" and prov.calls == 0
@@ -184,10 +184,10 @@ def test_provider_success_then_crash_before_receipt_is_reconciled_without_retry(
 
     def die(*a, **k):
         raise Crash()
-    monkeypatch.setattr(runtime, "observe", die)  # provider already applied; persistence dies
-    with pytest.raises(Crash):
-        execute(aios, cid, pid, "op-1", ACTOR, prov)
-    monkeypatch.undo()
+    with monkeypatch.context() as m:
+        m.setattr(runtime, "observe", die)  # provider already applied; persistence dies
+        with pytest.raises(Crash):
+            execute(aios, cid, pid, "op-1", ACTOR, prov)
 
     eff_id = next(iter(os.listdir(os.path.join(aios, "effects")))).removesuffix(".json")
     assert _effect(aios, eff_id)["state"] == "DISPATCHED"

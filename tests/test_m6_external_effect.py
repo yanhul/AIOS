@@ -18,13 +18,13 @@ from core.effect_authority import retry_dispatch
 from tests.effect_reconcile_helpers import reconcile_not_applied
 
 
-def evidence(provider="provider:test"):
+def evidence(provider="provider:test", run_id="run-1"):
     return EvidenceRecord(
         evidence_id="EV-1",
         level="OBSERVED",
         source_ref="provider://receipt/1",
         claim="provider completed operation",
-        run_id="run-1",
+        run_id=run_id,
         provider=provider,
     ).as_record()
 
@@ -73,7 +73,8 @@ class TestExternalEffect(unittest.TestCase):
         reconcile_not_applied(self.aios, e["effect_id"], "agent:a")
         retry_dispatch(self.aios, e["effect_id"], "agent:a", retry_attempt, "provider:test", 2, {"mode":"EXPLICIT","effect_id":e["effect_id"],"attempt":2})
         record_observation(self.aios, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {
-            "attempt_id": retry_attempt, "provider": "provider:test", "evidence": evidence()
+            "attempt_id": retry_attempt, "provider": "provider:test", "provider_operation_id": "op-2",
+            "evidence": evidence(run_id=retry_attempt)
         })
         self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "OBSERVED_SUCCESS")
 

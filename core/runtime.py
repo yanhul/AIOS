@@ -164,7 +164,15 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
 
 
 def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: DurableRuntime):
-    """Resume the exact currently-dispatched attempt without allocating a new attempt ID."""
+    """Resume a DISPATCHED attempt that has no receipt (e.g. after a crash).
+
+    Re-sending the same attempt to the provider is only safe when the provider
+    guarantees deduplication on attempt_id; the adapter must declare that with
+    ``idempotent_attempt_ids = True``. Otherwise AIOS never re-executes: the
+    attempt becomes UNKNOWN and is reconciled through the provider status
+    probe (APPLIED -> receipt, NOT_APPLIED -> eligible for an explicit retry
+    with a new attempt identity, INCONCLUSIVE -> blocked).
+    """
     _text(actor, "actor")
     if not isinstance(contract, dict) or not contract:
         raise ValueError("contract must be a non-empty dict")
@@ -181,8 +189,15 @@ def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: 
         raise PermissionError("provider capability is not authorized by contract")
     if "external_effect" not in contract.get("allowed_effects", []):
         raise PermissionError("external effect is not authorized by contract")
-    _submit_runtime(durable_runtime, "resume", effect, attempt_id, provider_name)
-    return execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id)
+    persisted = _load_current(aios_dir, effect["effect_id"])
+    if persisted.get("state") != "DISPATCHED" or persisted.get("attempt_id") != attempt_id:
+        raise RuntimeError("persisted effect is no longer the dispatched attempt being resumed")
+    if getattr(adapter, "idempotent_attempt_ids", False) is True:
+        _submit_runtime(durable_runtime, "resume", persisted, attempt_id, provider_name)
+        return execute_attempt(aios_dir, contract, persisted, actor, adapter, attempt_id)
+    recover_interrupted(aios_dir, effect["effect_id"], actor,
+                        "resume of non-idempotent provider attempt; reconciliation required")
+    return reconcile_unknown_attempt(aios_dir, effect["effect_id"], actor, adapter)
 
 
 def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapter, attempt_id, attempt,

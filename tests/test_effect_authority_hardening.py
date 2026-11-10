@@ -28,6 +28,7 @@ from tests.effect_reconcile_helpers import reconcile_not_applied
 def make_authorized(td):
     registry = CapabilityRegistry()
     registry.register(Capability("research_is_validation", "1", "test-fixture", "research", status="ACTIVE"))
+    registry.register(Capability("provider-a", "1", "test-fixture", "research", status="ACTIVE"))
     registry.persist(td, "test-fixture")
     policy = persist_policy(td, {"policy_type": "GOVERNING_POLICY", "name": "effect-hardening"})
     contract = {
@@ -35,7 +36,7 @@ def make_authorized(td):
         "task_id": "RESEARCH_BC7",
         "scope": "research",
         "actor": "bc-controller",
-        "capabilities": ["research_is_validation@1"],
+        "capabilities": ["research_is_validation@1", "provider-a@1"],
         "input_digest": "sha256:input",
         "allowed_effects": ["process_execution"],
         "evidence_required": ["execution_receipt"],
@@ -116,7 +117,7 @@ def test_observation_requires_current_attempt_and_valid_aios_evidence():
             level="OBSERVED",
             source_ref="runtime/provider-a",
             claim="execution completed",
-            run_id="run-1",
+            run_id=attempt_id,
             provider="provider-a",
         ).as_record()
         observed = observe(
@@ -124,12 +125,14 @@ def test_observation_requires_current_attempt_and_valid_aios_evidence():
             effect["effect_id"],
             "bc-controller",
             "OBSERVED_SUCCESS",
-            {"attempt_id": attempt_id, "provider": "provider-a", "evidence": evidence},
+            {"attempt_id": attempt_id, "provider": "provider-a", "provider_operation_id": "op-a-1",
+             "evidence": evidence},
         )
         assert observed["state"] == "OBSERVED_SUCCESS"
         with pytest.raises(TransitionError):
             observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS",
-                    {"attempt_id": attempt_id, "provider": "provider-a", "evidence": evidence})
+                    {"attempt_id": attempt_id, "provider": "provider-a", "provider_operation_id": "op-a-1",
+                     "evidence": evidence})
 
 
 def test_tampered_persisted_authority_blocks_future_transition():

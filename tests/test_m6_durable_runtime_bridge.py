@@ -105,8 +105,11 @@ def test_resume_reuses_exact_dispatched_attempt_after_ambiguous_submission(tmp_p
 
     runtime = RecordingRuntime()
     contract = __import__("core.authority", fromlist=["load_contract"]).load_contract(str(tmp_path), cid)
+    class IdempotentAdapter(GoodAdapter):
+        idempotent_attempt_ids = True  # provider dedupes on attempt_id
+
     result = resume_attempt(
-        str(tmp_path), contract, effect, "agent:test", GoodAdapter(), runtime
+        str(tmp_path), contract, effect, "agent:test", IdempotentAdapter(), runtime
     )
     assert result["state"] == "OBSERVED_SUCCESS"
     assert runtime.resumed == (effect["effect_id"], attempt_id)

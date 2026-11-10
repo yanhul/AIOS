@@ -136,8 +136,8 @@ def evaluate_persisted_receipt(
     identity = {"receipt_id": receipt_id, "evaluator_version": evaluator_version,
                 "rubric_version": rubric_version}
     evaluation_id = "EVAL-" + hashlib.sha256(canonical_json(identity).encode("utf-8")).hexdigest()
-    path = os.path.join(aios_dir, "evaluations", evaluation_id + ".json")
-    if os.path.exists(path):
+    rel = os.path.join("evaluations", evaluation_id + ".json")
+    if os.path.exists(os.path.join(aios_dir, rel)):
         raise ValueError("evaluation already recorded for this receipt/evaluator/rubric")
     record = evaluate_receipt(receipt, evaluation_id=evaluation_id, receipt_id=receipt_id,
                               evaluator_version=evaluator_version, rubric_version=rubric_version,
@@ -148,7 +148,15 @@ def evaluate_persisted_receipt(
                "receipt_id": record.receipt_id, "evaluator_version": record.evaluator_version,
                "rubric_version": record.rubric_version, "evidence_refs": list(record.evidence_refs),
                "verdict": record.verdict, "timestamp": record.timestamp, "result": dict(record.result)}
-    commit_batch(aios_dir, [(os.path.join("evaluations", evaluation_id + ".json"), payload)])
+    from .mutation import TransitionError
+    from .record_seal import seal
+    try:
+        # CAS: a concurrent evaluator cannot overwrite an existing evaluation.
+        commit_batch(aios_dir, [(rel, seal(payload))], expect={rel: None})
+    except TransitionError as exc:
+        if "compare-and-swap" in str(exc):
+            raise ValueError("evaluation already recorded for this receipt/evaluator/rubric") from exc
+        raise
     return record
 
 
