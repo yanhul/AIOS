@@ -50,8 +50,10 @@ def test_unsigned_forged_execution_claim_cannot_authorize_invoked_observation(tm
 
 def test_execution_claim_writer_fails_closed_without_deployment_key(tmp_path, monkeypatch):
     aios, effect = _dispatched(tmp_path)
-    monkeypatch.delenv(SEAL_ENV, raising=False)
+    # Load and validate the persisted effect while its authority key is present.
+    # Then remove the key so this test isolates the claim writer's fail-closed seal.
     current, digest = ea._load_current_cas(aios, effect["effect_id"])
+    monkeypatch.delenv(SEAL_ENV, raising=False)
     with pytest.raises(SealError):
         _claim_execution(aios, current, digest, ACTOR)
     assert not os.path.exists(os.path.join(aios, ea._claim_relpath(effect["effect_id"], 1)))
