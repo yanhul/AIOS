@@ -5,7 +5,7 @@
 # AIOS-COVERAGE-GAP: Seals defend against writers without the deployment secret only; provider
 #                    authenticity (provider-signed responses) is NOT covered. Races are forced with
 #                    real forked processes + barriers on Linux (fcntl); Windows locking not exercised.
-# AIOS-BASELINE: e6c2aed (484 passed, 1 skipped)
+# AIOS-BASELINE: e6c2aed (484 passed, 1 skipped); re-review fixes on top of 32e1c04
 
 import json
 import multiprocessing as mp
@@ -28,8 +28,10 @@ from core.runtime import ProviderReceipt, ReconciliationReport, execute, resume_
 from tests.test_m6_runtime import setup_authority
 from tests.test_p0_receipt_lineage_crash_recovery import ACTOR, PROVIDER, Provider
 
-pytestmark = pytest.mark.skipif(os.name != "posix", reason="uses fork + os._exit process tests")
-CTX = mp.get_context("fork")
+# Only tests that fork real processes are POSIX-only; seal/receipt/evidence/CAS logic
+# tests must keep running on every platform (re-review F9).
+posix_only = pytest.mark.skipif(os.name != "posix", reason="uses fork + os._exit process tests")
+CTX = mp.get_context("fork") if os.name == "posix" else None
 
 
 def _effect(aios, eid):
@@ -162,6 +164,7 @@ def _race(aios, n, target, patch_name):
     return [results.get(timeout=5) for _ in procs]
 
 
+@posix_only
 def test_f2_two_processes_cannot_both_dispatch_the_same_retry(tmp_path):
     aios, cid, pid, eff = _unknown_effect(tmp_path)
     reconcile_effect(aios, eff["effect_id"], ACTOR, "NOT_APPLIED", _status_evidence(eff))
@@ -175,6 +178,7 @@ def test_f2_two_processes_cannot_both_dispatch_the_same_retry(tmp_path):
     assert _effect(aios, eid)["attempt"] == 2
 
 
+@posix_only
 def test_f2_two_processes_cannot_both_dispatch_initial_attempt(tmp_path):
     aios = str(tmp_path)
     _, cid, pid = setup_authority(tmp_path)
@@ -184,6 +188,7 @@ def test_f2_two_processes_cannot_both_dispatch_initial_attempt(tmp_path):
     assert sorted(r[0] for r in out) == ["err", "ok"], out
 
 
+@posix_only
 def test_f2_two_processes_cannot_both_observe(tmp_path):
     aios = str(tmp_path)
     _, cid, pid = setup_authority(tmp_path)
@@ -205,6 +210,7 @@ def test_f2_two_processes_cannot_both_observe(tmp_path):
 
 # ------------------------------------------------------------------ F3: resume must not double-apply
 
+@posix_only
 def test_f3_resume_after_provider_applied_does_not_reexecute_non_idempotent_provider(tmp_path):
     aios = str(tmp_path)
     c, cid, pid = setup_authority(tmp_path, max_attempts=2)
@@ -338,6 +344,7 @@ def test_f7_concurrent_evaluation_cannot_overwrite(tmp_path, monkeypatch):
 
 # ------------------------------------------------------------------ F8: process death inside commit_batch
 
+@posix_only
 @pytest.mark.parametrize("die_after", [1, 2, 3])
 def test_f8_process_killed_mid_observation_batch_rolls_forward_consistently(tmp_path, die_after):
     aios = str(tmp_path)
@@ -371,6 +378,7 @@ def test_f8_process_killed_mid_observation_batch_rolls_forward_consistently(tmp_
 
 # ------------------------------------------------------------------ real kill before receipt
 
+@posix_only
 def test_real_process_kill_after_provider_success_is_reconciled_not_retried(tmp_path):
     aios = str(tmp_path)
     _, cid, pid = setup_authority(tmp_path, max_attempts=3)
@@ -390,3 +398,200 @@ def test_real_process_kill_after_provider_success_is_reconciled_not_retried(tmp_
     done = runtime.reconcile_unknown_attempt(aios, eid, ACTOR, FileProvider(ledger))
     assert done["state"] == "OBSERVED_SUCCESS"
     assert len(json.load(open(ledger))) == 1
+
+
+# ================================================================== re-review of 32e1c04
+
+# ------------------------------------------------------------------ F8: stale journal vs newer write
+
+_REL = os.path.join("effects", "E-stale.json")
+
+
+def _read_rel(aios):
+    return json.load(open(os.path.join(aios, _REL)))
+
+
+def _leave_pending_journal(aios, payloads, real_kill):
+    """Writer A journals ``payloads`` and dies before replacing any destination."""
+    if real_kill:
+        def die():
+            mutation._replace = lambda src, dst: os._exit(137)
+            mutation.commit_batch(aios, payloads)
+        p = CTX.Process(target=die)
+        p.start()
+        p.join(30)
+        assert p.exitcode == 137
+    else:
+        real = mutation._replace
+
+        def boom(src, dst):
+            raise OSError("simulated crash before replace")
+        mutation._replace = boom
+        try:
+            with pytest.raises(OSError):
+                mutation.commit_batch(aios, payloads)
+        finally:
+            mutation._replace = real
+    staging = os.path.join(aios, ".staging")
+    assert any(os.path.isfile(os.path.join(staging, b, "journal.json")) for b in os.listdir(staging))
+
+
+@pytest.mark.parametrize("real_kill", [
+    pytest.param(True, marks=posix_only, id="forked-process-killed"),
+    pytest.param(False, id="in-process-crash"),
+])
+def test_pending_recovery_never_overwrites_later_valid_write(tmp_path, real_kill):
+    aios = str(tmp_path)
+    mutation.commit_batch(aios, [(_REL, {"version": 1})])
+    _leave_pending_journal(aios, [(_REL, {"version": 2})], real_kill)
+    assert _read_rel(aios) == {"version": 1}  # A never replaced the destination
+
+    mutation.commit_batch(aios, [(_REL, {"version": 3})])  # B: valid commit, NO expect
+    assert _read_rel(aios) == {"version": 3}
+
+    mutation.recover_pending(aios)  # any later reader
+    assert _read_rel(aios) == {"version": 3}, "stale journal rolled forward over a newer commit"
+    assert not os.listdir(os.path.join(aios, ".staging"))
+
+
+@pytest.mark.parametrize("real_kill", [
+    pytest.param(True, marks=posix_only, id="forked-process-killed"),
+    pytest.param(False, id="in-process-crash"),
+])
+def test_unexpected_commit_rolls_pending_batch_forward_first(tmp_path, real_kill):
+    """B (no expect) must see A's journaled batch applied atomically before its own write."""
+    aios = str(tmp_path)
+    other = os.path.join("effects", "E-other.json")
+    mutation.commit_batch(aios, [(_REL, {"version": 1}), (other, {"version": 1})])
+    _leave_pending_journal(aios, [(_REL, {"version": 2}), (other, {"version": 2})], real_kill)
+    mutation.commit_batch(aios, [(_REL, {"version": 3})])
+    mutation.recover_pending(aios)
+    assert _read_rel(aios) == {"version": 3}
+    assert json.load(open(os.path.join(aios, other))) == {"version": 2}  # A's batch is not half-lost
+
+
+# ------------------------------------------------------------------ F3: forged idempotency declaration
+
+class CountingProvider(Provider):
+    """NOT idempotent: every execute() is a new side effect, persisted on disk."""
+
+    def __init__(self, ledger, idempotent_claim):
+        super().__init__()
+        self.ledger = ledger
+        self.idempotent_attempt_ids = idempotent_claim
+
+    def _read(self):
+        return json.load(open(self.ledger)) if os.path.exists(self.ledger) else []
+
+    def execute(self, *, contract, effect, attempt_id):
+        led = self._read()
+        led.append(attempt_id)
+        json.dump(led, open(self.ledger, "w"))
+        self.applied[attempt_id] = f"op-{len(led)}"
+        return self._receipt(effect, attempt_id, f"op-{len(led)}")
+
+    def reconcile(self, *, effect, attempt_id):
+        self.applied = {a: f"op-{i + 1}" for i, a in enumerate(self._read())}
+        return super().reconcile(effect=effect, attempt_id=attempt_id)
+
+
+def _dispatched_and_applied(tmp_path, metadata=()):
+    aios = str(tmp_path)
+    _, cid, pid = setup_authority(tmp_path)
+    if metadata:
+        from core.capabilities import Capability, CapabilityRegistry
+        fresh = CapabilityRegistry()
+        for c in CapabilityRegistry.load(aios).snapshot()["capabilities"]:
+            if c["capability_id"] == PROVIDER:
+                c = {**c, "metadata": [list(m) for m in metadata]}
+            fresh.register(Capability.from_dict(c))
+        fresh.persist(aios, "test-fixture")
+    eff = ea.create_effect(aios, cid, "op-1", ACTOR, pid, "external_effect")
+    eff = dispatch(aios, eff["effect_id"], ACTOR, f"{eff['effect_id']}:attempt:1", PROVIDER)
+    ledger = str(tmp_path / "count.json")
+    # The provider applied the side effect; the process died before observe().
+    CountingProvider(ledger, False).execute(contract={}, effect=eff, attempt_id=eff["attempt_id"])
+    contract = __import__("core.authority", fromlist=["load_contract"]).load_contract(aios, cid)
+    return aios, contract, eff, ledger
+
+
+def test_f3_adapter_self_declared_idempotency_is_not_trusted(tmp_path):
+    aios, contract, eff, ledger = _dispatched_and_applied(tmp_path)  # registry attests nothing
+    liar = CountingProvider(ledger, idempotent_claim=True)
+    done = resume_attempt(aios, contract, eff, ACTOR, liar, None)
+    assert len(json.load(open(ledger))) == 1, "forged idempotency declaration caused a second side effect"
+    assert done["state"] == "OBSERVED_SUCCESS"
+    assert load_receipt(aios, done["receipt_id"])["recorded_via"] == "reconciliation"
+
+
+def test_f3_caller_supplied_contract_cannot_grant_idempotency(tmp_path):
+    aios, contract, eff, ledger = _dispatched_and_applied(tmp_path)
+    forged = {**contract, "capabilities": [f"{PROVIDER}@999"]}  # not the persisted contract
+    resume_attempt(aios, forged, eff, ACTOR, CountingProvider(ledger, True), None)
+    assert len(json.load(open(ledger))) == 1
+
+
+def test_f3_registry_attestation_without_adapter_declaration_still_reconciles(tmp_path):
+    aios, contract, eff, ledger = _dispatched_and_applied(
+        tmp_path, metadata=(("idempotent_attempt_ids", "true"),))
+    resume_attempt(aios, contract, eff, ACTOR, CountingProvider(ledger, False), None)
+    assert len(json.load(open(ledger))) == 1
+
+
+def test_f3_registry_attested_idempotent_provider_is_resumed(tmp_path):
+    aios, contract, eff, ledger = _dispatched_and_applied(
+        tmp_path, metadata=(("idempotent_attempt_ids", "true"),))
+    done = resume_attempt(aios, contract, eff, ACTOR, CountingProvider(ledger, True), None)
+    assert json.load(open(ledger)) == [eff["attempt_id"]] * 2  # re-sent the SAME attempt id
+    assert load_receipt(aios, done["receipt_id"])["recorded_via"] == "observe"
+
+
+# ------------------------------------------------------------------ F1: sealed -> unsealed downgrade
+
+def test_f1_stripping_seal_from_genuine_reconciliation_is_rejected(tmp_path):
+    aios, _, _, eff = _unknown_effect(tmp_path)
+    reconcile_effect(aios, eff["effect_id"], ACTOR, "NOT_APPLIED", _status_evidence(eff))
+    path = os.path.join(aios, "reconciliations", f"{eff['effect_id']}-attempt-1.json")
+    rec = json.load(open(path))
+    assert "seal" in rec
+    json.dump(unsealed_body(rec), open(path, "w"))
+    with pytest.raises(SealError, match="not sealed"):
+        retry_dispatch(aios, eff["effect_id"], ACTOR, f"{eff['effect_id']}:attempt:2", PROVIDER, 2,
+                       _explicit(eff["effect_id"], 2))
+    assert _effect(aios, eff["effect_id"])["state"] == "UNKNOWN"
+
+
+# ------------------------------------------------------------------ F2: remaining CAS mutation path
+
+@posix_only
+def test_f2_two_processes_cannot_both_reconcile(tmp_path):
+    aios, _, _, eff = _unknown_effect(tmp_path)
+    eid = eff["effect_id"]
+
+    def rec(i):
+        verdict = "NOT_APPLIED" if i == 0 else "INCONCLUSIVE"
+        reconcile_effect(aios, eid, ACTOR, verdict, _status_evidence(eff, verdict.lower()))
+    out = _race(aios, 2, rec, "_load_current_cas")
+    assert sorted(r[0] for r in out) == ["err", "ok"], out
+    assert len(os.listdir(os.path.join(aios, "reconciliations"))) == 1
+
+
+# ------------------------------------------------------------------ F7: real two-process evaluation race
+
+@posix_only
+def test_f7_two_processes_cannot_both_record_evaluation(tmp_path):
+    aios = str(tmp_path)
+    _, cid, pid = setup_authority(tmp_path)
+    done = execute(aios, cid, pid, "op-1", ACTOR, Provider())
+    rid = done["receipt_id"]
+
+    def evaluate(i):
+        evaluate_persisted_receipt(aios, rid, evaluator_version="e", rubric_version="r",
+                                   verdict="PASS" if i == 0 else "FAIL", result={"i": i})
+    # Barrier after load_receipt: both processes pass the existence pre-check before either writes.
+    out = _race(aios, 2, evaluate, "load_receipt")
+    assert sorted(r[0] for r in out) == ["err", "ok"], out
+    assert any("already recorded" in r[1] for r in out if r[0] == "err"), out
+    (name,) = os.listdir(os.path.join(aios, "evaluations"))
+    winner = [r[1] for r in out if r[0] == "ok"][0]
+    assert json.load(open(os.path.join(aios, "evaluations", name)))["verdict"] == ("PASS" if winner == 0 else "FAIL")

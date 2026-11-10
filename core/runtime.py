@@ -11,6 +11,7 @@ import json
 
 from .evidence import EvidenceRecord
 from .authority import authorize, load_contract, load_permit
+from .capabilities import CapabilityRegistry
 from .durable_runtime import DurableRuntime, validate_submission
 from .effect_authority import (
     create_effect, dispatch, load_reconciliation, observe, reconcile_effect, recover_interrupted,
@@ -60,6 +61,32 @@ def _provider_authorized(contract, provider_name):
         isinstance(ref, str) and ref.split("@", 1)[0] == provider_name
         for ref in contract.get("capabilities", [])
     )
+
+
+IDEMPOTENT_ATTEMPT_IDS_KEY = "idempotent_attempt_ids"
+
+
+def _registry_attests_idempotent_resume(aios_dir, persisted_effect, provider_name):
+    """True only if AIOS authority -- not the adapter object -- attests dedupe.
+
+    Re-sending a DISPATCHED attempt is safe only when the provider dedupes on
+    ``attempt_id``. That is a property of a specific provider capability
+    *version*, so it is read from the AIOS capability registry entry that the
+    persisted contract (loaded by the effect's own ``contract_id``, never the
+    caller-supplied dict) binds for this provider. An adapter's own
+    ``idempotent_attempt_ids`` attribute is necessary but never sufficient.
+    Any lookup failure fails closed to reconciliation.
+    """
+    try:
+        contract = load_contract(aios_dir, persisted_effect["contract_id"])
+        refs = [ref for ref in contract.get("capabilities", [])
+                if isinstance(ref, str) and ref.split("@", 1)[0] == provider_name]
+        if len(refs) != 1:
+            return False
+        capability = CapabilityRegistry.load(aios_dir).require(refs[0])
+    except Exception:  # noqa: BLE001 - any authority doubt => reconcile, never re-execute
+        return False
+    return dict(capability.metadata).get(IDEMPOTENT_ATTEMPT_IDS_KEY) == "true"
 
 
 def _submit_runtime(runtime, method, effect, attempt_id, provider_name, **kwargs):
@@ -167,8 +194,10 @@ def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: 
     """Resume a DISPATCHED attempt that has no receipt (e.g. after a crash).
 
     Re-sending the same attempt to the provider is only safe when the provider
-    guarantees deduplication on attempt_id; the adapter must declare that with
-    ``idempotent_attempt_ids = True``. Otherwise AIOS never re-executes: the
+    guarantees deduplication on attempt_id. That must be attested by AIOS: the
+    contract-bound capability version in the capability registry carries
+    metadata ``idempotent_attempt_ids=true`` *and* the adapter declares
+    ``idempotent_attempt_ids = True``. Self-declaration alone is ignored. Otherwise AIOS never re-executes: the
     attempt becomes UNKNOWN and is reconciled through the provider status
     probe (APPLIED -> receipt, NOT_APPLIED -> eligible for an explicit retry
     with a new attempt identity, INCONCLUSIVE -> blocked).
@@ -192,7 +221,8 @@ def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: 
     persisted = _load_current(aios_dir, effect["effect_id"])
     if persisted.get("state") != "DISPATCHED" or persisted.get("attempt_id") != attempt_id:
         raise RuntimeError("persisted effect is no longer the dispatched attempt being resumed")
-    if getattr(adapter, "idempotent_attempt_ids", False) is True:
+    if _registry_attests_idempotent_resume(aios_dir, persisted, provider_name) and \
+            getattr(adapter, "idempotent_attempt_ids", False) is True:
         _submit_runtime(durable_runtime, "resume", persisted, attempt_id, provider_name)
         return execute_attempt(aios_dir, contract, persisted, actor, adapter, attempt_id)
     recover_interrupted(aios_dir, effect["effect_id"], actor,

@@ -431,13 +431,18 @@ def commit_batch(aios_dir, payloads, expect=None):
 
     ``expect`` is an optional compare-and-swap precondition: a mapping of
     relative path -> expected ``file_digest`` (``None`` = must not exist),
-    checked under the lock after pending batches are rolled forward. Any
+    checked under the lock. Pending batches are rolled forward under the lock
+    before every commit, with or without ``expect``. Any
     mismatch raises ``TransitionError`` and nothing is written.
     """
     with _MutationLock(aios_dir):
         state_layout.ensure_state_dirs(aios_dir)
+        # ALWAYS roll pending batches forward under the lock before staging a
+        # new one, CAS or not. A journal left by a dead writer must never be
+        # replayed *after* a newer valid commit, or it would overwrite that
+        # commit with older content (PR #126 re-review F8).
+        _recover_pending_unlocked(aios_dir)
         if expect:
-            _recover_pending_unlocked(aios_dir)
             for rel, expected in expect.items():
                 if file_digest(os.path.join(aios_dir, rel)) != expected:
                     raise TransitionError(f"compare-and-swap precondition failed for {rel}: state changed concurrently")

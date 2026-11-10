@@ -53,9 +53,10 @@ class GoodRuntime:
         return RuntimeSubmission(effect["effect_id"], attempt_id, "fake-provider")
 
 
-def setup(tmp_path, max_attempts=1):
+def setup(tmp_path, max_attempts=1, metadata=()):
     registry = CapabilityRegistry()
-    registry.register(Capability("fake-provider", "1", "test-fixture", "test", status="ACTIVE"))
+    registry.register(Capability("fake-provider", "1", "test-fixture", "test", status="ACTIVE",
+                                 metadata=tuple(metadata)))
     registry.persist(str(tmp_path), "test-fixture")
     policy = persist_policy(str(tmp_path), {"policy_type":"GOVERNING_POLICY","name":"durable-runtime-fixture"})
     contract = make_contract(policy, max_attempts)
@@ -91,7 +92,7 @@ def test_runtime_binding_mismatch_fails_closed_before_provider(tmp_path):
 
 
 def test_resume_reuses_exact_dispatched_attempt_after_ambiguous_submission(tmp_path):
-    cid, pid = setup(tmp_path)
+    cid, pid = setup(tmp_path, metadata=(("idempotent_attempt_ids", "true"),))
     effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     attempt_id = f"{effect['effect_id']}:attempt:1"
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")

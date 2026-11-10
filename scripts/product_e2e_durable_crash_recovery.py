@@ -41,7 +41,9 @@ def contract_fixture():
 
 def child_main(root: Path, marker: Path) -> None:
     registry = CapabilityRegistry()
-    registry.register(Capability(PROVIDER, "1", "product-e2e", "product-e2e", status="ACTIVE"))
+    # Idempotent resume is attested by AIOS capability authority, not by the adapter.
+    registry.register(Capability(PROVIDER, "1", "product-e2e", "product-e2e", status="ACTIVE",
+                                 metadata=(("idempotent_attempt_ids", "true"),)))
     registry.persist(str(root), "product-e2e")
     policy = persist_policy(str(root), {
         "policy_type": "GOVERNING_POLICY",
