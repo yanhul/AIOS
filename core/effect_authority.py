@@ -658,7 +658,7 @@ def _load_reconciliation_cas(aios_dir, effect_id, attempt):
     recover_pending(aios_dir)
     path = os.path.join(aios_dir, _reconciliation_relpath(effect_id, attempt))
     if not os.path.exists(path):
-        return None, file_digest(path)
+        return None, None
     with open(path, "rb") as fh:
         raw = fh.read()
     record = json.loads(raw.decode("utf-8"))
