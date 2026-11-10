@@ -41,7 +41,9 @@ def contract_fixture():
 
 def child_main(root: Path, marker: Path) -> None:
     registry = CapabilityRegistry()
-    registry.register(Capability(PROVIDER, "1", "product-e2e", "product-e2e", status="ACTIVE"))
+    # Idempotent resume is attested by AIOS capability authority, not by the adapter.
+    registry.register(Capability(PROVIDER, "1", "product-e2e", "product-e2e", status="ACTIVE",
+                                 metadata=(("idempotent_attempt_ids", "true"),)))
     registry.persist(str(root), "product-e2e")
     policy = persist_policy(str(root), {
         "policy_type": "GOVERNING_POLICY",
@@ -90,6 +92,10 @@ class RecordingRuntime:
 
 class Provider:
     name = PROVIDER
+    # This fixture has no external side effect and returns a deterministic
+    # result per attempt_id, so re-sending the same attempt is genuinely
+    # idempotent. Non-idempotent providers are reconciled instead of resumed.
+    idempotent_attempt_ids = True
 
     def execute(self, *, contract, effect, attempt_id):
         return ProviderReceipt(
@@ -106,6 +112,11 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--artifact", default="artifacts/conformance/durable-crash-recovery.json")
     args = ap.parse_args()
+    # The fixture is its own throwaway deployment: give it a deployment seal key
+    # (inherited by the crash child) unless CI supplies one. Without a seal the
+    # registry cannot attest idempotency and resume correctly falls back to
+    # reconciliation.
+    os.environ.setdefault("AIOS_RECORD_SEAL_SECRET", "product-e2e-ephemeral-" + os.urandom(16).hex())
 
     with tempfile.TemporaryDirectory(prefix="aios-product-e2e-crash-") as td:
         root = Path(td)

@@ -15,6 +15,7 @@ from .mutation import commit_batch
 ALLOWED_EDGE_TYPES = frozenset({"requires", "produces", "composes_with", "validated_by", "works_under"})
 VERIFICATION_LEVELS = frozenset({"OBSERVED", "EVIDENCED", "VERIFIED_DIGITAL", "VERIFIED_PHYSICAL", "PROMOTED"})
 CAPABILITY_STATE_FILE = "capabilities/capability_registry.json"
+REGISTRY_RECORD_TYPE = "CAPABILITY_REGISTRY"
 
 class CapabilityError(ValueError):
     pass
@@ -195,10 +196,62 @@ class CapabilityRegistry:
         if not isinstance(actor, str) or not actor.strip():
             raise CapabilityError("actor must be a non-empty string")
         payload = {"schema_version": 1, **self.snapshot(), "persisted_by": actor}
+        from .record_seal import seal, seal_available
+        if seal_available():
+            # Sealed registries are the only ones whose metadata may grant
+            # authority (e.g. idempotent resume). Unsealed ones stay
+            # descriptive-only.
+            payload = seal({"record_type": REGISTRY_RECORD_TYPE, **payload})
         return commit_batch(str(aios_dir), [(CAPABILITY_STATE_FILE, payload)])[0]
 
     @classmethod
-    def load(cls, aios_dir: str | Path) -> "CapabilityRegistry":
+    def migrate_to_sealed(cls, aios_dir: str | Path, actor: str) -> str:
+        """Explicit operator migration: seal a legacy *unsealed* registry in place.
+
+        Refuses a registry that already carries a seal (valid ones need no
+        migration; invalid ones are tampering, not legacy) and requires the
+        deployment key. Run only after reviewing the legacy file's content:
+        sealing is what turns it into authority.
+        """
+        from .record_seal import seal_available
+        if not seal_available():
+            raise CapabilityError("deployment seal key is not configured; cannot migrate registry")
+        if not isinstance(actor, str) or not actor.strip():
+            raise CapabilityError("actor must be a non-empty string")
+        filename = Path(aios_dir) / CAPABILITY_STATE_FILE
+        # ONE snapshot: the bytes that are checked are the bytes that are
+        # parsed, and the seal write is a CAS against their digest under the
+        # mutation lock. A concurrent writer between check and seal makes the
+        # migration fail instead of sealing content nobody reviewed
+        # (PR #126 re-review @444e578 F4).
+        try:
+            raw_bytes = filename.read_bytes()
+        except OSError as exc:
+            raise CapabilityError(f"cannot read legacy capability registry: {exc}") from exc
+        try:
+            raw = json.loads(raw_bytes.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise CapabilityError(f"cannot read legacy capability registry: {exc}") from exc
+        if not isinstance(raw, dict):
+            raise CapabilityError("invalid capability registry: root must be an object")
+        if "seal" in raw:
+            raise CapabilityError("registry already carries a seal; refusing to re-seal (use reseal for key rotation)")
+        registry = cls._from_data(raw)
+        import hashlib
+        from .mutation import TransitionError
+        from .record_seal import seal
+        payload = seal({"record_type": REGISTRY_RECORD_TYPE, "schema_version": 1,
+                        **registry.snapshot(), "persisted_by": actor})
+        try:
+            return commit_batch(str(aios_dir), [(CAPABILITY_STATE_FILE, payload)],
+                                expect={CAPABILITY_STATE_FILE: hashlib.sha256(raw_bytes).hexdigest()})[0]
+        except TransitionError as exc:
+            raise CapabilityError(f"registry changed during migration; re-review and retry: {exc}") from exc
+
+    @classmethod
+    def load(cls, aios_dir: str | Path, *, require_sealed: bool = False) -> "CapabilityRegistry":
+        """Load the registry. ``require_sealed=True`` is mandatory for any caller
+        that derives *authority* from capability metadata."""
         filename = Path(aios_dir) / CAPABILITY_STATE_FILE
         if not filename.is_file():
             raise CapabilityError(f"capability registry not found: {filename}")
@@ -208,6 +261,18 @@ class CapabilityRegistry:
             raise CapabilityError(f"invalid capability registry JSON: {exc}") from exc
         if not isinstance(data, dict):
             raise CapabilityError("invalid capability registry: root must be an object")
+        if require_sealed:
+            from .record_seal import SealError, require_seal
+            if data.get("record_type") != REGISTRY_RECORD_TYPE:
+                raise CapabilityError("capability registry is not a sealed AIOS registry record")
+            try:
+                require_seal(data, "capability registry")
+            except SealError as exc:
+                raise CapabilityError(str(exc)) from exc
+        return cls._from_data(data)
+
+    @classmethod
+    def _from_data(cls, data: dict) -> "CapabilityRegistry":
         if data.get("schema_version") != 1:
             raise CapabilityError("unsupported capability registry schema_version")
         capabilities = data.get("capabilities", [])

@@ -323,17 +323,23 @@ def _recover_pending_unlocked(aios_dir):
             for op in journal["ops"]:
                 dest = op["dest"]
                 tmp = op["tmp"]
-                if os.path.exists(dest):
+                if os.path.exists(tmp):
+                    # Staged payload still present => this op was not applied
+                    # yet. Roll forward, including updates of an existing dest
+                    # (which still holds its pre-batch content).
+                    with open(tmp, "rb") as fh:
+                        if _digest_bytes(fh.read()) != op["digest"]:
+                            raise StateConflictError(f"staged payload diverges from journal: {tmp}")
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    _replace(tmp, dest)
+                    _fsync_dir(os.path.dirname(dest))
+                elif os.path.exists(dest):
                     with open(dest, "rb") as fh:
                         actual = _digest_bytes(fh.read())
                     if actual != op["digest"]:
                         raise StateConflictError(
                             f"committed file diverges from journal: {dest}"
                         )
-                elif os.path.exists(tmp):
-                    os.makedirs(os.path.dirname(dest), exist_ok=True)
-                    _replace(tmp, dest)
-                    _fsync_dir(os.path.dirname(dest))
                 else:
                     raise StateConflictError(
                         f"journal op unrecoverable (temp and dest both missing): {dest}"
@@ -411,10 +417,35 @@ def _require_committed_event(aios_dir, entity):
         f"with or predates M1.5")
 
 
-def commit_batch(aios_dir, payloads):
-    """Single shared atomic commit engine under the mutation lock."""
+def file_digest(path):
+    """SHA-256 of a file's bytes, or None when it does not exist."""
+    try:
+        with open(path, "rb") as fh:
+            return _digest_bytes(fh.read())
+    except FileNotFoundError:
+        return None
+
+
+def commit_batch(aios_dir, payloads, expect=None):
+    """Single shared atomic commit engine under the mutation lock.
+
+    ``expect`` is an optional compare-and-swap precondition: a mapping of
+    relative path -> expected ``file_digest`` (``None`` = must not exist),
+    checked under the lock. Pending batches are rolled forward under the lock
+    before every commit, with or without ``expect``. Any
+    mismatch raises ``TransitionError`` and nothing is written.
+    """
     with _MutationLock(aios_dir):
         state_layout.ensure_state_dirs(aios_dir)
+        # ALWAYS roll pending batches forward under the lock before staging a
+        # new one, CAS or not. A journal left by a dead writer must never be
+        # replayed *after* a newer valid commit, or it would overwrite that
+        # commit with older content (PR #126 re-review F8).
+        _recover_pending_unlocked(aios_dir)
+        if expect:
+            for rel, expected in expect.items():
+                if file_digest(os.path.join(aios_dir, rel)) != expected:
+                    raise TransitionError(f"compare-and-swap precondition failed for {rel}: state changed concurrently")
         staging_root = os.path.join(aios_dir, ".staging")
         batch_id = uuid.uuid4().hex
         batch_dir = os.path.join(staging_root, f"batch-{batch_id}")

@@ -7,12 +7,14 @@
 import os
 import pytest
 
+from tests.provider_trust_helpers import signed_receipt
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.effect_authority import create_effect, dispatch, retry_dispatch, transition
 from core.policy_registry import persist_policy
 from core.runtime import ProviderReceipt, execute, execute_attempt, execute_retry_attempt
+from tests.effect_reconcile_helpers import reconcile_not_applied
 
 
 def contract(policy_digest, max_attempts=1):
@@ -35,9 +37,7 @@ class GoodAdapter:
     name = "fake-provider"
 
     def execute(self, *, contract, effect, attempt_id):
-        return ProviderReceipt(provider=self.name, effect_id=effect["effect_id"], attempt_id=attempt_id,
-                               provider_operation_id="provider-op-1", outcome="OBSERVED_SUCCESS",
-                               observation={"status": "ok"})
+        return signed_receipt(self.name, effect["effect_id"], attempt_id, "provider-op-1")
 
 
 class BrokenAdapter:
@@ -144,6 +144,7 @@ def test_retry_dispatch_requires_unknown_and_increments_attempt(tmp_path):
     unknown_effect = transition(str(tmp_path), first["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
     effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":effect["effect_id"], "attempt":2}
     unknown_effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":unknown_effect["effect_id"], "attempt":2}
+    reconcile_not_applied(tmp_path, unknown_effect["effect_id"], "agent:test")
     retried = retry_dispatch(str(tmp_path), unknown_effect["effect_id"], "agent:test",
                              f"{effect['effect_id']}:attempt:2", "fake-provider", 2, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":2})
     assert retried["effect_id"] == effect["effect_id"]
@@ -169,6 +170,7 @@ def test_execute_retry_attempt_is_bounded_by_contract(tmp_path):
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
     effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":effect["effect_id"], "attempt":2}
+    reconcile_not_applied(tmp_path, effect["effect_id"], "agent:test")
     result = execute_retry_attempt(str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
                                    f"{effect['effect_id']}:attempt:2", 2)
     assert result["state"] == "OBSERVED_SUCCESS"

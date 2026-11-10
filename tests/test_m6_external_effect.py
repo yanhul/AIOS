@@ -4,10 +4,12 @@
 # AIOS-COVERAGE-GAP: Covers bounded UNKNOWN retry, authority binding, and duplicate-effect prevention
 # AIOS-BASELINE: Existing M6 effect/runtime regression suite extended for explicit retry authority
 
+import json
 import os
 import tempfile
 import unittest
 
+from tests.provider_trust_helpers import attested
 from core.evidence import EvidenceRecord
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
@@ -15,15 +17,16 @@ from core.contract import contract_identity
 from core.policy_registry import persist_policy
 from core.external_effect import ExternalEffectError, create_effect, load_effects, record_dispatch, record_observation, record_unknown
 from core.effect_authority import retry_dispatch
+from tests.effect_reconcile_helpers import reconcile_not_applied
 
 
-def evidence(provider="provider:test"):
+def evidence(provider="provider:test", run_id="run-1"):
     return EvidenceRecord(
         evidence_id="EV-1",
         level="OBSERVED",
         source_ref="provider://receipt/1",
         claim="provider completed operation",
-        run_id="run-1",
+        run_id=run_id,
         provider=provider,
     ).as_record()
 
@@ -69,11 +72,30 @@ class TestExternalEffect(unittest.TestCase):
         record_unknown(self.aios, e["effect_id"], "agent:a", "provider timeout")
         self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "UNKNOWN")
         retry_attempt = f"{e['effect_id']}:attempt:2"
+        reconcile_not_applied(self.aios, e["effect_id"], "agent:a")
         retry_dispatch(self.aios, e["effect_id"], "agent:a", retry_attempt, "provider:test", 2, {"mode":"EXPLICIT","effect_id":e["effect_id"],"attempt":2})
-        record_observation(self.aios, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {
-            "attempt_id": retry_attempt, "provider": "provider:test", "evidence": evidence()
-        })
+        record_observation(self.aios, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", attested({
+            "attempt_id": retry_attempt, "provider": "provider:test", "provider_operation_id": "op-2",
+            "evidence": evidence(run_id=retry_attempt)
+        }, e["effect_id"]))
         self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "OBSERVED_SUCCESS")
+
+    def test_load_effects_rejects_forged_observed_state_without_receipt(self):
+        cid, pid = self._setup_authority()
+        e = create_effect(self.aios, cid, "LO-1", "agent:a", pid, "external_effect")
+        attempt = f"{e['effect_id']}:attempt:1"
+        record_dispatch(self.aios, e["effect_id"], "agent:a", attempt, "provider:test")
+
+        effect_path = os.path.join(self.aios, "effects", e["effect_id"] + ".json")
+        with open(effect_path, "r", encoding="utf-8") as fh:
+            forged = json.load(fh)
+        forged["state"] = "OBSERVED_SUCCESS"
+        forged.pop("receipt_id", None)
+        with open(effect_path, "w", encoding="utf-8") as fh:
+            json.dump(forged, fh)
+
+        with self.assertRaisesRegex(ExternalEffectError, "failed authority validation"):
+            load_effects(self.aios)
 
     def test_attempt_mismatch_is_rejected(self):
         cid, pid = self._setup_authority()

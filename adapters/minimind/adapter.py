@@ -19,8 +19,8 @@ OWNER = "jingyaogong/minimind"
 REQUIRED_PATHS = (
     "model",
     "dataset",
-    "dataset.py",
-    "model.py",
+    "dataset/lm_dataset.py",
+    "model/model_minimind.py",
     "trainer",
     "trainer/train_agent.py",
     "trainer/rollout_engine.py",

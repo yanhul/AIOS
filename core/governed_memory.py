@@ -182,7 +182,7 @@ def persist_memory(store, record: Mapping[str, Any], *, decision_id: str,
     policy = resolve_policy(aios_dir, contract["policy_digest"])
     if "MEMORY_WRITE" not in policy.get("rules", []):
         raise ValueError("governing policy does not authorize MEMORY_WRITE")
-    registry = CapabilityRegistry.load(aios_dir)
+    registry = CapabilityRegistry.load(aios_dir, require_sealed=True)  # authority: sealed only
     capabilities = registry.resolve_contract(contract)
     if not any(cap.status == "ACTIVE" and "MEMORY_WRITE" in cap.permissions for cap in capabilities):
         raise ValueError("contract has no ACTIVE MEMORY_WRITE capability")

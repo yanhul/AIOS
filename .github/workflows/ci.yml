@@ -2,33 +2,68 @@ name: CI
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feat/p0-receipt-lineage-reconcile-before-retry
 
 permissions:
   contents: read
 
+concurrency:
+  group: aios-pr126-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  pytest:
+    name: pytest shard ${{ matrix.shard }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - uses: android-actions/setup-android@v3
-        with:
-          packages: platform-tools
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.10"
       - name: Install test dependencies
-        run: python -m pip install --upgrade pytest PyYAML
-      - name: Run test suite
-        run: python -m pytest -q
+        run: python -m pip install --upgrade pytest PyYAML cryptography
+      - name: Run deterministic test shard
+        env:
+          AIOS_REQUIRE_CRYPTO_TESTS: "1"
+          TEST_SHARD: ${{ matrix.shard }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          import sys
+          import pytest
+
+          files = sorted(
+              p.as_posix()
+              for root in (Path("tests"), Path("scripts"))
+              if root.exists()
+              for p in root.rglob("*.py")
+              if p.name.startswith("test_") or p.name.endswith("_test.py")
+          )
+          shard = int(os.environ["TEST_SHARD"])
+          selected = [path for index, path in enumerate(files) if index % 4 == shard]
+          if not selected:
+              raise SystemExit(f"empty test shard: {shard}")
+          print(f"Shard {shard}: {len(selected)}/{len(files)} test modules")
+          raise SystemExit(pytest.main(["-q", "-rs", *selected]))
+          PY
+
+  minimind:
+    name: MiniMind capability
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Checkout MiniMind capability provider
         run: |
           git clone --depth 1 --no-checkout https://github.com/jingyaogong/minimind.git "$RUNNER_TEMP/minimind"
@@ -39,3 +74,19 @@ jobs:
           MINIMIND_ROOT: ${{ runner.temp }}/minimind
           MINIMIND_EXPECTED_REV: 6fc918beb68a0d8c40452338df6319fe168014ba
         run: python scripts/check_minimind_capability.py --root "$RUNNER_TEMP/minimind"
+
+  required-checks:
+    name: required checks
+    if: always()
+    needs: [pytest, minimind]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce all required jobs
+        env:
+          PYTEST_RESULT: ${{ needs.pytest.result }}
+          MINIMIND_RESULT: ${{ needs.minimind.result }}
+        run: |
+          echo "pytest=$PYTEST_RESULT"
+          echo "minimind=$MINIMIND_RESULT"
+          test "$PYTEST_RESULT" = success
+          test "$MINIMIND_RESULT" = success
