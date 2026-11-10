@@ -1,3 +1,10 @@
+# AIOS-CONTRACT: run_governed_execution binds the durable loop to the governing contract/permit/policy
+# AIOS-REGRESSION: Authority resolution order, digest/budget/terminal-state binding and resume re-authorization.
+#                  These unit tests stub authority; the effect-authority gate is stubbed to OBSERVED_SUCCESS here
+#                  and exercised for real in tests/test_p1_governed_bridge_effect_authority_126.py.
+# AIOS-OWNER: AIOS control-plane durable execution
+# AIOS-COVERAGE-GAP: No real contract/effect state; see the effect-authority bridge suite.
+# AIOS-BASELINE: 826fca0 (629 passed, 1 skipped)
 import pytest
 
 from core.durable_loop import LoopPolicy, MemoryStateStore
@@ -18,6 +25,18 @@ GOVERNING_CONTRACT = {
 def _patch_authority(monkeypatch, calls):
     monkeypatch.setattr("core.orchestrator.authorize", lambda *args: calls.append("authorize"))
     monkeypatch.setattr("core.orchestrator.load_contract", lambda *args: dict(GOVERNING_CONTRACT))
+    _stub_observed_effect(monkeypatch)
+
+
+def _fake_effect(*args):
+    # execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapter)
+    from core.effect_authority import _id
+    return {"ok": True, "effect_id": _id(args[1], args[3], args[4])}
+
+
+def _stub_observed_effect(monkeypatch):
+    # Unit tests here have no persisted effect state; the real gate is covered elsewhere.
+    monkeypatch.setattr("core.orchestrator._authoritative_effect_outcome", lambda *args: "OBSERVED_SUCCESS")
 
 
 def make_policy(**overrides):
@@ -37,7 +56,7 @@ def test_governed_execution_resolves_authority_before_loop(monkeypatch):
     _patch_authority(monkeypatch, calls)
     monkeypatch.setattr(
         "core.orchestrator.execute",
-        lambda *args: calls.append(("execute", args[3])) or {"ok": True},
+        lambda *args: calls.append(("execute", args[3])) or _fake_effect(*args),
     )
 
     executor = GovernedRuntimeExecutor(
@@ -103,7 +122,7 @@ def test_runtime_action_requires_explicit_operation_id():
 def test_resume_reauthorizes_current_contract_and_permit(monkeypatch):
     calls = []
     _patch_authority(monkeypatch, calls)
-    monkeypatch.setattr("core.orchestrator.execute", lambda *args: {"ok": True})
+    monkeypatch.setattr("core.orchestrator.execute", _fake_effect)
 
     store = MemoryStateStore({
         "contract_id": "c1", "permit_id": "p1", "step": 0,
@@ -163,7 +182,8 @@ def test_custom_terminal_states_are_preserved_and_enforced(monkeypatch):
     contract["terminal_states"] = ["PROMOTE", "REJECT", "INCONCLUSIVE", "BLOCKED"]
     monkeypatch.setattr("core.orchestrator.authorize", lambda *args: calls.append("authorize"))
     monkeypatch.setattr("core.orchestrator.load_contract", lambda *args: dict(contract))
-    monkeypatch.setattr("core.orchestrator.execute", lambda *args: {"ok": True})
+    _stub_observed_effect(monkeypatch)
+    monkeypatch.setattr("core.orchestrator.execute", _fake_effect)
     executor = GovernedRuntimeExecutor(
         aios_dir="/tmp/aios", contract_id="c1", permit_id="p1", actor="agent",
         adapter=FakeAdapter(), observer=lambda state: None,
