@@ -44,7 +44,7 @@ def load_effects(aios_dir):
         effect_id = fn[:-5]
         try:
             rec = _load_current_effect(aios_dir, effect_id)
-        except (OSError, ValueError, KeyError, TransitionError) as exc:
+        except (OSError, ValueError, KeyError, TypeError, TransitionError) as exc:
             raise ExternalEffectError(
                 f"persisted external effect {effect_id!r} failed authority validation: {exc}"
             ) from exc
