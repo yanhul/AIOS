@@ -18,6 +18,7 @@ from core.effect_authority import (
     dispatch, load_receipt, load_reconciliation, observe, reconcile_effect, receipt_source_authenticity,
     retry_dispatch,
 )
+from core.external_effect import ExternalEffectError, load_effects
 from core.evaluation_plane import evaluate_persisted_receipt
 from core.evidence import EvidenceRecord, verify_evidence
 from core.mutation import TransitionError
@@ -397,3 +398,19 @@ def test_provider_secret_equal_to_aios_seal_secret_is_refused(tmp_path, monkeypa
                            secret=os.environ[SEAL_ENV])
     with pytest.raises(ProviderTrustError, match="differ from the AIOS seal secret"):
         observe(aios, eff["effect_id"], ACTOR, "OBSERVED_SUCCESS", _obs(eff, ev, op="op-1", attestation=att))
+
+
+def test_a_revoking_provider_key_hides_observed_effect_from_compatibility_loader(tmp_path, monkeypatch):
+    aios, _, _, eff = _dispatched(tmp_path)
+    ev = _forged_evidence(eff)
+    att = sign_observation(provider=PROVIDER, effect_id=eff["effect_id"], attempt_id=eff["attempt_id"],
+                           outcome="OBSERVED_SUCCESS", provider_operation_id="op-1", evidence=ev)
+    done = observe(aios, eff["effect_id"], ACTOR, "OBSERVED_SUCCESS", _obs(eff, ev, op="op-1", attestation=att))
+    assert done["state"] == "OBSERVED_SUCCESS"
+    assert load_effects(aios)[eff["effect_id"]]["state"] == "OBSERVED_SUCCESS"
+
+    _no_trust_for_fake_provider(monkeypatch)
+    with pytest.raises(ProviderTrustError, match="no trusted keys"):
+        load_receipt(aios, done["receipt_id"], require_provider_signed=True)
+    with pytest.raises(ExternalEffectError, match="no trusted keys"):
+        load_effects(aios)
