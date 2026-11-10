@@ -143,6 +143,11 @@ def _require_sealed_receipt_of_record(aios_dir, effect):
             raise TransitionError(f"observed effect receipt of record {field} differs from the effect")
     if receipt.get("outcome") != effect["state"]:
         raise TransitionError("observed effect state differs from its receipt of record outcome")
+    # A deployment seal proves AIOS accepted this receipt; it does not keep
+    # provider trust valid forever. Re-check provider signatures against the
+    # current external trust store on every authoritative effect load.
+    if receipt_source_authenticity(receipt) == PROVIDER_SIGNED:
+        _verify_receipt_attestation(aios_dir, receipt, effect)
 
 
 def _validate_persisted_provider(contract, effect):
