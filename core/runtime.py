@@ -110,18 +110,17 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id, *, h
     if not hasattr(adapter, "name"):
         raise ValueError("adapter must expose a provider name")
     provider_name = _text(adapter.name, "adapter.name")
-    if not _provider_authorized(contract, provider_name):
-        raise PermissionError("provider capability is not authorized by contract")
-    if "external_effect" not in contract.get("allowed_effects", []):
-        raise PermissionError("external effect is not authorized by contract")
-
+    # The caller's contract is shape-checked above for API compatibility only.
+    # It is never an authorization source; claim_execution reloads and checks
+    # the persisted contract + permit under the same mutation lock as the claim.
     if holder is None:
         holder = f"aios-runtime:{os.getpid()}:{uuid.uuid4().hex}"
     # Linearization point for authorization. Raises before any provider call.
-    effect = claim_execution(aios_dir, effect["effect_id"], attempt_id, provider_name, actor,
-                             holder, expected=effect)
+    effect, authoritative_contract = claim_execution(
+        aios_dir, effect["effect_id"], attempt_id, provider_name, actor,
+        holder, expected=effect, return_authority=True)
     try:
-        receipt = adapter.execute(contract=dict(contract), effect=dict(effect), attempt_id=attempt_id)
+        receipt = adapter.execute(contract=dict(authoritative_contract), effect=dict(effect), attempt_id=attempt_id)
         validate_receipt(receipt, effect, attempt_id, provider_name)
     except Exception as exc:
         return unknown(aios_dir, effect["effect_id"], actor,

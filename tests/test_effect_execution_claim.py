@@ -186,3 +186,21 @@ def test_nested_lock_is_reentrant_and_exclusive(tmp_path):
         assert not entered.wait(0.3)  # other thread blocked while we hold it
     assert entered.wait(5)
     t.join(5)
+
+
+def test_forged_caller_contract_cannot_grant_provider_capability(tmp_path):
+    """The provider grant must come from AIOS persisted authority, never caller input."""
+    contract, _cid, _pid, eff = dispatched(tmp_path)
+    forged = dict(contract)
+    forged["capabilities"] = list(contract.get("capabilities", [])) + ["unauthorized-provider@1"]
+
+    class UnauthorizedAdapter(LedgerAdapter):
+        name = "unauthorized-provider"
+
+    ledger = tmp_path / "forged-contract-ledger"
+    with pytest.raises(ExecutionClaimRejected, match="persisted contract"):
+        execute_attempt(str(tmp_path), forged, eff, ACTOR,
+                        UnauthorizedAdapter(ledger), eff["attempt_id"])
+    assert calls(ledger) == 0
+    rec = load_effects(str(tmp_path))[eff["effect_id"]]
+    assert "execution_claim" not in rec

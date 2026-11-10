@@ -280,7 +280,7 @@ _CLAIM_BINDING = ("effect_id", "attempt_id", "attempt", "provider", "actor",
                   "contract_id", "permit_id", "effect_type", "policy_digest")
 
 
-def claim_execution(aios_dir, effect_id, attempt_id, provider, actor, holder, expected=None):
+def claim_execution(aios_dir, effect_id, attempt_id, provider, actor, holder, expected=None, *, return_authority=False):
     """Atomically authorize exactly one provider invocation for one attempt.
 
     Under the mutation lock: recover journals, reload the persisted effect,
@@ -299,9 +299,17 @@ def claim_execution(aios_dir, effect_id, attempt_id, provider, actor, holder, ex
             raise ExecutionClaimRejected(f"unknown effect: {effect_id}")
         current = _load(path)
         try:
-            _validate_persisted_effect(aios_dir, current)
+            contract, _permit = _validate_persisted_effect(aios_dir, current)
         except Exception as exc:
             raise ExecutionClaimRejected(f"authority no longer valid: {exc}") from exc
+        # Provider permission is checked against the persisted contract, not a
+        # caller-supplied contract snapshot. This check is inside the same CAS
+        # critical section as the execution claim.
+        if not any(isinstance(ref, str) and ref.split("@", 1)[0] == provider
+                   for ref in contract.get("capabilities", [])):
+            raise ExecutionClaimRejected("provider capability is not authorized by persisted contract")
+        if current.get("effect_type") not in contract.get("allowed_effects", []):
+            raise ExecutionClaimRejected("effect type is not authorized by persisted contract")
         if current.get("state") != "DISPATCHED":
             raise ExecutionClaimRejected(
                 f"execution requires DISPATCHED, persisted state is {current.get('state')}")
@@ -333,7 +341,7 @@ def claim_execution(aios_dir, effect_id, attempt_id, provider, actor, holder, ex
         commit_batch(aios_dir, [
             (os.path.join("effects", effect_id + ".json"), updated),
             (os.path.join("events", f"effect-{effect_id}-EXECUTION-CLAIM-attempt-{attempt}.json"), event)])
-        return updated
+        return (updated, contract) if return_authority else updated
 
 
 def unknown(aios_dir, effect_id, actor, reason):
