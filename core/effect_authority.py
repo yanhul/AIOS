@@ -735,8 +735,9 @@ def reconcile_effect(aios_dir, effect_id, actor, verdict, provider_evidence, *,
     else:
         trust = {"level": UNSIGNED}
     rel = _reconciliation_relpath(effect_id, attempt)
-    rec_digest = file_digest(os.path.join(aios_dir, rel))
-    existing = load_reconciliation(aios_dir, effect_id, attempt)
+    # Validate and hash the same reconciliation snapshot. A separate digest
+    # read would allow a replacement between validation and the CAS read.
+    existing, rec_digest = _load_reconciliation_cas(aios_dir, effect_id, attempt)
     if existing is not None and existing.get("verdict") in ("APPLIED", "NOT_APPLIED"):
         raise TransitionError("attempt already has a decisive reconciliation verdict")
     record = seal({
