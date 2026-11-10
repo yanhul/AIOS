@@ -6,7 +6,6 @@ permit, and authorized effect type; all writes then flow through the single
 M6 authority/evidence state machine.
 """
 
-import json
 import os
 
 from .effect_authority import _load_current as _load_current_effect
