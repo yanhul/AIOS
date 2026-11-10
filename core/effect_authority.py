@@ -32,7 +32,7 @@ from .provider_trust import (
     AIOS_INVOKED_UNSIGNED, LEGACY_UNVERIFIED, OBSERVED, PROVIDER_SIGNED, RECONCILED_PREFIX, UNSIGNED,
     ProviderTrustError, attestation_payload, provider_has_trust, verify_attestation,
 )
-from .record_seal import require_seal, seal, seal_available, unsealed_body
+from .record_seal import SealError, require_seal, seal, unsealed_body
 
 EXECUTION_CLAIMS_DIR = "execution_claims"
 
@@ -109,7 +109,40 @@ def _validate_persisted_effect(aios_dir, effect):
     if not isinstance(effect["attempt"], int) or isinstance(effect["attempt"], bool) or effect["attempt"] < 0:
         raise TransitionError("persisted effect attempt is invalid")
     _validate_persisted_provider(contract, effect)
+    if effect["state"] in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
+        _require_sealed_receipt_of_record(aios_dir, effect)
     return contract, permit
+
+
+def _require_sealed_receipt_of_record(aios_dir, effect):
+    """An OBSERVED_* effect is authoritative only with a sealed receipt of record bound to it.
+
+    Effect JSON lives in writable state: a planted OBSERVED_* effect with no
+    receipt, an unsealed (pre-fix ``"sealed": false``) receipt, or another
+    effect's sealed receipt must not be loaded as an observed outcome, on any
+    path (observe, reconciliation, journal roll-forward, direct edit)
+    (PR #126 @74017b7 P0). Full re-verification stays in ``load_receipt()``.
+    """
+    rid = effect.get("receipt_id")
+    if not isinstance(rid, str) or not _RECEIPT_ID_RE.fullmatch(rid):
+        raise TransitionError("observed effect has no well-formed receipt of record")
+    path = os.path.join(aios_dir, _receipt_relpath(rid))
+    if not os.path.exists(path):
+        raise TransitionError("observed effect receipt of record is missing")
+    try:
+        receipt = _load(path)
+    except (OSError, ValueError) as exc:
+        raise TransitionError(f"observed effect receipt of record is unreadable: {exc}") from exc
+    if not isinstance(receipt, dict) or receipt.get("record_type") != "PROVIDER_RECEIPT":
+        raise TransitionError("observed effect receipt of record is not a provider receipt")
+    require_seal(receipt, "provider receipt of record")
+    if receipt.get("receipt_id") != rid:
+        raise TransitionError("observed effect receipt of record identity differs")
+    for field in ("effect_id", "attempt_id", "attempt", "contract_id", "provider"):
+        if receipt.get(field) != effect.get(field):
+            raise TransitionError(f"observed effect receipt of record {field} differs from the effect")
+    if receipt.get("outcome") != effect["state"]:
+        raise TransitionError("observed effect state differs from its receipt of record outcome")
 
 
 def _validate_persisted_provider(contract, effect):
@@ -434,11 +467,15 @@ def _commit_observation(aios_dir, current, digest, actor, outcome, provider_obse
         "source_authenticity": trust, "attestation": provider_observation.get("attestation"),
     }
     rid = receipt_id_for(body)
-    receipt = {**body, "receipt_id": rid}
-    # Seal when the deployment key is configured. Unsealed receipts are kept
-    # (so existing adapters keep recording observations) but no authority
-    # consumer (evaluation, retry) trusts them.
-    receipt = seal(receipt) if seal_available() else {**receipt, "sealed": False}
+    # Fail closed (PR #126 @74017b7 P0): an OBSERVED_* effect is only ever
+    # committed together with a receipt of record carrying a valid deployment
+    # seal. A missing/invalid key raises SealError here, before anything is
+    # written; there is no unsealed fallback. The sealed record is verified
+    # before commit so a broken sealer cannot persist an unverifiable receipt.
+    receipt = seal({**body, "receipt_id": rid})
+    require_seal(receipt, "provider receipt")
+    if unsealed_body(receipt) != {**body, "receipt_id": rid}:
+        raise SealError("sealed provider receipt differs from the observed receipt body")
     updated = dict(current)
     updated.update({"state": outcome, "provider_observation": provider_observation, "receipt_id": rid})
     event = {

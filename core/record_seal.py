@@ -13,8 +13,10 @@ a compromised state volume). It does NOT prove provider authenticity — that is
 ``core.provider_trust`` (provider-signed attestations) — and it does not defend against a process
 that holds the secret.
 
-Configure with ``AIOS_RECORD_SEAL_SECRET``. When it is absent, sealing raises
-and every consumer that requires a seal fails closed.
+Configure with ``AIOS_RECORD_SEAL_SECRET``. When it is absent or blank, sealing
+raises and every consumer that requires a seal fails closed. Writers of authority
+records (receipts, reconciliations, execution claims) never fall back to an
+unsealed record.
 
 Key rotation: new seals always use the current secret. During a rotation
 window, set ``AIOS_RECORD_SEAL_PREVIOUS_SECRETS`` (comma-separated) to the
@@ -40,10 +42,22 @@ class SealError(TransitionError):
     """Raised when a record cannot be sealed or its seal is not trusted."""
 
 
+def _secret_problem(value: str) -> str | None:
+    """Why ``value`` cannot be used as the deployment seal key, or None if it can."""
+    if not value:
+        return f"{SEAL_ENV} is not configured; authority records cannot be sealed or trusted"
+    if not value.strip("\x00 \t\r\n\v\f"):
+        # A blank/whitespace/NUL-only key is a broken deployment (empty secret file,
+        # unrendered template), not a secret: never seal authority records with it.
+        return f"{SEAL_ENV} is invalid (blank); authority records cannot be sealed or trusted"
+    return None
+
+
 def _secret() -> bytes:
     value = os.environ.get(SEAL_ENV, "")
-    if not value:
-        raise SealError(f"{SEAL_ENV} is not configured; authority records cannot be sealed or trusted")
+    problem = _secret_problem(value)
+    if problem:
+        raise SealError(problem)
     return value.encode("utf-8")
 
 
@@ -59,7 +73,8 @@ def _verification_secrets() -> dict[str, bytes]:
 
 
 def seal_available() -> bool:
-    return bool(os.environ.get(SEAL_ENV, ""))
+    """True iff ``seal()`` would use a valid deployment key. Never a reason to skip sealing authority records."""
+    return _secret_problem(os.environ.get(SEAL_ENV, "")) is None
 
 
 def _key_id(secret: bytes) -> str:
