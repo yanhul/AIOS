@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Protocol
 import hashlib
 import json
+import os
 
 from .evidence import EvidenceRecord
 from .authority import _canonical_contract, authorize, load_contract, load_permit
@@ -16,8 +17,9 @@ from .capabilities import CapabilityRegistry
 from .durable_runtime import DurableRuntime, validate_submission
 from .effect_authority import (
     create_effect, dispatch, load_reconciliation, observe, reconcile_effect, recover_interrupted,
-    retry_dispatch, unknown, _load_current,
+    retry_dispatch, unknown, _effect_rel, _load_current, _load_current_cas,
 )
+from .mutation import TransitionError, canonical_json, commit_batch
 
 
 @dataclass(frozen=True)
@@ -160,15 +162,40 @@ def _provider_observation(receipt):
     return provider_observation
 
 
-def _bind_persisted_contract(aios_dir, contract, effect_id):
-    """Return the stored contract bound to the persisted effect.
+EXECUTION_CLAIMS_DIR = "execution_claims"
 
-    The caller's contract object is never used for execution: it must have the
-    exact identity of the contract persisted on the effect, and the *stored*
-    contract is what gets authorized and handed to the provider (PR #126
-    re-review @9fd7d5c: contract substitution on resume).
+
+def _claim_relpath(effect_id, attempt):
+    return os.path.join(EXECUTION_CLAIMS_DIR, f"{effect_id}-attempt-{attempt}.json")
+
+
+def _bind_persisted(aios_dir, contract, effect, actor, attempt_id, provider_name):
+    """Bind an execution request to the *persisted* effect and contract.
+
+    Returns ``(stored_contract, persisted_effect, effect_digest)``. Nothing the
+    caller supplies is ever handed to the provider:
+
+    * the caller contract must have the identity of the contract persisted on
+      the effect, and the stored contract is what is used (PR #126 @9fd7d5c);
+    * the caller effect must be byte-for-byte (canonically) the persisted
+      effect, which must still be DISPATCHED for exactly this attempt, actor
+      and provider. A stale DISPATCHED copy kept after the attempt was
+      observed, or a copy with edited fields, is refused before the provider
+      is called (PR #126 re-review @444e578 F3).
     """
-    persisted = _load_current(aios_dir, effect_id)
+    effect_id = effect.get("effect_id")
+    _text(effect_id, "effect.effect_id")
+    persisted, digest = _load_current_cas(aios_dir, effect_id)
+    if persisted.get("state") != "DISPATCHED":
+        raise RuntimeError(f"persisted effect is not DISPATCHED (state={persisted.get('state')}); refusing to execute")
+    if persisted.get("attempt_id") != attempt_id:
+        raise RuntimeError("persisted effect is no longer the dispatched attempt being executed")
+    if persisted.get("actor") != actor:
+        raise PermissionError("persisted effect actor does not match execution actor")
+    if persisted.get("provider") != provider_name:
+        raise PermissionError("execution provider differs from the dispatched provider")
+    if canonical_json(effect) != canonical_json(persisted):
+        raise PermissionError("caller effect differs from the persisted effect; refusing to execute")
     bound_id = persisted.get("contract_id")
     try:
         caller_id = contract_identity(_canonical_contract(contract))
@@ -176,11 +203,56 @@ def _bind_persisted_contract(aios_dir, contract, effect_id):
         raise PermissionError(f"caller contract is not a valid execution contract: {exc}") from exc
     if not isinstance(bound_id, str) or caller_id != bound_id:
         raise PermissionError("caller contract differs from the contract bound to the effect")
-    return load_contract(aios_dir, bound_id)
+    stored = load_contract(aios_dir, bound_id)
+    if not _provider_authorized(stored, provider_name):
+        raise PermissionError("provider capability is not authorized by contract")
+    if "external_effect" not in stored.get("allowed_effects", []):
+        raise PermissionError("external effect is not authorized by contract")
+    return stored, persisted, digest
+
+
+def _claim_execution(aios_dir, persisted, digest, actor):
+    """At-most-once claim of one dispatched attempt, as CAS under the mutation lock.
+
+    The claim is written only if the effect bytes are still exactly the ones
+    that were validated *and* no claim for this attempt exists. Two concurrent
+    callers (or a replay of the same call) cannot both reach the provider; the
+    loser fails before any side effect. A crash after the claim leaves the
+    effect DISPATCHED with a claim: only ``resume_attempt`` may continue it,
+    and only via registry-attested idempotency or reconciliation.
+    """
+    rel = _claim_relpath(persisted["effect_id"], persisted.get("attempt", 0))
+    claim = {
+        "kind": "execution_claim", "effect_id": persisted["effect_id"],
+        "attempt": persisted.get("attempt"), "attempt_id": persisted["attempt_id"],
+        "provider": persisted["provider"], "actor": actor,
+    }
+    try:
+        commit_batch(aios_dir, [(rel, claim)],
+                     expect={_effect_rel(persisted["effect_id"]): digest, rel: None})
+    except TransitionError as exc:
+        raise RuntimeError(f"attempt already claimed or effect changed concurrently: {exc}") from exc
+
+
+def _run_bound(aios_dir, stored_contract, persisted, actor, adapter, provider_name):
+    attempt_id = persisted["attempt_id"]
+    try:
+        receipt = adapter.execute(contract=dict(stored_contract), effect=dict(persisted), attempt_id=attempt_id)
+        validate_receipt(receipt, persisted, attempt_id, provider_name)
+    except Exception as exc:
+        return unknown(aios_dir, persisted["effect_id"], actor,
+                       f"provider ambiguity: {type(exc).__name__}: {exc}")
+    provider_observation = _provider_observation(receipt)
+    return observe(aios_dir, persisted["effect_id"], actor, receipt.outcome, provider_observation)
 
 
 def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
-    """Execute exactly one dispatched attempt and record its observation."""
+    """Execute exactly one dispatched attempt and record its observation.
+
+    At most once per attempt: the persisted effect is bound and an execution
+    claim is committed (CAS) before the provider is called. Re-execution after
+    a crash is only possible through ``resume_attempt``.
+    """
     _text(actor, "actor")
     _text(attempt_id, "attempt_id")
     if not isinstance(contract, dict) or not contract:
@@ -196,21 +268,9 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
     if not hasattr(adapter, "name"):
         raise ValueError("adapter must expose a provider name")
     provider_name = _text(adapter.name, "adapter.name")
-    contract = _bind_persisted_contract(aios_dir, contract, effect.get("effect_id"))
-    if not _provider_authorized(contract, provider_name):
-        raise PermissionError("provider capability is not authorized by contract")
-    if "external_effect" not in contract.get("allowed_effects", []):
-        raise PermissionError("external effect is not authorized by contract")
-
-    try:
-        receipt = adapter.execute(contract=dict(contract), effect=dict(effect), attempt_id=attempt_id)
-        validate_receipt(receipt, effect, attempt_id, provider_name)
-    except Exception as exc:
-        return unknown(aios_dir, effect["effect_id"], actor,
-                       f"provider ambiguity: {type(exc).__name__}: {exc}")
-
-    provider_observation = _provider_observation(receipt)
-    return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, provider_observation)
+    stored, persisted, digest = _bind_persisted(aios_dir, contract, effect, actor, attempt_id, provider_name)
+    _claim_execution(aios_dir, persisted, digest, actor)
+    return _run_bound(aios_dir, stored, persisted, actor, adapter, provider_name)
 
 
 def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: DurableRuntime):
@@ -241,19 +301,17 @@ def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: 
         raise PermissionError("provider capability is not authorized by contract")
     if "external_effect" not in contract.get("allowed_effects", []):
         raise PermissionError("external effect is not authorized by contract")
-    persisted = _load_current(aios_dir, effect["effect_id"])
-    if persisted.get("state") != "DISPATCHED" or persisted.get("attempt_id") != attempt_id:
-        raise RuntimeError("persisted effect is no longer the dispatched attempt being resumed")
-    contract = _bind_persisted_contract(aios_dir, contract, effect["effect_id"])
-    if persisted.get("provider") != provider_name:
-        # Never hand an attempt dispatched to provider A to provider B -- not
-        # for re-execution and not for reconciliation -- even if B is also in
-        # the contract (PR #126 re-review F3/F5).
-        raise PermissionError("resume provider differs from the dispatched provider")
+    # Never hand an attempt dispatched to provider A to provider B -- not for
+    # re-execution and not for reconciliation (PR #126 re-review F3/F5); the
+    # caller effect must be the persisted one (PR #126 @444e578 F3).
+    stored, persisted, _digest = _bind_persisted(aios_dir, contract, effect, actor, attempt_id, provider_name)
     if _registry_attests_idempotent_resume(aios_dir, persisted, provider_name) and \
             getattr(adapter, "idempotent_attempt_ids", False) is True:
+        # Re-sending is safe only because AIOS-sealed authority attests that
+        # the provider dedupes on attempt_id; this is the ONLY path allowed to
+        # run an already-claimed attempt again.
         _submit_runtime(durable_runtime, "resume", persisted, attempt_id, provider_name)
-        return execute_attempt(aios_dir, contract, persisted, actor, adapter, attempt_id)
+        return _run_bound(aios_dir, stored, persisted, actor, adapter, provider_name)
     recover_interrupted(aios_dir, effect["effect_id"], actor,
                         "resume of non-idempotent provider attempt; reconciliation required")
     return reconcile_unknown_attempt(aios_dir, effect["effect_id"], actor, adapter)

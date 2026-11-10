@@ -216,14 +216,37 @@ class CapabilityRegistry:
         from .record_seal import seal_available
         if not seal_available():
             raise CapabilityError("deployment seal key is not configured; cannot migrate registry")
+        if not isinstance(actor, str) or not actor.strip():
+            raise CapabilityError("actor must be a non-empty string")
         filename = Path(aios_dir) / CAPABILITY_STATE_FILE
+        # ONE snapshot: the bytes that are checked are the bytes that are
+        # parsed, and the seal write is a CAS against their digest under the
+        # mutation lock. A concurrent writer between check and seal makes the
+        # migration fail instead of sealing content nobody reviewed
+        # (PR #126 re-review @444e578 F4).
         try:
-            raw = json.loads(filename.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raw_bytes = filename.read_bytes()
+        except OSError as exc:
             raise CapabilityError(f"cannot read legacy capability registry: {exc}") from exc
-        if isinstance(raw, dict) and "seal" in raw:
+        try:
+            raw = json.loads(raw_bytes.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise CapabilityError(f"cannot read legacy capability registry: {exc}") from exc
+        if not isinstance(raw, dict):
+            raise CapabilityError("invalid capability registry: root must be an object")
+        if "seal" in raw:
             raise CapabilityError("registry already carries a seal; refusing to re-seal (use reseal for key rotation)")
-        return cls.load(aios_dir).persist(aios_dir, actor)
+        registry = cls._from_data(raw)
+        import hashlib
+        from .mutation import TransitionError
+        from .record_seal import seal
+        payload = seal({"record_type": REGISTRY_RECORD_TYPE, "schema_version": 1,
+                        **registry.snapshot(), "persisted_by": actor})
+        try:
+            return commit_batch(str(aios_dir), [(CAPABILITY_STATE_FILE, payload)],
+                                expect={CAPABILITY_STATE_FILE: hashlib.sha256(raw_bytes).hexdigest()})[0]
+        except TransitionError as exc:
+            raise CapabilityError(f"registry changed during migration; re-review and retry: {exc}") from exc
 
     @classmethod
     def load(cls, aios_dir: str | Path, *, require_sealed: bool = False) -> "CapabilityRegistry":
@@ -246,6 +269,10 @@ class CapabilityRegistry:
                 require_seal(data, "capability registry")
             except SealError as exc:
                 raise CapabilityError(str(exc)) from exc
+        return cls._from_data(data)
+
+    @classmethod
+    def _from_data(cls, data: dict) -> "CapabilityRegistry":
         if data.get("schema_version") != 1:
             raise CapabilityError("unsupported capability registry schema_version")
         capabilities = data.get("capabilities", [])

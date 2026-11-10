@@ -790,3 +790,138 @@ def test_persist_contract_rejects_unsealed_registry_and_migration_is_explicit(tm
     authorize(aios, cid, pid)  # sealed by explicit operator action => authority restored
     with pytest.raises(CapabilityError, match="already carries a seal"):
         CapabilityRegistry.migrate_to_sealed(aios, "operator")
+
+
+# ------------------------------------------------------------------ @444e578: direct execute_attempt binding
+
+def _fresh_dispatched(tmp_path):
+    from core.authority import load_contract
+    aios = str(tmp_path)
+    _, cid, pid = setup_authority(tmp_path)
+    eff = ea.create_effect(aios, cid, "op-1", ACTOR, pid, "external_effect")
+    eff = dispatch(aios, eff["effect_id"], ACTOR, f"{eff['effect_id']}:attempt:1", PROVIDER)
+    return aios, load_contract(aios, cid), eff, str(tmp_path / "count.json")
+
+
+def _ledger(path):
+    return json.load(open(path)) if os.path.exists(path) else []
+
+
+def test_execute_attempt_replay_of_stale_dispatched_copy_never_reaches_provider(tmp_path):
+    aios, contract, eff, ledger = _fresh_dispatched(tmp_path)
+    stale = dict(eff)
+    done = runtime.execute_attempt(aios, contract, eff, ACTOR, CountingProvider(ledger, False), eff["attempt_id"])
+    assert done["state"] == "OBSERVED_SUCCESS"
+    with pytest.raises(RuntimeError, match="not DISPATCHED"):
+        runtime.execute_attempt(aios, contract, stale, ACTOR, CountingProvider(ledger, False), stale["attempt_id"])
+    assert len(_ledger(ledger)) == 1, "stale effect copy caused a second side effect"
+
+
+@pytest.mark.parametrize("field,value", [
+    ("logical_operation_id", "op-forged"),
+    ("max_attempts", 99),
+    ("permit_id", "PERMIT-forged"),
+    ("extra_field", "x"),
+])
+def test_execute_attempt_rejects_edited_effect_and_provider_never_sees_it(tmp_path, field, value):
+    aios, contract, eff, ledger = _fresh_dispatched(tmp_path)
+    forged = {**eff, field: value}
+    with pytest.raises(PermissionError, match="persisted effect"):
+        runtime.execute_attempt(aios, contract, forged, ACTOR, CountingProvider(ledger, False), eff["attempt_id"])
+    assert _ledger(ledger) == []
+    assert _effect(aios, eff["effect_id"])["state"] == "DISPATCHED"
+
+
+def test_provider_receives_persisted_effect_not_caller_object(tmp_path):
+    aios, contract, eff, ledger = _fresh_dispatched(tmp_path)
+    seen = {}
+
+    class Spy(CountingProvider):
+        def execute(self, *, contract, effect, attempt_id):
+            seen["effect"] = effect
+            return super().execute(contract=contract, effect=effect, attempt_id=attempt_id)
+
+    runtime.execute_attempt(aios, contract, dict(eff), ACTOR, Spy(ledger, False), eff["attempt_id"])
+    assert mutation.canonical_json(seen["effect"]) == mutation.canonical_json(eff)
+
+
+def test_claimed_attempt_cannot_be_executed_twice_and_resume_reconciles(tmp_path, monkeypatch):
+    """Crash after the execution claim: a second direct call is refused before
+    the provider; only resume (attested idempotency or reconciliation) continues."""
+    aios, contract, eff, ledger = _fresh_dispatched(tmp_path)
+    real_run = runtime._run_bound
+
+    def crash_after_side_effect(aios_dir, stored, persisted, actor, adapter, provider_name):
+        adapter.execute(contract=dict(stored), effect=dict(persisted), attempt_id=persisted["attempt_id"])
+        raise KeyboardInterrupt("process died before observe()")
+
+    monkeypatch.setattr(runtime, "_run_bound", crash_after_side_effect)
+    with pytest.raises(KeyboardInterrupt):
+        runtime.execute_attempt(aios, contract, eff, ACTOR, CountingProvider(ledger, False), eff["attempt_id"])
+    monkeypatch.setattr(runtime, "_run_bound", real_run)
+    assert len(_ledger(ledger)) == 1
+
+    with pytest.raises(RuntimeError, match="already claimed"):
+        runtime.execute_attempt(aios, contract, eff, ACTOR, CountingProvider(ledger, False), eff["attempt_id"])
+    assert len(_ledger(ledger)) == 1, "replayed direct call re-executed a claimed attempt"
+
+    done = resume_attempt(aios, contract, eff, ACTOR, CountingProvider(ledger, True), None)
+    assert len(_ledger(ledger)) == 1
+    assert done["state"] == "OBSERVED_SUCCESS"
+    assert load_receipt(aios, done["receipt_id"])["recorded_via"] == "reconciliation"
+
+
+def _race_execute(aios, contract, eff, ledger, q):
+    try:
+        runtime.execute_attempt(aios, contract, eff, ACTOR, CountingProvider(ledger, False), eff["attempt_id"])
+        q.put("ok")
+    except Exception as exc:  # noqa: BLE001
+        q.put(type(exc).__name__)
+
+
+def test_two_processes_cannot_both_execute_the_same_attempt(tmp_path):
+    aios, contract, eff, ledger = _fresh_dispatched(tmp_path)
+    ctx = mp.get_context("fork")
+    q = ctx.Queue()
+    procs = [ctx.Process(target=_race_execute, args=(aios, contract, eff, ledger, q)) for _ in range(4)]
+    for p in procs:
+        p.start()
+    for p in procs:
+        p.join(30)
+    results = [q.get(timeout=5) for _ in procs]
+    assert results.count("ok") == 1, results
+    assert len(_ledger(ledger)) == 1
+
+
+def test_resume_rejects_edited_effect_copy(tmp_path):
+    aios, contract, eff, ledger = _dispatched_and_applied(tmp_path)
+    with pytest.raises(PermissionError, match="persisted effect"):
+        resume_attempt(aios, contract, {**eff, "logical_operation_id": "op-x"}, ACTOR,
+                       CountingProvider(ledger, True), None)
+    assert len(_ledger(ledger)) == 1
+
+
+# ------------------------------------------------------------------ @444e578 F4: migration TOCTOU
+
+def test_migration_seals_only_the_snapshot_it_checked(tmp_path, monkeypatch):
+    from core.capabilities import CapabilityError, CapabilityRegistry
+    from core.record_seal import unsealed_body as _ub
+    aios = str(tmp_path)
+    setup_authority(tmp_path)
+    _tamper_registry(aios, lambda reg: None, keep_seal=False)  # legacy unsealed file
+    real = CapabilityRegistry._from_data.__func__
+
+    def concurrent_writer(cls, data):
+        reg = _ub(json.load(open(_registry_path(aios))))
+        reg["capabilities"].append({"capability_id": "rogue", "version": "1", "owner": "x", "kind": "x",
+                                    "status": "ACTIVE"})
+        json.dump(reg, open(_registry_path(aios), "w"))
+        return real(cls, data)
+
+    monkeypatch.setattr(CapabilityRegistry, "_from_data", classmethod(concurrent_writer))
+    with pytest.raises(CapabilityError, match="changed during migration"):
+        CapabilityRegistry.migrate_to_sealed(aios, "operator")
+    on_disk = json.load(open(_registry_path(aios)))
+    assert "seal" not in on_disk, "migration sealed content that was not the checked snapshot"
+    with pytest.raises(CapabilityError):
+        CapabilityRegistry.load(aios, require_sealed=True)
