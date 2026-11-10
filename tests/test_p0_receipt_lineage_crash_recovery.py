@@ -370,3 +370,39 @@ def test_retry_reconciliation_cas_uses_exact_validated_snapshot(tmp_path, monkey
         retry_dispatch(aios, eid, ACTOR, f"{eid}:attempt:2", PROVIDER, 2, _explicit(eid, 2))
     assert _effect(aios, eid)["state"] == "UNKNOWN"
     assert prov.calls == 1
+
+
+def test_reconcile_effect_cas_uses_exact_validated_snapshot(tmp_path, monkeypatch):
+    """A replacement after validating prior INCONCLUSIVE evidence must fail CAS."""
+    aios = str(tmp_path)
+    _, cid, pid = setup_authority(tmp_path, max_attempts=2)
+    prov = Provider("timeout")
+    eff = execute(aios, cid, pid, "op-reconcile-race", ACTOR, prov)
+    eid = eff["effect_id"]
+
+    prov.status_answer = "INCONCLUSIVE"
+    first = reconcile_unknown_attempt(aios, eid, ACTOR, prov)
+    assert first["verdict"] == "INCONCLUSIVE" and first["recorded"] is True
+
+    rel = os.path.join(aios, "reconciliations", f"{eid}-attempt-1.json")
+    with open(rel, encoding="utf-8") as fh:
+        original = json.load(fh)
+
+    import core.effect_authority as authority
+    real_loader = authority._load_reconciliation_cas
+
+    def swap_after_snapshot(*args, **kwargs):
+        record, digest = real_loader(*args, **kwargs)
+        tampered = dict(original)
+        tampered["actor"] = "attacker"
+        with open(rel, "w", encoding="utf-8") as fh:
+            json.dump(tampered, fh)
+        return record, digest
+
+    monkeypatch.setattr(authority, "_load_reconciliation_cas", swap_after_snapshot)
+    prov.status_answer = "NOT_APPLIED"
+    result = reconcile_unknown_attempt(aios, eid, ACTOR, prov)
+    assert result["recorded"] is False
+    assert "compare-and-swap" in result["reason"]
+    assert _effect(aios, eid)["state"] == "UNKNOWN"
+    assert prov.calls == 1
