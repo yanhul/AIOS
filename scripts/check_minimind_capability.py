@@ -59,10 +59,14 @@ def main() -> int:
     if receipt["status"] not in {"AVAILABLE", "BLOCKED", "INCONCLUSIVE"}:
         raise SystemExit(f"Ungoverned MiniMind capability status: {receipt['status']}")
 
-    # The check process can succeed while the capability is BLOCKED. Never label
-    # that outcome CHECK_PASS: machine-readable status must carry the verdict.
+    # Emit the evidence receipt before returning a status-specific exit code.
+    # CI must not turn BLOCKED/INCONCLUSIVE capability evidence into a green job.
     print(json.dumps({"MINIMIND_CAPABILITY_CHECK": receipt}, sort_keys=True))
-    return 0
+    if receipt["status"] == "AVAILABLE":
+        return 0
+    if receipt["status"] == "BLOCKED":
+        return 2
+    return 3  # INCONCLUSIVE is not a capability pass either.
 
 
 if __name__ == "__main__":
