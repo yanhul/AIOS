@@ -2,6 +2,9 @@ name: CI
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feat/p0-receipt-lineage-reconcile-before-retry
 
 permissions:
   contents: read
