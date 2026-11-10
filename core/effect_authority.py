@@ -319,7 +319,7 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
     # exact UNKNOWN attempt being replaced.
     previous = int(current.get("attempt", 0))
     rel = _reconciliation_relpath(effect_id, previous)
-    rec = load_reconciliation(aios_dir, effect_id, previous)
+    rec, rec_digest = _load_reconciliation_cas(aios_dir, effect_id, previous)
     if not isinstance(rec, dict) or rec.get("verdict") != "NOT_APPLIED":
         raise TransitionError("UNKNOWN retry requires a persisted NOT_APPLIED reconciliation")
     if (rec.get("source_authenticity") or {}).get("level") != PROVIDER_SIGNED:
@@ -328,7 +328,8 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
             or rec.get("attempt") != previous or rec.get("provider") != provider
             or rec.get("contract_id") != current["contract_id"] or rec.get("actor") != actor):
         raise TransitionError("reconciliation is not bound to the UNKNOWN attempt")
-    rec_digest = file_digest(os.path.join(aios_dir, rel))
+    # rec_digest belongs to the exact raw bytes parsed and validated above.
+    # Never re-read the file for its CAS digest after validating the record.
     updated = _transition_dispatch_with_expect(aios_dir, current, digest, actor, attempt, attempt_id,
                                               provider, {rel: rec_digest})
     return updated
@@ -643,8 +644,13 @@ def _reconciliation_payload(effect_id, attempt_id, provider, verdict, evidence, 
                                outcome=outcome if verdict == "APPLIED" else None)
 
 
-def load_reconciliation(aios_dir, effect_id, attempt):
-    """Return the sealed reconciliation for an attempt, or None. Forged/unsealed records raise."""
+def _load_reconciliation_cas(aios_dir, effect_id, attempt):
+    """Load, validate and hash one exact reconciliation-file snapshot.
+
+    The digest is computed from the same bytes that are decoded and validated.
+    Callers can safely use it as a CAS expectation without a validation/hash
+    TOCTOU gap.
+    """
     if not isinstance(effect_id, str) or not _EFFECT_ID_RE.fullmatch(effect_id):
         raise ValueError("effect_id is not a well-formed effect id")
     if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 1:
@@ -652,9 +658,11 @@ def load_reconciliation(aios_dir, effect_id, attempt):
     recover_pending(aios_dir)
     path = os.path.join(aios_dir, _reconciliation_relpath(effect_id, attempt))
     if not os.path.exists(path):
-        return None
-    record = _load(path)
-    if record.get("record_type") != "EFFECT_RECONCILIATION":
+        return None, file_digest(path)
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    record = json.loads(raw.decode("utf-8"))
+    if not isinstance(record, dict) or record.get("record_type") != "EFFECT_RECONCILIATION":
         raise TransitionError("persisted record is not an effect reconciliation")
     require_seal(record, "effect reconciliation")
     evidence = record.get("evidence")
@@ -665,17 +673,18 @@ def load_reconciliation(aios_dir, effect_id, attempt):
             or evidence.get("provider") != record.get("provider")):
         raise TransitionError("reconciliation record is not bound to its attempt/provider")
     if record.get("verdict") in DECISIVE_VERDICTS:
-        # A decisive verdict (NOT_APPLIED unlocks retry) needs SOURCE_AUTHENTICITY,
-        # re-verified against the current trust store. Records written before
-        # provider attestation existed are not upgraded (PR #126 @18ec11f P1).
         stamp = record.get("source_authenticity")
         if not isinstance(stamp, dict) or stamp.get("level") != PROVIDER_SIGNED:
             raise ProviderTrustError("decisive reconciliation lacks provider-signed source authenticity")
         verify_attestation(record.get("attestation"), _reconciliation_payload(
             effect_id, record.get("attempt_id"), record.get("provider"), record["verdict"], evidence,
             record.get("outcome")), aios_dir)
-    return record
+    return record, hashlib.sha256(raw).hexdigest()
 
+
+def load_reconciliation(aios_dir, effect_id, attempt):
+    """Return the sealed reconciliation for an attempt, or None. Forged/unsealed records raise."""
+    return _load_reconciliation_cas(aios_dir, effect_id, attempt)[0]
 
 def reconcile_effect(aios_dir, effect_id, actor, verdict, provider_evidence, *,
                      outcome=None, provider_observation=None, attestation=None):
