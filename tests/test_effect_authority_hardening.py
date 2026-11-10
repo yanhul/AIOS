@@ -8,6 +8,7 @@ import tempfile
 
 import pytest
 
+from tests.provider_trust_helpers import attested
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
@@ -125,8 +126,8 @@ def test_observation_requires_current_attempt_and_valid_aios_evidence():
             effect["effect_id"],
             "bc-controller",
             "OBSERVED_SUCCESS",
-            {"attempt_id": attempt_id, "provider": "provider-a", "provider_operation_id": "op-a-1",
-             "evidence": evidence},
+            attested({"attempt_id": attempt_id, "provider": "provider-a", "provider_operation_id": "op-a-1",
+                      "evidence": evidence}, effect["effect_id"]),
         )
         assert observed["state"] == "OBSERVED_SUCCESS"
         with pytest.raises(TransitionError):

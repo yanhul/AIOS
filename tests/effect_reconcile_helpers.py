@@ -9,6 +9,7 @@ import os
 
 from core.effect_authority import reconcile_effect
 from core.evidence import EvidenceRecord
+from tests.provider_trust_helpers import sign_reconciliation
 
 
 def provider_status_evidence(effect, claim="provider status query: operation not applied"):
@@ -25,4 +26,6 @@ def provider_status_evidence(effect, claim="provider status query: operation not
 def reconcile_not_applied(aios_dir, effect_id, actor):
     with open(os.path.join(str(aios_dir), "effects", effect_id + ".json"), encoding="utf-8") as fh:
         effect = json.load(fh)
-    return reconcile_effect(str(aios_dir), effect_id, actor, "NOT_APPLIED", provider_status_evidence(effect))
+    ev = provider_status_evidence(effect)
+    return reconcile_effect(str(aios_dir), effect_id, actor, "NOT_APPLIED", ev,
+                            attestation=sign_reconciliation(effect, "NOT_APPLIED", ev))

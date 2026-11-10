@@ -9,8 +9,8 @@ with a deployment secret that is never stored in AIOS state.
 
 Threat model (explicit): this defends against forged or edited JSON written
 by anything that does not hold the secret (agents, workers, other repos,
-a compromised state volume). It does NOT prove provider authenticity — that
-needs provider-signed responses — and it does not defend against a process
+a compromised state volume). It does NOT prove provider authenticity — that is
+``core.provider_trust`` (provider-signed attestations) — and it does not defend against a process
 that holds the secret.
 
 Configure with ``AIOS_RECORD_SEAL_SECRET``. When it is absent, sealing raises

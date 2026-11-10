@@ -6,6 +6,7 @@
 
 import pytest
 
+from tests.provider_trust_helpers import signed_receipt
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
@@ -36,8 +37,7 @@ class GoodAdapter:
     name = "fake-provider"
 
     def execute(self, *, contract, effect, attempt_id):
-        return ProviderReceipt(self.name, effect["effect_id"], attempt_id,
-                               "provider-op", "OBSERVED_SUCCESS", {"status": "ok"})
+        return signed_receipt(self.name, effect["effect_id"], attempt_id, "provider-op")
 
 
 class GoodRuntime:

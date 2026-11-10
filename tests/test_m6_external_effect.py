@@ -8,6 +8,7 @@ import os
 import tempfile
 import unittest
 
+from tests.provider_trust_helpers import attested
 from core.evidence import EvidenceRecord
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
@@ -72,10 +73,10 @@ class TestExternalEffect(unittest.TestCase):
         retry_attempt = f"{e['effect_id']}:attempt:2"
         reconcile_not_applied(self.aios, e["effect_id"], "agent:a")
         retry_dispatch(self.aios, e["effect_id"], "agent:a", retry_attempt, "provider:test", 2, {"mode":"EXPLICIT","effect_id":e["effect_id"],"attempt":2})
-        record_observation(self.aios, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {
+        record_observation(self.aios, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", attested({
             "attempt_id": retry_attempt, "provider": "provider:test", "provider_operation_id": "op-2",
             "evidence": evidence(run_id=retry_attempt)
-        })
+        }, e["effect_id"]))
         self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "OBSERVED_SUCCESS")
 
     def test_attempt_mismatch_is_rejected(self):

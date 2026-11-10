@@ -16,10 +16,11 @@ from .contract import contract_identity
 from .capabilities import CapabilityRegistry
 from .durable_runtime import DurableRuntime, validate_submission
 from .effect_authority import (
-    create_effect, dispatch, load_reconciliation, observe, reconcile_effect, recover_interrupted,
-    retry_dispatch, unknown, _effect_rel, _load_current, _load_current_cas,
+    EXECUTION_CLAIMS_DIR, create_effect, dispatch, load_reconciliation, reconcile_effect, recover_interrupted,
+    retry_dispatch, unknown, _claim_relpath, _effect_rel, _load_current, _load_current_cas, _observe_invoked,
 )
 from .mutation import TransitionError, canonical_json, commit_batch
+from .provider_trust import ProviderTrustError
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,9 @@ class ProviderReceipt:
     provider_operation_id: str
     outcome: str
     observation: dict
+    # Provider signature over the observation statement (core.provider_trust).
+    # Required when the provider has trusted keys configured.
+    attestation: "dict | None" = None
 
 
 @dataclass(frozen=True)
@@ -43,6 +47,9 @@ class ReconciliationReport:
     verdict: str
     evidence: dict
     receipt: "ProviderReceipt | None" = None
+    # Provider signature over the verdict statement. Required for APPLIED and
+    # NOT_APPLIED; without it the probe answer is not recorded.
+    attestation: "dict | None" = None
 
 
 class ProviderAdapter(Protocol):
@@ -133,6 +140,8 @@ def _provider_observation(receipt):
         "attempt_id": receipt.attempt_id,
         "observation": receipt.observation,
     }
+    if receipt.attestation is not None:
+        provider_observation["attestation"] = receipt.attestation
     supplied = receipt.observation.get("evidence")
     if isinstance(supplied, dict):
         provider_observation["evidence"] = supplied
@@ -160,13 +169,6 @@ def _provider_observation(receipt):
             artifact_ref=raw_digest,
         ).as_record()
     return provider_observation
-
-
-EXECUTION_CLAIMS_DIR = "execution_claims"
-
-
-def _claim_relpath(effect_id, attempt):
-    return os.path.join(EXECUTION_CLAIMS_DIR, f"{effect_id}-attempt-{attempt}.json")
 
 
 def _bind_persisted(aios_dir, contract, effect, actor, attempt_id, provider_name):
@@ -234,6 +236,24 @@ def _claim_execution(aios_dir, persisted, digest, actor):
         raise RuntimeError(f"attempt already claimed or effect changed concurrently: {exc}") from exc
 
 
+def _ensure_claim(aios_dir, persisted, digest, actor):
+    """Idempotent-resume only: reuse the attempt's claim, or write it if none exists.
+
+    The provider dedupes on attempt_id (registry-attested), so re-sending under
+    an existing claim is safe; the claim still binds the observation that
+    follows to this exact attempt/provider/actor.
+    """
+    path = os.path.join(aios_dir, _claim_relpath(persisted["effect_id"], persisted.get("attempt", 0)))
+    if not os.path.exists(path):
+        _claim_execution(aios_dir, persisted, digest, actor)
+        return
+    with open(path, "r", encoding="utf-8") as fh:
+        claim = json.load(fh)
+    if (claim.get("attempt_id") != persisted["attempt_id"] or claim.get("provider") != persisted["provider"]
+            or claim.get("actor") != actor):
+        raise PermissionError("existing execution claim is bound to another attempt/provider/actor")
+
+
 def _run_bound(aios_dir, stored_contract, persisted, actor, adapter, provider_name):
     attempt_id = persisted["attempt_id"]
     try:
@@ -243,7 +263,13 @@ def _run_bound(aios_dir, stored_contract, persisted, actor, adapter, provider_na
         return unknown(aios_dir, persisted["effect_id"], actor,
                        f"provider ambiguity: {type(exc).__name__}: {exc}")
     provider_observation = _provider_observation(receipt)
-    return observe(aios_dir, persisted["effect_id"], actor, receipt.outcome, provider_observation)
+    try:
+        return _observe_invoked(aios_dir, persisted["effect_id"], actor, receipt.outcome, provider_observation)
+    except ProviderTrustError as exc:
+        # The provider was called and may have applied the effect, but its
+        # answer is not authenticated: never success, never silently retried.
+        return unknown(aios_dir, persisted["effect_id"], actor,
+                       f"provider observation not authenticated: {exc}")
 
 
 def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
@@ -311,6 +337,7 @@ def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: 
         # the provider dedupes on attempt_id; this is the ONLY path allowed to
         # run an already-claimed attempt again.
         _submit_runtime(durable_runtime, "resume", persisted, attempt_id, provider_name)
+        _ensure_claim(aios_dir, persisted, _digest, actor)
         return _run_bound(aios_dir, stored, persisted, actor, adapter, provider_name)
     recover_interrupted(aios_dir, effect["effect_id"], actor,
                         "resume of non-idempotent provider attempt; reconciliation required")
@@ -377,6 +404,10 @@ def reconcile_unknown_attempt(aios_dir, effect_id, actor, adapter):
     """
     _text(actor, "actor")
     effect = _load_current(aios_dir, effect_id)
+    # Authorize before the probe: a caller that does not own the effect must
+    # not be able to trigger provider status queries (PR #126 @18ec11f).
+    if effect.get("actor") != actor:
+        raise PermissionError("reconciliation actor does not match effect owner")
     if effect.get("state") != "UNKNOWN":
         raise RuntimeError("reconciliation requires an UNKNOWN effect")
     provider_name = _text(getattr(adapter, "name", None), "adapter.name")
@@ -393,10 +424,12 @@ def reconcile_unknown_attempt(aios_dir, effect_id, actor, adapter):
             validate_receipt(report.receipt, effect, effect["attempt_id"], provider_name)
             return reconcile_effect(aios_dir, effect_id, actor, "APPLIED", report.evidence,
                                     outcome=report.receipt.outcome,
-                                    provider_observation=_provider_observation(report.receipt))
+                                    provider_observation=_provider_observation(report.receipt),
+                                    attestation=report.attestation)
         if report.receipt is not None:
             raise ValueError("only APPLIED reconciliation may carry a receipt")
-        return reconcile_effect(aios_dir, effect_id, actor, report.verdict, report.evidence)
+        return reconcile_effect(aios_dir, effect_id, actor, report.verdict, report.evidence,
+                                attestation=report.attestation)
     except Exception as exc:  # fail closed: stay UNKNOWN
         return {"verdict": "INCONCLUSIVE", "recorded": False,
                 "reason": f"reconciliation probe failed: {type(exc).__name__}: {exc}"}

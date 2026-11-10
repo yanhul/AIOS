@@ -27,7 +27,17 @@ from .authority import authorize, load_contract, load_permit
 from .contract import verify_permit
 from .evidence import verify_evidence
 from .mutation import TransitionError, canonical_json, commit_batch, file_digest, recover_pending
+from .provider_trust import (
+    AIOS_INVOKED_UNSIGNED, LEGACY_UNVERIFIED, OBSERVED, PROVIDER_SIGNED, RECONCILED_PREFIX, UNSIGNED,
+    ProviderTrustError, attestation_payload, provider_has_trust, verify_attestation,
+)
 from .record_seal import require_seal, seal, seal_available, unsealed_body
+
+EXECUTION_CLAIMS_DIR = "execution_claims"
+
+
+def _claim_relpath(effect_id, attempt):
+    return os.path.join(EXECUTION_CLAIMS_DIR, f"{effect_id}-attempt-{attempt}.json")
 
 STATES = ("PLANNED", "DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE")
 _ALLOWED = {
@@ -244,6 +254,8 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
     rec = load_reconciliation(aios_dir, effect_id, previous)
     if not isinstance(rec, dict) or rec.get("verdict") != "NOT_APPLIED":
         raise TransitionError("UNKNOWN retry requires a persisted NOT_APPLIED reconciliation")
+    if (rec.get("source_authenticity") or {}).get("level") != PROVIDER_SIGNED:
+        raise ProviderTrustError("UNKNOWN retry requires a provider-signed NOT_APPLIED reconciliation")
     if (rec.get("attempt_id") != current.get("attempt_id") or rec.get("effect_id") != effect_id
             or rec.get("attempt") != previous or rec.get("provider") != provider
             or rec.get("contract_id") != current["contract_id"] or rec.get("actor") != actor):
@@ -290,17 +302,57 @@ def _reconciliation_relpath(effect_id, attempt):
 
 _RECEIPT_FIELDS = ("record_type", "effect_id", "attempt_id", "attempt", "contract_id", "provider",
                    "provider_operation_id", "outcome", "evidence", "recorded_via")
+# Trust fields (PR #126 @18ec11f P1). Optional only so that receipts written
+# before them still hash to their id; such receipts are LEGACY_UNVERIFIED and
+# are never upgraded. Once present they are covered by receipt_id and seal.
+_RECEIPT_TRUST_FIELDS = ("source_authenticity", "attestation")
 
 
 def receipt_id_for(receipt_body):
-    """Content address over every receipt field (all of _RECEIPT_FIELDS)."""
-    if not isinstance(receipt_body, dict) or set(receipt_body) - set(_RECEIPT_FIELDS) - {"receipt_id", "seal", "sealed"}:
+    """Content address over every receipt field (all of _RECEIPT_FIELDS + present trust fields)."""
+    allowed = set(_RECEIPT_FIELDS) | set(_RECEIPT_TRUST_FIELDS) | {"receipt_id", "seal", "sealed"}
+    if not isinstance(receipt_body, dict) or set(receipt_body) - allowed:
         raise ValueError("receipt body has unexpected fields")
     missing = [k for k in _RECEIPT_FIELDS if k not in receipt_body]
     if missing:
         raise ValueError(f"receipt body is missing fields: {missing}")
-    value = {k: receipt_body[k] for k in _RECEIPT_FIELDS}
+    if ("source_authenticity" in receipt_body) != ("attestation" in receipt_body):
+        raise ValueError("receipt trust fields must be recorded together")
+    value = {k: receipt_body[k] for k in (*_RECEIPT_FIELDS, *_RECEIPT_TRUST_FIELDS) if k in receipt_body}
     return "RC-" + hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def receipt_source_authenticity(receipt):
+    """Trust level of a persisted receipt; legacy receipts are never upgraded."""
+    stamp = receipt.get("source_authenticity") if isinstance(receipt, dict) else None
+    return stamp.get("level") if isinstance(stamp, dict) else LEGACY_UNVERIFIED
+
+
+def _observation_trust(aios_dir, current, outcome, provider_observation, evidence, op_id, *, invoked):
+    """SOURCE_AUTHENTICITY for an observation. SHA-256 evidence alone is never enough.
+
+    * attested: provider signature over the AIOS-built statement => PROVIDER_SIGNED;
+    * unsigned, AIOS-invoked execution of a provider with *no* trusted keys =>
+      AIOS_INVOKED_UNSIGNED (recorded as such, never unlocks retry);
+    * anything else is refused, including an unsigned observation for a
+      provider that has trusted keys (downgrade) and every direct ``observe()``
+      call without an attestation.
+    """
+    provider = current.get("provider")
+    attestation = provider_observation.get("attestation")
+    if attestation is not None:
+        payload = attestation_payload(
+            provider=provider, effect_id=current["effect_id"], attempt_id=current.get("attempt_id"),
+            statement=OBSERVED, evidence=evidence, outcome=outcome, provider_operation_id=op_id,
+            observation=provider_observation.get("observation"))
+        return verify_attestation(attestation, payload, aios_dir)
+    if not invoked:
+        raise ProviderTrustError(
+            "observation requires a provider-signed attestation: a SHA-256 evidence digest proves "
+            "content integrity only, not that the provider issued it")
+    if provider_has_trust(provider, aios_dir):
+        raise ProviderTrustError("provider has trusted keys; unsigned observation is refused (downgrade)")
+    return {"level": AIOS_INVOKED_UNSIGNED}
 
 
 def _validated_observation(current, outcome, provider_observation):
@@ -330,14 +382,17 @@ def _validated_observation(current, outcome, provider_observation):
 
 
 def _commit_observation(aios_dir, current, digest, actor, outcome, provider_observation, via,
-                        extra=(), extra_expect=None):
+                        extra=(), extra_expect=None, *, invoked=False):
     attempt_id, provider, evidence, op_id = _validated_observation(current, outcome, provider_observation)
+    trust = _observation_trust(aios_dir, current, outcome, provider_observation, evidence, op_id,
+                               invoked=invoked)
     effect_id = current["effect_id"]
     body = {
         "record_type": "PROVIDER_RECEIPT", "effect_id": effect_id,
         "attempt_id": attempt_id, "attempt": current["attempt"], "contract_id": current["contract_id"],
         "provider": provider, "provider_operation_id": op_id, "outcome": outcome,
         "evidence": evidence, "recorded_via": via,
+        "source_authenticity": trust, "attestation": provider_observation.get("attestation"),
     }
     rid = receipt_id_for(body)
     receipt = {**body, "receipt_id": rid}
@@ -364,6 +419,12 @@ def _commit_observation(aios_dir, current, digest, actor, outcome, provider_obse
 
 
 def observe(aios_dir, effect_id, actor, outcome, provider_observation):
+    """Record a provider observation submitted by a caller.
+
+    Requires ``provider_observation['attestation']`` signed by a key trusted for
+    the dispatched provider. A caller-built EvidenceRecord with a correct
+    digest is refused (PR #126 @18ec11f P1, path A).
+    """
     if outcome not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
         raise ValueError("invalid observation outcome")
     if not isinstance(provider_observation, dict) or not provider_observation:
@@ -376,7 +437,53 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
     return _commit_observation(aios_dir, current, digest, actor, outcome, provider_observation, "observe")
 
 
-def load_receipt(aios_dir, receipt_id, *, require_sealed=True):
+def _observe_invoked(aios_dir, effect_id, actor, outcome, provider_observation):
+    """Runtime-internal: record what the adapter AIOS itself invoked returned.
+
+    Bound to the at-most-once execution claim for the exact dispatched attempt
+    (CAS on the claim bytes). Unsigned results are recorded as
+    AIOS_INVOKED_UNSIGNED only for providers without trusted keys.
+    """
+    if outcome not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
+        raise ValueError("invalid observation outcome")
+    if not isinstance(provider_observation, dict) or not provider_observation:
+        raise ValueError("provider_observation must be a non-empty dict")
+    current, digest = _load_current_cas(aios_dir, effect_id)
+    if actor != current.get("actor"):
+        raise TransitionError("observation actor does not match effect owner")
+    if current.get("state") != "DISPATCHED":
+        raise TransitionError("observation requires a currently DISPATCHED attempt")
+    rel = _claim_relpath(effect_id, current.get("attempt", 0))
+    path = os.path.join(aios_dir, rel)
+    if not os.path.exists(path):
+        raise TransitionError("AIOS-invoked observation requires the execution claim for this attempt")
+    claim = _load(path)
+    if (claim.get("kind") != "execution_claim" or claim.get("effect_id") != effect_id
+            or claim.get("attempt_id") != current.get("attempt_id")
+            or claim.get("provider") != current.get("provider") or claim.get("actor") != actor):
+        raise TransitionError("execution claim is not bound to the dispatched attempt")
+    return _commit_observation(aios_dir, current, digest, actor, outcome, provider_observation, "observe",
+                               extra_expect={rel: file_digest(path)}, invoked=True)
+
+
+def _verify_receipt_attestation(aios_dir, receipt, effect):
+    stamp = receipt.get("source_authenticity")
+    level = stamp.get("level") if isinstance(stamp, dict) else None
+    if level == PROVIDER_SIGNED:
+        observation = (effect.get("provider_observation") or {}).get("observation")
+        payload = attestation_payload(
+            provider=receipt["provider"], effect_id=receipt["effect_id"], attempt_id=receipt["attempt_id"],
+            statement=OBSERVED, evidence=receipt["evidence"], outcome=receipt["outcome"],
+            provider_operation_id=receipt["provider_operation_id"], observation=observation)
+        verify_attestation(receipt.get("attestation"), payload, aios_dir)
+    elif level == AIOS_INVOKED_UNSIGNED:
+        if receipt.get("attestation") is not None:
+            raise TransitionError("unsigned receipt carries an attestation")
+    else:
+        raise TransitionError(f"persisted receipt has unknown source authenticity: {level}")
+
+
+def load_receipt(aios_dir, receipt_id, *, require_sealed=True, require_provider_signed=False):
     """Load a persisted receipt and verify content, seal and receipt-of-record binding."""
     _validate_strings(("receipt_id", receipt_id))
     recover_pending(aios_dir)  # never read a half-applied batch
@@ -407,6 +514,12 @@ def load_receipt(aios_dir, receipt_id, *, require_sealed=True):
             raise TransitionError(f"persisted receipt {field} differs from its effect")
     if effect.get("state") != receipt["outcome"]:
         raise TransitionError("persisted receipt outcome differs from effect state")
+    if "source_authenticity" in receipt:
+        # Re-verified on every load: a revoked provider key revokes the receipt.
+        _verify_receipt_attestation(aios_dir, receipt, effect)
+    if require_provider_signed and receipt_source_authenticity(receipt) != PROVIDER_SIGNED:
+        raise ProviderTrustError(
+            f"receipt source authenticity is {receipt_source_authenticity(receipt)}, provider signature required")
     return receipt
 
 
@@ -426,6 +539,13 @@ def recover_interrupted(aios_dir, effect_id, actor, reason="interrupted before r
 
 
 RECONCILIATION_VERDICTS = ("APPLIED", "NOT_APPLIED", "INCONCLUSIVE")
+DECISIVE_VERDICTS = ("APPLIED", "NOT_APPLIED")
+
+
+def _reconciliation_payload(effect_id, attempt_id, provider, verdict, evidence, outcome):
+    return attestation_payload(provider=provider, effect_id=effect_id, attempt_id=attempt_id,
+                               statement=RECONCILED_PREFIX + verdict, evidence=evidence,
+                               outcome=outcome if verdict == "APPLIED" else None)
 
 
 def load_reconciliation(aios_dir, effect_id, attempt):
@@ -445,11 +565,21 @@ def load_reconciliation(aios_dir, effect_id, attempt):
             or evidence.get("run_id") != record.get("attempt_id")
             or evidence.get("provider") != record.get("provider")):
         raise TransitionError("reconciliation record is not bound to its attempt/provider")
+    if record.get("verdict") in DECISIVE_VERDICTS:
+        # A decisive verdict (NOT_APPLIED unlocks retry) needs SOURCE_AUTHENTICITY,
+        # re-verified against the current trust store. Records written before
+        # provider attestation existed are not upgraded (PR #126 @18ec11f P1).
+        stamp = record.get("source_authenticity")
+        if not isinstance(stamp, dict) or stamp.get("level") != PROVIDER_SIGNED:
+            raise ProviderTrustError("decisive reconciliation lacks provider-signed source authenticity")
+        verify_attestation(record.get("attestation"), _reconciliation_payload(
+            effect_id, record.get("attempt_id"), record.get("provider"), record["verdict"], evidence,
+            record.get("outcome")), aios_dir)
     return record
 
 
 def reconcile_effect(aios_dir, effect_id, actor, verdict, provider_evidence, *,
-                     outcome=None, provider_observation=None):
+                     outcome=None, provider_observation=None, attestation=None):
     """Record a sealed AIOS reconciliation verdict for the current UNKNOWN attempt.
 
     * APPLIED: requires ``outcome`` and a full ``provider_observation``; the
@@ -458,6 +588,14 @@ def reconcile_effect(aios_dir, effect_id, actor, verdict, provider_evidence, *,
       sealed record is the only artefact that unlocks ``retry_dispatch``.
     * INCONCLUSIVE: recorded as negative evidence; the effect stays UNKNOWN
       and retry stays blocked.
+
+    APPLIED and NOT_APPLIED additionally require ``attestation``: a provider
+    signature (trusted key, ``core.provider_trust``) over the AIOS-built
+    statement (effect, attempt, provider, verdict, evidence digest[, outcome]).
+    APPLIED also requires the observation itself to be attested. A caller that
+    merely recomputes an EvidenceRecord digest cannot produce either
+    (PR #126 @18ec11f P1, path B). INCONCLUSIVE may be unsigned: it only keeps
+    the effect blocked.
 
     Fails closed (SealError) when the deployment seal key is not configured.
     """
@@ -477,6 +615,17 @@ def reconcile_effect(aios_dir, effect_id, actor, verdict, provider_evidence, *,
         raise ValueError("reconciliation evidence provider does not match effect provider")
     if provider_evidence.get("run_id") != attempt_id:
         raise ValueError("reconciliation evidence is not bound to the UNKNOWN attempt")
+    if verdict == "APPLIED" and outcome not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
+        raise ValueError("APPLIED reconciliation requires outcome and provider_observation")
+    payload = _reconciliation_payload(effect_id, attempt_id, provider, verdict, provider_evidence, outcome)
+    if attestation is not None:
+        trust = verify_attestation(attestation, payload, aios_dir)
+    elif verdict in DECISIVE_VERDICTS:
+        raise ProviderTrustError(
+            f"{verdict} reconciliation requires a provider-signed attestation; a SHA-256 evidence "
+            "digest proves content integrity only")
+    else:
+        trust = {"level": UNSIGNED}
     rel = _reconciliation_relpath(effect_id, attempt)
     rec_digest = file_digest(os.path.join(aios_dir, rel))
     existing = load_reconciliation(aios_dir, effect_id, attempt)
@@ -486,6 +635,8 @@ def reconcile_effect(aios_dir, effect_id, actor, verdict, provider_evidence, *,
         "record_type": "EFFECT_RECONCILIATION", "effect_id": effect_id, "attempt": attempt,
         "attempt_id": attempt_id, "contract_id": current["contract_id"], "provider": provider,
         "verdict": verdict, "evidence": provider_evidence, "actor": actor,
+        "outcome": outcome if verdict == "APPLIED" else None,
+        "attestation": attestation, "source_authenticity": trust,
         "supersedes": existing.get("evidence", {}).get("digest") if existing else None,
     })
     cas = {rel: rec_digest}
@@ -504,6 +655,6 @@ def reconcile_effect(aios_dir, effect_id, actor, verdict, provider_evidence, *,
     return record
 
 
-__all__ = ["STATES", "RECONCILIATION_VERDICTS", "create_effect", "transition", "dispatch", "retry_dispatch",
+__all__ = ["STATES", "RECONCILIATION_VERDICTS", "DECISIVE_VERDICTS", "receipt_source_authenticity", "create_effect", "transition", "dispatch", "retry_dispatch",
            "unknown", "observe", "receipt_id_for", "load_receipt", "recover_interrupted",
            "reconcile_effect", "load_reconciliation"]

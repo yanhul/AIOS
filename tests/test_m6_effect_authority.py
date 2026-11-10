@@ -6,6 +6,7 @@
 
 import pytest
 
+from tests.provider_trust_helpers import attested
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
@@ -60,7 +61,8 @@ def test_effect_transition_is_atomic_and_audited(tmp_path):
     unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
     reconcile_not_applied(tmp_path, effect["effect_id"], "agent-1")
     retry_dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:2", "provider-1", 2, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":2})
-    done = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", _observation(effect["effect_id"], attempt=2))
+    done = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS",
+                   attested(_observation(effect["effect_id"], attempt=2), effect["effect_id"]))
     assert done["state"] == "OBSERVED_SUCCESS"
     assert (tmp_path / "events" / ("effect-" + effect["effect_id"] + "-OBSERVED_SUCCESS-attempt-2.json")).exists()
 

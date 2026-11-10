@@ -26,6 +26,8 @@ from core.runtime import (
 )
 from tests.test_m6_runtime import setup_authority
 
+from tests.provider_trust_helpers import sign_observation, sign_reconciliation
+
 ACTOR = "agent:test"
 PROVIDER = "fake-provider"
 
@@ -54,9 +56,17 @@ class Provider:
         return self._receipt(effect, attempt_id, op)
 
     def _receipt(self, effect, attempt_id, op):
+        # Signs like a real provider holding its trusted key (tests/conftest).
+        ev = EvidenceRecord(evidence_id=f"EV-op-{op}", level="OBSERVED",
+                            source_ref=f"provider://{self.name}/ops/{op}", claim="provider executed operation",
+                            run_id=attempt_id, provider=self.name).as_record()
+        observation = {"status": "ok", "op": op, "evidence": ev}
+        att = sign_observation(provider=self.name, effect_id=effect["effect_id"], attempt_id=attempt_id,
+                               outcome="OBSERVED_SUCCESS", provider_operation_id=op, evidence=ev,
+                               observation=observation)
         return ProviderReceipt(provider=self.name, effect_id=effect["effect_id"], attempt_id=attempt_id,
                                provider_operation_id=op, outcome="OBSERVED_SUCCESS",
-                               observation={"status": "ok", "op": op})
+                               observation=observation, attestation=att)
 
     def reconcile(self, *, effect, attempt_id):
         verdict = self.status_answer or ("APPLIED" if attempt_id in self.applied else "NOT_APPLIED")
@@ -65,7 +75,8 @@ class Provider:
                             claim=f"status query verdict {verdict}", run_id=attempt_id,
                             provider=self.name).as_record()
         receipt = self._receipt(effect, attempt_id, self.applied[attempt_id]) if verdict == "APPLIED" else None
-        return ReconciliationReport(verdict=verdict, evidence=ev, receipt=receipt)
+        att = sign_reconciliation(effect, verdict, ev, receipt.outcome if receipt else None)
+        return ReconciliationReport(verdict=verdict, evidence=ev, receipt=receipt, attestation=att)
 
 
 def _effect(aios, effect_id):
@@ -185,7 +196,7 @@ def test_provider_success_then_crash_before_receipt_is_reconciled_without_retry(
     def die(*a, **k):
         raise Crash()
     with monkeypatch.context() as m:
-        m.setattr(runtime, "observe", die)  # provider already applied; persistence dies
+        m.setattr(runtime, "_observe_invoked", die)  # provider already applied; persistence dies
         with pytest.raises(Crash):
             execute(aios, cid, pid, "op-1", ACTOR, prov)
 
@@ -328,4 +339,4 @@ def test_duplicate_observation_of_same_attempt_is_rejected(tmp_path):
     _, cid, pid = setup_authority(tmp_path)
     done = execute(aios, cid, pid, "op-1", ACTOR, Provider())
     with pytest.raises(TransitionError):
-        runtime.observe(aios, done["effect_id"], ACTOR, "OBSERVED_SUCCESS", done["provider_observation"])
+        runtime._observe_invoked(aios, done["effect_id"], ACTOR, "OBSERVED_SUCCESS", done["provider_observation"])

@@ -125,7 +125,7 @@ def evaluate_persisted_receipt(
     """
     import hashlib
     import os
-    from .effect_authority import load_receipt
+    from .effect_authority import load_receipt, receipt_source_authenticity
     from .mutation import canonical_json, commit_batch
 
     stored = load_receipt(aios_dir, receipt_id)
@@ -147,7 +147,12 @@ def evaluate_persisted_receipt(
                "effect_id": record.effect_id, "attempt_id": record.attempt_id,
                "receipt_id": record.receipt_id, "evaluator_version": record.evaluator_version,
                "rubric_version": record.rubric_version, "evidence_refs": list(record.evidence_refs),
-               "verdict": record.verdict, "timestamp": record.timestamp, "result": dict(record.result)}
+               "verdict": record.verdict, "timestamp": record.timestamp, "result": dict(record.result),
+               # Never upgraded: an evaluation inherits exactly the receipt's
+               # source authenticity (PROVIDER_SIGNED / AIOS_INVOKED_UNSIGNED /
+               # LEGACY_UNVERIFIED), so consumers can tell AIOS acceptance apart
+               # from provider-issued evidence.
+               "source_authenticity": receipt_source_authenticity(stored)}
     from .mutation import TransitionError
     from .record_seal import seal
     try:

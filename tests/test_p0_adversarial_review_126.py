@@ -3,7 +3,7 @@
 #                  evidence, provider substitution and mid-batch process death must all fail closed.
 # AIOS-OWNER: AIOS control-plane durable execution
 # AIOS-COVERAGE-GAP: Seals defend against writers without the deployment secret only; provider
-#                    authenticity (provider-signed responses) is NOT covered. Races are forced with
+#                    authenticity is covered separately in tests/test_p1_provider_authenticity_126.py. Races are forced with
 #                    real forked processes + barriers on Linux (fcntl); Windows locking not exercised.
 # AIOS-BASELINE: e6c2aed (484 passed, 1 skipped); re-review fixes on top of 32e1c04
 
@@ -25,6 +25,7 @@ from core.evidence import EvidenceRecord
 from core.mutation import TransitionError
 from core.record_seal import SEAL_ENV, SealError, unsealed_body
 from core.runtime import ProviderReceipt, ReconciliationReport, execute, resume_attempt
+from tests.provider_trust_helpers import sign_observation, sign_reconciliation
 from tests.test_m6_runtime import setup_authority
 from tests.test_p0_receipt_lineage_crash_recovery import ACTOR, PROVIDER, Provider
 
@@ -50,6 +51,11 @@ def _explicit(eid, attempt):
 def _status_evidence(effect, claim="not applied"):
     return EvidenceRecord(f"EV-st-{effect['attempt']}", "OBSERVED", f"provider://{effect['provider']}/status",
                           claim, effect["attempt_id"], effect["provider"]).as_record()
+
+
+def _signed_reconcile(aios, eid, eff, verdict, claim=None):
+    ev = _status_evidence(eff, claim or verdict.lower())
+    return reconcile_effect(aios, eid, ACTOR, verdict, ev, attestation=sign_reconciliation(eff, verdict, ev))
 
 
 def _unknown_effect(tmp_path, max_attempts=3):
@@ -134,7 +140,7 @@ def test_f1_without_seal_key_reconciliation_and_retry_fail_closed(tmp_path, monk
     aios, _, _, eff = _unknown_effect(tmp_path)
     monkeypatch.delenv(SEAL_ENV)
     with pytest.raises(TransitionError, match="not configured"):  # SealError or authority rejection
-        reconcile_effect(aios, eff["effect_id"], ACTOR, "NOT_APPLIED", _status_evidence(eff))
+        _signed_reconcile(aios, eff["effect_id"], eff, "NOT_APPLIED", "not applied")
     assert not os.path.exists(os.path.join(aios, "reconciliations", f"{eff['effect_id']}-attempt-1.json"))
 
 
@@ -171,7 +177,7 @@ def _race(aios, n, target, patch_name):
 @posix_only
 def test_f2_two_processes_cannot_both_dispatch_the_same_retry(tmp_path):
     aios, cid, pid, eff = _unknown_effect(tmp_path)
-    reconcile_effect(aios, eff["effect_id"], ACTOR, "NOT_APPLIED", _status_evidence(eff))
+    _signed_reconcile(aios, eff["effect_id"], eff, "NOT_APPLIED", "not applied")
     eid = eff["effect_id"]
     out = _race(aios, 2, lambda i: retry_dispatch(aios, eid, ACTOR, f"{eid}:attempt:2", PROVIDER, 2,
                                                   _explicit(eid, 2)), "_load_current_cas")
@@ -202,9 +208,12 @@ def test_f2_two_processes_cannot_both_observe(tmp_path):
 
     def obs(i):
         ev = EvidenceRecord(f"EV-{i}", "OBSERVED", "provider://x", "done", eff["attempt_id"], PROVIDER).as_record()
-        observe(aios, eid, ACTOR, "OBSERVED_SUCCESS" if i == 0 else "OBSERVED_FAILURE",
+        outcome = "OBSERVED_SUCCESS" if i == 0 else "OBSERVED_FAILURE"
+        att = sign_observation(provider=PROVIDER, effect_id=eid, attempt_id=eff["attempt_id"], outcome=outcome,
+                               provider_operation_id=f"op-{i}", evidence=ev)
+        observe(aios, eid, ACTOR, outcome,
                 {"attempt_id": eff["attempt_id"], "provider": PROVIDER, "provider_operation_id": f"op-{i}",
-                 "evidence": ev})
+                 "evidence": ev, "attestation": att})
     out = _race(aios, 2, obs, "_load_current_cas")
     assert sorted(r[0] for r in out) == ["err", "ok"], out
     assert len(os.listdir(os.path.join(aios, "receipts"))) == 1
@@ -222,7 +231,7 @@ def test_f3_resume_after_provider_applied_does_not_reexecute_non_idempotent_prov
 
     def run_and_die():
         prov = FileProvider(ledger)
-        runtime.observe = lambda *a, **k: os._exit(137)  # applied, then process dies
+        runtime._observe_invoked = lambda *a, **k: os._exit(137)  # applied, then process dies
         execute(aios, cid, pid, "op-1", ACTOR, prov)
     p = CTX.Process(target=run_and_die)
     p.start()
@@ -270,7 +279,7 @@ def test_f4_observe_requires_provider_operation_id(tmp_path):
 
 def test_f5_retry_cannot_switch_provider(tmp_path):
     aios, _, _, eff = _unknown_effect(tmp_path)
-    reconcile_effect(aios, eff["effect_id"], ACTOR, "NOT_APPLIED", _status_evidence(eff))
+    _signed_reconcile(aios, eff["effect_id"], eff, "NOT_APPLIED", "not applied")
     with pytest.raises(TransitionError, match="reconciled provider"):
         retry_dispatch(aios, eff["effect_id"], ACTOR, f"{eff['effect_id']}:attempt:2", "provider-b", 2,
                        _explicit(eff["effect_id"], 2))
@@ -389,7 +398,7 @@ def test_real_process_kill_after_provider_success_is_reconciled_not_retried(tmp_
     ledger = str(tmp_path / "ledger.json")
 
     def run_and_die():
-        runtime.observe = lambda *a, **k: os._exit(137)
+        runtime._observe_invoked = lambda *a, **k: os._exit(137)
         execute(aios, cid, pid, "op-1", ACTOR, FileProvider(ledger))
     p = CTX.Process(target=run_and_die)
     p.start()
@@ -627,7 +636,7 @@ def test_f3_resume_cannot_substitute_another_contract_provider(tmp_path):
 
 def test_f1_stripping_seal_from_genuine_reconciliation_is_rejected(tmp_path):
     aios, _, _, eff = _unknown_effect(tmp_path)
-    reconcile_effect(aios, eff["effect_id"], ACTOR, "NOT_APPLIED", _status_evidence(eff))
+    _signed_reconcile(aios, eff["effect_id"], eff, "NOT_APPLIED", "not applied")
     path = os.path.join(aios, "reconciliations", f"{eff['effect_id']}-attempt-1.json")
     rec = json.load(open(path))
     assert "seal" in rec
@@ -647,7 +656,7 @@ def test_f2_two_processes_cannot_both_reconcile(tmp_path):
 
     def rec(i):
         verdict = "NOT_APPLIED" if i == 0 else "INCONCLUSIVE"
-        reconcile_effect(aios, eid, ACTOR, verdict, _status_evidence(eff, verdict.lower()))
+        _signed_reconcile(aios, eid, eff, verdict)
     out = _race(aios, 2, rec, "_load_current_cas")
     assert sorted(r[0] for r in out) == ["err", "ok"], out
     assert len(os.listdir(os.path.join(aios, "reconciliations"))) == 1
@@ -679,7 +688,7 @@ def test_f7_two_processes_cannot_both_record_evaluation(tmp_path):
 def test_f1_rotation_window_verifies_previous_key_and_reseals(tmp_path, monkeypatch):
     from core.record_seal import PREVIOUS_SEAL_ENV, require_seal, reseal
     aios, _, _, eff = _unknown_effect(tmp_path)
-    reconcile_effect(aios, eff["effect_id"], ACTOR, "NOT_APPLIED", _status_evidence(eff))
+    _signed_reconcile(aios, eff["effect_id"], eff, "NOT_APPLIED", "not applied")
     path = os.path.join(aios, "reconciliations", f"{eff['effect_id']}-attempt-1.json")
     old_key = os.environ["AIOS_RECORD_SEAL_SECRET"]
     monkeypatch.setenv("AIOS_RECORD_SEAL_SECRET", "rotated-key-b")
