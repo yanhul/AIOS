@@ -1,8 +1,20 @@
+# AIOS-CONTRACT: The governed bridge refuses durable-loop receipt mode before any state write or provider call,
+#                and never resumes past a persisted durable-loop in-flight intent (PR #126 review comment
+#                6761666720, disposition b).
+# AIOS-REGRESSION: At 842ebeb, require_execution_receipt=True let the real provider apply the effect (effect authority
+#                  OBSERVED_SUCCESS + sealed receipt) and only afterwards fail: the loop's uuid effect-/attempt-
+#                  intent does not match EF-/EF-...:attempt:1 and cannot be reconciled with
+#                  reconcile_in_flight_attempt(). Receipts for this bridge are enforced by the effect authority gate.
+# AIOS-OWNER: AIOS control-plane durable execution
+# AIOS-COVERAGE-GAP: Disposition (a), mapping loop intent/receipt/recovery to effect-authority ids, is not
+#                    implemented; receipt mode with this bridge is unsupported rather than integrated. Process
+#                    death is simulated by persisting the pre-crash loop snapshot to the file-backed store.
+# AIOS-BASELINE: 842ebeb (642 passed, 1 skipped)
 """Adversarial integration test for the governed bridge's receipt lineage.
 
-This uses the real effect authority (sealed filesystem records) and a file-backed
-loop state store. It documents that the generic durable-loop receipt intent is
-not currently mapped to AIOS effect/attempt identities.
+Real effect authority (sealed filesystem records) and a file-backed, process-reloadable loop store.
+Originally written by the independent reviewer at 842ebeb to document the lineage gap; updated for the
+chosen disposition: refuse the unsupported policy combination before the provider is invoked.
 """
 import json
 import os
@@ -39,45 +51,72 @@ class JsonStateStore:
         os.replace(temporary, self.path)
 
 
-def test_real_effect_receipt_cannot_reconcile_generic_bridge_intent(tmp_path):
-    aios, contract_id, permit_id, digest = _authority(tmp_path / "authority")
-    store = JsonStateStore(tmp_path / "loop-state.json")
-    provider = Provider()
-    policy = _policy(
+def _receipt_mode_policy(digest):
+    return _policy(
         digest,
         require_execution_receipt=True,
         execution_receipt_validator=lambda receipt, state: None,
         state_patch_validator=lambda patch, receipt, state: None,
     )
 
-    result = run_governed_execution(
-        executor=_executor(aios, contract_id, permit_id, provider, Verifier()),
-        store=store,
-        policy=policy,
-    )
 
+def test_receipt_mode_is_refused_before_provider_and_before_any_loop_state(tmp_path):
+    aios, contract_id, permit_id, digest = _authority(tmp_path / "authority")
+    store = JsonStateStore(tmp_path / "loop-state.json")
+    provider = Provider()
+    with pytest.raises(PermissionError, match="durable-loop receipt mode"):
+        run_governed_execution(executor=_executor(aios, contract_id, permit_id, provider, Verifier()),
+                               store=store, policy=_receipt_mode_policy(digest))
+    assert provider.calls == 0                                   # no external side effect
+    assert not os.path.exists(os.path.join(aios, "effects"))     # no effect authority record
+    assert JsonStateStore(store.path).load() is None             # no uuid intent persisted
+
+
+def test_persisted_loop_intent_from_a_receipt_mode_run_blocks_resume(tmp_path):
+    """Crash recovery: a RUNNING snapshot that crossed the write-ahead intent must not be resumed past."""
+    aios, contract_id, permit_id, digest = _authority(tmp_path / "authority")
+    store = JsonStateStore(tmp_path / "loop-state.json")
+    store.save({  # exactly what the pre-fix bridge persisted just before calling the provider
+        "contract_id": contract_id, "permit_id": permit_id, "policy_digest": digest, "step": 0,
+        "status": "RUNNING", "history": [],
+        "in_flight_attempt": {"effect_id": "effect-" + "0" * 32, "attempt_id": "attempt-" + "0" * 32,
+                              "decision": {"logical_operation_id": "op-1"}, "observation": {"ready": True},
+                              "status": "PREPARED"},
+    })
+    provider = Provider()
+    result = run_governed_execution(executor=_executor(aios, contract_id, permit_id, provider, Verifier()),
+                                    store=JsonStateStore(store.path), policy=_policy(digest))
     assert result["status"] == "BLOCKED"
+    assert "in-flight" in result["block_reason"]
+    assert provider.calls == 0
+    assert not os.path.exists(os.path.join(aios, "effects"))
+    reloaded = JsonStateStore(store.path).load()
+    assert reloaded["status"] == "BLOCKED" and reloaded["terminal_evidence"]["status"] == "BLOCKED"
+    # A later run stays terminal and still does not touch the provider.
+    again = run_governed_execution(executor=_executor(aios, contract_id, permit_id, provider, Verifier()),
+                                   store=JsonStateStore(store.path), policy=_policy(digest))
+    assert again["status"] == "BLOCKED" and provider.calls == 0
+    # And the generic loop reconciliation still cannot be pointed at it with this bridge's policy.
+    with pytest.raises(ValueError, match="receipt-governed"):
+        reconcile_in_flight_attempt(JsonStateStore(store.path), _policy(digest),
+                                    {"effect_id": "x", "attempt_id": "y", "status": "OBSERVED",
+                                     "evidence": {"e": 1}},
+                                    authorizer=lambda intent, validated: None)
+
+
+def test_supported_mode_persists_pass_across_a_fresh_store_with_sealed_effect_receipt(tmp_path):
+    aios, contract_id, permit_id, digest = _authority(tmp_path / "authority")
+    store = JsonStateStore(tmp_path / "loop-state.json")
+    provider = Provider()
+    result = run_governed_execution(executor=_executor(aios, contract_id, permit_id, provider, Verifier()),
+                                    store=store, policy=_policy(digest))
+    assert result["status"] == "PASS"
+    reloaded = JsonStateStore(store.path).load()
+    assert reloaded["status"] == "PASS" and "in_flight_attempt" not in reloaded
     effect = _effect_file(aios)
     assert effect["state"] == "OBSERVED_SUCCESS"
-    receipt = load_receipt(aios, effect["receipt_id"])
-    assert receipt["outcome"] == "OBSERVED_SUCCESS"
-    assert "status" not in receipt
-
-    reloaded = JsonStateStore(store.path).load()
-    intent = reloaded["in_flight_attempt"]
-    assert intent["effect_id"] != effect["effect_id"]
-    assert intent["attempt_id"] != effect["attempt_id"]
-
-    generic_receipt = {
-        "effect_id": receipt["effect_id"],
-        "attempt_id": receipt["attempt_id"],
-        "status": "OBSERVED",
-        "evidence": receipt["evidence"],
-    }
-    with pytest.raises(ValueError, match="does not match the persisted execution intent"):
-        reconcile_in_flight_attempt(
-            JsonStateStore(store.path),
-            policy,
-            generic_receipt,
-            authorizer=lambda intent, validated: None,
-        )
+    assert reloaded["history"][-1]["action"]["effect_id"] == effect["effect_id"]
+    assert load_receipt(aios, effect["receipt_id"])["outcome"] == "OBSERVED_SUCCESS"
+    again = run_governed_execution(executor=_executor(aios, contract_id, permit_id, provider, Verifier()),
+                                   store=JsonStateStore(store.path), policy=_policy(digest))
+    assert again["status"] == "PASS" and provider.calls == 1    # terminal; never re-executed

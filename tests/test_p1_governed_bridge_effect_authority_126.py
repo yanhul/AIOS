@@ -8,9 +8,9 @@
 #                  provider timeout (UNKNOWN) with a verifier answering {"verified": true} persisted a success
 #                  terminal while the effect authority record stayed UNKNOWN.
 # AIOS-OWNER: AIOS control-plane durable execution
-# AIOS-COVERAGE-GAP: In-process MemoryStateStore only. require_execution_receipt=True is propagated but the durable
-#                    loop's uuid intent lineage is not mapped to effect-authority ids, so that mode fails closed
-#                    with this bridge rather than completing.
+# AIOS-COVERAGE-GAP: In-process MemoryStateStore only (file-backed reload: test_p1_governed_bridge_receipt_lineage_126).
+#                    Durable-loop receipt mode (require_execution_receipt / receipt or state-patch validators) is
+#                    not mapped to effect-authority ids and is refused by the bridge before any side effect.
 # AIOS-BASELINE: 826fca0 (629 passed, 1 skipped)
 
 import dataclasses
@@ -183,9 +183,6 @@ def test_bound_policy_keeps_every_caller_governance_field(tmp_path, monkeypatch)
                         lambda executor, store, policy: captured.setdefault("policy", policy) and {})
     caller = _policy(
         digest,
-        require_execution_receipt=True,
-        execution_receipt_validator=lambda receipt, state: None,
-        state_patch_validator=lambda patch, receipt, state: None,
         acceptance_predicates=(AcceptancePredicate("p1", "verification.verified", "eq", True),),
         fix_plan=FixPlan(*["x"] * 8), fix_success_state="PASS",
         blocked_continuation=lambda verification, state: None,
@@ -222,18 +219,22 @@ def test_caller_fix_proof_requirement_is_enforced(tmp_path):
     assert "FIXED" in result["block_reason"]
 
 
-def test_caller_receipt_enforcement_is_not_silently_disabled(tmp_path):
+@pytest.mark.parametrize("fields", [
+    {"require_execution_receipt": True, "execution_receipt_validator": lambda r, s: None,
+     "state_patch_validator": lambda p, r, s: None},
+    {"execution_receipt_validator": lambda r, s: None},
+    {"state_patch_validator": lambda p, r, s: None},
+])
+def test_durable_loop_receipt_mode_is_refused_before_any_side_effect(tmp_path, fields):
+    """Not supported by this bridge (lineage not mapped): refused, never silently ignored or half-run."""
     aios, cid, pid, digest = _authority(tmp_path)
-    validated = []
-    policy = _policy(digest, require_execution_receipt=True,
-                     execution_receipt_validator=lambda receipt, state: validated.append(receipt),
-                     state_patch_validator=lambda patch, receipt, state: None)
-    store = MemoryStateStore()
-    result = run_governed_execution(executor=_executor(aios, cid, pid, Provider(), Verifier()),
-                                    store=store, policy=policy)
-    _assert_not_pass(result)
-    assert "execution receipt" in result["block_reason"]
-    assert store.state.get("in_flight_attempt") is not None   # write-ahead intent was activated
+    prov, store = Provider(), MemoryStateStore()
+    with pytest.raises(PermissionError, match="durable-loop receipt mode"):
+        run_governed_execution(executor=_executor(aios, cid, pid, prov, Verifier()), store=store,
+                               policy=_policy(digest, **fields))
+    assert prov.calls == 0
+    assert store.state == {}
+    assert not os.path.exists(os.path.join(aios, "effects"))
 
 
 def test_caller_resume_validator_is_still_run(tmp_path):

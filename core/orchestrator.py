@@ -83,6 +83,22 @@ def run_governed_execution(*, executor: GovernedRuntimeExecutor, store: StateSto
     """Run/resume the single AIOS durable loop with authority-bound state."""
     if not isinstance(executor, GovernedRuntimeExecutor):
         raise PermissionError("governed execution requires a GovernedRuntimeExecutor")
+    # The generic durable-loop receipt contract (uuid write-ahead intent, generic
+    # receipt status, reconcile_in_flight_attempt) is not mapped to effect-authority
+    # EF-/attempt identities. Accepting it would let a real provider effect happen
+    # and only then fail to satisfy or reconcile the loop receipt. Refuse it before
+    # any state write or provider call; this bridge enforces receipts through the
+    # effect authority gate instead (sealed receipt of record, reconciliation in
+    # core.runtime) (PR #126 review comment 6761666720, disposition b).
+    unsupported = [name for name, value in (
+        ("require_execution_receipt", policy.require_execution_receipt),
+        ("execution_receipt_validator", policy.execution_receipt_validator),
+        ("state_patch_validator", policy.state_patch_validator),
+    ) if value not in (None, False)]
+    if unsupported:
+        raise PermissionError(
+            "governed bridge does not support durable-loop receipt mode "
+            f"({', '.join(unsupported)}); effect-authority receipts are enforced instead")
     authorize(executor.aios_dir, executor.contract_id, executor.permit_id)
     contract = load_contract(executor.aios_dir, executor.contract_id)
     if policy.policy_digest != contract["policy_digest"]:
@@ -147,6 +163,16 @@ def run_governed_execution(*, executor: GovernedRuntimeExecutor, store: StateSto
         if state.get("contract_id") != executor.contract_id or state.get("permit_id") != executor.permit_id:
             state["status"] = bound_policy.failure_state
             state["block_reason"] = "persisted execution binding does not match current authority context"
+            store.save(state)
+            return state
+        if state.get("in_flight_attempt") is not None and state.get("status") not in governing_terminal_states:
+            # A loop intent from a receipt-mode run cannot be reconciled through this
+            # bridge; never resume past it (that could re-decide an operation).
+            reason = "unresolved durable-loop in-flight attempt; reconcile through effect authority before resuming"
+            state["status"] = bound_policy.failure_state
+            state["block_reason"] = reason
+            state["terminal_evidence"] = {"step": state.get("step", 0), "status": bound_policy.failure_state,
+                                          "verification": {"reason": reason}}
             store.save(state)
             return state
     return run_durable_loop(executor, store, bound_policy)
