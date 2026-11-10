@@ -205,6 +205,27 @@ class CapabilityRegistry:
         return commit_batch(str(aios_dir), [(CAPABILITY_STATE_FILE, payload)])[0]
 
     @classmethod
+    def migrate_to_sealed(cls, aios_dir: str | Path, actor: str) -> str:
+        """Explicit operator migration: seal a legacy *unsealed* registry in place.
+
+        Refuses a registry that already carries a seal (valid ones need no
+        migration; invalid ones are tampering, not legacy) and requires the
+        deployment key. Run only after reviewing the legacy file's content:
+        sealing is what turns it into authority.
+        """
+        from .record_seal import seal_available
+        if not seal_available():
+            raise CapabilityError("deployment seal key is not configured; cannot migrate registry")
+        filename = Path(aios_dir) / CAPABILITY_STATE_FILE
+        try:
+            raw = json.loads(filename.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise CapabilityError(f"cannot read legacy capability registry: {exc}") from exc
+        if isinstance(raw, dict) and "seal" in raw:
+            raise CapabilityError("registry already carries a seal; refusing to re-seal (use reseal for key rotation)")
+        return cls.load(aios_dir).persist(aios_dir, actor)
+
+    @classmethod
     def load(cls, aios_dir: str | Path, *, require_sealed: bool = False) -> "CapabilityRegistry":
         """Load the registry. ``require_sealed=True`` is mandatory for any caller
         that derives *authority* from capability metadata."""

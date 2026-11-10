@@ -21,7 +21,7 @@ def _canonical_contract(contract):
  if "contract_id" in contract and contract["contract_id"]!=contract_identity(canonical): raise TransitionError("stored contract identity mismatch")
  return canonical
 def _resolve_capabilities(aios_dir,contract):
- try: CapabilityRegistry.load(aios_dir).resolve_contract(contract)
+ try: CapabilityRegistry.load(aios_dir,require_sealed=True).resolve_contract(contract)  # authority: sealed registry only
  except CapabilityError as exc: raise TransitionError(f"capability authority rejected contract: {exc}") from exc
 def _resolve_policy(aios_dir,contract):
  try: resolve_policy(aios_dir,contract["policy_digest"])

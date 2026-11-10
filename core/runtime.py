@@ -10,7 +10,8 @@ import hashlib
 import json
 
 from .evidence import EvidenceRecord
-from .authority import authorize, load_contract, load_permit
+from .authority import _canonical_contract, authorize, load_contract, load_permit
+from .contract import contract_identity
 from .capabilities import CapabilityRegistry
 from .durable_runtime import DurableRuntime, validate_submission
 from .effect_authority import (
@@ -159,6 +160,25 @@ def _provider_observation(receipt):
     return provider_observation
 
 
+def _bind_persisted_contract(aios_dir, contract, effect_id):
+    """Return the stored contract bound to the persisted effect.
+
+    The caller's contract object is never used for execution: it must have the
+    exact identity of the contract persisted on the effect, and the *stored*
+    contract is what gets authorized and handed to the provider (PR #126
+    re-review @9fd7d5c: contract substitution on resume).
+    """
+    persisted = _load_current(aios_dir, effect_id)
+    bound_id = persisted.get("contract_id")
+    try:
+        caller_id = contract_identity(_canonical_contract(contract))
+    except Exception as exc:  # noqa: BLE001 - malformed caller contract => refuse
+        raise PermissionError(f"caller contract is not a valid execution contract: {exc}") from exc
+    if not isinstance(bound_id, str) or caller_id != bound_id:
+        raise PermissionError("caller contract differs from the contract bound to the effect")
+    return load_contract(aios_dir, bound_id)
+
+
 def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
     """Execute exactly one dispatched attempt and record its observation."""
     _text(actor, "actor")
@@ -176,6 +196,7 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
     if not hasattr(adapter, "name"):
         raise ValueError("adapter must expose a provider name")
     provider_name = _text(adapter.name, "adapter.name")
+    contract = _bind_persisted_contract(aios_dir, contract, effect.get("effect_id"))
     if not _provider_authorized(contract, provider_name):
         raise PermissionError("provider capability is not authorized by contract")
     if "external_effect" not in contract.get("allowed_effects", []):
@@ -223,6 +244,7 @@ def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: 
     persisted = _load_current(aios_dir, effect["effect_id"])
     if persisted.get("state") != "DISPATCHED" or persisted.get("attempt_id") != attempt_id:
         raise RuntimeError("persisted effect is no longer the dispatched attempt being resumed")
+    contract = _bind_persisted_contract(aios_dir, contract, effect["effect_id"])
     if persisted.get("provider") != provider_name:
         # Never hand an attempt dispatched to provider A to provider B -- not
         # for re-execution and not for reconciliation -- even if B is also in

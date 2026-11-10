@@ -106,9 +106,13 @@ def test_f1_forged_unsealed_reconciliation_with_valid_evidence_digest_cannot_unl
 
 def test_f1_reconciliation_sealed_with_another_key_is_rejected(tmp_path, monkeypatch):
     aios, _, _, eff = _unknown_effect(tmp_path)
+    from core.record_seal import seal as _seal
+    _forge_reconciliation(aios, eff)
+    path = os.path.join(aios, "reconciliations", f"{eff['effect_id']}-attempt-1.json")
     monkeypatch.setenv(SEAL_ENV, "attacker-key")
-    reconcile_effect(aios, eff["effect_id"], ACTOR, "NOT_APPLIED", _status_evidence(eff))
+    forged = _seal(json.load(open(path)))  # well-formed seal, untrusted key
     monkeypatch.setenv(SEAL_ENV, "aios-test-only-seal-secret")
+    json.dump(forged, open(path, "w"))
     with pytest.raises(SealError, match="different key"):
         retry_dispatch(aios, eff["effect_id"], ACTOR, f"{eff['effect_id']}:attempt:2", PROVIDER, 2,
                        _explicit(eff["effect_id"], 2))
@@ -129,7 +133,7 @@ def test_f1_edited_sealed_reconciliation_is_rejected(tmp_path):
 def test_f1_without_seal_key_reconciliation_and_retry_fail_closed(tmp_path, monkeypatch):
     aios, _, _, eff = _unknown_effect(tmp_path)
     monkeypatch.delenv(SEAL_ENV)
-    with pytest.raises(SealError, match="not configured"):
+    with pytest.raises(TransitionError, match="not configured"):  # SealError or authority rejection
         reconcile_effect(aios, eff["effect_id"], ACTOR, "NOT_APPLIED", _status_evidence(eff))
     assert not os.path.exists(os.path.join(aios, "reconciliations", f"{eff['effect_id']}-attempt-1.json"))
 
@@ -527,7 +531,8 @@ def test_f3_adapter_self_declared_idempotency_is_not_trusted(tmp_path):
 def test_f3_caller_supplied_contract_cannot_grant_idempotency(tmp_path):
     aios, contract, eff, ledger = _dispatched_and_applied(tmp_path)
     forged = {**contract, "capabilities": [f"{PROVIDER}@999"]}  # not the persisted contract
-    resume_attempt(aios, forged, eff, ACTOR, CountingProvider(ledger, True), None)
+    with pytest.raises(PermissionError, match="differs from the contract bound"):
+        resume_attempt(aios, forged, eff, ACTOR, CountingProvider(ledger, True), None)
     assert len(json.load(open(ledger))) == 1
 
 
@@ -570,7 +575,8 @@ def test_f3_tampered_registry_metadata_cannot_grant_idempotent_resume(tmp_path):
         if c["capability_id"] == PROVIDER:
             c["metadata"] = [["idempotent_attempt_ids", "true"]]
     json.dump(reg, open(path, "w"))  # seal kept, content edited
-    resume_attempt(aios, contract, eff, ACTOR, CountingProvider(ledger, True), None)
+    with pytest.raises(TransitionError, match="seal does not match"):  # authority now refuses outright
+        resume_attempt(aios, contract, eff, ACTOR, CountingProvider(ledger, True), None)
     assert len(json.load(open(ledger))) == 1
 
 
@@ -579,7 +585,8 @@ def test_f3_unsealed_registry_cannot_grant_idempotent_resume(tmp_path):
         tmp_path, metadata=(("idempotent_attempt_ids", "true"),))
     path = os.path.join(aios, "capabilities", "capability_registry.json")
     json.dump(unsealed_body(json.load(open(path))), open(path, "w"))  # downgrade to unsealed
-    resume_attempt(aios, contract, eff, ACTOR, CountingProvider(ledger, True), None)
+    with pytest.raises(TransitionError, match="not sealed"):
+        resume_attempt(aios, contract, eff, ACTOR, CountingProvider(ledger, True), None)
     assert len(json.load(open(ledger))) == 1
 
 
@@ -697,3 +704,89 @@ def test_f1_rotation_window_does_not_trust_unlisted_keys(tmp_path, monkeypatch):
     monkeypatch.setenv(PREVIOUS_SEAL_ENV, "retired-1, retired-2")
     with pytest.raises(SealError, match="different key"):
         require_seal(forged)
+
+
+# ------------------------------------------------------------------ @9fd7d5c: contract substitution on resume
+
+def test_resume_rejects_caller_contract_with_same_provider_but_different_terms(tmp_path):
+    aios, contract, eff, ledger = _dispatched_and_applied(
+        tmp_path, metadata=(("idempotent_attempt_ids", "true"),))
+    c2 = {k: v for k, v in contract.items() if k not in ("contract_id", "record_type")}
+    c2["scope"] = "widened-scope"  # provider and external_effect still valid
+    seen = []
+    prov = DedupingProvider(ledger, True)
+    real = prov.execute
+    prov.execute = lambda **kw: (seen.append(kw["contract"]), real(**kw))[1]
+    with pytest.raises(PermissionError, match="differs from the contract bound"):
+        resume_attempt(aios, c2, eff, ACTOR, prov, None)
+    assert not seen and json.load(open(ledger)) == [eff["attempt_id"]]
+
+
+def test_execute_attempt_hands_provider_only_the_stored_contract(tmp_path):
+    aios, contract, eff, ledger = _dispatched_and_applied(
+        tmp_path, metadata=(("idempotent_attempt_ids", "true"),))
+    seen = []
+    prov = DedupingProvider(ledger, True)
+    real = prov.execute
+    prov.execute = lambda **kw: (seen.append(kw["contract"]), real(**kw))[1]
+    resume_attempt(aios, dict(contract), eff, ACTOR, prov, None)
+    from core.contract import contract_identity as _cid
+    from core.authority import _canonical_contract
+    assert seen and _cid(_canonical_contract(seen[0])) == eff["contract_id"]
+
+
+def test_execute_attempt_direct_call_rejects_substituted_contract(tmp_path):
+    aios, contract, eff, ledger = _dispatched_and_applied(tmp_path)
+    c2 = {k: v for k, v in contract.items() if k not in ("contract_id", "record_type")}
+    c2["input_digest"] = "sha256:" + "0" * 64
+    with pytest.raises(PermissionError):
+        runtime.execute_attempt(aios, c2, eff, ACTOR, CountingProvider(ledger, False), eff["attempt_id"])
+    assert len(json.load(open(ledger))) == 1
+
+
+# ------------------------------------------------------------------ @9fd7d5c: registry seal on authority paths
+
+def _registry_path(aios):
+    return os.path.join(aios, "capabilities", "capability_registry.json")
+
+
+def _tamper_registry(aios, mutate, keep_seal=True):
+    from core.record_seal import unsealed_body as _ub
+    reg = json.load(open(_registry_path(aios)))
+    mutate(reg)
+    json.dump(reg if keep_seal else _ub(reg), open(_registry_path(aios), "w"))
+
+
+@pytest.mark.parametrize("keep_seal", [True, False], ids=["edited-keeps-seal", "downgraded-unsealed"])
+def test_authority_rejects_tampered_registry_promoting_candidate(tmp_path, keep_seal):
+    from core.authority import authorize
+    aios = str(tmp_path)
+    _, cid, pid = setup_authority(tmp_path)
+    authorize(aios, cid, pid)  # baseline OK
+
+    def promote(reg):
+        reg["capabilities"].append({"capability_id": "rogue", "version": "1", "owner": "x", "kind": "x",
+                                    "status": "ACTIVE"})
+    _tamper_registry(aios, promote, keep_seal)
+    with pytest.raises(TransitionError, match="capability authority rejected"):
+        authorize(aios, cid, pid)
+    with pytest.raises(TransitionError):
+        execute(aios, cid, pid, "op-2", ACTOR, Provider())
+
+
+def test_persist_contract_rejects_unsealed_registry_and_migration_is_explicit(tmp_path, monkeypatch):
+    from core.authority import authorize
+    from core.capabilities import CapabilityError, CapabilityRegistry
+    aios = str(tmp_path)
+    _, cid, pid = setup_authority(tmp_path)
+    _tamper_registry(aios, lambda reg: None, keep_seal=False)  # legacy unsealed file
+    with pytest.raises(TransitionError):
+        authorize(aios, cid, pid)
+    monkeypatch.delenv(SEAL_ENV)
+    with pytest.raises(CapabilityError, match="not configured"):
+        CapabilityRegistry.migrate_to_sealed(aios, "operator")
+    monkeypatch.setenv(SEAL_ENV, "aios-test-only-seal-secret")
+    CapabilityRegistry.migrate_to_sealed(aios, "operator")
+    authorize(aios, cid, pid)  # sealed by explicit operator action => authority restored
+    with pytest.raises(CapabilityError, match="already carries a seal"):
+        CapabilityRegistry.migrate_to_sealed(aios, "operator")
