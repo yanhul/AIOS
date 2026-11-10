@@ -59,6 +59,12 @@ _EFFECT_ID_RE = re.compile(r"EF-[0-9a-f]{64}")
 _RECEIPT_ID_RE = re.compile(r"RC-[0-9a-f]{64}")
 
 
+def _validate_effect_id(effect_id):
+    if not isinstance(effect_id, str) or not _EFFECT_ID_RE.fullmatch(effect_id):
+        raise ValueError("effect_id is not a well-formed effect id")
+    return effect_id
+
+
 def _path(aios_dir, effect_id):
     return os.path.join(aios_dir, "effects", effect_id + ".json")
 
@@ -165,6 +171,7 @@ def _effect_rel(effect_id):
 
 def _load_current_cas(aios_dir, effect_id):
     """Load + validate the persisted effect and the digest of the exact bytes read."""
+    _validate_effect_id(effect_id)  # validate before any identifier-derived filesystem path
     recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
     if not os.path.exists(path):
@@ -490,7 +497,8 @@ def _observe_invoked(aios_dir, effect_id, actor, outcome, provider_observation):
     if not os.path.exists(path):
         raise TransitionError("AIOS-invoked observation requires the execution claim for this attempt")
     claim = _load(path)
-    if (claim.get("kind") != "execution_claim" or claim.get("effect_id") != effect_id
+    require_seal(claim, "execution claim")
+    if (claim.get("record_type") != "EXECUTION_CLAIM" or claim.get("kind") != "execution_claim" or claim.get("effect_id") != effect_id
             or claim.get("attempt_id") != current.get("attempt_id")
             or claim.get("provider") != current.get("provider") or claim.get("actor") != actor):
         raise TransitionError("execution claim is not bound to the dispatched attempt")
