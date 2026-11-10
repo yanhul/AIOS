@@ -340,3 +340,33 @@ def test_duplicate_observation_of_same_attempt_is_rejected(tmp_path):
     done = execute(aios, cid, pid, "op-1", ACTOR, Provider())
     with pytest.raises(TransitionError):
         runtime._observe_invoked(aios, done["effect_id"], ACTOR, "OBSERVED_SUCCESS", done["provider_observation"])
+
+
+def test_retry_reconciliation_cas_uses_exact_validated_snapshot(tmp_path, monkeypatch):
+    """A replacement after validation must fail CAS, never authorize retry."""
+    aios = str(tmp_path)
+    _, cid, pid = setup_authority(tmp_path, max_attempts=2)
+    prov = Provider("timeout")
+    eff = execute(aios, cid, pid, "op-race", ACTOR, prov)
+    eid = eff["effect_id"]
+    assert reconcile_unknown_attempt(aios, eid, ACTOR, prov)["verdict"] == "NOT_APPLIED"
+    rel = os.path.join(aios, "reconciliations", f"{eid}-attempt-1.json")
+    with open(rel, encoding="utf-8") as fh:
+        original = json.load(fh)
+
+    import core.effect_authority as authority
+    real_loader = authority._load_reconciliation_cas
+
+    def swap_after_snapshot(*args, **kwargs):
+        record, digest = real_loader(*args, **kwargs)
+        tampered = dict(original)
+        tampered["actor"] = "attacker"
+        with open(rel, "w", encoding="utf-8") as fh:
+            json.dump(tampered, fh)
+        return record, digest
+
+    monkeypatch.setattr(authority, "_load_reconciliation_cas", swap_after_snapshot)
+    with pytest.raises(TransitionError):
+        retry_dispatch(aios, eid, ACTOR, f"{eid}:attempt:2", PROVIDER, 2, _explicit(eid, 2))
+    assert _effect(aios, eid)["state"] == "UNKNOWN"
+    assert prov.calls == 1
