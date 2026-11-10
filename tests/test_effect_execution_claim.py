@@ -63,13 +63,13 @@ def test_unknown_between_validation_and_provider_call_blocks_execution(tmp_path)
     c, _cid, _pid, eff = dispatched(tmp_path)
     ledger = tmp_path / "ledger"
     import core.runtime as rt
-    real = rt._provider_authorized
+    real = rt.claim_execution
 
-    def race(contract, name):  # last snapshot check before the provider boundary
+    def race(*args, **kwargs):  # competing transition immediately before the CAS claim
         unknown(str(tmp_path), eff["effect_id"], ACTOR, "operator: lease lost elsewhere")
-        return real(contract, name)
+        return real(*args, **kwargs)
 
-    with mock.patch.object(rt, "_provider_authorized", side_effect=race):
+    with mock.patch.object(rt, "claim_execution", side_effect=race):
         with pytest.raises(ExecutionClaimRejected):
             execute_attempt(str(tmp_path), c, eff, ACTOR, LedgerAdapter(ledger), eff["attempt_id"])
     assert calls(ledger) == 0
