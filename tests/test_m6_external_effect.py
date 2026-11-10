@@ -4,6 +4,7 @@
 # AIOS-COVERAGE-GAP: Covers bounded UNKNOWN retry, authority binding, and duplicate-effect prevention
 # AIOS-BASELINE: Existing M6 effect/runtime regression suite extended for explicit retry authority
 
+import json
 import os
 import tempfile
 import unittest
@@ -78,6 +79,23 @@ class TestExternalEffect(unittest.TestCase):
             "evidence": evidence(run_id=retry_attempt)
         }, e["effect_id"]))
         self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "OBSERVED_SUCCESS")
+
+    def test_load_effects_rejects_forged_observed_state_without_receipt(self):
+        cid, pid = self._setup_authority()
+        e = create_effect(self.aios, cid, "LO-1", "agent:a", pid, "external_effect")
+        attempt = f"{e['effect_id']}:attempt:1"
+        record_dispatch(self.aios, e["effect_id"], "agent:a", attempt, "provider:test")
+
+        effect_path = os.path.join(self.aios, "effects", e["effect_id"] + ".json")
+        with open(effect_path, "r", encoding="utf-8") as fh:
+            forged = json.load(fh)
+        forged["state"] = "OBSERVED_SUCCESS"
+        forged.pop("receipt_id", None)
+        with open(effect_path, "w", encoding="utf-8") as fh:
+            json.dump(forged, fh)
+
+        with self.assertRaisesRegex(ExternalEffectError, "failed authority validation"):
+            load_effects(self.aios)
 
     def test_attempt_mismatch_is_rejected(self):
         cid, pid = self._setup_authority()
