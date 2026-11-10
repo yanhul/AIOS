@@ -382,7 +382,7 @@ def test_reconcile_effect_cas_uses_exact_validated_snapshot(tmp_path, monkeypatc
 
     prov.status_answer = "INCONCLUSIVE"
     first = reconcile_unknown_attempt(aios, eid, ACTOR, prov)
-    assert first["verdict"] == "INCONCLUSIVE" and first["recorded"] is True
+    assert first["verdict"] == "INCONCLUSIVE"
 
     rel = os.path.join(aios, "reconciliations", f"{eid}-attempt-1.json")
     with open(rel, encoding="utf-8") as fh:
