@@ -1,3 +1,8 @@
+# AIOS-CONTRACT: Shared test fixture/helper for effect authority + provider attestation suites
+# AIOS-REGRESSION: Fixtures must configure trust exactly as a deployment would (seal secret, provider keys)
+# AIOS-OWNER: AIOS control-plane durable execution
+# AIOS-COVERAGE-GAP: Helper module; behaviour is asserted by the suites that import it
+# AIOS-BASELINE: 218070b (574 passed, 1 skipped)
 """Test-only provider signer for ``core.provider_trust`` (PR #126 @18ec11f P1).
 
 ``conftest`` trusts one HMAC key for ``fake-provider``. Fake providers sign with
@@ -14,7 +19,8 @@ SECRET = "aios-test-only-fake-provider-secret"
 # Provider names used by the existing effect-authority suites; all share the test key.
 TRUSTED_TEST_PROVIDERS = (FAKE_PROVIDER, "provider-a", "provider-1", "provider:test")
 TRUST_JSON = json.dumps({"providers": {
-    name: [{"key_id": KEY_ID, "algorithm": "HMAC-SHA256", "secret_env": SECRET_ENV}]
+    name: [{"key_id": KEY_ID, "algorithm": "HMAC-SHA256", "secret_env": SECRET_ENV,
+            "trust_boundary": "in-process"}]
     for name in TRUSTED_TEST_PROVIDERS}})
 
 

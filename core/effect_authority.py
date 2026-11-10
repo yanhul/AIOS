@@ -97,7 +97,30 @@ def _validate_persisted_effect(aios_dir, effect):
         raise TransitionError("effect attempt budget differs from authorized contract")
     if not isinstance(effect["attempt"], int) or isinstance(effect["attempt"], bool) or effect["attempt"] < 0:
         raise TransitionError("persisted effect attempt is invalid")
+    _validate_persisted_provider(contract, effect)
     return contract, permit
+
+
+def _validate_persisted_provider(contract, effect):
+    """Re-bind the persisted provider/attempt to the contract on *every* load.
+
+    Effect JSON lives in writable state, so ``provider`` read from disk is not
+    trusted because ``dispatch()`` once checked it: a provider swapped on disk
+    for one that holds a trusted signing key but is not a contract capability
+    must be refused before any probe, observation or receipt
+    (PR #126 re-review @218070b P1).
+    """
+    if effect["state"] == "PLANNED":
+        if effect["attempt"] != 0 or any(k in effect for k in ("provider", "attempt_id")):
+            raise TransitionError("PLANNED effect must not carry a provider or attempt identity")
+        return
+    provider = effect.get("provider")
+    if not isinstance(provider, str) or not provider.strip():
+        raise TransitionError("persisted effect has no dispatched provider")
+    if not _provider_in_contract(contract, provider):
+        raise TransitionError("persisted effect provider is not an authorized contract capability")
+    if effect["attempt"] < 1 or effect.get("attempt_id") != _attempt_id(effect["effect_id"], effect["attempt"]):
+        raise TransitionError("persisted effect attempt identity is not the derived attempt id")
 
 
 def _attempt_id(effect_id, attempt):
@@ -383,6 +406,10 @@ def _validated_observation(current, outcome, provider_observation):
 
 def _commit_observation(aios_dir, current, digest, actor, outcome, provider_observation, via,
                         extra=(), extra_expect=None, *, invoked=False):
+    # Defence in depth: never record an outcome for a provider the stored
+    # contract does not authorize, whatever the caller path.
+    if not _provider_in_contract(load_contract(aios_dir, current["contract_id"]), current.get("provider")):
+        raise TransitionError("observation provider is not an authorized contract capability")
     attempt_id, provider, evidence, op_id = _validated_observation(current, outcome, provider_observation)
     trust = _observation_trust(aios_dir, current, outcome, provider_observation, evidence, op_id,
                                invoked=invoked)

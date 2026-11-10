@@ -26,9 +26,13 @@ jobs:
         with:
           gradle-version: "8.10"
       - name: Install test dependencies
-        run: python -m pip install --upgrade pytest PyYAML
+        # cryptography: Ed25519 provider attestations (independent trust boundary) must be
+        # exercised in CI, never skipped (PR #126 re-review @218070b P2).
+        run: python -m pip install --upgrade pytest PyYAML cryptography
       - name: Run test suite
-        run: python -m pytest -q
+        env:
+          AIOS_REQUIRE_CRYPTO_TESTS: "1"
+        run: python -m pytest -q -rs
       - name: Checkout MiniMind capability provider
         run: |
           git clone --depth 1 --no-checkout https://github.com/jingyaogong/minimind.git "$RUNNER_TEMP/minimind"

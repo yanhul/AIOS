@@ -18,6 +18,18 @@ Trust store: ``AIOS_PROVIDER_TRUST`` holds either inline JSON or ``@/abs/path``:
         {"key_id": "k2", "algorithm": "Ed25519", "public_key": "<64 hex chars>"}
     ]}}
 
+Trust boundaries (PR #126 re-review @218070b):
+
+* ``Ed25519`` -- the provider holds the private key; AIOS holds only the public
+  key. This is the only *independent* signing boundary: code running inside
+  the AIOS process (including any adapter) cannot forge a signature.
+* ``HMAC-SHA256`` -- a shared secret that AIOS must read to verify, so any code
+  in the AIOS process can also sign with it. It is accepted only when the key
+  spec explicitly declares ``"trust_boundary": "in-process"`` (i.e. the
+  deployment trusts every adapter in the process), and refused entirely when
+  ``AIOS_PROVIDER_TRUST_ASYMMETRIC_ONLY=1``. The verified stamp records the
+  boundary so consumers can tell the two apart.
+
 HMAC secrets are referenced by env var name, never embedded. Ed25519 needs the
 optional ``cryptography`` package; without it Ed25519 keys fail closed. A trust
 file located inside the AIOS state directory is refused (state writers must not
@@ -36,6 +48,9 @@ from .mutation import TransitionError, canonical_json
 from .record_seal import SEAL_ENV
 
 TRUST_ENV = "AIOS_PROVIDER_TRUST"
+ASYMMETRIC_ONLY_ENV = "AIOS_PROVIDER_TRUST_ASYMMETRIC_ONLY"
+IN_PROCESS = "in-process"
+INDEPENDENT = "independent"
 DOMAIN = "aios-provider-attestation/v1"
 HMAC_ALG = "HMAC-SHA256"
 ED25519_ALG = "Ed25519"
@@ -92,6 +107,23 @@ def trusted_keys(provider: str, aios_dir: str | None = None) -> dict[str, dict]:
             raise ProviderTrustError("provider key_id must be a unique non-empty string")
         if alg not in ALGORITHMS:
             raise ProviderTrustError(f"unsupported provider key algorithm: {alg}")
+        if alg == HMAC_ALG:
+            if os.environ.get(ASYMMETRIC_ONLY_ENV, "") == "1":
+                raise ProviderTrustError("HMAC provider keys are disabled (asymmetric-only trust policy)")
+            if spec.get("trust_boundary") != IN_PROCESS:
+                raise ProviderTrustError(
+                    "HMAC provider key is a shared secret readable by in-process code; declare "
+                    "trust_boundary='in-process' explicitly or use an Ed25519 key")
+        else:
+            pub = spec.get("public_key")
+            if not isinstance(pub, str) or len(pub) != 64:
+                raise ProviderTrustError("Ed25519 public_key must be 32 bytes hex")
+            try:
+                bytes.fromhex(pub)
+            except ValueError as exc:
+                raise ProviderTrustError("Ed25519 public_key is not hex") from exc
+            if "trust_boundary" in spec and spec["trust_boundary"] != INDEPENDENT:
+                raise ProviderTrustError("Ed25519 key trust_boundary must be 'independent'")
         keys[key_id] = spec
     return keys
 
@@ -187,11 +219,12 @@ def verify_attestation(attestation: Any, payload: Mapping[str, Any], aios_dir: s
         ok = _verify_ed25519(spec, msg, sig)
     if not ok:
         raise ProviderTrustError("provider attestation signature does not match the statement")
-    return {"level": PROVIDER_SIGNED, "key_id": attestation["key_id"], "algorithm": alg}
+    return {"level": PROVIDER_SIGNED, "key_id": attestation["key_id"], "algorithm": alg,
+            "trust_boundary": IN_PROCESS if alg == HMAC_ALG else INDEPENDENT}
 
 
 __all__ = [
-    "TRUST_ENV", "DOMAIN", "HMAC_ALG", "ED25519_ALG", "PROVIDER_SIGNED", "AIOS_INVOKED_UNSIGNED",
+    "TRUST_ENV", "ASYMMETRIC_ONLY_ENV", "IN_PROCESS", "INDEPENDENT", "DOMAIN", "HMAC_ALG", "ED25519_ALG", "PROVIDER_SIGNED", "AIOS_INVOKED_UNSIGNED",
     "LEGACY_UNVERIFIED", "UNSIGNED", "OBSERVED", "RECONCILED_PREFIX", "ProviderTrustError",
     "attestation_payload", "sign_attestation", "verify_attestation", "trusted_keys", "provider_has_trust",
 ]

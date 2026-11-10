@@ -1,3 +1,8 @@
+# AIOS-CONTRACT: Shared test fixture/helper for effect authority + provider attestation suites
+# AIOS-REGRESSION: Fixtures must configure trust exactly as a deployment would (seal secret, provider keys)
+# AIOS-OWNER: AIOS control-plane durable execution
+# AIOS-COVERAGE-GAP: Helper module; behaviour is asserted by the suites that import it
+# AIOS-BASELINE: 218070b (574 passed, 1 skipped)
 """Shared test configuration.
 
 AIOS authority records (reconciliations, evaluations, receipts) are sealed

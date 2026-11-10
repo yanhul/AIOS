@@ -79,7 +79,8 @@ def _retry(aios, eff):
 def _no_trust_for_fake_provider(monkeypatch):
     others = [p for p in TRUSTED_TEST_PROVIDERS if p != PROVIDER]
     monkeypatch.setenv(TRUST_ENV, json.dumps({"providers": {
-        p: [{"key_id": KEY_ID, "algorithm": "HMAC-SHA256", "secret_env": SECRET_ENV}] for p in others}}))
+        p: [{"key_id": KEY_ID, "algorithm": "HMAC-SHA256", "secret_env": SECRET_ENV,
+                                "trust_boundary": "in-process"}] for p in others}}))
 
 
 # ------------------------------------------------------------------ path A: forged OBSERVED_SUCCESS
@@ -155,7 +156,8 @@ def test_a_signed_observation_is_accepted_and_marked_provider_signed(tmp_path):
                            outcome="OBSERVED_SUCCESS", provider_operation_id="op-1", evidence=ev)
     done = observe(aios, eff["effect_id"], ACTOR, "OBSERVED_SUCCESS", _obs(eff, ev, op="op-1", attestation=att))
     receipt = load_receipt(aios, done["receipt_id"], require_provider_signed=True)
-    assert receipt["source_authenticity"] == {"level": PROVIDER_SIGNED, "key_id": KEY_ID, "algorithm": "HMAC-SHA256"}
+    assert receipt["source_authenticity"] == {"level": PROVIDER_SIGNED, "key_id": KEY_ID, "algorithm": "HMAC-SHA256",
+                                              "trust_boundary": "in-process"}
 
 
 def test_a_runtime_unsigned_receipt_for_trusted_provider_is_downgrade_and_becomes_unknown(tmp_path):
@@ -357,7 +359,8 @@ def test_reconcile_probe_is_not_triggered_for_non_owner(tmp_path):
 def test_trust_store_inside_aios_state_is_refused(tmp_path, monkeypatch):
     aios = str(tmp_path)
     path = os.path.join(aios, "trust.json")
-    json.dump({"providers": {PROVIDER: [{"key_id": "k", "algorithm": "HMAC-SHA256", "secret_env": SECRET_ENV}]}},
+    json.dump({"providers": {PROVIDER: [{"key_id": "k", "algorithm": "HMAC-SHA256", "secret_env": SECRET_ENV,
+                                "trust_boundary": "in-process"}]}},
               open(path, "w"))
     monkeypatch.setenv(TRUST_ENV, "@" + path)
     with pytest.raises(ProviderTrustError, match="inside AIOS state"):
@@ -369,15 +372,16 @@ def test_trust_store_file_outside_state_is_loaded(tmp_path, monkeypatch):
     state.mkdir(); outside.mkdir()
     path = outside / "trust.json"
     path.write_text(json.dumps({"providers": {PROVIDER: [{"key_id": "k", "algorithm": "HMAC-SHA256",
-                                                           "secret_env": SECRET_ENV}]}}))
+                                                           "secret_env": SECRET_ENV,
+                                "trust_boundary": "in-process"}]}}))
     monkeypatch.setenv(TRUST_ENV, "@" + str(path))
     assert set(trusted_keys(PROVIDER, str(state))) == {"k"}
 
 
 @pytest.mark.parametrize("raw", ["not json", '{"providers": []}',
                                  '{"providers": {"fake-provider": [{"key_id": "k", "algorithm": "MD5"}]}}',
-                                 '{"providers": {"fake-provider": [{"key_id": "k", "algorithm": "HMAC-SHA256"},'
-                                 ' {"key_id": "k", "algorithm": "HMAC-SHA256"}]}}'])
+                                 '{"providers": {"fake-provider": [{"key_id": "k", "algorithm": "HMAC-SHA256", "trust_boundary": "in-process"},'
+                                 ' {"key_id": "k", "algorithm": "HMAC-SHA256", "trust_boundary": "in-process"}]}}'])
 def test_malformed_trust_store_fails_closed(monkeypatch, raw):
     monkeypatch.setenv(TRUST_ENV, raw)
     with pytest.raises(ProviderTrustError):
@@ -393,21 +397,3 @@ def test_provider_secret_equal_to_aios_seal_secret_is_refused(tmp_path, monkeypa
                            secret=os.environ[SEAL_ENV])
     with pytest.raises(ProviderTrustError, match="differ from the AIOS seal secret"):
         observe(aios, eff["effect_id"], ACTOR, "OBSERVED_SUCCESS", _obs(eff, ev, op="op-1", attestation=att))
-
-
-def test_ed25519_provider_key_verifies_and_rejects_other_key(monkeypatch):
-    ed = pytest.importorskip("cryptography.hazmat.primitives.asymmetric.ed25519")
-    from cryptography.hazmat.primitives import serialization
-    key, other = ed.Ed25519PrivateKey.generate(), ed.Ed25519PrivateKey.generate()
-    pub = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw).hex()
-    monkeypatch.setenv(TRUST_ENV, json.dumps({"providers": {PROVIDER: [
-        {"key_id": "ed1", "algorithm": ED25519_ALG, "public_key": pub}]}}))
-    ev = EvidenceRecord("EV-1", "OBSERVED", "provider://x", "c", "EF-1:attempt:1", PROVIDER).as_record()
-    payload = attestation_payload(provider=PROVIDER, effect_id="EF-1", attempt_id="EF-1:attempt:1",
-                                  statement="OBSERVED", evidence=ev, outcome="OBSERVED_SUCCESS",
-                                  provider_operation_id="op")
-    good = sign_attestation(payload, key_id="ed1", algorithm=ED25519_ALG, private_key=key)
-    assert verify_attestation(good, payload)["level"] == PROVIDER_SIGNED
-    bad = sign_attestation(payload, key_id="ed1", algorithm=ED25519_ALG, private_key=other)
-    with pytest.raises(ProviderTrustError):
-        verify_attestation(bad, payload)
