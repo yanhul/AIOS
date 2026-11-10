@@ -112,6 +112,11 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--artifact", default="artifacts/conformance/durable-crash-recovery.json")
     args = ap.parse_args()
+    # The fixture is its own throwaway deployment: give it a deployment seal key
+    # (inherited by the crash child) unless CI supplies one. Without a seal the
+    # registry cannot attest idempotency and resume correctly falls back to
+    # reconciliation.
+    os.environ.setdefault("AIOS_RECORD_SEAL_SECRET", "product-e2e-ephemeral-" + os.urandom(16).hex())
 
     with tempfile.TemporaryDirectory(prefix="aios-product-e2e-crash-") as td:
         root = Path(td)

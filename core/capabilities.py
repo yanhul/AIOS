@@ -15,6 +15,7 @@ from .mutation import commit_batch
 ALLOWED_EDGE_TYPES = frozenset({"requires", "produces", "composes_with", "validated_by", "works_under"})
 VERIFICATION_LEVELS = frozenset({"OBSERVED", "EVIDENCED", "VERIFIED_DIGITAL", "VERIFIED_PHYSICAL", "PROMOTED"})
 CAPABILITY_STATE_FILE = "capabilities/capability_registry.json"
+REGISTRY_RECORD_TYPE = "CAPABILITY_REGISTRY"
 
 class CapabilityError(ValueError):
     pass
@@ -195,10 +196,18 @@ class CapabilityRegistry:
         if not isinstance(actor, str) or not actor.strip():
             raise CapabilityError("actor must be a non-empty string")
         payload = {"schema_version": 1, **self.snapshot(), "persisted_by": actor}
+        from .record_seal import seal, seal_available
+        if seal_available():
+            # Sealed registries are the only ones whose metadata may grant
+            # authority (e.g. idempotent resume). Unsealed ones stay
+            # descriptive-only.
+            payload = seal({"record_type": REGISTRY_RECORD_TYPE, **payload})
         return commit_batch(str(aios_dir), [(CAPABILITY_STATE_FILE, payload)])[0]
 
     @classmethod
-    def load(cls, aios_dir: str | Path) -> "CapabilityRegistry":
+    def load(cls, aios_dir: str | Path, *, require_sealed: bool = False) -> "CapabilityRegistry":
+        """Load the registry. ``require_sealed=True`` is mandatory for any caller
+        that derives *authority* from capability metadata."""
         filename = Path(aios_dir) / CAPABILITY_STATE_FILE
         if not filename.is_file():
             raise CapabilityError(f"capability registry not found: {filename}")
@@ -208,6 +217,14 @@ class CapabilityRegistry:
             raise CapabilityError(f"invalid capability registry JSON: {exc}") from exc
         if not isinstance(data, dict):
             raise CapabilityError("invalid capability registry: root must be an object")
+        if require_sealed:
+            from .record_seal import SealError, require_seal
+            if data.get("record_type") != REGISTRY_RECORD_TYPE:
+                raise CapabilityError("capability registry is not a sealed AIOS registry record")
+            try:
+                require_seal(data, "capability registry")
+            except SealError as exc:
+                raise CapabilityError(str(exc)) from exc
         if data.get("schema_version") != 1:
             raise CapabilityError("unsupported capability registry schema_version")
         capabilities = data.get("capabilities", [])

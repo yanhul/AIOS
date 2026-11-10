@@ -15,6 +15,12 @@ that holds the secret.
 
 Configure with ``AIOS_RECORD_SEAL_SECRET``. When it is absent, sealing raises
 and every consumer that requires a seal fails closed.
+
+Key rotation: new seals always use the current secret. During a rotation
+window, set ``AIOS_RECORD_SEAL_PREVIOUS_SECRETS`` (comma-separated) to the
+retired secrets: records sealed by them still *verify*, and ``reseal()``
+re-stamps a verified record under the current key. Remove a previous secret
+only after its records are resealed; until then fail-closed applies.
 """
 from __future__ import annotations
 
@@ -26,6 +32,7 @@ from typing import Any, Mapping
 from .mutation import TransitionError, canonical_json
 
 SEAL_ENV = "AIOS_RECORD_SEAL_SECRET"
+PREVIOUS_SEAL_ENV = "AIOS_RECORD_SEAL_PREVIOUS_SECRETS"
 ALGORITHM = "HMAC-SHA256"
 
 
@@ -38,6 +45,17 @@ def _secret() -> bytes:
     if not value:
         raise SealError(f"{SEAL_ENV} is not configured; authority records cannot be sealed or trusted")
     return value.encode("utf-8")
+
+
+def _verification_secrets() -> dict[str, bytes]:
+    """key_id -> secret for the current key plus explicitly retired keys."""
+    current = _secret()
+    keys = {_key_id(current): current}
+    for raw in os.environ.get(PREVIOUS_SEAL_ENV, "").split(","):
+        raw = raw.strip()
+        if raw:
+            keys.setdefault(_key_id(raw.encode("utf-8")), raw.encode("utf-8"))
+    return keys
 
 
 def seal_available() -> bool:
@@ -68,18 +86,28 @@ def seal(record: Mapping[str, Any]) -> dict:
 
 
 def require_seal(record: Mapping[str, Any], what: str = "record") -> None:
-    """Fail closed unless ``record`` carries a valid seal under the current key."""
+    """Fail closed unless ``record`` carries a valid seal under a trusted key.
+
+    Trusted keys are the current secret plus retired secrets explicitly listed
+    in ``AIOS_RECORD_SEAL_PREVIOUS_SECRETS`` (rotation window only).
+    """
     if not isinstance(record, Mapping):
         raise SealError(f"{what} is not a record")
     stamp = record.get("seal")
     if not isinstance(stamp, Mapping) or stamp.get("algorithm") != ALGORITHM:
         raise SealError(f"{what} is not sealed by AIOS")
-    secret = _secret()
-    if stamp.get("key_id") != _key_id(secret):
+    secret = _verification_secrets().get(stamp.get("key_id"))
+    if secret is None:
         raise SealError(f"{what} was sealed with a different key")
     mac = stamp.get("mac")
     if not isinstance(mac, str) or not hmac.compare_digest(mac, _mac(secret, unsealed_body(record))):
         raise SealError(f"{what} seal does not match its content")
 
 
-__all__ = ["SEAL_ENV", "SealError", "seal", "seal_available", "require_seal", "unsealed_body"]
+def reseal(record: Mapping[str, Any], what: str = "record") -> dict:
+    """Verify ``record`` (current or retired key), then re-seal it under the current key."""
+    require_seal(record, what)
+    return seal(unsealed_body(record))
+
+
+__all__ = ["SEAL_ENV", "PREVIOUS_SEAL_ENV", "reseal", "SealError", "seal", "seal_available", "require_seal", "unsealed_body"]

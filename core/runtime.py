@@ -73,7 +73,8 @@ def _registry_attests_idempotent_resume(aios_dir, persisted_effect, provider_nam
     ``attempt_id``. That is a property of a specific provider capability
     *version*, so it is read from the AIOS capability registry entry that the
     persisted contract (loaded by the effect's own ``contract_id``, never the
-    caller-supplied dict) binds for this provider. An adapter's own
+    caller-supplied dict) binds for this provider, and only from a registry
+    carrying a valid AIOS seal. An adapter's own
     ``idempotent_attempt_ids`` attribute is necessary but never sufficient.
     Any lookup failure fails closed to reconciliation.
     """
@@ -83,7 +84,8 @@ def _registry_attests_idempotent_resume(aios_dir, persisted_effect, provider_nam
                 if isinstance(ref, str) and ref.split("@", 1)[0] == provider_name]
         if len(refs) != 1:
             return False
-        capability = CapabilityRegistry.load(aios_dir).require(refs[0])
+        # Only a registry sealed at the AIOS write boundary may grant this.
+        capability = CapabilityRegistry.load(aios_dir, require_sealed=True).require(refs[0])
     except Exception:  # noqa: BLE001 - any authority doubt => reconcile, never re-execute
         return False
     return dict(capability.metadata).get(IDEMPOTENT_ATTEMPT_IDS_KEY) == "true"
@@ -221,6 +223,11 @@ def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: 
     persisted = _load_current(aios_dir, effect["effect_id"])
     if persisted.get("state") != "DISPATCHED" or persisted.get("attempt_id") != attempt_id:
         raise RuntimeError("persisted effect is no longer the dispatched attempt being resumed")
+    if persisted.get("provider") != provider_name:
+        # Never hand an attempt dispatched to provider A to provider B -- not
+        # for re-execution and not for reconciliation -- even if B is also in
+        # the contract (PR #126 re-review F3/F5).
+        raise PermissionError("resume provider differs from the dispatched provider")
     if _registry_attests_idempotent_resume(aios_dir, persisted, provider_name) and \
             getattr(adapter, "idempotent_attempt_ids", False) is True:
         _submit_runtime(durable_runtime, "resume", persisted, attempt_id, provider_name)

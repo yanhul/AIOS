@@ -538,12 +538,82 @@ def test_f3_registry_attestation_without_adapter_declaration_still_reconciles(tm
     assert len(json.load(open(ledger))) == 1
 
 
-def test_f3_registry_attested_idempotent_provider_is_resumed(tmp_path):
+class DedupingProvider(CountingProvider):
+    """Genuinely idempotent: one external operation per attempt_id, however often it is sent."""
+
+    def execute(self, *, contract, effect, attempt_id):
+        led = self._read()
+        if attempt_id not in led:
+            led.append(attempt_id)
+            json.dump(led, open(self.ledger, "w"))
+        op = f"op-{led.index(attempt_id) + 1}"
+        self.applied[attempt_id] = op
+        return self._receipt(effect, attempt_id, op)
+
+
+def test_f3_registry_attested_idempotent_provider_is_resumed_without_second_side_effect(tmp_path):
     aios, contract, eff, ledger = _dispatched_and_applied(
         tmp_path, metadata=(("idempotent_attempt_ids", "true"),))
-    done = resume_attempt(aios, contract, eff, ACTOR, CountingProvider(ledger, True), None)
-    assert json.load(open(ledger)) == [eff["attempt_id"]] * 2  # re-sent the SAME attempt id
-    assert load_receipt(aios, done["receipt_id"])["recorded_via"] == "observe"
+    prov = DedupingProvider(ledger, True)
+    done = resume_attempt(aios, contract, eff, ACTOR, prov, None)
+    assert json.load(open(ledger)) == [eff["attempt_id"]]  # external ledger: still ONE operation
+    receipt = load_receipt(aios, done["receipt_id"])
+    assert receipt["recorded_via"] == "observe"  # re-sent, not reconciled
+    assert receipt["provider_operation_id"] == "op-1"  # the provider returned the original operation
+
+
+def test_f3_tampered_registry_metadata_cannot_grant_idempotent_resume(tmp_path):
+    aios, contract, eff, ledger = _dispatched_and_applied(tmp_path)  # sealed, no idempotency
+    path = os.path.join(aios, "capabilities", "capability_registry.json")
+    reg = json.load(open(path))
+    for c in reg["capabilities"]:
+        if c["capability_id"] == PROVIDER:
+            c["metadata"] = [["idempotent_attempt_ids", "true"]]
+    json.dump(reg, open(path, "w"))  # seal kept, content edited
+    resume_attempt(aios, contract, eff, ACTOR, CountingProvider(ledger, True), None)
+    assert len(json.load(open(ledger))) == 1
+
+
+def test_f3_unsealed_registry_cannot_grant_idempotent_resume(tmp_path):
+    aios, contract, eff, ledger = _dispatched_and_applied(
+        tmp_path, metadata=(("idempotent_attempt_ids", "true"),))
+    path = os.path.join(aios, "capabilities", "capability_registry.json")
+    json.dump(unsealed_body(json.load(open(path))), open(path, "w"))  # downgrade to unsealed
+    resume_attempt(aios, contract, eff, ACTOR, CountingProvider(ledger, True), None)
+    assert len(json.load(open(ledger))) == 1
+
+
+def test_f3_resume_cannot_substitute_another_contract_provider(tmp_path):
+    """Dispatched to A; B is in the contract and attested idempotent; resume with B must be refused."""
+    aios = str(tmp_path)
+    from core.capabilities import Capability, CapabilityRegistry
+    from core.authority import load_contract, persist_contract, persist_permit
+    from tests.test_m6_runtime import contract as make_contract
+    from core.authority import contract_identity
+    from core.policy_registry import persist_policy
+    reg = CapabilityRegistry()
+    reg.register(Capability(PROVIDER, "1", "test-fixture", "test", status="ACTIVE"))
+    reg.register(Capability("provider-b", "1", "test-fixture", "test", status="ACTIVE",
+                            metadata=(("idempotent_attempt_ids", "true"),)))
+    reg.persist(aios, "test-fixture")
+    policy = persist_policy(aios, {"policy_type": "GOVERNING_POLICY", "name": "ab-fixture"})
+    c = make_contract(policy, 1)
+    c["capabilities"] = [f"{PROVIDER}@1", "provider-b@1"]
+    cid = contract_identity(c)
+    persist_contract(aios, c)
+    pid = persist_permit(aios, c, "root")["permit_id"]
+    eff = ea.create_effect(aios, cid, "op-1", ACTOR, pid, "external_effect")
+    eff = dispatch(aios, eff["effect_id"], ACTOR, f"{eff['effect_id']}:attempt:1", PROVIDER)
+    ledger_a, ledger_b = str(tmp_path / "a.json"), str(tmp_path / "b.json")
+    CountingProvider(ledger_a, False).execute(contract={}, effect=eff, attempt_id=eff["attempt_id"])
+
+    b = DedupingProvider(ledger_b, True)
+    b.name = "provider-b"
+    with pytest.raises(PermissionError, match="differs from the dispatched provider"):
+        resume_attempt(aios, load_contract(aios, cid), eff, ACTOR, b, None)
+    assert not os.path.exists(ledger_b), "provider B performed a side effect for A's attempt"
+    assert len(json.load(open(ledger_a))) == 1
+    assert _effect(aios, eff["effect_id"])["state"] == "DISPATCHED"
 
 
 # ------------------------------------------------------------------ F1: sealed -> unsealed downgrade
@@ -595,3 +665,35 @@ def test_f7_two_processes_cannot_both_record_evaluation(tmp_path):
     (name,) = os.listdir(os.path.join(aios, "evaluations"))
     winner = [r[1] for r in out if r[0] == "ok"][0]
     assert json.load(open(os.path.join(aios, "evaluations", name)))["verdict"] == ("PASS" if winner == 0 else "FAIL")
+
+
+# ------------------------------------------------------------------ F1: key rotation
+
+def test_f1_rotation_window_verifies_previous_key_and_reseals(tmp_path, monkeypatch):
+    from core.record_seal import PREVIOUS_SEAL_ENV, require_seal, reseal
+    aios, _, _, eff = _unknown_effect(tmp_path)
+    reconcile_effect(aios, eff["effect_id"], ACTOR, "NOT_APPLIED", _status_evidence(eff))
+    path = os.path.join(aios, "reconciliations", f"{eff['effect_id']}-attempt-1.json")
+    old_key = os.environ["AIOS_RECORD_SEAL_SECRET"]
+    monkeypatch.setenv("AIOS_RECORD_SEAL_SECRET", "rotated-key-b")
+
+    rec = json.load(open(path))
+    with pytest.raises(SealError, match="different key"):
+        require_seal(rec)  # retired key not listed => fail closed
+    monkeypatch.setenv(PREVIOUS_SEAL_ENV, old_key)
+    require_seal(rec)  # rotation window: old record still verifies
+    fresh = reseal(rec)
+    monkeypatch.delenv(PREVIOUS_SEAL_ENV)
+    require_seal(fresh)  # resealed under the current key only
+    with pytest.raises(SealError):
+        reseal({**rec, "verdict": "INCONCLUSIVE"})  # reseal never launders an edited record
+
+
+def test_f1_rotation_window_does_not_trust_unlisted_keys(tmp_path, monkeypatch):
+    from core.record_seal import PREVIOUS_SEAL_ENV, require_seal, seal
+    monkeypatch.setenv("AIOS_RECORD_SEAL_SECRET", "attacker")
+    forged = seal({"record_type": "X", "v": 1})
+    monkeypatch.setenv("AIOS_RECORD_SEAL_SECRET", "current")
+    monkeypatch.setenv(PREVIOUS_SEAL_ENV, "retired-1, retired-2")
+    with pytest.raises(SealError, match="different key"):
+        require_seal(forged)
