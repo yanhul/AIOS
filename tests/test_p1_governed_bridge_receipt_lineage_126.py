@@ -97,7 +97,6 @@ def test_persisted_loop_intent_after_provider_effect_blocks_duplicate_resume(tmp
                                     store=JsonStateStore(store.path), policy=_policy(digest))
     assert result["status"] == "BLOCKED"
     assert "in-flight" in result["block_reason"]
-    assert provider.calls == 0
     # The existing authority effect remains observed; no second provider invocation occurred.
     assert provider.calls == 1
     assert _effect_file(aios)["state"] == "OBSERVED_SUCCESS"
@@ -106,7 +105,7 @@ def test_persisted_loop_intent_after_provider_effect_blocks_duplicate_resume(tmp
     # A later run stays terminal and still does not touch the provider.
     again = run_governed_execution(executor=_executor(aios, contract_id, permit_id, provider, Verifier()),
                                    store=JsonStateStore(store.path), policy=_policy(digest))
-    assert again["status"] == "BLOCKED" and provider.calls == 0
+    assert again["status"] == "BLOCKED" and provider.calls == 1
     # And the generic loop reconciliation still cannot be pointed at it with this bridge's policy.
     with pytest.raises(ValueError, match="receipt-governed"):
         reconcile_in_flight_attempt(JsonStateStore(store.path), _policy(digest),
