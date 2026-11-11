@@ -9,7 +9,7 @@ from core.authority import (
 )
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
-from core.policy_registry import persist_policy
+from core.policy_registry import persist_policy, _policy_filename
 
 
 def _policy(name="v1"):
@@ -108,7 +108,7 @@ def test_tampered_policy_artifact_fails_closed(tmp_path):
     _seed_registry(tmp_path)
     import json, os
     digest = persist_policy(str(tmp_path), _policy())
-    path = os.path.join(str(tmp_path), "policies", digest + ".json")
+    path = os.path.join(str(tmp_path), "policies", _policy_filename(digest))
     with open(path, "r", encoding="utf-8") as fh:
         record = json.load(fh)
     record["name"] = "tampered"

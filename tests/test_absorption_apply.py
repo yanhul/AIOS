@@ -6,9 +6,9 @@ def test_absorb_requires_promotion_and_verification():
     p={"decisions":[{"candidate_id":"c1","allowed":True,"verdict":"PROMOTE"}],"blocked":[]}
     runtime={"overall":"PASS","digest":"runtime"}
     r=absorb(e,v,p,runtime,run_id="r1")
-    assert r["overall"]=="PASS" and r["absorbed_count"]==1
-    assert r["records"][0]["status"]=="ABSORBED"
-    assert r["records"][0]["source_mutation"] is False
+    assert r["overall"]=="BLOCKED" and r["absorbed_count"]==0
+    assert r["records"] == []
+    assert r["blocked"][0]["reason"] == "independent candidate runtime proof verifier is not configured"
 
 def test_absorb_blocks_missing_lineage():
     r=absorb({"records":[]},{"records":[]},{"decisions":[{"candidate_id":"c1","allowed":True,"verdict":"PROMOTE"}],"blocked":[]},{"overall":"PASS","digest":"runtime"},run_id="r2")

@@ -14,7 +14,9 @@ def test_independent_verification_and_gate(tmp_path, monkeypatch):
     v=verify(data,run_id="run-1")
     assert v["overall"]=="PASS" and v["records"][0]["level"]=="VERIFIED_DIGITAL"
     p=promote(v,{"overall":"PASS","digest":"runtime"})
-    assert p["overall"]=="PASS" and p["decisions"][0]["allowed"] is True
+    assert p["overall"]=="PASS_WITH_HOLDS" and p["promoted_count"] == 0
+    assert p["decisions"] == []
+    assert p["blocked"][0]["reason"] == "candidate-bound implementation/runtime proof is missing or mismatched"
 
 def test_promotion_blocks_without_runtime_proof():
     data={"run_id":"run-2","overall":"PASS","records":[{

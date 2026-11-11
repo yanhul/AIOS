@@ -49,54 +49,23 @@ def _run_mutant(source_path: str, mutation: tuple[str, str], harness: str) -> su
         )
 
 
-def test_retry_attempt_identity_mutation_is_killed():
+def test_retry_disable_guard_mutation_is_killed():
     mutation = (
-        '    if attempt_id != _attempt_id(effect_id, attempt):\n'
-        '        raise ValueError("attempt_id does not match retry attempt")\n',
-        "",
+        '    raise TransitionError(\\n'
+        '        "retry is disabled: independent issuer-backed authorization is not configured"\\n'
+        '    )\\n',
+        "    return None\\n",
     )
     harness = r'''
-import tempfile
-from core.authority import persist_contract, persist_permit
-from core.capabilities import Capability, CapabilityRegistry
-from core.contract import contract_identity
-from core.effect_authority import create_effect, dispatch, retry_dispatch, unknown
-from core.policy_registry import persist_policy
+from core.effect_authority import retry_dispatch
+from core.mutation import TransitionError
 
-with tempfile.TemporaryDirectory() as td:
-    registry = CapabilityRegistry()
-    registry.register(Capability("provider-1", "1", "test-fixture", "external_effect", status="ACTIVE"))
-    registry.persist(td, "test-fixture")
-    policy = persist_policy(td, {"policy_type": "GOVERNING_POLICY", "name": "mutation"})
-    contract = {
-        "contract_type": "EXECUTION_CONTRACT",
-        "task_id": "mutation-retry",
-        "scope": "test",
-        "actor": "agent-1",
-        "capabilities": ["provider-1@1"],
-        "input_digest": "input",
-        "allowed_effects": ["external_effect"],
-        "evidence_required": ["provider_receipt"],
-        "max_attempts": 2,
-        "terminal_states": ["OBSERVED_SUCCESS", "OBSERVED_FAILURE", "UNKNOWN"],
-        "policy_digest": policy,
-    }
-    persist_contract(td, contract)
-    permit = persist_permit(td, contract, "agent-1")
-    effect = create_effect(td, contract_identity(contract), "op-1", "agent-1", permit["permit_id"], "external_effect")
-    dispatch(td, effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1")
-    unknown(td, effect["effect_id"], "agent-1", "timeout")
-
-    # This must fail against the real owner. The mutant removes that fence.
-    try:
-        retry_dispatch(
-            td, effect["effect_id"], "agent-1",
-            "FORGED-ATTEMPT-ID", "provider-1", 2
-        )
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("keeper invariant: forged retry attempt was accepted")
+try:
+    retry_dispatch("unused", "EF-test", "owner", "attempt-2", "provider", 2, {})
+except TransitionError as exc:
+    assert "independent issuer-backed" in str(exc)
+else:
+    raise AssertionError("keeper invariant: retry disable guard was removed")
 '''
     result = _run_mutant("core/effect_authority.py", mutation, harness)
     assert result.returncode != 0, result.stdout + result.stderr
