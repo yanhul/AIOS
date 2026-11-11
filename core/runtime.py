@@ -19,7 +19,7 @@ from .effect_authority import (
     EXECUTION_CLAIMS_DIR, create_effect, dispatch, load_reconciliation, reconcile_effect, recover_interrupted,
     retry_dispatch, unknown, _claim_relpath, _effect_rel, _load_current, _load_current_cas, _observe_invoked,
 )
-from .mutation import TransitionError, canonical_json, commit_batch
+from .mutation import TransitionError, canonical_json, commit_batch, serialized_mutation
 from .provider_trust import ProviderTrustError
 from .record_seal import seal, require_seal
 
@@ -214,6 +214,7 @@ def _bind_persisted(aios_dir, contract, effect, actor, attempt_id, provider_name
     return stored, persisted, digest
 
 
+@serialized_mutation
 def _claim_execution(aios_dir, persisted, digest, actor):
     """At-most-once claim of one dispatched attempt, as CAS under the mutation lock.
 
@@ -241,6 +242,7 @@ def _claim_execution(aios_dir, persisted, digest, actor):
         raise RuntimeError(f"attempt already claimed or effect changed concurrently: {exc}") from exc
 
 
+@serialized_mutation
 def _ensure_claim(aios_dir, persisted, digest, actor):
     """Idempotent-resume only: reuse the attempt's claim, or write it if none exists.
 
