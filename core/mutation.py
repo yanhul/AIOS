@@ -287,7 +287,7 @@ class _MutationLock:
                     import msvcrt
                     self.fh.seek(0)
                     if os.fstat(self.fh.fileno()).st_size == 0:
-                        self.fh.write(b"\\0")
+                        self.fh.write(b"\0")
                         self.fh.flush()
                     self.fh.seek(0)
                     while True:
@@ -536,6 +536,7 @@ def commit_batch(aios_dir, payloads, expect=None):
         return [op["dest"] for op in ops]
 
 
+@serialized_mutation
 def apply_mutations(aios_dir, entities, actor, notice_factory=None):
     """Apply a validated batch of entity mutations atomically.
 
