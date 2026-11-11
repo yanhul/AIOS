@@ -14,8 +14,8 @@ import re
 from .mutation import canonical_json
 from .record_seal import SealError, require_seal, unsealed_body
 
-_EFFECT_RE = re.compile(r"EF-[0-9a-f]{64}\\Z")
-_RECEIPT_RE = re.compile(r"RC-[0-9a-f]{64}\\Z")
+_EFFECT_RE = re.compile(r"EF-[0-9a-f]{64}\Z")
+_RECEIPT_RE = re.compile(r"RC-[0-9a-f]{64}\Z")
 
 
 def _read(path):
@@ -128,9 +128,14 @@ def audit_effect_authority(aios_dir, add):
         if effect is None:
             add("effect_audit.reconciliations.orphan", "INCONSISTENT", f"{path}: effect is missing")
         else:
-            for field in ("attempt", "attempt_id", "contract_id", "provider", "actor"):
+            if rec.get("attempt_id") != f"{rec.get('effect_id')}:attempt:{rec.get('attempt')}":
+                add("effect_audit.reconciliations.binding", "CORRUPTED", f"{path}: attempt_id is not derived")
+            for field in ("contract_id", "provider", "actor"):
                 if rec.get(field) != effect.get(field):
                     add("effect_audit.reconciliations.binding", "CORRUPTED", f"{path}: {field} differs from effect")
+            expected_name = f"{rec.get('effect_id')}-attempt-{rec.get('attempt')}.json"
+            if name != expected_name:
+                add("effect_audit.reconciliations.path_binding", "CORRUPTED", f"{path}: filename does not bind effect/attempt")
             if rec.get("verdict") not in ("APPLIED", "NOT_APPLIED", "INCONCLUSIVE"):
                 add("effect_audit.reconciliations.verdict", "CORRUPTED", f"{path}: invalid verdict")
             if rec.get("verdict") == "APPLIED" and rec.get("outcome") not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
@@ -181,9 +186,14 @@ def audit_effect_authority(aios_dir, add):
         if effect is None:
             add("effect_audit.claims.orphan", "INCONSISTENT", f"{path}: effect is missing")
         else:
-            for field in ("attempt", "attempt_id", "provider", "actor"):
+            if rec.get("attempt_id") != f"{rec.get('effect_id')}:attempt:{rec.get('attempt')}":
+                add("effect_audit.claims.binding", "CORRUPTED", f"{path}: attempt_id is not derived")
+            for field in ("provider", "actor"):
                 if rec.get(field) != effect.get(field):
                     add("effect_audit.claims.binding", "CORRUPTED", f"{path}: {field} differs from effect")
+            expected_name = f"{rec.get('effect_id')}-attempt-{rec.get('attempt')}.json"
+            if name != expected_name:
+                add("effect_audit.claims.path_binding", "CORRUPTED", f"{path}: filename does not bind effect/attempt")
 
     # A terminal effect must have exactly its receipt of record; an active
     # dispatched attempt may legitimately have no receipt yet (crash window).
