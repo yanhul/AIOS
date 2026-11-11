@@ -242,7 +242,6 @@ def claim_execution(aios_dir, effect_id, actor, attempt_id, provider):
             [(os.path.join("effects", effect_id + ".json"), updated),
              (os.path.join("events", "effect-" + effect_id + "-EXECUTION_CLAIMED-attempt-" +
                            str(current.get("attempt")) + ".json"), event)],
-            ,
         )
         return contract, updated
 
