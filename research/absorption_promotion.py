@@ -16,22 +16,12 @@ DEFAULT_OUT=Path("research/artifacts/absorption-promotion.json")
 
 def promote(data: dict, runtime: dict | None = None) -> dict:
     runtime = runtime or {}
-    candidate_proofs = runtime.get("candidate_proofs")
-    if not isinstance(candidate_proofs, dict):
-        candidate_proofs = {}
-
+    # No independent issuer/verifier exists for candidate runtime proofs yet.
+    # Candidate-supplied fields and non-empty digests are claims, not evidence.
+    # Keep every candidate on HOLD until cryptographic/runtime verification is
+    # implemented and bound to this candidate and execution attempt.
     def candidate_proof_matches(record: dict) -> bool:
-        proof = candidate_proofs.get(record.get("candidate_id"))
-        return (
-            runtime.get("overall") == "PASS"
-            and isinstance(proof, dict)
-            and proof.get("overall") == "PASS"
-            and proof.get("candidate_id") == record.get("candidate_id")
-            and proof.get("primitive") == record.get("primitive")
-            and proof.get("target_surface") == record.get("target_surface")
-            and isinstance(proof.get("digest"), str)
-            and bool(proof.get("digest").strip())
-        )
+        return False
 
     decisions=[]; blocked=[]
     for record in data.get("records", []):
