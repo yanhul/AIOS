@@ -11,11 +11,11 @@ def _process_writer(state, trace, label, ready, release):
         raise RuntimeError("test barrier timed out")
     with _MutationLock(state):
         with open(trace, "a", encoding="utf-8") as stream:
-            stream.write(label + ":enter\\n")
+            stream.write(label + ":enter\n")
             stream.flush()
         time.sleep(0.1)
         with open(trace, "a", encoding="utf-8") as stream:
-            stream.write(label + ":exit\\n")
+            stream.write(label + ":exit\n")
             stream.flush()
 
 
