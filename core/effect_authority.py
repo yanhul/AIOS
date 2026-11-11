@@ -27,7 +27,7 @@ import re
 from .authority import authorize, load_contract, load_permit
 from .contract import verify_permit
 from .evidence import verify_evidence
-from .mutation import TransitionError, canonical_json, commit_batch, file_digest, recover_pending
+from .mutation import (TransitionError, canonical_json, commit_batch, file_digest, recover_pending, serialized_mutation)
 from .provider_trust import (
     AIOS_INVOKED_UNSIGNED, LEGACY_UNVERIFIED, OBSERVED, PROVIDER_SIGNED, RECONCILED_PREFIX, UNSIGNED,
     ProviderTrustError, attestation_payload, provider_has_trust, verify_attestation,
@@ -176,6 +176,7 @@ def _attempt_id(effect_id, attempt):
     return f"{effect_id}:attempt:{attempt}"
 
 
+@serialized_mutation
 def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id, effect_type):
     _validate_strings(("contract_id", contract_id), ("logical_operation_id", logical_operation_id),
                       ("actor", actor), ("permit_id", permit_id), ("effect_type", effect_type))
@@ -232,6 +233,7 @@ def _provider_in_contract(contract, provider):
                for ref in contract.get("capabilities", []))
 
 
+@serialized_mutation
 def transition(aios_dir, effect_id, target, actor, **fields):
     _validate_strings(("effect_id", effect_id), ("actor", actor))
     if target not in STATES:
@@ -269,6 +271,7 @@ def transition(aios_dir, effect_id, target, actor, **fields):
     return updated
 
 
+@serialized_mutation
 def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
     _validate_strings(("attempt_id", attempt_id), ("provider", provider))
     current, digest = _load_current_cas(aios_dir, effect_id)
@@ -287,6 +290,7 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
     return _transition_dispatch_with_expect(aios_dir, current, digest, actor, 1, attempt_id, provider, {})
 
 
+@serialized_mutation
 def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, retry_authorization=None):
     """Explicitly dispatch the next attempt for a reconciled UNKNOWN effect."""
     _validate_strings(("effect_id", effect_id), ("actor", actor),
@@ -500,6 +504,7 @@ def _commit_observation(aios_dir, current, digest, actor, outcome, provider_obse
     return updated
 
 
+@serialized_mutation
 def observe(aios_dir, effect_id, actor, outcome, provider_observation):
     """Record a provider observation submitted by a caller.
 
@@ -519,6 +524,7 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
     return _commit_observation(aios_dir, current, digest, actor, outcome, provider_observation, "observe")
 
 
+@serialized_mutation
 def _observe_invoked(aios_dir, effect_id, actor, outcome, provider_observation):
     """Runtime-internal: record what the adapter AIOS itself invoked returned.
 
@@ -691,6 +697,7 @@ def load_reconciliation(aios_dir, effect_id, attempt):
     """Return the sealed reconciliation for an attempt, or None. Forged/unsealed records raise."""
     return _load_reconciliation_cas(aios_dir, effect_id, attempt)[0]
 
+@serialized_mutation
 def reconcile_effect(aios_dir, effect_id, actor, verdict, provider_evidence, *,
                      outcome=None, provider_observation=None, attestation=None):
     """Record a sealed AIOS reconciliation verdict for the current UNKNOWN attempt.
