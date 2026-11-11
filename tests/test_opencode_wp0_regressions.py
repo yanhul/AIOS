@@ -209,7 +209,7 @@ def test_absorption_does_not_treat_global_runtime_proof_as_candidate_proof(tmp_p
     )
     assert result["overall"] == "BLOCKED"
     assert result["absorbed_count"] == 0
-    assert result["blocked"][0]["reason"] == "missing candidate-bound runtime proof"
+    assert result["blocked"][0]["reason"] == "independent candidate runtime proof verifier is not configured"
 
 
 def test_policy_artifact_filename_is_windows_safe():
