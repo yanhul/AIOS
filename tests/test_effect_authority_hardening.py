@@ -13,6 +13,7 @@ import pytest
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
+from core import effect_authority
 from core.effect_authority import (
     create_effect,
     claim_execution,
@@ -23,9 +24,52 @@ from core.effect_authority import (
     unknown,
 )
 from core.evidence import EvidenceRecord
-from core.mutation import TransitionError
+from core.mutation import TransitionError, _MutationLock, commit_batch
 from core.policy_registry import persist_policy
 
+
+
+
+def test_effect_journal_recovery_runs_inside_same_mutation_lock(tmp_path, monkeypatch):
+    _contract, _permit, effect = make_authorized(str(tmp_path))
+    real_lock = _MutationLock
+    lock_state = {"held": False, "recoveries": 0}
+
+    class TrackingLock:
+        def __init__(self, state_dir):
+            self.inner = real_lock(state_dir)
+
+        def __enter__(self):
+            self.inner.__enter__()
+            lock_state["held"] = True
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            lock_state["held"] = False
+            return self.inner.__exit__(exc_type, exc, tb)
+
+    def checked_recovery(state_dir):
+        assert lock_state["held"], "journal recovery escaped the effect mutation lock"
+        lock_state["recoveries"] += 1
+
+    monkeypatch.setattr(effect_authority, "_MutationLock", TrackingLock)
+    monkeypatch.setattr(effect_authority, "_recover_pending_unlocked", checked_recovery)
+
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    dispatched = dispatch(str(tmp_path), effect["effect_id"], "bc-controller",
+                          attempt_id, "research_is_validation")
+    assert dispatched["state"] == "DISPATCHED"
+    _contract, claimed = effect_authority.claim_execution(
+        str(tmp_path), effect["effect_id"], "bc-controller",
+        attempt_id, "research_is_validation"
+    )
+    assert claimed["execution_claimed"] is True
+    assert lock_state["recoveries"] == 2
+
+
+def test_commit_batch_exposes_no_caller_controlled_lock_bypass():
+    import inspect
+    assert "lock_held" not in inspect.signature(commit_batch).parameters
 
 
 def _dispatch_race_worker(state_dir, effect_id, barrier, result_queue):
