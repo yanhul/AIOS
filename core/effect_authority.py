@@ -189,43 +189,15 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
 
 
 def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, retry_authorization=None):
-    """Explicitly dispatch the next attempt for an UNKNOWN effect.
+    """Fail closed until an independent retry-authorization verifier exists.
 
-    Caller-supplied dictionaries are not issuer-backed authorization. Retry is
-    disabled until an independent authorization verifier is wired into this
-    boundary; accepting mode/effect/attempt fields here is caller self-approval.
+    The former EXPLICIT dictionary was entirely caller-controlled and did not
+    prove issuer identity or authorization provenance. Do not accept it as a
+    permit to re-dispatch an UNKNOWN external effect.
     """
-    raise TransitionError("retry is disabled: independent issuer-backed authorization is not configured")
-    _validate_strings(("effect_id", effect_id), ("actor", actor),
-                      ("attempt_id", attempt_id), ("provider", provider))
-    if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 2:
-        raise ValueError("retry attempt must be an integer >= 2")
-    recover_pending(aios_dir)
-    path = _path(aios_dir, effect_id)
-    if not os.path.exists(path):
-        raise KeyError(f"unknown effect: {effect_id}")
-    current = _load(path)
-    _validate_persisted_effect(aios_dir, current)
-    if current.get("actor") != actor:
-        raise TransitionError("retry actor does not match effect owner")
-    if current.get("state") != "UNKNOWN":
-        raise TransitionError(f"retry requires UNKNOWN effect, got {current.get('state')}")
-    expected = int(current.get("attempt", 0)) + 1
-    if attempt != expected:
-        raise TransitionError(f"retry attempt must be {expected}, got {attempt}")
-    if attempt > int(current.get("max_attempts", 0)):
-        raise TransitionError("retry exceeds contract attempt budget")
-    if attempt_id != _attempt_id(effect_id, attempt):
-        raise ValueError("attempt_id does not match retry attempt")
-    if not isinstance(retry_authorization, dict) or retry_authorization.get("mode") != "EXPLICIT":
-        raise TransitionError("UNKNOWN retry requires explicit retry authorization")
-    if retry_authorization.get("effect_id") != effect_id:
-        raise TransitionError("retry authorization effect binding mismatch")
-    if retry_authorization.get("attempt") != attempt:
-        raise TransitionError("retry authorization attempt mismatch")
-    contract, _permit = _validate_persisted_effect(aios_dir, current)
-    return _transition_dispatch(aios_dir, effect_id, actor,
-                                attempt=attempt, attempt_id=attempt_id, provider=provider)
+    raise TransitionError(
+        "retry is disabled: independent issuer-backed authorization is not configured"
+    )
 
 
 def unknown(aios_dir, effect_id, actor, reason):
