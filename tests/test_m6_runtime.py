@@ -138,6 +138,37 @@ def test_execute_attempt_ignores_forged_effect_and_contract_before_provider(tmp_
     assert persisted.get("execution_claimed", False) is False
 
 
+def test_execute_attempt_uses_persisted_contract_and_effect_not_caller_dictionaries(tmp_path):
+    c, cid, pid = setup_authority(tmp_path)
+    effect = create_effect(str(tmp_path), cid, "op-authoritative", "agent:test", pid, "external_effect")
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    persisted_effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
+                                attempt_id, "fake-provider")
+
+    class RecordingAdapter(GoodAdapter):
+        seen_contract = None
+        seen_effect = None
+        def execute(self, *, contract, effect, attempt_id):
+            self.seen_contract = dict(contract)
+            self.seen_effect = dict(effect)
+            return super().execute(contract=contract, effect=effect, attempt_id=attempt_id)
+
+    adapter = RecordingAdapter()
+    forged_contract = dict(c, capabilities=["attacker-provider@99"], policy_digest="forged")
+    forged_effect = dict(
+        persisted_effect, state="UNKNOWN", actor="attacker",
+        provider="attacker-provider", attempt_id="forged-attempt"
+    )
+    result = execute_attempt(str(tmp_path), forged_contract, forged_effect,
+                             "agent:test", adapter, attempt_id)
+    assert result["state"] == "OBSERVED_SUCCESS"
+    assert adapter.seen_contract["policy_digest"] == c["policy_digest"]
+    assert adapter.seen_contract["capabilities"] == c["capabilities"]
+    assert adapter.seen_effect["state"] == "DISPATCHED"
+    assert adapter.seen_effect["provider"] == "fake-provider"
+    assert adapter.seen_effect["attempt_id"] == attempt_id
+
+
 def test_execute_attempt_cannot_invoke_provider_twice(tmp_path):
     c, cid, pid = setup_authority(tmp_path)
     effect = create_effect(str(tmp_path), cid, "op-duplicate", "agent:test", pid, "external_effect")
