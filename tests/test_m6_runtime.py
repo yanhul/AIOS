@@ -10,7 +10,7 @@ import pytest
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
-from core.effect_authority import create_effect, dispatch, retry_dispatch, transition
+from core.effect_authority import create_effect, dispatch, retry_dispatch, transition, issue_retry_authorization
 from core.policy_registry import persist_policy
 from core.runtime import ProviderReceipt, execute, execute_attempt, execute_retry_attempt
 
@@ -136,7 +136,9 @@ def test_execute_attempt_does_not_authorize_or_create_effect(tmp_path):
     assert adapter.calls == 1
 
 
-def test_retry_dispatch_requires_unknown_and_increments_attempt(tmp_path):
+def test_retry_dispatch_requires_unknown_and_increments_attempt(tmp_path, monkeypatch):
+    secret = "test-only-authority-secret"
+    monkeypatch.setenv("AIOS_AUTHORITY_SECRET", secret)
     _, cid, pid = setup_authority(tmp_path, max_attempts=3)
     effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     first = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
@@ -144,8 +146,9 @@ def test_retry_dispatch_requires_unknown_and_increments_attempt(tmp_path):
     unknown_effect = transition(str(tmp_path), first["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
     effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":effect["effect_id"], "attempt":2}
     unknown_effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":unknown_effect["effect_id"], "attempt":2}
+    authorization = issue_retry_authorization(str(tmp_path), effect["effect_id"], "agent:test", 2, secret)
     retried = retry_dispatch(str(tmp_path), unknown_effect["effect_id"], "agent:test",
-                             f"{effect['effect_id']}:attempt:2", "fake-provider", 2, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":2})
+                             f"{effect['effect_id']}:attempt:2", "fake-provider", 2, authorization)
     assert retried["effect_id"] == effect["effect_id"]
     assert retried["attempt"] == 2
     assert retried["state"] == "DISPATCHED"
@@ -162,13 +165,15 @@ def test_generic_transition_cannot_turn_unknown_into_dispatched(tmp_path):
                    attempt=2, attempt_id=f"{effect['effect_id']}:attempt:2", provider="fake-provider")
 
 
-def test_execute_retry_attempt_is_bounded_by_contract(tmp_path):
+def test_execute_retry_attempt_is_bounded_by_contract(tmp_path, monkeypatch):
+    secret = "test-only-authority-secret"
+    monkeypatch.setenv("AIOS_AUTHORITY_SECRET", secret)
     c, cid, pid = setup_authority(tmp_path, max_attempts=2)
     effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
-    effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":effect["effect_id"], "attempt":2}
+    effect["retry_authorization"] = issue_retry_authorization(str(tmp_path), effect["effect_id"], "agent:test", 2, secret)
     result = execute_retry_attempt(str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
                                    f"{effect['effect_id']}:attempt:2", 2)
     assert result["state"] == "OBSERVED_SUCCESS"

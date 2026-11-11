@@ -11,7 +11,10 @@ from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.policy_registry import persist_policy
 
-from core.effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
+from core.effect_authority import (
+    create_effect, dispatch, observe, retry_dispatch, unknown,
+    issue_retry_authorization,
+)
 from core.evidence import EvidenceRecord
 from core.mutation import TransitionError
 
@@ -51,15 +54,75 @@ def _observation(effect_id, provider="provider-1", attempt=1):
     }
 
 
-def test_effect_transition_is_atomic_and_audited(tmp_path):
+def test_effect_transition_is_atomic_and_audited(tmp_path, monkeypatch):
+    secret = "test-only-authority-secret"
+    monkeypatch.setenv("AIOS_AUTHORITY_SECRET", secret)
     effect = _effect(tmp_path)
     assert effect["state"] == "PLANNED"
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1")
     unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
-    retry_dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:2", "provider-1", 2, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":2})
+    authorization = issue_retry_authorization(
+        str(tmp_path), effect["effect_id"], "agent-1", 2, secret
+    )
+    retry_dispatch(str(tmp_path), effect["effect_id"], "agent-1",
+                   f"{effect['effect_id']}:attempt:2", "provider-1", 2, authorization)
     done = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", _observation(effect["effect_id"], attempt=2))
     assert done["state"] == "OBSERVED_SUCCESS"
     assert (tmp_path / "events" / ("effect-" + effect["effect_id"] + "-OBSERVED_SUCCESS.json")).exists()
+
+
+def test_dispatch_rejects_actor_mismatch_without_mutation(tmp_path):
+    effect = _effect(tmp_path)
+    with pytest.raises(TransitionError, match="dispatch actor"):
+        dispatch(str(tmp_path), effect["effect_id"], "attacker",
+                 f"{effect['effect_id']}:attempt:1", "provider-1")
+    import json
+    effect_path = tmp_path / "effects" / (effect["effect_id"] + ".json")
+    assert json.loads(effect_path.read_text(encoding="utf-8"))["state"] == "PLANNED"
+    assert not list((tmp_path / "events").glob(
+        "effect-" + effect["effect_id"] + "-DISPATCHED-attempt-*.json"
+    ))
+
+
+def test_retry_rejects_self_asserted_explicit_dict(tmp_path, monkeypatch):
+    monkeypatch.setenv("AIOS_AUTHORITY_SECRET", "test-only-authority-secret")
+    effect = _effect(tmp_path)
+    dispatch(str(tmp_path), effect["effect_id"], "agent-1",
+             f"{effect['effect_id']}:attempt:1", "provider-1")
+    unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
+    forged = {"mode": "EXPLICIT", "effect_id": effect["effect_id"], "attempt": 2}
+    with pytest.raises(TransitionError, match="retry authorization schema mismatch"):
+        retry_dispatch(str(tmp_path), effect["effect_id"], "agent-1",
+                       f"{effect['effect_id']}:attempt:2", "provider-1", 2, forged)
+
+
+def test_retry_rejects_tampered_signature(tmp_path, monkeypatch):
+    secret = "test-only-authority-secret"
+    monkeypatch.setenv("AIOS_AUTHORITY_SECRET", secret)
+    effect = _effect(tmp_path)
+    dispatch(str(tmp_path), effect["effect_id"], "agent-1",
+             f"{effect['effect_id']}:attempt:1", "provider-1")
+    unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
+    authorization = issue_retry_authorization(
+        str(tmp_path), effect["effect_id"], "agent-1", 2, secret
+    )
+    authorization["attempt"] = 1
+    with pytest.raises(TransitionError, match="binding mismatch"):
+        retry_dispatch(str(tmp_path), effect["effect_id"], "agent-1",
+                       f"{effect['effect_id']}:attempt:2", "provider-1", 2, authorization)
+
+
+def test_retry_fails_closed_without_authority_secret(tmp_path, monkeypatch):
+    monkeypatch.delenv("AIOS_AUTHORITY_SECRET", raising=False)
+    effect = _effect(tmp_path)
+    dispatch(str(tmp_path), effect["effect_id"], "agent-1",
+             f"{effect['effect_id']}:attempt:1", "provider-1")
+    unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
+    with pytest.raises(TransitionError, match="secret is not configured"):
+        retry_dispatch(str(tmp_path), effect["effect_id"], "agent-1",
+                       f"{effect['effect_id']}:attempt:2", "provider-1", 2,
+                       {"mode": "EXPLICIT"})
+
 
 
 def test_unknown_cannot_return_to_dispatch(tmp_path):

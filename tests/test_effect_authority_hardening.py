@@ -4,6 +4,7 @@
 # AIOS-COVERAGE-GAP: Covers bounded UNKNOWN retry, authority binding, and duplicate-effect prevention
 # AIOS-BASELINE: Existing M6 effect/runtime regression suite extended for explicit retry authority
 
+import os
 import tempfile
 
 import pytest
@@ -16,6 +17,7 @@ from core.effect_authority import (
     dispatch,
     observe,
     retry_dispatch,
+    issue_retry_authorization,
     transition,
     unknown,
 )
@@ -91,14 +93,17 @@ def test_generic_transition_cannot_enter_dispatched_from_planned():
                        attempt=1, attempt_id=f"{effect['effect_id']}:attempt:1", provider="provider-a")
 
 
-def test_unknown_can_only_return_to_dispatch_through_bounded_retry():
+def test_unknown_can_only_return_to_dispatch_through_bounded_retry(monkeypatch):
+    secret = "test-only-authority-secret"
+    monkeypatch.setenv("AIOS_AUTHORITY_SECRET", secret)
     with tempfile.TemporaryDirectory() as td:
         _contract, _permit, effect = make_authorized(td)
         dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:1", "provider-a")
         unknown(td, effect["effect_id"], "bc-controller", "provider timeout")
         with pytest.raises(TransitionError):
             dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:2", "provider-a")
-        retried = retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:2", "provider-a", 2, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":2})
+        authorization = issue_retry_authorization(td, effect["effect_id"], "bc-controller", 2, secret)
+        retried = retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:2", "provider-a", 2, authorization)
         assert retried["state"] == "DISPATCHED"
         with pytest.raises(TransitionError):
             retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:3", "provider-a", 3, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":3})
