@@ -13,6 +13,7 @@ from .evidence import EvidenceRecord
 from .authority import authorize, load_contract, load_permit
 from .durable_runtime import DurableRuntime, validate_submission
 from .effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
+from .execution_lock import require_external_execution_enabled
 
 
 @dataclass(frozen=True)
@@ -78,6 +79,7 @@ def validate_receipt(receipt, effect, attempt_id, provider_name):
 
 
 def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
+    require_external_execution_enabled()
     """Execute exactly one dispatched attempt and record its observation."""
     _text(actor, "actor")
     _text(attempt_id, "attempt_id")
@@ -143,6 +145,7 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
 
 
 def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: DurableRuntime):
+    require_external_execution_enabled()
     """Resume the exact currently-dispatched attempt without allocating a new attempt ID."""
     _text(actor, "actor")
     if not isinstance(contract, dict) or not contract:
@@ -166,6 +169,7 @@ def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: 
 
 def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapter, attempt_id, attempt,
                           durable_runtime: DurableRuntime | None = None):
+    require_external_execution_enabled()
     """Authorize, dispatch and execute one explicit retry of an UNKNOWN effect.
 
     The external runtime may schedule/persist the attempt, but AIOS remains the
@@ -217,6 +221,7 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
 
 def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapter,
             durable_runtime: DurableRuntime | None = None):
+    require_external_execution_enabled()
     """Authorize/create/dispatch the first attempt, then delegate execution."""
     _text(logical_operation_id, "logical_operation_id")
     _text(actor, "actor")
