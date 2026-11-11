@@ -4,6 +4,8 @@
 # AIOS-COVERAGE-GAP: Cover direct schematic phase dispatch independently of full PCB closure.
 # AIOS-BASELINE: Preserve governed adapter status and provenance contract.
 
+pytestmark = pytest.mark.allow_unlocked_runtime
+
 import json
 import subprocess
 
