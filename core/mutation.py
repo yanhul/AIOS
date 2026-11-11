@@ -28,11 +28,13 @@ Stdlib only. Never writes outside ``<aios_dir>``.
 """
 
 import datetime
+import functools
 import hashlib
 import json
 import os
 import re
 import shutil
+import threading
 import uuid
 
 from . import state as state_layout
@@ -48,6 +50,7 @@ __all__ = [
     "event_identity",
     "apply_mutations",
     "recover_pending",
+    "serialized_mutation",
 ]
 
 # ---------------------------------------------------------------------------
@@ -243,42 +246,96 @@ def _mutation_lock_path(aios_dir):
     return os.path.join(os.path.dirname(aios_dir), ".aios.mutation.lock")
 
 
+_LOCK_REGISTRY = {}
+_LOCK_REGISTRY_GUARD = threading.Lock()
+_LOCK_DEPTH = threading.local()
+
+
+def _thread_lock_for(path):
+    with _LOCK_REGISTRY_GUARD:
+        return _LOCK_REGISTRY.setdefault(path, threading.RLock())
+
+
 class _MutationLock:
-    """Cross-platform exclusive lock for one AIOS state tree."""
+    """Reentrant in-process + exclusive cross-process lock for one AIOS tree.
+
+    Reentrancy is required because effect APIs hold the lock across their
+    read/check/write sequence while the existing recovery and commit helpers
+    also acquire the same boundary. Only the outermost acquisition touches
+    the OS lock; nested acquisitions cannot deadlock on a second file handle.
+    """
     def __init__(self, aios_dir):
         self.aios_dir = aios_dir
+        self.path = os.path.abspath(_mutation_lock_path(aios_dir))
         self.fh = None
+        self.thread_lock = _thread_lock_for(self.path)
+        self.depths = None
 
     def __enter__(self):
         state_layout.ensure_state_dirs(self.aios_dir)
-        os.makedirs(os.path.dirname(_mutation_lock_path(self.aios_dir)), exist_ok=True)
-        self.fh = open(_mutation_lock_path(self.aios_dir), "a+b")
-        self.fh.seek(0)
-        if os.name == "nt":
-            import msvcrt
-            while True:
-                try:
-                    msvcrt.locking(self.fh.fileno(), msvcrt.LK_LOCK, 1)
-                    break
-                except OSError:
-                    continue
-        else:
-            import fcntl
-            fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX)
-        return self
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        self.thread_lock.acquire()
+        try:
+            self.depths = getattr(_LOCK_DEPTH, "values", None)
+            if self.depths is None:
+                self.depths = {}
+                _LOCK_DEPTH.values = self.depths
+            depth = self.depths.get(self.path, 0)
+            if depth == 0:
+                self.fh = open(self.path, "a+b")
+                if os.name == "nt":
+                    import msvcrt
+                    self.fh.seek(0)
+                    if os.fstat(self.fh.fileno()).st_size == 0:
+                        self.fh.write(b"\\0")
+                        self.fh.flush()
+                    self.fh.seek(0)
+                    while True:
+                        try:
+                            msvcrt.locking(self.fh.fileno(), msvcrt.LK_LOCK, 1)
+                            break
+                        except OSError:
+                            continue
+                else:
+                    import fcntl
+                    fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX)
+            self.depths[self.path] = depth + 1
+            return self
+        except Exception:
+            if self.fh is not None:
+                self.fh.close()
+            self.thread_lock.release()
+            raise
 
     def __exit__(self, exc_type, exc, tb):
         try:
-            if os.name == "nt":
-                import msvcrt
-                self.fh.seek(0)
-                msvcrt.locking(self.fh.fileno(), msvcrt.LK_UNLCK, 1)
+            depth = self.depths[self.path] - 1
+            if depth:
+                self.depths[self.path] = depth
             else:
-                import fcntl
-                fcntl.flock(self.fh.fileno(), fcntl.LOCK_UN)
+                del self.depths[self.path]
+                try:
+                    if os.name == "nt":
+                        import msvcrt
+                        self.fh.seek(0)
+                        msvcrt.locking(self.fh.fileno(), msvcrt.LK_UNLCK, 1)
+                    else:
+                        import fcntl
+                        fcntl.flock(self.fh.fileno(), fcntl.LOCK_UN)
+                finally:
+                    self.fh.close()
         finally:
-            self.fh.close()
+            self.thread_lock.release()
         return False
+
+
+def serialized_mutation(fn):
+    """Serialize a complete state read/check/write operation for one AIOS tree."""
+    @functools.wraps(fn)
+    def wrapped(aios_dir, *args, **kwargs):
+        with _MutationLock(aios_dir):
+            return fn(aios_dir, *args, **kwargs)
+    return wrapped
 
 
 def _write_staged(path, payload_bytes):
