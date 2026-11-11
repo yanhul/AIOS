@@ -4,6 +4,8 @@
 # AIOS-COVERAGE-GAP: Cover read-only inspection and bounded CLI observation without KiCad hardware.
 # AIOS-BASELINE: Keep provider success distinct from electrical acceptance PASS.
 
+pytestmark = pytest.mark.allow_unlocked_runtime
+
 from __future__ import annotations
 
 import hashlib
