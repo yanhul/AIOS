@@ -1,4 +1,4 @@
-"""AIOS-owned append-only evidence/provenance records."""
+"""Evidence record envelope; its unkeyed digest is integrity-only, not authentication."""
 from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
@@ -39,6 +39,7 @@ class EvidenceRecord:
 
 
 def verify_evidence(record: Mapping[str, Any]) -> bool:
+    """Check canonical payload integrity only; never treat this as issuer authentication."""
     try:
         obj = EvidenceRecord(str(record["evidence_id"]), str(record["level"]), str(record["source_ref"]),
                              str(record["claim"]), str(record["run_id"]), str(record["provider"]),

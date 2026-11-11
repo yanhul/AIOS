@@ -1,6 +1,6 @@
 # AIOS — AI Operating System
 
-AIOS is the governed control, state, evidence, capability, and orchestration layer around autonomous AI workloads.
+AIOS is the governed control, state, evidence, capability, verification and reconciliation plane around autonomous AI workloads. Execution substrates and agent runtimes remain external.
 
 ## Mission
 
@@ -18,7 +18,7 @@ AIOS is not a model and not a single agent. It governs agents, tools, software, 
 - **Experience / Evolution:** verified task-to-capability history, negative evidence, versioned candidate capabilities and governed promotion.
 - **Context:** task, identity, device/software, permissions, resources, time, location and physical state are first-class execution inputs.
 
-See `docs/TARGET_ARCHITECTURE.md` for the normative target and `docs/ROADMAP.md` for implementation status. See `docs/HARNESS_REFERENCE.md` for the durable-harness boundary adopted by AIOS.
+See `docs/ARCHITECTURE_CURRENT.md` and `docs/ROADMAP_CURRENT.md` for the current implementation and status. `docs/TARGET_ARCHITECTURE.md` describes the longer-term target; `docs/ROADMAP.md` is retained as a historical planning snapshot. See `docs/HARNESS_REFERENCE.md` for the durable-harness boundary.
 
 ## Proof-of-system workloads
 
@@ -41,7 +41,8 @@ Initial workload registrations live in `capabilities/registry.yaml`.
 - No fabricated evidence, measurements, tests, or specifications.
 - No silent promotion of assumptions or observations into facts or verification.
 - Agents cannot modify governing policy, evidence requirements, promotion criteria, budgets, or terminal conditions.
-- Autonomous retries are bounded by external policy.
+- UNKNOWN retries remain BLOCKED until an independent issuer/verifier is deployed and verified; caller-supplied authorization is never sufficient.
+- Every effect state read, precondition check, single-use claim and durable write is serialized by the shared mutation lock.
 - Every material state mutation is auditable and recoverable.
 - Verification claims must resolve to evidence or deterministic checks appropriate to the claim.
 - Digital verification and physical verification remain distinct.
@@ -49,4 +50,4 @@ Initial workload registrations live in `capabilities/registry.yaml`.
 
 ## Current implementation
 
-The repository contains the M1/M1.5 state and mutation foundation plus implemented authority, verification, reconciliation, contract, runtime and durable-execution components. A dependency-free governed durable loop is implemented in `core/durable_loop.py` with coverage for bounded execution, persistence, terminal gating and resume. Capability identity/registry, first-class execution context, and governed workload adapters are now established; full cross-repository training execution and promotion automation remain separate implementation work.
+The repository contains the M1/M1.5 state and mutation foundation plus implemented authority, verification, reconciliation, contract and provider-boundary components. AIOS governs execution but delegates scheduling, agent loops, browser automation and durable workflow mechanics to external substrates. A dependency-free governed durable loop is implemented in `core/durable_loop.py` with coverage for bounded execution, persistence, terminal gating and resume. Capability identity/registry, first-class execution context, and governed workload adapters are now established; full cross-repository training execution and promotion automation remain separate implementation work.

@@ -12,6 +12,7 @@ from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.effect_authority import create_effect, dispatch, retry_dispatch, transition
 from core.policy_registry import persist_policy
+from core.mutation import TransitionError
 from core.runtime import ProviderReceipt, execute, execute_attempt, execute_retry_attempt
 
 
@@ -59,11 +60,11 @@ def setup_authority(tmp_path, max_attempts=1):
     return c, cid, permit["permit_id"]
 
 
-def test_runtime_success_is_explicitly_observed(tmp_path):
+def test_runtime_receipt_without_independent_issuer_remains_unknown(tmp_path):
     c, cid, pid = setup_authority(tmp_path)
     result = execute(str(tmp_path), cid, pid, "op-1", "agent:test", GoodAdapter())
-    assert result["state"] == "OBSERVED_SUCCESS"
-    assert result["provider_observation"]["provider_operation_id"] == "provider-op-1"
+    assert result["state"] == "UNKNOWN"
+    assert "independent evidence issuer/verifier" in result["unknown_reason"]
 
 
 def test_provider_timeout_becomes_unknown(tmp_path):
@@ -107,13 +108,94 @@ def test_execute_attempt_runs_only_a_dispatched_attempt(tmp_path):
     attempt_id = f"{effect['effect_id']}:attempt:1"
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")
     result = execute_attempt(str(tmp_path), c, effect, "agent:test", GoodAdapter(), attempt_id)
-    assert result["state"] == "OBSERVED_SUCCESS"
+    assert result["state"] == "UNKNOWN"
+    assert "independent evidence issuer/verifier" in result["unknown_reason"]
+
+
+def test_execute_attempt_ignores_forged_effect_and_contract_before_provider(tmp_path):
+    _, cid, pid = setup_authority(tmp_path)
+    planned = create_effect(str(tmp_path), cid, "op-forged", "agent:test", pid, "external_effect")
+
+    class CountingAdapter(GoodAdapter):
+        calls = 0
+        def execute(self, **kwargs):
+            self.calls += 1
+            return super().execute(**kwargs)
+
+    adapter = CountingAdapter()
+    forged_effect = {
+        "effect_id": planned["effect_id"], "state": "DISPATCHED",
+        "attempt": 1, "attempt_id": f"{planned['effect_id']}:attempt:1",
+        "provider": "fake-provider", "actor": "agent:test",
+    }
+    forged_contract = dict(contract("forged-policy"))
+    with pytest.raises(Exception, match="authoritative DISPATCHED"):
+        execute_attempt(str(tmp_path), forged_contract, forged_effect, "agent:test",
+                        adapter, forged_effect["attempt_id"])
+    assert adapter.calls == 0
+    import json
+    persisted = json.loads((tmp_path / "effects" / (planned["effect_id"] + ".json")).read_text())
+    assert persisted["state"] == "PLANNED"
+    assert persisted.get("execution_claimed", False) is False
+
+
+def test_execute_attempt_uses_persisted_contract_and_effect_not_caller_dictionaries(tmp_path):
+    c, cid, pid = setup_authority(tmp_path)
+    effect = create_effect(str(tmp_path), cid, "op-authoritative", "agent:test", pid, "external_effect")
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    persisted_effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
+                                attempt_id, "fake-provider")
+
+    class RecordingAdapter(GoodAdapter):
+        seen_contract = None
+        seen_effect = None
+        def execute(self, *, contract, effect, attempt_id):
+            self.seen_contract = dict(contract)
+            self.seen_effect = dict(effect)
+            return super().execute(contract=contract, effect=effect, attempt_id=attempt_id)
+
+    adapter = RecordingAdapter()
+    forged_contract = dict(c, capabilities=["attacker-provider@99"], policy_digest="forged")
+    forged_effect = dict(
+        persisted_effect, state="UNKNOWN", actor="attacker",
+        provider="attacker-provider", attempt_id="forged-attempt"
+    )
+    result = execute_attempt(str(tmp_path), forged_contract, forged_effect,
+                             "agent:test", adapter, attempt_id)
+    assert result["state"] == "UNKNOWN"
+    assert "independent evidence issuer/verifier" in result["unknown_reason"]
+    assert adapter.seen_contract["policy_digest"] == c["policy_digest"]
+    assert adapter.seen_contract["capabilities"] == c["capabilities"]
+    assert adapter.seen_effect["state"] == "DISPATCHED"
+    assert adapter.seen_effect["provider"] == "fake-provider"
+    assert adapter.seen_effect["attempt_id"] == attempt_id
+
+
+def test_execute_attempt_cannot_invoke_provider_twice(tmp_path):
+    c, cid, pid = setup_authority(tmp_path)
+    effect = create_effect(str(tmp_path), cid, "op-duplicate", "agent:test", pid, "external_effect")
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")
+
+    class CountingAdapter(GoodAdapter):
+        calls = 0
+        def execute(self, **kwargs):
+            self.calls += 1
+            return super().execute(**kwargs)
+
+    adapter = CountingAdapter()
+    result = execute_attempt(str(tmp_path), c, effect, "agent:test", adapter, attempt_id)
+    assert result["state"] == "UNKNOWN"
+    assert "independent evidence issuer/verifier" in result["unknown_reason"]
+    with pytest.raises(TransitionError):
+        execute_attempt(str(tmp_path), c, effect, "agent:test", adapter, attempt_id)
+    assert adapter.calls == 1
 
 
 def test_execute_attempt_rejects_non_dispatched_effect(tmp_path):
     c, cid, pid = setup_authority(tmp_path)
     effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
-    with pytest.raises(RuntimeError, match="DISPATCHED"):
+    with pytest.raises(TransitionError, match="authoritative DISPATCHED"):
         execute_attempt(str(tmp_path), c, effect, "agent:test", GoodAdapter(),
                         f"{effect['effect_id']}:attempt:1")
 
@@ -132,24 +214,26 @@ def test_execute_attempt_does_not_authorize_or_create_effect(tmp_path):
 
     adapter = CountingAdapter()
     result = execute_attempt(str(tmp_path), c, effect, "agent:test", adapter, attempt_id)
-    assert result["state"] == "OBSERVED_SUCCESS"
+    assert result["state"] == "UNKNOWN"
+    assert "independent evidence issuer/verifier" in result["unknown_reason"]
     assert adapter.calls == 1
 
 
-def test_retry_dispatch_requires_unknown_and_increments_attempt(tmp_path):
+def test_retry_dispatch_fails_closed_until_independent_issuer(tmp_path):
+    import json
     _, cid, pid = setup_authority(tmp_path, max_attempts=3)
     effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     first = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                      f"{effect['effect_id']}:attempt:1", "fake-provider")
-    unknown_effect = transition(str(tmp_path), first["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
-    effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":effect["effect_id"], "attempt":2}
-    unknown_effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":unknown_effect["effect_id"], "attempt":2}
-    retried = retry_dispatch(str(tmp_path), unknown_effect["effect_id"], "agent:test",
-                             f"{effect['effect_id']}:attempt:2", "fake-provider", 2, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":2})
-    assert retried["effect_id"] == effect["effect_id"]
-    assert retried["attempt"] == 2
-    assert retried["state"] == "DISPATCHED"
-
+    unknown_effect = transition(str(tmp_path), first["effect_id"], "UNKNOWN",
+                                "agent:test", unknown_reason="timeout")
+    with pytest.raises(Exception, match="independent issuer verification"):
+        retry_dispatch(str(tmp_path), unknown_effect["effect_id"], "agent:test",
+                       f"{effect['effect_id']}:attempt:2", "fake-provider", 2,
+                       {"mode":"EXPLICIT", "effect_id":effect["effect_id"], "attempt":2})
+    persisted = json.loads((tmp_path / "effects" / (effect["effect_id"] + ".json")).read_text())
+    assert persisted["state"] == "UNKNOWN"
+    assert persisted["attempt"] == 1
 
 def test_generic_transition_cannot_turn_unknown_into_dispatched(tmp_path):
     _, cid, pid = setup_authority(tmp_path, max_attempts=3)
@@ -162,27 +246,36 @@ def test_generic_transition_cannot_turn_unknown_into_dispatched(tmp_path):
                    attempt=2, attempt_id=f"{effect['effect_id']}:attempt:2", provider="fake-provider")
 
 
-def test_execute_retry_attempt_is_bounded_by_contract(tmp_path):
-    c, cid, pid = setup_authority(tmp_path, max_attempts=2)
+def test_execute_retry_attempt_fails_closed_before_provider(tmp_path):
+    _, cid, pid = setup_authority(tmp_path, max_attempts=2)
     effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
-    effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
-    effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":effect["effect_id"], "attempt":2}
-    result = execute_retry_attempt(str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
-                                   f"{effect['effect_id']}:attempt:2", 2)
-    assert result["state"] == "OBSERVED_SUCCESS"
-    assert result["attempt"] == 2
+    effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN",
+                        "agent:test", unknown_reason="timeout")
+    class CountingAdapter(GoodAdapter):
+        calls = 0
+        def execute(self, **kwargs):
+            self.calls += 1
+            return super().execute(**kwargs)
+    adapter = CountingAdapter()
+    with pytest.raises(PermissionError, match="independent issuer verification"):
+        execute_retry_attempt(str(tmp_path), cid, pid, effect, "agent:test", adapter,
+                              f"{effect['effect_id']}:attempt:2", 2)
+    assert adapter.calls == 0
 
-
-def test_execute_retry_attempt_rejects_over_max_before_dispatch(tmp_path):
+def test_execute_retry_attempt_blocks_unknown_even_with_self_asserted_authorization(tmp_path):
     _, cid, pid = setup_authority(tmp_path, max_attempts=1)
     effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
-    effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
-    effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":effect["effect_id"], "attempt":2}
-    with pytest.raises(PermissionError, match="max_attempts"):
+    effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN",
+                        "agent:test", unknown_reason="timeout")
+    effect["retry_authorization"] = {
+        "mode":"EXPLICIT", "effect_id":effect["effect_id"], "attempt":2
+    }
+    with pytest.raises(PermissionError, match="independent issuer verification"):
         execute_retry_attempt(str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
                               f"{effect['effect_id']}:attempt:2", 2)
     assert effect["state"] == "UNKNOWN"
+

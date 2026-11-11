@@ -2,7 +2,7 @@
 
 Status: TARGET / normative architecture for post-M2 development.
 
-This document defines the direction for AIOS as an AI Operating System. It does not claim that all target components are implemented.
+This document defines the long-term target for AIOS as an AI Operating System. It does not claim that all target components are implemented. Orchestration means governed contract/capability coordination; agent loops, browser automation, scheduling and durable runtime mechanics remain delegated to external execution substrates.
 
 ## 1. Mission
 

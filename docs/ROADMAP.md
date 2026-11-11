@@ -1,3 +1,5 @@
+> **Historical planning snapshot:** This roadmap is retained for provenance and may not reflect current implementation status. Use [ROADMAP_CURRENT.md](ROADMAP_CURRENT.md) for current status and priorities.
+
 # AIOS Roadmap
 
 Status: M1 + M1.5 implemented; M2/M3 foundations implemented; absorbed execution/research primitives are now AIOS-owned boundaries; evaluation-plane architecture/invariants absorbed from public MiMo evidence.
