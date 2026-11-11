@@ -15,6 +15,7 @@ from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.effect_authority import (
     create_effect,
+    claim_execution,
     dispatch,
     observe,
     retry_dispatch,
@@ -211,3 +212,50 @@ def test_tampered_persisted_authority_blocks_future_transition():
             json.dump(rec, fh)
         with pytest.raises(TransitionError):
             unknown(td, effect["effect_id"], "bc-controller", "should be blocked")
+
+
+def _claim_race_worker(state_dir, effect_id, attempt_id, barrier, result_queue):
+    try:
+        barrier.wait(timeout=15)
+        _contract, claimed = claim_execution(
+            state_dir, effect_id, "bc-controller", attempt_id, "research_is_validation"
+        )
+        result_queue.put(("success", claimed.get("execution_claimed")))
+    except Exception as exc:
+        result_queue.put(("error", type(exc).__name__, str(exc)))
+
+
+def test_concurrent_execution_claim_has_exactly_one_winner(tmp_path):
+    _contract, _permit, effect = make_authorized(str(tmp_path))
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    dispatch(str(tmp_path), effect["effect_id"], "bc-controller",
+             attempt_id, "research_is_validation")
+    ctx = mp.get_context("spawn")
+    barrier = ctx.Barrier(2)
+    results = ctx.Queue()
+    processes = [
+        ctx.Process(target=_claim_race_worker,
+                    args=(str(tmp_path), effect["effect_id"], attempt_id, barrier, results))
+        for _ in range(2)
+    ]
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join(30)
+    for process in processes:
+        if process.is_alive():
+            process.terminate()
+            process.join()
+    assert [process.exitcode for process in processes] == [0, 0]
+    outcomes = [results.get(timeout=5), results.get(timeout=5)]
+    assert sum(item[0] == "success" for item in outcomes) == 1, outcomes
+    assert sum(item[0] == "error" and item[1] == "TransitionError"
+               for item in outcomes) == 1, outcomes
+    persisted = json.loads(
+        (tmp_path / "effects" / (effect["effect_id"] + ".json")).read_text()
+    )
+    assert persisted["execution_claimed"] is True
+    assert persisted["execution_claimed_attempt_id"] == attempt_id
+    assert len(list((tmp_path / "events").glob(
+        f"effect-{effect['effect_id']}-EXECUTION_CLAIMED-attempt-1.json"
+    ))) == 1
