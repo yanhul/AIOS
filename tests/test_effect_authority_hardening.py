@@ -5,6 +5,8 @@
 # AIOS-BASELINE: Existing M6 effect/runtime regression suite extended for explicit retry authority
 
 import tempfile
+import multiprocessing as mp
+import json
 
 import pytest
 
@@ -22,6 +24,17 @@ from core.effect_authority import (
 from core.evidence import EvidenceRecord
 from core.mutation import TransitionError
 from core.policy_registry import persist_policy
+
+
+
+def _dispatch_race_worker(state_dir, effect_id, barrier, result_queue):
+    try:
+        barrier.wait(timeout=15)
+        result = dispatch(state_dir, effect_id, "bc-controller",
+                          f"{effect_id}:attempt:1", "provider-a")
+        result_queue.put(("success", result["state"]))
+    except Exception as exc:
+        result_queue.put(("error", type(exc).__name__, str(exc)))
 
 
 def make_authorized(td):
@@ -91,18 +104,73 @@ def test_generic_transition_cannot_enter_dispatched_from_planned():
                        attempt=1, attempt_id=f"{effect['effect_id']}:attempt:1", provider="provider-a")
 
 
-def test_unknown_can_only_return_to_dispatch_through_bounded_retry():
+def test_unknown_retry_is_blocked_without_independent_issuer():
     with tempfile.TemporaryDirectory() as td:
         _contract, _permit, effect = make_authorized(td)
-        dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:1", "provider-a")
+        dispatch(td, effect["effect_id"], "bc-controller",
+                 f"{effect['effect_id']}:attempt:1", "provider-a")
         unknown(td, effect["effect_id"], "bc-controller", "provider timeout")
-        with pytest.raises(TransitionError):
-            dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:2", "provider-a")
-        retried = retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:2", "provider-a", 2, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":2})
-        assert retried["state"] == "DISPATCHED"
-        with pytest.raises(TransitionError):
-            retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:3", "provider-a", 3, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":3})
+        with pytest.raises(TransitionError, match="independent issuer verification"):
+            retry_dispatch(td, effect["effect_id"], "bc-controller",
+                           f"{effect['effect_id']}:attempt:2", "provider-a", 2,
+                           {"mode":"EXPLICIT", "effect_id":effect["effect_id"], "attempt":2})
+        persisted = json.loads(open(
+            f"{td}/effects/{effect['effect_id']}.json", encoding="utf-8"
+        ).read())
+        assert persisted["state"] == "UNKNOWN"
+        assert persisted["attempt"] == 1
 
+
+def test_concurrent_initial_dispatch_has_exactly_one_winner(tmp_path):
+    _contract, _permit, effect = make_authorized(str(tmp_path))
+    ctx = mp.get_context("spawn")
+    barrier = ctx.Barrier(2)
+    results = ctx.Queue()
+    processes = [
+        ctx.Process(target=_dispatch_race_worker,
+                    args=(str(tmp_path), effect["effect_id"], barrier, results))
+        for _ in range(2)
+    ]
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join(30)
+    for process in processes:
+        if process.is_alive():
+            process.terminate()
+            process.join()
+    assert [process.exitcode for process in processes] == [0, 0]
+    outcomes = [results.get(timeout=5), results.get(timeout=5)]
+    assert sum(item[0] == "success" for item in outcomes) == 1, outcomes
+    assert sum(item[0] == "error" and item[1] == "TransitionError"
+               for item in outcomes) == 1, outcomes
+    persisted = json.loads(
+        (tmp_path / "effects" / (effect["effect_id"] + ".json")).read_text()
+    )
+    assert persisted["state"] == "DISPATCHED"
+    assert persisted["attempt"] == 1
+    assert len(list((tmp_path / "events").glob(
+        f"effect-{effect['effect_id']}-DISPATCHED-attempt-1.json"
+    ))) == 1
+
+
+
+def test_public_transition_cannot_forge_terminal_observation(tmp_path):
+    _contract, _permit, effect = make_authorized(str(tmp_path))
+    dispatch(str(tmp_path), effect["effect_id"], "bc-controller",
+             f"{effect['effect_id']}:attempt:1", "provider-a")
+    forged = {
+        "attempt_id": f"{effect['effect_id']}:attempt:1",
+        "provider": "provider-a",
+        "evidence": {"level": "OBSERVED", "claim": "made up"},
+    }
+    with pytest.raises(TransitionError, match="must use observe"):
+        transition(str(tmp_path), effect["effect_id"], "OBSERVED_SUCCESS",
+                   "bc-controller", provider_observation=forged)
+    persisted = json.loads(
+        (tmp_path / "effects" / (effect["effect_id"] + ".json")).read_text()
+    )
+    assert persisted["state"] == "DISPATCHED"
 
 def test_observation_requires_current_attempt_and_valid_aios_evidence():
     with tempfile.TemporaryDirectory() as td:

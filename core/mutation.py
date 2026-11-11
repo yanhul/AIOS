@@ -411,42 +411,48 @@ def _require_committed_event(aios_dir, entity):
         f"with or predates M1.5")
 
 
-def commit_batch(aios_dir, payloads):
-    """Single shared atomic commit engine under the mutation lock."""
+def commit_batch(aios_dir, payloads, *, lock_held=False):
+    """Commit a batch; lock_held is for callers already holding _MutationLock."""
+    if lock_held:
+        return _commit_batch_unlocked(aios_dir, payloads)
     with _MutationLock(aios_dir):
-        state_layout.ensure_state_dirs(aios_dir)
-        staging_root = os.path.join(aios_dir, ".staging")
-        batch_id = uuid.uuid4().hex
-        batch_dir = os.path.join(staging_root, f"batch-{batch_id}")
-        os.makedirs(batch_dir, exist_ok=True)
+        return _commit_batch_unlocked(aios_dir, payloads)
 
-        ops = []
-        for rel_dest, obj in payloads:
-            payload = (canonical_json(obj) + "\n").encode("utf-8")
-            tmp = os.path.join(batch_dir, f"{uuid.uuid4().hex}.tmp")
-            _write_staged(tmp, payload)
-            ops.append({
-                "tmp": tmp,
-                "dest": os.path.join(aios_dir, rel_dest),
-                "digest": _digest_bytes(payload),
-            })
 
-        journal_path = os.path.join(batch_dir, _JOURNAL_NAME)
-        _write_staged(
-            journal_path,
-            canonical_json({"batch_id": batch_id, "ops": ops}).encode("utf-8"),
-        )
-        _fsync_dir(batch_dir)
+def _commit_batch_unlocked(aios_dir, payloads):
+    """Journaled commit kernel. Caller must hold _MutationLock."""
+    state_layout.ensure_state_dirs(aios_dir)
+    staging_root = os.path.join(aios_dir, ".staging")
+    batch_id = uuid.uuid4().hex
+    batch_dir = os.path.join(staging_root, f"batch-{batch_id}")
+    os.makedirs(batch_dir, exist_ok=True)
 
-        for op in ops:
-            os.makedirs(os.path.dirname(op["dest"]), exist_ok=True)
-            _replace(op["tmp"], op["dest"])
-            _fsync_dir(os.path.dirname(op["dest"]))
+    ops = []
+    for rel_dest, obj in payloads:
+        payload = (canonical_json(obj) + "\n").encode("utf-8")
+        tmp = os.path.join(batch_dir, f"{uuid.uuid4().hex}.tmp")
+        _write_staged(tmp, payload)
+        ops.append({
+            "tmp": tmp,
+            "dest": os.path.join(aios_dir, rel_dest),
+            "digest": _digest_bytes(payload),
+        })
 
-        os.unlink(journal_path)
-        shutil.rmtree(batch_dir, ignore_errors=True)
-        return [op["dest"] for op in ops]
+    journal_path = os.path.join(batch_dir, _JOURNAL_NAME)
+    _write_staged(
+        journal_path,
+        canonical_json({"batch_id": batch_id, "ops": ops}).encode("utf-8"),
+    )
+    _fsync_dir(batch_dir)
 
+    for op in ops:
+        os.makedirs(os.path.dirname(op["dest"]), exist_ok=True)
+        _replace(op["tmp"], op["dest"])
+        _fsync_dir(os.path.dirname(op["dest"]))
+
+    os.unlink(journal_path)
+    shutil.rmtree(batch_dir, ignore_errors=True)
+    return [op["dest"] for op in ops]
 
 def apply_mutations(aios_dir, entities, actor, notice_factory=None):
     """Apply a validated batch of entity mutations atomically.

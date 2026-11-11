@@ -61,19 +61,20 @@ class TestExternalEffect(unittest.TestCase):
         with self.assertRaises(ExternalEffectError):
             record_observation(self.aios, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {})
 
-    def test_unknown_is_durable_and_needs_verified_observation(self):
+    def test_unknown_is_durable_and_retry_fails_closed(self):
         cid, pid = self._setup_authority()
         e = create_effect(self.aios, cid, "LO-1", "agent:a", pid, "external_effect")
         attempt = f"{e['effect_id']}:attempt:1"
         record_dispatch(self.aios, e["effect_id"], "agent:a", attempt, "provider:test")
         record_unknown(self.aios, e["effect_id"], "agent:a", "provider timeout")
         self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "UNKNOWN")
-        retry_attempt = f"{e['effect_id']}:attempt:2"
-        retry_dispatch(self.aios, e["effect_id"], "agent:a", retry_attempt, "provider:test", 2, {"mode":"EXPLICIT","effect_id":e["effect_id"],"attempt":2})
-        record_observation(self.aios, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {
-            "attempt_id": retry_attempt, "provider": "provider:test", "evidence": evidence()
-        })
-        self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "OBSERVED_SUCCESS")
+        with self.assertRaisesRegex(Exception, "independent issuer verification"):
+            retry_dispatch(self.aios, e["effect_id"], "agent:a",
+                           f"{e['effect_id']}:attempt:2", "provider:test", 2,
+                           {"mode":"EXPLICIT", "effect_id":e["effect_id"], "attempt":2})
+        persisted = load_effects(self.aios)[e["effect_id"]]
+        self.assertEqual(persisted["state"], "UNKNOWN")
+        self.assertEqual(persisted["attempt"], 1)
 
     def test_attempt_mismatch_is_rejected(self):
         cid, pid = self._setup_authority()

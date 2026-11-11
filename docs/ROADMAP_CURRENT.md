@@ -6,8 +6,8 @@
 - Durable permit authorization and contract/permit binding.
 - External-effect identity and durable semantic state.
 - Explicit `execute_attempt()` boundary.
-- Dedicated UNKNOWN → retry-dispatch transition.
-- Contract-bounded retry attempts.
+- UNKNOWN retry is fail-closed until independent issuer/verifier is deployed and verified.
+- Contract-bounded retry remains a future capability; caller-supplied authorization dictionaries are never authority.
 - Provider receipt validation and fail-closed ambiguity handling.
 - Thin durable-runtime adapter contract and binding validation.
 

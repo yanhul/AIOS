@@ -1,3 +1,5 @@
+> **Historical / superseded:** This M0-era proposal is retained for provenance. It is not a description of the current implementation. See [ARCHITECTURE_CURRENT.md](ARCHITECTURE_CURRENT.md), [ROADMAP_CURRENT.md](ROADMAP_CURRENT.md), and the current modules under `core/`.
+
 # AIOS State Model
 
 Status: M0 — documentation only. The state engine is NOT implemented.

@@ -1,3 +1,5 @@
+> **Historical / superseded:** This M1-era design snapshot is retained for provenance. It is not the normative architecture. See [ARCHITECTURE_CURRENT.md](ARCHITECTURE_CURRENT.md) and [ROADMAP_CURRENT.md](ROADMAP_CURRENT.md). Where they conflict, current documents and implementation govern.
+
 # AIOS Architecture
 
 Status: M1 implemented (read-only inspection/import/snapshot pipeline) plus M1.5 writer enforcement (`core/mutation.py` — the single validated mutation boundary). State-machine transitions, gates, policy, verification and agents remain future work (see docs/ROADMAP.md).
