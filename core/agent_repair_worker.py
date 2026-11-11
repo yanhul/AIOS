@@ -4,10 +4,11 @@ from __future__ import annotations
 import hashlib
 import os
 import subprocess
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Mapping, Protocol, Sequence
+
+from .secure_fs import atomic_write_beneath
 
 
 class RepairWorkerError(RuntimeError):
@@ -144,18 +145,8 @@ class AgentRepairWorker:
                 "repository contains unowned dirty paths: " + ", ".join(unexpected)
             )
 
-    def _atomic_write(self, target: Path, content: str) -> None:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp_name = tempfile.mkstemp(prefix=f".{target.name}.repair-", dir=target.parent)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
-                fh.write(content)
-                fh.flush()
-                os.fsync(fh.fileno())
-            os.replace(tmp_name, target)
-        finally:
-            if os.path.exists(tmp_name):
-                os.unlink(tmp_name)
+    def _atomic_write(self, raw_path: str, content: str) -> None:
+        atomic_write_beneath(self.root, raw_path, content)
 
     def apply(
         self, *, base_sha: str, files: Sequence[ProposedFile],
@@ -177,7 +168,7 @@ class AgentRepairWorker:
         for item, target in zip(proposed, targets):
             if not isinstance(item.content, str):
                 raise RepairWorkerError(f"patch content must be text: {item.path!r}")
-            self._atomic_write(target, item.content)
+            self._atomic_write(item.path, item.content)
             changed.append({"path": item.path, "content_sha256": self._sha256_text(item.content)})
         return WorkerEvidence("APPLY_PATCH", "APPLIED",
                               (f"repair:base:{base_sha}", f"repair:permit:{permit_id}"),

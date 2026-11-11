@@ -5,10 +5,11 @@ from __future__ import annotations
 import hashlib
 import os
 import subprocess
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Mapping, Sequence
+
+from .secure_fs import atomic_write_beneath
 
 from .agent_repair_worker import ProposedFile
 from .effect_authority import create_effect
@@ -70,7 +71,7 @@ class RepositoryPatchAdapter:
         changed = []
         for item in files:
             target = _safe_repo_path(self.root, item.path)
-            _atomic_write(target, item.content)
+            atomic_write_beneath(self.root, item.path, item.content)
             changed.append({
                 "path": item.path,
                 "content_sha256": _sha256_text(item.content),
@@ -178,20 +179,6 @@ def _require_clean_base(root: Path, base_sha: str, *, allowed_dirty_paths: froze
             "repository contains unowned dirty paths before AIOS mutation: "
             + ", ".join(unexpected)
         )
-
-
-def _atomic_write(target: Path, content: str) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(prefix=f".{target.name}.repair-", dir=target.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
-            fh.write(content)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp_name, target)
-    finally:
-        if os.path.exists(tmp_name):
-            os.unlink(tmp_name)
 
 
 def apply_via_aios(
