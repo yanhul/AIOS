@@ -18,6 +18,7 @@ TESTS = [
     "tests/test_absorption_pipeline.py",
     "tests/test_absorption_verifier.py",
     "tests/test_absorption_repair.py",
+    "tests/test_absorption_source_review.py",
 ]
 
 def _digest(v):
