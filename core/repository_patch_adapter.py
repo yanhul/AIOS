@@ -60,6 +60,8 @@ class RepositoryPatchAdapter:
         self._plans[effect_id] = (proposed, base_sha or "", frozenset(allowed_dirty_paths))
 
     def execute(self, *, contract: dict, effect: dict, attempt_id: str) -> ProviderReceipt:
+        from core.execution_lock import require_external_execution_enabled
+        require_external_execution_enabled()
         effect_id = effect["effect_id"]
         plan = self._plans.get(effect_id)
         if plan is None:

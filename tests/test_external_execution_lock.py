@@ -60,3 +60,26 @@ def test_resume_blocks_before_external_runtime_or_provider(monkeypatch):
         runtime.resume_attempt("unused", contract, effect, "owner", adapter, durable)
     assert durable.calls == 0
     assert adapter.calls == 0
+
+
+
+def test_direct_subprocess_adapter_call_is_blocked_before_process_launch(monkeypatch):
+    import subprocess
+    from adapters.process import SubprocessAdapter
+
+    def forbidden_run(*args, **kwargs):
+        pytest.fail("subprocess provider must not launch without issuer")
+    monkeypatch.setattr(subprocess, "run", forbidden_run)
+    adapter = SubprocessAdapter("provider", ["python", "-c", "pass"])
+    with pytest.raises(ExternalExecutionBlocked, match="independent actor issuer"):
+        adapter.execute(contract={}, effect={"effect_id": "EF-x"}, attempt_id="EF-x:attempt:1")
+
+
+def test_direct_repository_mutation_adapter_call_is_blocked_before_write(tmp_path):
+    from core.repository_patch_adapter import RepositoryPatchAdapter
+
+    adapter = RepositoryPatchAdapter(tmp_path)
+    with pytest.raises(ExternalExecutionBlocked, match="independent actor issuer"):
+        adapter.execute(
+            contract={}, effect={"effect_id": "EF-x"}, attempt_id="EF-x:attempt:1"
+        )

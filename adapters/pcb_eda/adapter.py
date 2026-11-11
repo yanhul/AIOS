@@ -20,6 +20,8 @@ SCHEMATIC_PHASE = "SCHEMATIC"
 
 
 def run_kit(request: PcbEdaRequest) -> tuple[int, dict]:
+    from core.execution_lock import require_external_execution_enabled
+    require_external_execution_enabled()
     request.validate()
     kit_root = Path(request.kit_root).resolve()
     input_dir = Path(request.input_dir).resolve()
