@@ -282,18 +282,15 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
             raise TransitionError("observation actor does not match effect owner")
         attempt_id = provider_observation.get("attempt_id")
         provider = provider_observation.get("provider")
-        evidence = provider_observation.get("evidence")
         if current.get("state") != "DISPATCHED":
             raise TransitionError("observation requires a currently DISPATCHED attempt")
         if attempt_id != current.get("attempt_id"):
             raise TransitionError("observation attempt does not match dispatched attempt")
         if provider != current.get("provider"):
             raise TransitionError("observation provider does not match dispatched provider")
-        if evidence.get("provider") != provider:
-            raise ValueError("evidence provider does not match effect provider")
         # An unkeyed digest proves payload integrity, not issuer identity or
         # provider origin. No independent trust-root/verifier is configured,
-        # so terminal observations remain fail-closed.
+        # so terminal observations remain fail-closed regardless of caller data.
         raise PermissionError(
             "observation BLOCKED: independent evidence issuer/verifier is not configured"
         )
