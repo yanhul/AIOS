@@ -68,3 +68,42 @@ def test_effect_audit_reports_invalid_claim_seal_and_missing_binding(tmp_path, m
     checks = {item["check"] for item in findings}
     assert "effect_audit.seal.invalid_or_unverifiable" in checks
     assert "effect_audit.claims.orphan" in checks
+
+def test_reconcile_routes_external_effect_events_to_wp1_without_m1_5_digest_rule(tmp_path):
+    from core.reconcile import reconcile
+
+    state = tmp_path / ".aios"
+    effects = state / "effects"
+    events = state / "events"
+    effects.mkdir(parents=True)
+    events.mkdir()
+    effect_id = "EF-" + "f" * 64
+    effect = {
+        "record_type": "EXTERNAL_EFFECT",
+        "effect_id": effect_id,
+        "contract_id": "contract-1",
+        "permit_id": "permit-1",
+        "actor": "test",
+        "effect_type": "external_effect",
+        "policy_digest": "sha256:" + "e" * 64,
+        "max_attempts": 2,
+        "state": "PLANNED",
+        "attempt": 0,
+    }
+    (effects / (effect_id + ".json")).write_text(json.dumps(effect), encoding="utf-8")
+    (events / ("effect-create-" + effect_id + ".json")).write_text(json.dumps({
+        "kind": "external_effect",
+        "action": "create",
+        "effect_id": effect_id,
+        "contract_id": "contract-1",
+        "permit_id": "permit-1",
+        "effect_type": "external_effect",
+        "state": "PLANNED",
+        "actor": "test",
+    }), encoding="utf-8")
+
+    result = reconcile(str(state))
+    checks = {finding["check"] for finding in result["findings"]}
+    assert "D.event_digest" not in checks
+    assert "G.unsupported_event" not in checks
+    assert result["overall"] == "VALID"
