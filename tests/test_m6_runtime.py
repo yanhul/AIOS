@@ -12,6 +12,7 @@ from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.effect_authority import create_effect, dispatch, retry_dispatch, transition
 from core.policy_registry import persist_policy
+from core.mutation import TransitionError
 from core.runtime import ProviderReceipt, execute, execute_attempt, execute_retry_attempt
 
 
@@ -137,10 +138,30 @@ def test_execute_attempt_ignores_forged_effect_and_contract_before_provider(tmp_
     assert persisted.get("execution_claimed", False) is False
 
 
+def test_execute_attempt_cannot_invoke_provider_twice(tmp_path):
+    c, cid, pid = setup_authority(tmp_path)
+    effect = create_effect(str(tmp_path), cid, "op-duplicate", "agent:test", pid, "external_effect")
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")
+
+    class CountingAdapter(GoodAdapter):
+        calls = 0
+        def execute(self, **kwargs):
+            self.calls += 1
+            return super().execute(**kwargs)
+
+    adapter = CountingAdapter()
+    result = execute_attempt(str(tmp_path), c, effect, "agent:test", adapter, attempt_id)
+    assert result["state"] == "OBSERVED_SUCCESS"
+    with pytest.raises(TransitionError):
+        execute_attempt(str(tmp_path), c, effect, "agent:test", adapter, attempt_id)
+    assert adapter.calls == 1
+
+
 def test_execute_attempt_rejects_non_dispatched_effect(tmp_path):
     c, cid, pid = setup_authority(tmp_path)
     effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
-    with pytest.raises(RuntimeError, match="DISPATCHED"):
+    with pytest.raises(TransitionError, match="authoritative DISPATCHED"):
         execute_attempt(str(tmp_path), c, effect, "agent:test", GoodAdapter(),
                         f"{effect['effect_id']}:attempt:1")
 
