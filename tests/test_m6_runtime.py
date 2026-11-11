@@ -162,7 +162,8 @@ def test_execute_attempt_uses_persisted_contract_and_effect_not_caller_dictionar
     )
     result = execute_attempt(str(tmp_path), forged_contract, forged_effect,
                              "agent:test", adapter, attempt_id)
-    assert result["state"] == "OBSERVED_SUCCESS"
+    assert result["state"] == "UNKNOWN"
+    assert "independent evidence issuer/verifier" in result["unknown_reason"]
     assert adapter.seen_contract["policy_digest"] == c["policy_digest"]
     assert adapter.seen_contract["capabilities"] == c["capabilities"]
     assert adapter.seen_effect["state"] == "DISPATCHED"
@@ -184,7 +185,8 @@ def test_execute_attempt_cannot_invoke_provider_twice(tmp_path):
 
     adapter = CountingAdapter()
     result = execute_attempt(str(tmp_path), c, effect, "agent:test", adapter, attempt_id)
-    assert result["state"] == "OBSERVED_SUCCESS"
+    assert result["state"] == "UNKNOWN"
+    assert "independent evidence issuer/verifier" in result["unknown_reason"]
     with pytest.raises(TransitionError):
         execute_attempt(str(tmp_path), c, effect, "agent:test", adapter, attempt_id)
     assert adapter.calls == 1
@@ -212,7 +214,8 @@ def test_execute_attempt_does_not_authorize_or_create_effect(tmp_path):
 
     adapter = CountingAdapter()
     result = execute_attempt(str(tmp_path), c, effect, "agent:test", adapter, attempt_id)
-    assert result["state"] == "OBSERVED_SUCCESS"
+    assert result["state"] == "UNKNOWN"
+    assert "independent evidence issuer/verifier" in result["unknown_reason"]
     assert adapter.calls == 1
 
 
