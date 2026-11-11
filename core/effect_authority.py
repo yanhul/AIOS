@@ -18,7 +18,8 @@ import os
 from .authority import authorize, load_contract, load_permit
 from .contract import verify_permit
 from .evidence import verify_evidence
-from .mutation import TransitionError, _MutationLock, canonical_json, commit_batch, recover_pending
+from .mutation import (TransitionError, _MutationLock, _commit_batch_unlocked,
+                      _recover_pending_unlocked, canonical_json)
 
 STATES = ("PLANNED", "DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE")
 _ALLOWED = {
@@ -89,7 +90,6 @@ def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id,
     _validate_strings(("contract_id", contract_id), ("logical_operation_id", logical_operation_id),
                       ("actor", actor), ("permit_id", permit_id), ("effect_type", effect_type))
     contract, _permit = _authorized_contract(aios_dir, contract_id, permit_id, actor, effect_type)
-    recover_pending(aios_dir)
     effect_id = _id(contract_id, logical_operation_id, actor)
     rec = {
         "record_type": "EXTERNAL_EFFECT", "effect_id": effect_id,
@@ -100,6 +100,7 @@ def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id,
     }
     path = _path(aios_dir, effect_id)
     with _MutationLock(aios_dir):
+        _recover_pending_unlocked(aios_dir)
         if os.path.exists(path):
             existing = _load(path)
             if canonical_json(existing) == canonical_json(rec):
@@ -108,9 +109,9 @@ def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id,
         event = {"kind": "external_effect", "action": "create", "effect_id": effect_id,
                  "contract_id": contract_id, "permit_id": permit_id, "effect_type": effect_type,
                  "state": "PLANNED", "actor": actor}
-        commit_batch(aios_dir, [(os.path.join("effects", effect_id + ".json"), rec),
+        _commit_batch_unlocked(aios_dir, [(os.path.join("effects", effect_id + ".json"), rec),
                                 (os.path.join("events", "effect-create-" + effect_id + ".json"), event)],
-                     lock_held=True)
+                     )
     return rec
 
 def _persist_transition(aios_dir, current, target, actor, fields):
@@ -123,9 +124,9 @@ def _persist_transition(aios_dir, current, target, actor, fields):
         "from_state": current["state"], "to_state": target, "actor": actor,
         "attempt": updated.get("attempt", 0),
     }
-    commit_batch(aios_dir, [(os.path.join("effects", effect_id + ".json"), updated),
+    _commit_batch_unlocked(aios_dir, [(os.path.join("effects", effect_id + ".json"), updated),
                             (os.path.join("events", "effect-" + effect_id + "-" + target + ".json"), event)],
-                 lock_held=True)
+                 )
     return updated
 
 
@@ -142,9 +143,9 @@ def transition(aios_dir, effect_id, target, actor, **fields):
         raise TransitionError("effect transition attempted to mutate protected or unsupported fields")
     if target == "DISPATCHED":
         raise TransitionError("undefined external-effect transition: direct DISPATCHED entry is not allowed")
-    recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
     with _MutationLock(aios_dir):
+        _recover_pending_unlocked(aios_dir)
         if not os.path.exists(path):
             raise KeyError(f"unknown effect: {effect_id}")
         current = _load(path)
@@ -169,17 +170,17 @@ def _transition_dispatch(aios_dir, current, actor, *, attempt, attempt_id, provi
         "from_state": current["state"], "to_state": "DISPATCHED", "actor": actor,
         "attempt": attempt, "attempt_id": attempt_id, "provider": provider,
     }
-    commit_batch(aios_dir, [(os.path.join("effects", effect_id + ".json"), updated),
+    _commit_batch_unlocked(aios_dir, [(os.path.join("effects", effect_id + ".json"), updated),
                             (os.path.join("events", "effect-" + effect_id + "-DISPATCHED-attempt-" + str(attempt) + ".json"), event)],
-                 lock_held=True)
+                 )
     return updated
 
 def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
     _validate_strings(("effect_id", effect_id), ("actor", actor),
                       ("attempt_id", attempt_id), ("provider", provider))
-    recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
     with _MutationLock(aios_dir):
+        _recover_pending_unlocked(aios_dir)
         if not os.path.exists(path):
             raise KeyError(f"unknown effect: {effect_id}")
         current = _load(path)
@@ -205,9 +206,9 @@ def claim_execution(aios_dir, effect_id, actor, attempt_id, provider):
     """
     _validate_strings(("effect_id", effect_id), ("actor", actor),
                       ("attempt_id", attempt_id), ("provider", provider))
-    recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
     with _MutationLock(aios_dir):
+        _recover_pending_unlocked(aios_dir)
         if not os.path.exists(path):
             raise KeyError(f"unknown effect: {effect_id}")
         current = _load(path)
@@ -236,12 +237,12 @@ def claim_execution(aios_dir, effect_id, actor, attempt_id, provider):
             "actor": actor, "attempt": current.get("attempt"),
             "attempt_id": attempt_id, "provider": provider,
         }
-        commit_batch(
+        _commit_batch_unlocked(
             aios_dir,
             [(os.path.join("effects", effect_id + ".json"), updated),
              (os.path.join("events", "effect-" + effect_id + "-EXECUTION_CLAIMED-attempt-" +
                            str(current.get("attempt")) + ".json"), event)],
-            lock_held=True,
+            ,
         )
         return contract, updated
 
@@ -267,9 +268,9 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
         raise ValueError("invalid observation outcome")
     if not isinstance(provider_observation, dict) or not provider_observation:
         raise ValueError("provider_observation must be a non-empty dict")
-    recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
     with _MutationLock(aios_dir):
+        _recover_pending_unlocked(aios_dir)
         if not os.path.exists(path):
             raise KeyError(f"unknown effect: {effect_id}")
         current = _load(path)
