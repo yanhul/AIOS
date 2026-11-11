@@ -52,9 +52,23 @@ def test_effect_journal_recovery_runs_inside_same_mutation_lock(tmp_path, monkey
         assert lock_state["held"], "journal recovery escaped the effect mutation lock"
         lock_state["recoveries"] += 1
 
+    original_authorized_contract = effect_authority._authorized_contract
+    authorization_checks = []
+
+    def checked_authorization(*args, **kwargs):
+        assert lock_state["held"], "effect authorization escaped the mutation lock"
+        authorization_checks.append(True)
+        return original_authorized_contract(*args, **kwargs)
+
     monkeypatch.setattr(effect_authority, "_MutationLock", TrackingLock)
     monkeypatch.setattr(effect_authority, "_recover_pending_unlocked", checked_recovery)
+    monkeypatch.setattr(effect_authority, "_authorized_contract", checked_authorization)
 
+    # Idempotent create still revalidates its authority under the same lock.
+    effect_authority.create_effect(
+        str(tmp_path), contract_identity(_contract), "research-oos",
+        "bc-controller", _permit["permit_id"], "process_execution"
+    )
     attempt_id = f"{effect['effect_id']}:attempt:1"
     dispatched = dispatch(str(tmp_path), effect["effect_id"], "bc-controller",
                           attempt_id, "research_is_validation")
@@ -64,7 +78,8 @@ def test_effect_journal_recovery_runs_inside_same_mutation_lock(tmp_path, monkey
         attempt_id, "research_is_validation"
     )
     assert claimed["execution_claimed"] is True
-    assert lock_state["recoveries"] == 2
+    assert lock_state["recoveries"] == 3
+    assert authorization_checks == [True, True, True]
 
 
 def test_commit_batch_exposes_no_caller_controlled_lock_bypass():
