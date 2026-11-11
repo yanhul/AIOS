@@ -1,0 +1,17 @@
+{
+  "protocol_version": 1,
+  "capability": "colibri.inference@1",
+  "owner": "JustVugg/colibri",
+  "source": "https://github.com/JustVugg/colibri",
+  "source_revision": "bf2442915d6e3dd4cdfd2eb9c2a3d2aa44a25850",
+  "aios_authority": "yanhul/AIOS",
+  "role": "local_inference_provider",
+  "adapter": "adapters/colibri/runner.py",
+  "protocol": "OpenAI-compatible chat completions",
+  "default_endpoint": "http://127.0.0.1:8000/v1",
+  "terminal_states": ["AVAILABLE", "BLOCKED", "INCONCLUSIVE"],
+  "verification_classes": ["receipt_binding", "response_schema", "bounded_io", "endpoint_scope", "provenance"],
+  "agent_may_modify_policy": false,
+  "agent_may_modify_terminal_conditions": false,
+  "may_promote": false
+}

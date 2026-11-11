@@ -43,6 +43,19 @@ capabilities:
     context: [component_revisions, measurements, hardware_state, toolchain]
     terminal_states: [PASS, BLOCKED, INCONCLUSIVE]
 
+  - capability_id: colibri.inference
+    version: "1"
+    kind: local_inference_provider
+    owner: JustVugg/colibri
+    source: https://github.com/JustVugg/colibri
+    source_revision: bf2442915d6e3dd4cdfd2eb9c2a3d2aa44a25850
+    manifest: adapters/colibri/workload.json
+    inputs: [chat_messages, inference_limits]
+    outputs: [model_response, provider_receipt, provenance]
+    verification: [receipt_binding, response_schema, bounded_io, endpoint_scope, provenance]
+    context: [model_revision, model_digest, endpoint, timeout_budget]
+    terminal_states: [AVAILABLE, BLOCKED, INCONCLUSIVE]
+
   - capability_id: minimind.model
     version: "1"
     kind: model_capability
