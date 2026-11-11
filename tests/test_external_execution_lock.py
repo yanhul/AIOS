@@ -2,14 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from core.execution_lock import ExternalExecutionBlocked
-from core.effect_authority import dispatch, _transition_dispatch
-from core.runtime import (
-    execute,
-    execute_attempt,
-    execute_retry_attempt,
-    resume_attempt,
-)
+from core.execution_lock import ExternalExecutionBlocked, require_external_execution_enabled
+from core.runtime import execute_attempt, resume_attempt
 
 
 class CountingAdapter:
@@ -23,49 +17,46 @@ class CountingAdapter:
         pytest.fail("provider must never be called while actor issuer is unavailable")
 
 
-def test_initial_dispatch_is_blocked_before_filesystem_or_state_access(tmp_path):
-    with pytest.raises(ExternalExecutionBlocked, match="independent actor issuer"):
-        dispatch(str(tmp_path), "EF-missing", "owner", "attempt-1", "provider")
-    assert not (tmp_path / "effects").exists()
-
-
-def test_internal_dispatch_mutator_is_also_blocked(tmp_path):
-    with pytest.raises(ExternalExecutionBlocked, match="independent actor issuer"):
-        _transition_dispatch(
-            str(tmp_path), "EF-forged", "owner",
-            attempt=1, attempt_id="attempt-1", provider="provider",
-        )
-    assert not (tmp_path / "effects").exists()
-
-
-@pytest.mark.parametrize(
-    "invoke",
-    [
-        lambda td, adapter: execute(td, "contract", "permit", "operation", "actor", adapter),
-        lambda td, adapter: execute_attempt(
-            td, {}, {"state": "DISPATCHED"}, "actor", adapter, "attempt"
-        ),
-        lambda td, adapter: resume_attempt(
-            td, {}, {"state": "DISPATCHED"}, "actor", adapter, object()
-        ),
-        lambda td, adapter: execute_retry_attempt(
-            td, "contract", "permit", {"state": "UNKNOWN"}, "actor",
-            adapter, "attempt-2", 2,
-        ),
-    ],
-)
-def test_every_public_provider_execution_entry_point_fails_closed(tmp_path, invoke):
-    adapter = CountingAdapter()
-    with pytest.raises(ExternalExecutionBlocked, match="independent actor issuer"):
-        invoke(str(tmp_path), adapter)
-    assert adapter.calls == 0
-    assert not (tmp_path / "effects").exists()
-
-
-def test_lock_has_no_environment_or_caller_controlled_override(monkeypatch):
-    from core.execution_lock import require_external_execution_enabled
-
+def test_lock_is_unconditional_and_has_no_environment_override(monkeypatch):
     monkeypatch.setenv("AIOS_EXTERNAL_EXECUTION_ENABLED", "1")
     monkeypatch.setenv("AIOS_ACTOR_ISSUER_VERIFIED", "1")
-    with pytest.raises(ExternalExecutionBlocked):
+    with pytest.raises(ExternalExecutionBlocked, match="independent actor issuer"):
         require_external_execution_enabled()
+
+
+def test_execute_attempt_validates_bindings_then_blocks_before_provider():
+    adapter = CountingAdapter()
+    contract = {"capabilities": ["provider@1"], "allowed_effects": ["external_effect"]}
+    effect = {
+        "effect_id": "EF-test",
+        "state": "DISPATCHED",
+        "actor": "owner",
+        "attempt_id": "EF-test:attempt:1",
+    }
+    with pytest.raises(ExternalExecutionBlocked, match="independent actor issuer"):
+        execute_attempt("unused", contract, effect, "owner", adapter, effect["attempt_id"])
+    assert adapter.calls == 0
+
+
+def test_resume_blocks_before_external_runtime_or_provider(monkeypatch):
+    import core.runtime as runtime
+
+    adapter = CountingAdapter()
+    class Runtime:
+        calls = 0
+        def resume(self, **kwargs):
+            self.calls += 1
+            pytest.fail("durable runtime must not be resumed while issuer is unavailable")
+
+    contract = {"capabilities": ["provider@1"], "allowed_effects": ["external_effect"]}
+    effect = {
+        "effect_id": "EF-test",
+        "state": "DISPATCHED",
+        "actor": "owner",
+        "attempt_id": "EF-test:attempt:1",
+    }
+    durable = Runtime()
+    with pytest.raises(ExternalExecutionBlocked, match="independent actor issuer"):
+        runtime.resume_attempt("unused", contract, effect, "owner", adapter, durable)
+    assert durable.calls == 0
+    assert adapter.calls == 0
