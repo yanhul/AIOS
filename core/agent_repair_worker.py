@@ -103,13 +103,19 @@ class AgentRepairWorker:
             canonical == prefix.rstrip("/") or canonical.startswith(prefix) for prefix in self._DENIED_PREFIXES
         ):
             raise RepairWorkerError(f"patch path is protected: {raw!r}")
-        target = (self.root / normalized).resolve()
+        # Reject symlinks in every existing path component before resolving.
+        # Checking target.is_symlink() after resolve is ineffective: resolve()
+        # has already followed the symlink and returns its destination.
+        cursor = self.root
+        for part in normalized.parts:
+            cursor = cursor / part
+            if cursor.is_symlink():
+                raise RepairWorkerError(f"refusing symlink path component: {raw!r}")
+        target = cursor.resolve()
         try:
             target.relative_to(self.root)
         except ValueError as exc:
             raise RepairWorkerError(f"patch path escapes repository: {raw!r}") from exc
-        if target.exists() and target.is_symlink():
-            raise RepairWorkerError(f"refusing to overwrite symlink: {raw!r}")
         return target
 
     def _git(self, *args: str) -> str:
