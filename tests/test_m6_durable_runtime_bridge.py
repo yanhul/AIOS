@@ -108,7 +108,8 @@ def test_resume_reuses_exact_dispatched_attempt_after_ambiguous_submission(tmp_p
     result = resume_attempt(
         str(tmp_path), contract, effect, "agent:test", GoodAdapter(), runtime
     )
-    assert result["state"] == "OBSERVED_SUCCESS"
+    assert result["state"] == "UNKNOWN"
+    assert "independent evidence issuer/verifier" in result["unknown_reason"]
     assert runtime.resumed == (effect["effect_id"], attempt_id)
 
 
