@@ -19,6 +19,7 @@ from .authority import authorize, load_contract, load_permit
 from .contract import verify_permit
 from .evidence import verify_evidence
 from .mutation import TransitionError, canonical_json, commit_batch, recover_pending
+from .execution_lock import require_external_execution_enabled
 
 STATES = ("PLANNED", "DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE")
 _ALLOWED = {
@@ -151,6 +152,7 @@ def transition(aios_dir, effect_id, target, actor, **fields):
 
 def _transition_dispatch(aios_dir, effect_id, actor, *, attempt, attempt_id, provider):
     """Internal dispatch mutation after authority checks."""
+    require_external_execution_enabled()
     path = _path(aios_dir, effect_id)
     current = _load(path)
     updated = dict(current)
@@ -167,6 +169,7 @@ def _transition_dispatch(aios_dir, effect_id, actor, *, attempt, attempt_id, pro
 
 
 def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
+    require_external_execution_enabled()
     _validate_strings(("effect_id", effect_id), ("actor", actor),
                       ("attempt_id", attempt_id), ("provider", provider))
     recover_pending(aios_dir)
