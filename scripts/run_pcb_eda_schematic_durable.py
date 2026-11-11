@@ -14,6 +14,7 @@ from core.continue_contract import build_continue_contract
 from core.durable_loop import LoopPolicy, run_durable_loop
 from core.pcb_eda import validate_schematic_receipt
 from core.wal_state_store import WalStateStore
+from core.execution_lock import require_external_execution_enabled
 
 
 class Store(WalStateStore):
@@ -105,6 +106,7 @@ class Executor:
         return {"logical_operation_id": "pcb.eda.schematic", "authority": "AIOS_CONTROL_PLANE"}
 
     def act(self, decision: Mapping[str, Any], state: Mapping[str, Any]) -> dict[str, Any]:
+        require_external_execution_enabled()
         if decision.get("logical_operation_id") != "pcb.eda.schematic":
             raise PermissionError("only schematic operation is legal")
         number = state.get("step", 0) + 1
@@ -174,6 +176,11 @@ class Executor:
 
 
 def main() -> int:
+    try:
+        require_external_execution_enabled()
+    except PermissionError as exc:
+        print(json.dumps({"status": "BLOCKED", "reason": str(exc)}, sort_keys=True))
+        return 2
     parser = argparse.ArgumentParser()
     parser.add_argument("--task-id", "--task_id", dest="task_id", required=True)
     parser.add_argument("--source-commit", "--source_commit", dest="source_commit", required=True)
