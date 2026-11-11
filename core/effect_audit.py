@@ -69,9 +69,20 @@ def audit_effect_authority(aios_dir, add):
     effects = {}
     for name, path, rec in _files(os.path.join(aios_dir, "effects"), add, "effects"):
         eid = rec.get("effect_id")
-        if rec.get("record_type") != "EXTERNAL_EFFECT" or not isinstance(eid, str) or not _EFFECT_RE.fullmatch(eid):
-            add("effect_audit.effects.schema", "CORRUPTED", f"{path}: invalid record_type/effect_id")
+        required = ("contract_id", "permit_id", "actor", "effect_type", "policy_digest", "max_attempts", "state", "attempt")
+        missing = [field for field in required if field not in rec]
+        if rec.get("record_type") != "EXTERNAL_EFFECT" or not isinstance(eid, str) or not _EFFECT_RE.fullmatch(eid) or missing:
+            add("effect_audit.effects.schema", "CORRUPTED", f"{path}: invalid record_type/effect_id or missing {missing}")
             continue
+        if rec.get("state") not in ("PLANNED", "DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
+            add("effect_audit.effects.state", "CORRUPTED", f"{path}: invalid state")
+        attempt = rec.get("attempt")
+        if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 0:
+            add("effect_audit.effects.attempt", "CORRUPTED", f"{path}: invalid attempt")
+        if rec.get("state") == "PLANNED" and (attempt != 0 or "attempt_id" in rec or "provider" in rec):
+            add("effect_audit.effects.planned_binding", "CORRUPTED", f"{path}: PLANNED effect carries attempt/provider")
+        if rec.get("state") != "PLANNED" and rec.get("attempt_id") != f"{eid}:attempt:{attempt}":
+            add("effect_audit.effects.attempt_binding", "CORRUPTED", f"{path}: attempt_id is not derived")
         if name != eid + ".json":
             add("effect_audit.effects.path_binding", "CORRUPTED", f"{path}: filename does not bind effect_id")
         if eid in effects:
@@ -96,6 +107,19 @@ def audit_effect_authority(aios_dir, add):
                 add("effect_audit.receipts.identity", "CORRUPTED", f"{path}: receipt_id does not match content")
         except (TypeError, ValueError) as exc:
             add("effect_audit.receipts.identity", "CORRUPTED", f"{path}: {exc}")
+        evidence = rec.get("evidence")
+        from .evidence import verify_evidence
+        if not isinstance(evidence, dict) or not verify_evidence(evidence):
+            add("effect_audit.receipts.evidence", "CORRUPTED", f"{path}: evidence is invalid")
+        elif evidence.get("run_id") != rec.get("attempt_id") or evidence.get("provider") != rec.get("provider"):
+            add("effect_audit.receipts.evidence_binding", "CORRUPTED", f"{path}: evidence does not bind attempt/provider")
+        if rec.get("outcome") not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
+            add("effect_audit.receipts.outcome", "CORRUPTED", f"{path}: invalid outcome")
+        trust = rec.get("source_authenticity")
+        if not isinstance(trust, dict) or trust.get("level") not in ("PROVIDER_SIGNED", "AIOS_INVOKED_UNSIGNED"):
+            add("effect_audit.receipts.source_authenticity", "UNSUPPORTED", f"{path}: source authenticity is legacy or unknown")
+        elif trust.get("level") == "AIOS_INVOKED_UNSIGNED" and rec.get("attestation") is not None:
+            add("effect_audit.receipts.source_authenticity", "CORRUPTED", f"{path}: unsigned receipt carries attestation")
         if name != rid + ".json":
             add("effect_audit.receipts.path_binding", "CORRUPTED", f"{path}: filename does not bind receipt_id")
         if rid in receipts:
@@ -120,6 +144,9 @@ def audit_effect_authority(aios_dir, add):
         if rec.get("record_type") != "EFFECT_RECONCILIATION" or missing:
             add("effect_audit.reconciliations.schema", "CORRUPTED", f"{path}: invalid type or missing {missing}")
             continue
+        trust = rec.get("source_authenticity")
+        if rec.get("verdict") in ("APPLIED", "NOT_APPLIED") and (not isinstance(trust, dict) or trust.get("level") != "PROVIDER_SIGNED"):
+            add("effect_audit.reconciliations.trust", "CORRUPTED", f"{path}: decisive verdict is not provider-signed")
         key = (rec.get("effect_id"), rec.get("attempt"))
         if key in reconciliations:
             add("effect_audit.reconciliations.replay", "INCONSISTENT", f"{path}: duplicate reconciliation for {key}")
@@ -156,6 +183,11 @@ def audit_effect_authority(aios_dir, add):
         if eid in evaluations:
             add("effect_audit.evaluations.replay", "INCONSISTENT", f"{path}: duplicate evaluation_id {eid}")
         evaluations[eid] = rec
+        identity = {"receipt_id": rec.get("receipt_id"), "evaluator_version": rec.get("evaluator_version"),
+                    "rubric_version": rec.get("rubric_version")}
+        expected_id = "EVAL-" + __import__("hashlib").sha256(canonical_json(identity).encode("utf-8")).hexdigest()
+        if eid != expected_id:
+            add("effect_audit.evaluations.identity", "CORRUPTED", f"{path}: evaluation_id does not match its binding")
         receipt = receipts.get(rec.get("receipt_id"))
         if receipt is None:
             add("effect_audit.evaluations.orphan", "INCONSISTENT", f"{path}: referenced receipt is missing")
