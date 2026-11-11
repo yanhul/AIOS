@@ -49,6 +49,7 @@ _ENTITY_DIRS = {
 _MANAGED_DIRS = set(_ENTITY_DIRS.values()) | {
     "tasks", "verifications", "snapshots", "events",
     "effects", "receipts", "reconciliations", "evaluations", "execution_claims",
+    "authority", "policies", "capabilities",
 }
 _KNOWN_EVENT_ACTIONS = {"entity.imported", "verification.recorded"}
 
