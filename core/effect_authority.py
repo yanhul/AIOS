@@ -89,18 +89,23 @@ def _attempt_id(effect_id, attempt):
 def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id, effect_type):
     _validate_strings(("contract_id", contract_id), ("logical_operation_id", logical_operation_id),
                       ("actor", actor), ("permit_id", permit_id), ("effect_type", effect_type))
-    contract, _permit = _authorized_contract(aios_dir, contract_id, permit_id, actor, effect_type)
     effect_id = _id(contract_id, logical_operation_id, actor)
-    rec = {
-        "record_type": "EXTERNAL_EFFECT", "effect_id": effect_id,
-        "contract_id": contract_id, "logical_operation_id": logical_operation_id,
-        "actor": actor, "effect_type": effect_type, "permit_id": permit_id,
-        "policy_digest": contract["policy_digest"], "max_attempts": contract["max_attempts"],
-        "state": "PLANNED", "attempt": 0,
-    }
     path = _path(aios_dir, effect_id)
     with _MutationLock(aios_dir):
         _recover_pending_unlocked(aios_dir)
+        # Authorization reads share the same lock as the create precondition
+        # and durable write, preventing a concurrent policy/permit mutation
+        # from invalidating the decision between check and commit.
+        contract, _permit = _authorized_contract(
+            aios_dir, contract_id, permit_id, actor, effect_type
+        )
+        rec = {
+            "record_type": "EXTERNAL_EFFECT", "effect_id": effect_id,
+            "contract_id": contract_id, "logical_operation_id": logical_operation_id,
+            "actor": actor, "effect_type": effect_type, "permit_id": permit_id,
+            "policy_digest": contract["policy_digest"], "max_attempts": contract["max_attempts"],
+            "state": "PLANNED", "attempt": 0,
+        }
         if os.path.exists(path):
             existing = _load(path)
             if canonical_json(existing) == canonical_json(rec):
@@ -110,9 +115,9 @@ def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id,
                  "contract_id": contract_id, "permit_id": permit_id, "effect_type": effect_type,
                  "state": "PLANNED", "actor": actor}
         _commit_batch_unlocked(aios_dir, [(os.path.join("effects", effect_id + ".json"), rec),
-                                (os.path.join("events", "effect-create-" + effect_id + ".json"), event)],
-                     )
+                                          (os.path.join("events", "effect-create-" + effect_id + ".json"), event)])
     return rec
+
 
 def _persist_transition(aios_dir, current, target, actor, fields):
     effect_id = current["effect_id"]
