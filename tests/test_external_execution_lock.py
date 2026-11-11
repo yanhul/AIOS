@@ -101,3 +101,38 @@ def test_direct_repair_worker_apply_is_blocked_before_file_write(tmp_path):
             files=[ProposedFile("new.txt", "must-not-write")],
         )
     assert not target.exists()
+
+
+def test_workload_runner_direct_entry_blocks_before_adapter_launch(tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    marker = tmp_path / "PWNED"
+    runner = Path(__file__).parents[1] / "scripts" / "run_workload_adapter.py"
+    command = [
+        sys.executable, str(runner), "--",
+        sys.executable, "-c",
+        f"from pathlib import Path; Path({str(marker)!r}).write_text('executed')",
+    ]
+    proc = subprocess.run(command, cwd=Path(__file__).parents[1], capture_output=True, text=True)
+    assert proc.returncode == 2
+    assert "independent actor issuer" in proc.stdout
+    assert not marker.exists()
+
+
+def test_pcb_eda_durable_runner_direct_entry_blocks_before_state_or_kit(tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).parents[1]
+    output = tmp_path / "output"
+    proc = subprocess.run(
+        [sys.executable, str(root / "scripts" / "run_pcb_eda_schematic_durable.py"),
+         "--output", str(output)],
+        cwd=root, capture_output=True, text=True,
+    )
+    assert proc.returncode == 2
+    assert "independent actor issuer" in proc.stdout
+    assert not output.exists()
