@@ -129,13 +129,19 @@ def _safe_repo_path(root: Path, raw: str) -> Path:
         canonical == prefix[:-1] or canonical.startswith(prefix) for prefix in RepositoryPatchAdapter._DENIED_PREFIXES
     ):
         raise ValueError("repository patch path is protected")
-    target = (root / p).resolve()
+    root = root.resolve()
+    cursor = root
+    # Inspect lexical components before resolve(); checking is_symlink() on a
+    # resolved target cannot detect the symlink that was followed.
+    for part in p.parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise ValueError("refusing symlink path component")
+    target = cursor.resolve()
     try:
         target.relative_to(root)
     except ValueError as exc:
         raise ValueError("repository patch path escapes root") from exc
-    if target.exists() and target.is_symlink():
-        raise ValueError("refusing to overwrite symlink")
     return target
 
 
