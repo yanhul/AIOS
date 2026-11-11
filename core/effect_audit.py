@@ -98,7 +98,10 @@ def audit_effect_authority(aios_dir, add):
                 add("effect_audit.effects.attempt_binding", "CORRUPTED", f"{path}: attempt_id/attempt is not a positive derived identity")
             if not isinstance(rec.get("provider"), str) or not rec.get("provider", "").strip():
                 add("effect_audit.effects.provider", "CORRUPTED", f"{path}: dispatched effect has no provider")
-        if attempt > rec.get("max_attempts", 0):
+        max_attempts = rec.get("max_attempts")
+        if (isinstance(attempt, int) and not isinstance(attempt, bool)
+                and isinstance(max_attempts, int) and not isinstance(max_attempts, bool)
+                and attempt > max_attempts):
             add("effect_audit.effects.attempt_budget", "CORRUPTED", f"{path}: attempt exceeds max_attempts")
         if name != eid + ".json":
             add("effect_audit.effects.path_binding", "CORRUPTED", f"{path}: filename does not bind effect_id")
