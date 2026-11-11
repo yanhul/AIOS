@@ -1,3 +1,5 @@
+pytestmark = pytest.mark.allow_unlocked_runtime
+
 import json
 import sys
 import pytest
