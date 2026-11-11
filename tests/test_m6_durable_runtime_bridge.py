@@ -4,6 +4,8 @@
 # AIOS-COVERAGE-GAP: Covers exact DISPATCHED attempt resume and bounded retry
 # AIOS-BASELINE: Tests target the existing M6 durable runtime bridge baseline
 
+pytestmark = pytest.mark.allow_unlocked_runtime
+
 import pytest
 
 from core.authority import persist_contract, persist_permit
