@@ -21,8 +21,9 @@ Enforcement provided by this module (and nothing more):
   at the start of every mutation.
 
 Not provided by this module (explicitly out of scope for M1.5): agents,
-policy, gates, verification, contradiction resolution, concurrency control
-beyond single-process atomic commit, OS-level protection of the RX50 tree.
+policy, gates, verification, contradiction resolution, or OS-level protection
+of the RX50 tree. The mutation lock serializes AIOS writers; it does not protect
+against external processes that bypass this module.
 
 Stdlib only. Never writes outside ``<aios_dir>``.
 """
