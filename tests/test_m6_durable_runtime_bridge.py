@@ -67,7 +67,8 @@ def setup(tmp_path, max_attempts=1):
 def test_execute_bridges_authorized_attempt_to_runtime(tmp_path):
     cid, pid = setup(tmp_path)
     result = execute(str(tmp_path), cid, pid, "op-1", "agent:test", GoodAdapter(), GoodRuntime())
-    assert result["state"] == "OBSERVED_SUCCESS"
+    assert result["state"] == "UNKNOWN"
+    assert "independent evidence issuer/verifier" in result["unknown_reason"]
 
 
 def test_runtime_binding_mismatch_fails_closed_before_provider(tmp_path):
