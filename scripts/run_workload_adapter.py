@@ -20,6 +20,7 @@ from core.contract import contract_identity, issue_permit, validate_contract, ve
 from core.policy_registry import resolve_policy
 from core.workload_registry import WorkloadRegistry
 from core.mutation import canonical_json
+from core.execution_lock import require_external_execution_enabled
 
 AUTHORITY = "yanhul/AIOS"
 DEFAULT_POLICY = "sha256:0640840b0d5ab455470a7069163a928bd6d14a79168e834bb218a79559ba46b7"
@@ -107,6 +108,10 @@ def persist_receipt(path: Path, receipt: dict) -> None:
 
 
 def main() -> int:
+    try:
+        require_external_execution_enabled()
+    except PermissionError as exc:
+        return blocked(str(exc))
     ap = argparse.ArgumentParser()
     ap.add_argument("--workload-id", required=True)
     ap.add_argument("--execution-id", required=True)
