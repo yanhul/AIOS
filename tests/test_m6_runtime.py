@@ -4,6 +4,8 @@
 # AIOS-COVERAGE-GAP: Covers bounded UNKNOWN retry, authority binding, and duplicate-effect prevention
 # AIOS-BASELINE: Existing M6 effect/runtime regression suite extended for explicit retry authority
 
+pytestmark = pytest.mark.allow_unlocked_runtime
+
 import os
 import pytest
 
