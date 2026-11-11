@@ -256,6 +256,11 @@ def persist_delegation(aios_dir: str, request: DelegationRequest) -> str:
     if not re.fullmatch(r"DG-[0-9a-f]{64}", request.delegation_id):
         raise DelegationError("delegation_id must be a canonical DG- SHA-256 identifier")
     record = request.as_dict()
+    # Validate content-derived identity at the persistence boundary, not only
+    # the identifier's syntax. Otherwise a syntactically valid forged ID can
+    # be written and will fail only when reloaded.
+    if request.delegation_id != _delegation_id(record):
+        raise DelegationError("delegation identity does not match request payload")
     path = f"delegations/{request.delegation_id}.json"
     event = {
         "kind": "governed_delegation",
