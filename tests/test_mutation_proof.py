@@ -51,10 +51,10 @@ def _run_mutant(source_path: str, mutation: tuple[str, str], harness: str) -> su
 
 def test_retry_disable_guard_mutation_is_killed():
     mutation = (
-        '    raise TransitionError(\\n'
-        '        "retry is disabled: independent issuer-backed authorization is not configured"\\n'
-        '    )\\n',
-        "    return None\\n",
+        '    raise TransitionError(\n'
+        '        "retry is disabled: independent issuer-backed authorization is not configured"\n'
+        '    )\n',
+        "    return None\n",
     )
     harness = r'''
 from core.effect_authority import retry_dispatch
