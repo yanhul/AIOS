@@ -101,7 +101,7 @@ def test_tampered_evidence_digest_is_rejected(tmp_path):
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1")
     evidence = _evidence()
     evidence["claim"] = "tampered"
-    with pytest.raises(ValueError):
+    with pytest.raises(PermissionError, match="independent evidence issuer/verifier"):
         observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", {
             "attempt_id": f"{effect['effect_id']}:attempt:1",
             "provider": "provider-1",
