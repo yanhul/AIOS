@@ -189,7 +189,13 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
 
 
 def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, retry_authorization=None):
-    """Explicitly dispatch the next attempt for an UNKNOWN effect."""
+    """Explicitly dispatch the next attempt for an UNKNOWN effect.
+
+    Caller-supplied dictionaries are not issuer-backed authorization. Retry is
+    disabled until an independent authorization verifier is wired into this
+    boundary; accepting mode/effect/attempt fields here is caller self-approval.
+    """
+    raise TransitionError("retry is disabled: independent issuer-backed authorization is not configured")
     _validate_strings(("effect_id", effect_id), ("actor", actor),
                       ("attempt_id", attempt_id), ("provider", provider))
     if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 2:
