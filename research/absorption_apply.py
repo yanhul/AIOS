@@ -14,13 +14,11 @@ def _path(name, default): return Path(os.environ.get(name, str(default)))
 def absorb(executor, verification, promotion, runtime, *, run_id):
     if runtime.get("overall") != "PASS":
         raise RuntimeError("cannot materialize absorption without PASS runtime proof")
-    exec_by_id={r.get("candidate_id"):r for r in executor.get("records",[])}
-    verified={r.get("candidate_id"):r for r in verification.get("records",[])}
     # Materialization has no independent issuer/verifier to authenticate a
     # candidate proof. A matching dictionary and digest are caller assertions,
     # so this boundary must never stamp runtime_status=PROVEN yet.
-    blocked=[] 
-    decisions=[d for d in promotion.get("decisions",[]) if d.get("allowed") is True and d.get("verdict")==="PROMOTE"]
+    blocked=[]
+    decisions=[d for d in promotion.get("decisions",[]) if d.get("allowed") is True and d.get("verdict")=="PROMOTE"]
     records=[]
     for d in decisions:
         cid=d.get("candidate_id")
@@ -30,7 +28,7 @@ def absorb(executor, verification, promotion, runtime, *, run_id):
         "absorbed_count":0,"deferred_count":expected,"records":[],
         "blocked":blocked+[{ "candidate_id":x.get("candidate_id"),"verdict":"DEFER",
         "reason":x.get("reason","promotion gate blocked")} for x in promotion.get("blocked",[])],
-        "overall":"BLOCKED" if expected else "BLOCKED",
+        "overall":"BLOCKED",
         "source_mutation":False,"external_code_execution":False,"authority":"AIOS_CONTROL_PLANE",
         "implementation_runtime_proof":"INCOMPLETE"}
     out=_path("AIOS_ABSORPTION_OUTCOME",DEFAULT_OUT); out.parent.mkdir(parents=True,exist_ok=True)
