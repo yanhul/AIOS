@@ -60,11 +60,11 @@ def setup_authority(tmp_path, max_attempts=1):
     return c, cid, permit["permit_id"]
 
 
-def test_runtime_success_is_explicitly_observed(tmp_path):
+def test_runtime_receipt_without_independent_issuer_remains_unknown(tmp_path):
     c, cid, pid = setup_authority(tmp_path)
     result = execute(str(tmp_path), cid, pid, "op-1", "agent:test", GoodAdapter())
-    assert result["state"] == "OBSERVED_SUCCESS"
-    assert result["provider_observation"]["provider_operation_id"] == "provider-op-1"
+    assert result["state"] == "UNKNOWN"
+    assert "independent evidence issuer/verifier" in result["unknown_reason"]
 
 
 def test_provider_timeout_becomes_unknown(tmp_path):
@@ -108,7 +108,8 @@ def test_execute_attempt_runs_only_a_dispatched_attempt(tmp_path):
     attempt_id = f"{effect['effect_id']}:attempt:1"
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")
     result = execute_attempt(str(tmp_path), c, effect, "agent:test", GoodAdapter(), attempt_id)
-    assert result["state"] == "OBSERVED_SUCCESS"
+    assert result["state"] == "UNKNOWN"
+    assert "independent evidence issuer/verifier" in result["unknown_reason"]
 
 
 def test_execute_attempt_ignores_forged_effect_and_contract_before_provider(tmp_path):
