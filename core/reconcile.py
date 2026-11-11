@@ -263,11 +263,16 @@ def reconcile(aios_dir, source_root=None):
             if ev is None:
                 add("D.corrupt_event", "CORRUPTED", f"{fn}: {err}")
                 continue
+            kind = ev.get("kind")
+            # External-effect events use their own stable effect/attempt
+            # filenames and schema; WP1 validates them separately without
+            # imposing the M1.5 mutation-event digest convention.
+            if kind == "external_effect":
+                continue
             ok, why = _event_identity_ok(ev, fn)
             if not ok:
                 add("D.event_digest", "CORRUPTED", why)
                 continue
-            kind = ev.get("kind")
             action = ev.get("action") or ev.get("type")
             if kind == "notice":
                 pass
