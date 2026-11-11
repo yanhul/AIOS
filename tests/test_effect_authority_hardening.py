@@ -4,6 +4,7 @@
 # AIOS-COVERAGE-GAP: Covers bounded UNKNOWN retry, authority binding, and duplicate-effect prevention
 # AIOS-BASELINE: Existing M6 effect/runtime regression suite extended for explicit retry authority
 
+import os
 import tempfile
 import multiprocessing as mp
 import json
