@@ -12,7 +12,7 @@ import os
 import re
 
 from .mutation import canonical_json
-from .mutation import canonical_json\nfrom .record_seal import SealError, require_seal, unsealed_body
+from .record_seal import SealError, require_seal, unsealed_body
 
 _EFFECT_RE = re.compile(r"EF-[0-9a-f]{64}\Z")
 _RECEIPT_RE = re.compile(r"RC-[0-9a-f]{64}\Z")
