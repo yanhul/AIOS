@@ -107,3 +107,20 @@ def test_reconcile_routes_external_effect_events_to_wp1_without_m1_5_digest_rule
     assert "D.event_digest" not in checks
     assert "G.unsupported_event" not in checks
     assert result["overall"] == "VALID"
+
+def test_reconcile_accepts_real_sealed_receipt_claim_and_evaluation_lineage(tmp_path):
+    from core.evaluation_plane import evaluate_persisted_receipt
+    from core.reconcile import reconcile
+    from tests.test_p1_receipt_load_binding_126 import _done
+
+    aios, done = _done(tmp_path)
+    evaluate_persisted_receipt(
+        aios,
+        done["receipt_id"],
+        evaluator_version="audit-test-evaluator",
+        rubric_version="audit-test-rubric",
+        verdict="PASS",
+        result={"reviewed": True},
+    )
+    result = reconcile(aios)
+    assert result["overall"] == "VALID", result["findings"]
