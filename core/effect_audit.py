@@ -289,7 +289,7 @@ def audit_effect_authority(aios_dir, add):
             continue
         effect = effects[eid]
         action = ev.get("action")
-        allowed = {"create", "dispatch", "transition", "reconcile"}
+        allowed = {"create", "dispatch", "transition", "reconcile", "observe"}
         if action not in allowed:
             add("effect_audit.events.schema", "CORRUPTED", f"{path}: unknown external-effect action {action!r}")
         if not isinstance(ev.get("actor"), str) or not ev.get("actor", "").strip():
@@ -300,7 +300,7 @@ def audit_effect_authority(aios_dir, add):
                     add("effect_audit.events.binding", "CORRUPTED", f"{path}: create event {field} differs from effect")
             if ev.get("state") != "PLANNED":
                 add("effect_audit.events.transition", "CORRUPTED", f"{path}: create event must establish PLANNED")
-        elif action in ("dispatch", "transition", "reconcile"):
+        elif action in ("dispatch", "transition", "reconcile", "observe"):
             attempt = ev.get("attempt")
             if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 1:
                 add("effect_audit.events.attempt", "CORRUPTED", f"{path}: {action} event has invalid attempt")
@@ -313,6 +313,12 @@ def audit_effect_authority(aios_dir, add):
                 add("effect_audit.events.transition", "CORRUPTED", f"{path}: invalid transition target")
             if action == "reconcile" and ev.get("verdict") not in ("APPLIED", "NOT_APPLIED", "INCONCLUSIVE"):
                 add("effect_audit.events.verdict", "CORRUPTED", f"{path}: invalid reconciliation verdict")
+            if action == "observe":
+                if ev.get("to_state") not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE") or not isinstance(ev.get("receipt_id"), str) or not _RECEIPT_RE.fullmatch(ev.get("receipt_id", "")):
+                    add("effect_audit.events.observation", "CORRUPTED", f"{path}: observation event lacks terminal outcome/receipt identity")
+                receipt = receipts.get(ev.get("receipt_id"))
+                if receipt is None or receipt.get("effect_id") != eid or receipt.get("attempt_id") != ev.get("attempt_id"):
+                    add("effect_audit.events.receipt_binding", "INCONSISTENT", f"{path}: observation event does not bind a stored receipt for this effect/attempt")
         key = (action, eid, ev.get("attempt"), ev.get("attempt_id"), ev.get("receipt_id"), ev.get("verdict"))
         if key in seen_events:
             add("effect_audit.events.replay", "INCONSISTENT", f"{path}: duplicate external-effect event identity")
