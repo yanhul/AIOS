@@ -4,17 +4,15 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _allow_unit_runtime_paths_only(monkeypatch, request):
-    """Exercise runtime/state-machine semantics without enabling deployed effects.
+def _allow_unlocked_runtime_paths_only(monkeypatch, request):
+    """Opt-in seam for isolated state-machine/provider unit tests only.
 
-    The dedicated execution-lock tests deliberately do not receive this
-    test-only seam. Production code has no environment or caller override.
+    Tests that need successful inner runtime behavior must carry the explicit
+    allow_unlocked_runtime marker. Unmarked tests, including security
+    regressions and direct-entry tests, always use the real lock. This fixture
+    is test-only and never changes production configuration.
     """
-    if request.node.path.name == "test_external_execution_lock.py":
+    if request.node.get_closest_marker("allow_unlocked_runtime") is None:
         return
-    import core.runtime as runtime
-    monkeypatch.setattr(runtime, "require_external_execution_enabled", lambda: None, raising=False)
-    # runtime imports the gate locally at the enforcement point; patch the
-    # source module only for tests that are explicitly exercising inner logic.
     import core.execution_lock as lock
     monkeypatch.setattr(lock, "require_external_execution_enabled", lambda: None)
