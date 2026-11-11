@@ -1,0 +1,32 @@
+name: Exact-commit adversarial lock audit
+
+on:
+  push:
+    branches:
+      - audit/adversarial-7c560f
+
+permissions:
+  contents: read
+
+jobs:
+  adversarial:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: python -m pip install pytest PyYAML cryptography
+      - name: Run adversarial tests against 7c560f code
+        env:
+          AIOS_REQUIRE_CRYPTO_TESTS: "1"
+        run: >-
+          python -m pytest -q
+          tests/test_mutation_lock_serialization.py
+          tests/test_mutation_lock_process.py
+          tests/test_p1_execution_claim_integrity_126.py
+          tests/test_p0_receipt_lineage_crash_recovery.py
+          tests/test_p1_receipt_load_binding_126.py
+          tests/test_evaluation_plane.py
