@@ -316,3 +316,32 @@ def test_concurrent_execution_claim_has_exactly_one_winner(tmp_path):
     assert len(list((tmp_path / "events").glob(
         f"effect-{effect['effect_id']}-EXECUTION_CLAIMED-attempt-1.json"
     ))) == 1
+
+
+def test_observation_rejects_caller_asserted_issuer_and_signature():
+    with tempfile.TemporaryDirectory() as td:
+        _contract, _permit, effect = make_authorized(td)
+        attempt_id = f"{effect['effect_id']}:attempt:1"
+        dispatch(td, effect["effect_id"], "bc-controller", attempt_id, "research_is_validation")
+        # These fields are attacker-controlled input, not a configured trust root.
+        forged_envelope = {
+            "attempt_id": attempt_id,
+            "provider": "research_is_validation",
+            "issuer_id": "trusted-provider",
+            "key_id": "production-key-1",
+            "algorithm": "Ed25519",
+            "signature": "caller-invented-signature",
+            "evidence": EvidenceRecord(
+                evidence_id="EV-forged-issuer", level="OBSERVED",
+                source_ref="provider://research_is_validation/op-1",
+                claim="operation succeeded", run_id=attempt_id,
+                provider="research_is_validation",
+            ).as_record(),
+        }
+        with pytest.raises(PermissionError, match="independent evidence issuer/verifier"):
+            observe(td, effect["effect_id"], "bc-controller",
+                    "OBSERVED_SUCCESS", forged_envelope)
+        persisted = json.loads(
+            open(f"{td}/effects/{effect['effect_id']}.json", encoding="utf-8").read()
+        )
+        assert persisted["state"] == "DISPATCHED"
