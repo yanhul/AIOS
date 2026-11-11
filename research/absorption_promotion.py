@@ -16,18 +16,35 @@ DEFAULT_OUT=Path("research/artifacts/absorption-promotion.json")
 
 def promote(data: dict, runtime: dict | None = None) -> dict:
     runtime = runtime or {}
-    runtime_ok = runtime.get("overall") == "PASS"
+    candidate_proofs = runtime.get("candidate_proofs")
+    if not isinstance(candidate_proofs, dict):
+        candidate_proofs = {}
+
+    def candidate_proof_matches(record: dict) -> bool:
+        proof = candidate_proofs.get(record.get("candidate_id"))
+        return (
+            runtime.get("overall") == "PASS"
+            and isinstance(proof, dict)
+            and proof.get("overall") == "PASS"
+            and proof.get("candidate_id") == record.get("candidate_id")
+            and proof.get("primitive") == record.get("primitive")
+            and proof.get("target_surface") == record.get("target_surface")
+            and isinstance(proof.get("digest"), str)
+            and bool(proof.get("digest").strip())
+        )
+
     decisions=[]; blocked=[]
     for record in data.get("records", []):
         decision=gate_promotion(record, required_level="VERIFIED_DIGITAL")
-        allowed=decision.allowed and runtime_ok
+        candidate_runtime_ok = candidate_proof_matches(record)
+        allowed=decision.allowed and candidate_runtime_ok
         item={"candidate_id":record.get("candidate_id"),"run_id":record.get("run_id"),
               "source_ref":record.get("source_ref"),"claim":record.get("claim"),
               "level":record.get("level"),"allowed":allowed,
               "action":"PROMOTE_TO_ABSORBED_REGISTRY" if allowed else "HOLD",
               "verdict":"PROMOTE" if allowed else "DEFER"}
         if not decision.allowed: item["reason"]=decision.reason
-        elif not runtime_ok: item["reason"]="implementation/runtime proof is not PASS"
+        elif not candidate_runtime_ok: item["reason"]="candidate-bound implementation/runtime proof is missing or mismatched"
         (decisions if allowed else blocked).append(item)
     for failure in data.get("failures", []):
         blocked.append({"candidate_id":failure.get("candidate_id"),"run_id":data.get("run_id"),
@@ -35,13 +52,14 @@ def promote(data: dict, runtime: dict | None = None) -> dict:
                         "verdict":"DEFER","level":failure.get("level","UNKNOWN"),
                         "reason":"; ".join(failure.get("errors",[])) or "independent verification did not complete",
                         "errors":failure.get("errors",[])})
+    proof_complete = bool(data.get("records")) and all(candidate_proof_matches(record) for record in data.get("records", []))
     result={"schema_version":2,"kind":"AIOS_ABSORPTION_PROMOTION","run_id":data.get("run_id"),
             "decisions":decisions,"blocked":blocked,
             "candidate_count":len(decisions)+len(blocked),"promoted_count":len(decisions),
             "deferred_count":len(blocked),
-            "overall":"PASS" if decisions and not blocked and data.get("overall")=="PASS" and runtime_ok
+            "overall":"PASS" if decisions and not blocked and data.get("overall")=="PASS" and proof_complete
                      else "PASS_WITH_HOLDS" if decisions or blocked else "BLOCKED",
-            "implementation_runtime_proof":runtime_ok,"source_mutation":False,
+            "implementation_runtime_proof":proof_complete,"source_mutation":False,
             "external_code_execution":False,"authority":"AIOS_CONTROL_PLANE"}
     out=_path("AIOS_ABSORPTION_PROMOTION_OUT",DEFAULT_OUT)
     out.parent.mkdir(parents=True,exist_ok=True); out.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n",encoding="utf-8")

@@ -7,7 +7,7 @@ import os
 import subprocess
 import tempfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Mapping, Sequence
 
 from .agent_repair_worker import ProposedFile
@@ -119,11 +119,14 @@ def _safe_repo_path(root: Path, raw: str) -> Path:
     if not isinstance(raw, str) or not raw.strip() or "\x00" in raw:
         raise ValueError("invalid repository patch path")
     path = raw.replace("\\", "/")
-    p = Path(path)
-    if p.is_absolute() or path.startswith("/") or ".." in p.parts:
+    # Normalize dot segments before checking protected path prefixes.
+    p = PurePosixPath(path)
+    native = Path(path)
+    if native.is_absolute() or p.is_absolute() or path.startswith("/") or (len(path) >= 2 and path[1] == ":") or ".." in p.parts:
         raise ValueError("repository patch path escapes root")
+    canonical = "/".join(p.parts)
     if p.name in RepositoryPatchAdapter._DENIED_FILES or any(
-        path == prefix[:-1] or path.startswith(prefix) for prefix in RepositoryPatchAdapter._DENIED_PREFIXES
+        canonical == prefix[:-1] or canonical.startswith(prefix) for prefix in RepositoryPatchAdapter._DENIED_PREFIXES
     ):
         raise ValueError("repository patch path is protected")
     target = (root / p).resolve()

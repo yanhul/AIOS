@@ -154,8 +154,8 @@ class PcbExecutor:
                 },
                 "blockers": [{"id": f"EVIDENCE:{x}", "status": "BLOCKED"} for x in result["unresolved_requirements"]],
                 "receipt": {
-                    "effect_id": f"{self.args.task_id}:effect:{state.get('step', 0)+1}",
-                    "attempt_id": f"{self.args.task_id}:attempt:{state.get('step', 0)+1}",
+                    "effect_id": (state.get("in_flight_attempt") or {}).get("effect_id"),
+                    "attempt_id": (state.get("in_flight_attempt") or {}).get("attempt_id"),
                     "status": "OBSERVED",
                     "evidence": {"provider": "aios-control-plane-evidence-discovery", "discovery_result": result},
                 },
@@ -179,8 +179,8 @@ class PcbExecutor:
             "blockers": blockers,
             "classified_blockers": kinds,
             "receipt": {
-                "effect_id": f"{self.args.task_id}:effect:{state.get('step', 0)+1}",
-                "attempt_id": f"{self.args.task_id}:attempt:{state.get('step', 0)+1}",
+                "effect_id": (state.get("in_flight_attempt") or {}).get("effect_id"),
+                "attempt_id": (state.get("in_flight_attempt") or {}).get("attempt_id"),
                 "status": "OBSERVED",
                 "evidence": {
                     "provider": "altium-audit-kit",

@@ -167,13 +167,16 @@ def _transition_dispatch(aios_dir, effect_id, actor, *, attempt, attempt_id, pro
 
 
 def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
-    _validate_strings(("attempt_id", attempt_id), ("provider", provider))
+    _validate_strings(("effect_id", effect_id), ("actor", actor),
+                      ("attempt_id", attempt_id), ("provider", provider))
     recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
     if not os.path.exists(path):
         raise KeyError(f"unknown effect: {effect_id}")
     current = _load(path)
     _validate_persisted_effect(aios_dir, current)
+    if current.get("actor") != actor:
+        raise TransitionError("dispatch actor does not match effect owner")
     if current.get("state") != "PLANNED":
         raise TransitionError(f"initial dispatch requires PLANNED effect, got {current.get('state')}")
     expected = _attempt_id(effect_id, 1)

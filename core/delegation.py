@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -65,6 +66,11 @@ class DelegationRequest:
     evidence_required: tuple[str, ...]
     lineage: ExecutionLineage
     state: str = DELEGATION_STATE
+
+    def __post_init__(self) -> None:
+        # IDs are path components and must never be caller-controlled paths.
+        if not isinstance(self.delegation_id, str) or not re.fullmatch(r"DG-[0-9a-f]{64}", self.delegation_id):
+            raise DelegationError("delegation_id must be a canonical DG- SHA-256 identifier")
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -245,6 +251,10 @@ def validate_delegation(
 
 def persist_delegation(aios_dir: str, request: DelegationRequest) -> str:
     """Persist the proposal atomically; persistence is not authorization."""
+    if not isinstance(request, DelegationRequest):
+        raise DelegationError("persist_delegation requires a validated DelegationRequest")
+    if not re.fullmatch(r"DG-[0-9a-f]{64}", request.delegation_id):
+        raise DelegationError("delegation_id must be a canonical DG- SHA-256 identifier")
     record = request.as_dict()
     path = f"delegations/{request.delegation_id}.json"
     event = {

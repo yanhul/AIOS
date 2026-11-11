@@ -16,12 +16,27 @@ def absorb(executor, verification, promotion, runtime, *, run_id):
         raise RuntimeError("cannot materialize absorption without PASS runtime proof")
     exec_by_id={r.get("candidate_id"):r for r in executor.get("records",[])}
     verified={r.get("candidate_id"):r for r in verification.get("records",[])}
+    candidate_proofs = runtime.get("candidate_proofs")
+    if not isinstance(candidate_proofs, dict):
+        candidate_proofs = {}
     decisions=[d for d in promotion.get("decisions",[]) if d.get("allowed") is True and d.get("verdict")=="PROMOTE"]
     records=[]; blocked=[]
     for d in decisions:
         cid=d.get("candidate_id"); e=exec_by_id.get(cid); v=verified.get(cid)
         if not e or not v:
             blocked.append({"candidate_id":cid,"verdict":"HOLD","reason":"missing executor or independent-verification lineage"}); continue
+        proof = candidate_proofs.get(cid)
+        adaptation = e.get("adaptation") if isinstance(e.get("adaptation"), dict) else {}
+        if (
+            not isinstance(proof, dict)
+            or proof.get("overall") != "PASS"
+            or proof.get("candidate_id") != cid
+            or proof.get("primitive") != adaptation.get("primitive")
+            or proof.get("target_surface") != adaptation.get("target_surface")
+            or not isinstance(proof.get("digest"), str)
+            or not proof.get("digest").strip()
+        ):
+            blocked.append({"candidate_id":cid,"verdict":"HOLD","reason":"missing candidate-bound runtime proof"}); continue
         records.append({"candidate_id":cid,"run_id":run_id,"source_ref":e["source_ref"],
             "source_digest":e["source_digest"],"evidence_digest":e["evidence_digest"],
             "test_digest":v["test_digest"],"claim":v["claim"],"primitive":e["adaptation"]["primitive"],
@@ -30,7 +45,7 @@ def absorb(executor, verification, promotion, runtime, *, run_id):
             "status":"ABSORBED","implementation_status":"IMPLEMENTED_AND_CONFORMANT",
             "runtime_status":"PROVEN","external_code_copy":False,"external_code_execution":False,
             "source_mutation":False,"authority":"AIOS_CONTROL_PLANE",
-            "verification":"INDEPENDENT_STRUCTURAL_CONFORMANCE","runtime_proof":runtime.get("digest")})
+            "verification":"INDEPENDENT_STRUCTURAL_CONFORMANCE","runtime_proof":proof.get("digest")})
     expected=len(promotion.get("decisions",[]))+len(promotion.get("blocked",[]))
     result={"schema_version":2,"kind":"AIOS_ABSORPTION","run_id":run_id,"candidate_count":expected,
         "absorbed_count":len(records),"deferred_count":expected-len(records),"records":records,
@@ -38,7 +53,7 @@ def absorb(executor, verification, promotion, runtime, *, run_id):
         "reason":x.get("reason","promotion gate blocked")} for x in promotion.get("blocked",[])],
         "overall":"PASS" if expected and len(records)==expected and not blocked else "PASS_WITH_HOLDS" if records else "BLOCKED",
         "source_mutation":False,"external_code_execution":False,"authority":"AIOS_CONTROL_PLANE",
-        "implementation_runtime_proof":"PASS"}
+        "implementation_runtime_proof":"PASS" if expected and len(records) == expected and not blocked else "INCOMPLETE"}
     out=_path("AIOS_ABSORPTION_OUTCOME",DEFAULT_OUT); out.parent.mkdir(parents=True,exist_ok=True)
     out.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n",encoding="utf-8"); return result
 

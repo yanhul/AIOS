@@ -6,7 +6,7 @@ import os
 import subprocess
 import tempfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Mapping, Protocol, Sequence
 
 
@@ -94,13 +94,13 @@ class AgentRepairWorker:
         if "\x00" in raw:
             raise RepairWorkerError("patch path contains NUL")
         path = raw.replace("\\", "/")
-        normalized = Path(path)
-        if path.startswith("/") or path.startswith("../") or "/../" in path:
+        normalized = PurePosixPath(path)
+        native = Path(path)
+        if path.startswith("/") or normalized.is_absolute() or native.is_absolute() or (len(path) >= 2 and path[1] == ":") or ".." in normalized.parts:
             raise RepairWorkerError(f"patch path escapes repository: {raw!r}")
-        if normalized.is_absolute() or ".." in normalized.parts:
-            raise RepairWorkerError(f"patch path escapes repository: {raw!r}")
+        canonical = "/".join(normalized.parts)
         if normalized.name in self._DENIED_FILES or any(
-            path == prefix.rstrip("/") or path.startswith(prefix) for prefix in self._DENIED_PREFIXES
+            canonical == prefix.rstrip("/") or canonical.startswith(prefix) for prefix in self._DENIED_PREFIXES
         ):
             raise RepairWorkerError(f"patch path is protected: {raw!r}")
         target = (self.root / normalized).resolve()

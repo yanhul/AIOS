@@ -224,6 +224,12 @@ class DurableTransitionLog:
             lines = fh.readlines()
 
         for index, raw in enumerate(lines):
+            # A record is committed only with its terminating newline. Even
+            # valid JSON without it is an incomplete tail and must be dropped
+            # before the next append.
+            if index == len(lines) - 1 and raw and not raw.endswith(b"\n"):
+                dropped += 1
+                break
             if not raw.strip():
                 if index == len(lines) - 1 and not raw.endswith(b"\n"):
                     dropped += 1
