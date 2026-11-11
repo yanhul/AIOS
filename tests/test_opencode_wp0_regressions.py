@@ -255,3 +255,82 @@ def test_policy_persistence_uses_sanitized_path(tmp_path, monkeypatch):
     digest = registry.persist_policy(str(tmp_path), policy)
     assert writes[0][0] == "policies/" + registry._policy_filename(digest)
     assert ":" not in writes[0][0]
+
+
+def test_both_patch_paths_reject_symlink_alias_to_protected_directory(tmp_path):
+    root = tmp_path.resolve()
+    protected = root / ".github" / "workflows"
+    protected.mkdir(parents=True)
+    alias = root / "safe-alias"
+    try:
+        alias.symlink_to(protected, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink creation is unavailable on this platform")
+
+    worker = AgentRepairWorker(root, _NoAuthority())
+    with pytest.raises(RepairWorkerError, match="symlink"):
+        worker._safe_path("safe-alias/ci.yml")
+    with pytest.raises(ValueError, match="symlink"):
+        _safe_repo_path(root, "safe-alias/ci.yml")
+
+
+def test_retry_dispatch_rejects_caller_forged_explicit_dictionary(tmp_path):
+    import core.effect_authority as authority
+
+    with pytest.raises(TransitionError, match="independent issuer-backed"):
+        authority.retry_dispatch(
+            str(tmp_path), "EF-forged", "owner", "EF-forged:attempt:2",
+            "provider", 2,
+            {"mode": "EXPLICIT", "effect_id": "EF-forged", "attempt": 2},
+        )
+
+
+def test_delegation_persistence_rejects_well_formed_but_wrong_identity(tmp_path, monkeypatch):
+    from core import delegation
+
+    lineage = SimpleNamespace(as_record=lambda: {"lineage_digest": "lineage"})
+    request = DelegationRequest(
+        delegation_id="DG-" + "0" * 64,
+        source_contract_id="c",
+        source_permit_id="p",
+        source_actor="a",
+        target_role="worker",
+        authority_mode="none",
+        credential_ref=None,
+        memory_scope="private",
+        target_capability="worker@1",
+        operation_id="op",
+        input_digest="digest",
+        evidence_required=("receipt",),
+        lineage=lineage,
+    )
+    monkeypatch.setattr(delegation, "commit_batch", lambda *args: pytest.fail("must not persist"))
+    with pytest.raises(DelegationError, match="identity"):
+        delegation.persist_delegation(str(tmp_path), request)
+
+
+def test_candidate_shaped_but_unverified_runtime_proof_stays_on_hold(tmp_path, monkeypatch):
+    import research.absorption_promotion as promotion
+
+    monkeypatch.setenv("AIOS_ABSORPTION_PROMOTION_OUT", str(tmp_path / "promotion.json"))
+    monkeypatch.setattr(
+        promotion, "gate_promotion",
+        lambda *args, **kwargs: SimpleNamespace(allowed=True, reason="verified"),
+    )
+    record = {
+        "candidate_id": "c1", "run_id": "r1", "source_ref": "source",
+        "claim": "claim", "level": "VERIFIED_DIGITAL",
+        "primitive": "durable_execution", "target_surface": "adapter",
+    }
+    fake_proof = {
+        "overall": "PASS", "candidate_id": "c1",
+        "primitive": "durable_execution", "target_surface": "adapter",
+        "digest": "not-a-cryptographic-proof",
+    }
+    result = promotion.promote(
+        {"run_id": "r1", "overall": "PASS", "records": [record], "failures": []},
+        {"overall": "PASS", "candidate_proofs": {"c1": fake_proof}},
+    )
+    assert result["promoted_count"] == 0
+    assert result["overall"] == "PASS_WITH_HOLDS"
+    assert result["blocked"][0]["reason"] == "candidate-bound implementation/runtime proof is missing or mismatched"
