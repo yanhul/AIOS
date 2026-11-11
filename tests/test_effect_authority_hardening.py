@@ -245,17 +245,14 @@ def test_observation_requires_current_attempt_and_valid_aios_evidence():
             run_id="run-1",
             provider="provider-a",
         ).as_record()
-        observed = observe(
-            td,
-            effect["effect_id"],
-            "bc-controller",
-            "OBSERVED_SUCCESS",
-            {"attempt_id": attempt_id, "provider": "provider-a", "evidence": evidence},
-        )
-        assert observed["state"] == "OBSERVED_SUCCESS"
-        with pytest.raises(TransitionError):
-            observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS",
-                    {"attempt_id": attempt_id, "provider": "provider-a", "evidence": evidence})
+        observation = {"attempt_id": attempt_id, "provider": "provider-a", "evidence": evidence}
+        # A caller-computed digest is not independent issuer authentication.
+        with pytest.raises(PermissionError, match="independent evidence issuer/verifier"):
+            observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS", observation)
+        persisted = json.loads((tmp_path / "effects" / (effect["effect_id"] + ".json")).read_text())
+        assert persisted["state"] == "DISPATCHED"
+        with pytest.raises(PermissionError, match="independent evidence issuer/verifier"):
+            observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS", observation)
 
 
 def test_tampered_persisted_authority_blocks_future_transition():
