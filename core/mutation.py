@@ -411,10 +411,12 @@ def _require_committed_event(aios_dir, entity):
         f"with or predates M1.5")
 
 
-def commit_batch(aios_dir, payloads, *, lock_held=False):
-    """Commit a batch; lock_held is for callers already holding _MutationLock."""
-    if lock_held:
-        return _commit_batch_unlocked(aios_dir, payloads)
+def commit_batch(aios_dir, payloads):
+    """Commit a batch under the shared mutation lock.
+
+    Callers already holding the lock must use the private
+    _commit_batch_unlocked kernel; no caller-controlled boolean bypass exists.
+    """
     with _MutationLock(aios_dir):
         return _commit_batch_unlocked(aios_dir, payloads)
 
