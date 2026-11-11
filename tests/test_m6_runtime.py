@@ -110,6 +110,33 @@ def test_execute_attempt_runs_only_a_dispatched_attempt(tmp_path):
     assert result["state"] == "OBSERVED_SUCCESS"
 
 
+def test_execute_attempt_ignores_forged_effect_and_contract_before_provider(tmp_path):
+    _, cid, pid = setup_authority(tmp_path)
+    planned = create_effect(str(tmp_path), cid, "op-forged", "agent:test", pid, "external_effect")
+
+    class CountingAdapter(GoodAdapter):
+        calls = 0
+        def execute(self, **kwargs):
+            self.calls += 1
+            return super().execute(**kwargs)
+
+    adapter = CountingAdapter()
+    forged_effect = {
+        "effect_id": planned["effect_id"], "state": "DISPATCHED",
+        "attempt": 1, "attempt_id": f"{planned['effect_id']}:attempt:1",
+        "provider": "fake-provider", "actor": "agent:test",
+    }
+    forged_contract = dict(contract("forged-policy"))
+    with pytest.raises(Exception, match="authoritative DISPATCHED"):
+        execute_attempt(str(tmp_path), forged_contract, forged_effect, "agent:test",
+                        adapter, forged_effect["attempt_id"])
+    assert adapter.calls == 0
+    import json
+    persisted = json.loads((tmp_path / "effects" / (planned["effect_id"] + ".json")).read_text())
+    assert persisted["state"] == "PLANNED"
+    assert persisted.get("execution_claimed", False) is False
+
+
 def test_execute_attempt_rejects_non_dispatched_effect(tmp_path):
     c, cid, pid = setup_authority(tmp_path)
     effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
