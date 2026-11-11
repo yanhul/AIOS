@@ -162,7 +162,8 @@ def _transition_dispatch(aios_dir, current, actor, *, attempt, attempt_id, provi
         raise TransitionError(f"initial dispatch requires PLANNED effect, got {current.get('state')}")
     updated = dict(current)
     updated.update({"state": "DISPATCHED", "attempt": attempt,
-                    "attempt_id": attempt_id, "provider": provider})
+                    "attempt_id": attempt_id, "provider": provider,
+                    "execution_claimed": False})
     event = {
         "kind": "external_effect", "action": "dispatch", "effect_id": effect_id,
         "from_state": current["state"], "to_state": "DISPATCHED", "actor": actor,
@@ -193,6 +194,57 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
             raise TransitionError("effect has no authorized execution attempts")
         return _transition_dispatch(aios_dir, current, actor,
                                     attempt=1, attempt_id=attempt_id, provider=provider)
+
+
+def claim_execution(aios_dir, effect_id, actor, attempt_id, provider):
+    """Atomically claim the authoritative dispatched attempt exactly once.
+
+    Contract and effect data are loaded from the authority store, not from
+    caller dictionaries. A persisted claim is never reusable after a crash:
+    ambiguous execution remains blocked rather than replaying a side effect.
+    """
+    _validate_strings(("effect_id", effect_id), ("actor", actor),
+                      ("attempt_id", attempt_id), ("provider", provider))
+    recover_pending(aios_dir)
+    path = _path(aios_dir, effect_id)
+    with _MutationLock(aios_dir):
+        if not os.path.exists(path):
+            raise KeyError(f"unknown effect: {effect_id}")
+        current = _load(path)
+        contract, _permit = _validate_persisted_effect(aios_dir, current)
+        if actor != current.get("actor"):
+            raise TransitionError("execution actor does not match effect owner")
+        if current.get("state") != "DISPATCHED":
+            raise TransitionError("execution claim requires authoritative DISPATCHED effect")
+        if attempt_id != current.get("attempt_id") or attempt_id != _attempt_id(effect_id, current.get("attempt")):
+            raise TransitionError("execution attempt does not match authoritative dispatched attempt")
+        if provider != current.get("provider"):
+            raise TransitionError("execution provider does not match authoritative dispatched provider")
+        if not any(
+            isinstance(ref, str) and ref.split("@", 1)[0] == provider
+            for ref in contract.get("capabilities", [])
+        ):
+            raise PermissionError("provider capability is not authorized by persisted contract")
+        if current.get("execution_claimed", False):
+            raise TransitionError("dispatched attempt already has a single-use execution claim")
+        updated = dict(current)
+        updated["execution_claimed"] = True
+        updated["execution_claimed_attempt_id"] = attempt_id
+        event = {
+            "kind": "external_effect", "action": "execution_claim",
+            "effect_id": effect_id, "state": "DISPATCHED",
+            "actor": actor, "attempt": current.get("attempt"),
+            "attempt_id": attempt_id, "provider": provider,
+        }
+        commit_batch(
+            aios_dir,
+            [(os.path.join("effects", effect_id + ".json"), updated),
+             (os.path.join("events", "effect-" + effect_id + "-EXECUTION_CLAIMED-attempt-" +
+                           str(current.get("attempt")) + ".json"), event)],
+            lock_held=True,
+        )
+        return contract, updated
+
 
 def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, retry_authorization=None):
     """Fail closed: UNKNOWN retry requires an independent issuer, not caller data."""
