@@ -47,7 +47,7 @@ _ENTITY_DIRS = {
     "CONTRADICTION": "issues",
 }
 _MANAGED_DIRS = set(_ENTITY_DIRS.values()) | {
-    "tasks", "verifications", "snapshots", "events",
+    "tasks", "verifications", "snapshots", "events",\n    "effects", "receipts", "reconciliations", "evaluations", "execution_claims",
 }
 _KNOWN_EVENT_ACTIONS = {"entity.imported", "verification.recorded"}
 
@@ -390,7 +390,7 @@ def reconcile(aios_dir, source_root=None):
                 add("G.unexpected_entry", "UNSUPPORTED",
                     f"unrecognized entry under .aios/: {entry}")
 
-    # ---- H: source/store divergence (M3, detection only) --------------------
+    # ---- WP1: external-effect authority lineage (detection only) -------------\n    from .effect_audit import audit_effect_authority\n    audit_effect_authority(aios_dir, add)\n\n    # ---- H: source/store divergence (M3, detection only) --------------------
     if source_root is not None:
         _check_source_divergence(aios_dir, source_root, entities, add)
 
