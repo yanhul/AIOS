@@ -17,7 +17,6 @@ import os
 
 from .authority import authorize, load_contract, load_permit
 from .contract import verify_permit
-from .evidence import verify_evidence
 from .mutation import (TransitionError, _MutationLock, _commit_batch_unlocked,
                       _recover_pending_unlocked, canonical_json)
 
@@ -290,10 +289,12 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
             raise TransitionError("observation attempt does not match dispatched attempt")
         if provider != current.get("provider"):
             raise TransitionError("observation provider does not match dispatched provider")
-        if not isinstance(evidence, dict) or not verify_evidence(evidence):
-            raise ValueError("observation requires a valid AIOS evidence record")
         if evidence.get("provider") != provider:
             raise ValueError("evidence provider does not match effect provider")
-        return _persist_transition(aios_dir, current, outcome, actor,
-                                   {"provider_observation": provider_observation})
+        # An unkeyed digest proves payload integrity, not issuer identity or
+        # provider origin. No independent trust-root/verifier is configured,
+        # so terminal observations remain fail-closed.
+        raise PermissionError(
+            "observation BLOCKED: independent evidence issuer/verifier is not configured"
+        )
 
