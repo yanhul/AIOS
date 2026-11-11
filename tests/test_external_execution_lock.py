@@ -83,3 +83,21 @@ def test_direct_repository_mutation_adapter_call_is_blocked_before_write(tmp_pat
         adapter.execute(
             contract={}, effect={"effect_id": "EF-x"}, attempt_id="EF-x:attempt:1"
         )
+
+
+def test_direct_repair_worker_apply_is_blocked_before_file_write(tmp_path):
+    from core.agent_repair_worker import AgentRepairWorker, ProposedFile
+    from core.execution_lock import ExternalExecutionBlocked
+
+    class Authority:
+        def authorize_patch(self, *, base_sha, paths):
+            return "permit"
+
+    worker = AgentRepairWorker(tmp_path, Authority())
+    target = tmp_path / "new.txt"
+    with pytest.raises(ExternalExecutionBlocked, match="independent actor issuer"):
+        worker.apply(
+            base_sha="0" * 40,
+            files=[ProposedFile("new.txt", "must-not-write")],
+        )
+    assert not target.exists()

@@ -152,6 +152,8 @@ class AgentRepairWorker:
         self, *, base_sha: str, files: Sequence[ProposedFile],
         allowed_dirty_paths: frozenset[str] = frozenset(),
     ) -> WorkerEvidence:
+        from .execution_lock import require_external_execution_enabled
+        require_external_execution_enabled()
         owned = frozenset(set(allowed_dirty_paths) | self._owned_dirty_paths)
         self._require_base(base_sha, allowed_dirty_paths=owned)
         if not files:
