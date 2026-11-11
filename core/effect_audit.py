@@ -12,7 +12,7 @@ import os
 import re
 
 from .mutation import canonical_json
-from .record_seal import SealError, require_seal, unsealed_body
+from .mutation import canonical_json\nfrom .record_seal import SealError, require_seal, unsealed_body
 
 _EFFECT_RE = re.compile(r"EF-[0-9a-f]{64}\Z")
 _RECEIPT_RE = re.compile(r"RC-[0-9a-f]{64}\Z")
@@ -185,7 +185,7 @@ def audit_effect_authority(aios_dir, add):
         evaluations[eid] = rec
         identity = {"receipt_id": rec.get("receipt_id"), "evaluator_version": rec.get("evaluator_version"),
                     "rubric_version": rec.get("rubric_version")}
-        expected_id = "EVAL-" + __import__("hashlib").sha256(canonical_json(identity).encode("utf-8")).hexdigest()
+        expected_id = "EVAL-" + hashlib.sha256(canonical_json(identity).encode("utf-8")).hexdigest()
         if eid != expected_id:
             add("effect_audit.evaluations.identity", "CORRUPTED", f"{path}: evaluation_id does not match its binding")
         receipt = receipts.get(rec.get("receipt_id"))
@@ -199,7 +199,9 @@ def audit_effect_authority(aios_dir, add):
             evidence_id = (receipt.get("evidence") or {}).get("evidence_id") if isinstance(receipt.get("evidence"), dict) else None
             if not isinstance(refs, list) or not refs or any(ref != evidence_id for ref in refs):
                 add("effect_audit.evaluations.evidence_binding", "CORRUPTED", f"{path}: evidence_refs do not bind receipt evidence")
-            if rec.get("source_authenticity") != receipt.get("source_authenticity", {"level": "LEGACY_UNVERIFIED"}):
+            receipt_trust = receipt.get("source_authenticity")
+            receipt_level = receipt_trust.get("level") if isinstance(receipt_trust, dict) else "LEGACY_UNVERIFIED"
+            if rec.get("source_authenticity") != receipt_level:
                 add("effect_audit.evaluations.trust_binding", "CORRUPTED", f"{path}: source_authenticity differs from receipt")
 
     claims = {}
