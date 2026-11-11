@@ -208,15 +208,13 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
         raise TransitionError("retry exceeds contract attempt budget")
     if attempt_id != _attempt_id(effect_id, attempt):
         raise ValueError("attempt_id does not match retry attempt")
-    if not isinstance(retry_authorization, dict) or retry_authorization.get("mode") != "EXPLICIT":
-        raise TransitionError("UNKNOWN retry requires explicit retry authorization")
-    if retry_authorization.get("effect_id") != effect_id:
-        raise TransitionError("retry authorization effect binding mismatch")
-    if retry_authorization.get("attempt") != attempt:
-        raise TransitionError("retry authorization attempt mismatch")
-    contract, _permit = _validate_persisted_effect(aios_dir, current)
-    return _transition_dispatch(aios_dir, effect_id, actor,
-                                attempt=attempt, attempt_id=attempt_id, provider=provider)
+    _validate_persisted_effect(aios_dir, current)
+    # A caller-supplied dictionary is not authority. Until an independently
+    # deployed issuer/verifier is configured, UNKNOWN retries are fail-closed.
+    # In particular, do not accept self-asserted mode/effect/attempt fields.
+    raise TransitionError(
+        "UNKNOWN retry BLOCKED: independent issuer verification is not configured"
+    )
 
 
 def unknown(aios_dir, effect_id, actor, reason):

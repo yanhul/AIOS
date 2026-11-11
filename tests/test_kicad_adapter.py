@@ -158,7 +158,7 @@ def test_kicad_provider_timeout_stays_unknown_and_is_not_replayed(tmp_path):
     assert len(effects) == 1
     effect = json.loads(effects[0].read_text(encoding="utf-8"))
     assert effect["state"] == "UNKNOWN"
-    with pytest.raises(PermissionError, match="explicit retry authorization"):
+    with pytest.raises(PermissionError, match="independent issuer verification"):
         execute_retry_attempt(
             str(tmp_path), contract_id, permit_id, effect, "agent:test", adapter,
             f'{effect["effect_id"]}:attempt:2', 2,
