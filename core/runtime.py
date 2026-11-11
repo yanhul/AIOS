@@ -114,7 +114,13 @@ def _execute_claimed_attempt(aios_dir, contract, effect, actor, adapter, attempt
             provider=receipt.provider,
             artifact_ref=raw_digest,
         ).as_record()
-    return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, provider_observation)
+    try:
+        return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, provider_observation)
+    except PermissionError as exc:
+        # A provider adapter response is not an independently authenticated receipt.
+        # Preserve the ambiguity and never promote it to a terminal observation.
+        return unknown(aios_dir, effect["effect_id"], actor,
+                       f"provider receipt not independently authenticated: {exc}")
 
 
 def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
