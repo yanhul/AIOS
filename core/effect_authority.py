@@ -4,8 +4,8 @@ This module is the single write boundary for provider-facing effects. An
 external effect cannot be created, dispatched, retried, or observed unless the
 immutable contract and permit authorize the requested effect. Identity fields
 are immutable after creation; attempt IDs are deterministic and tied to the
-effect/attempt number; observations must carry AIOS-owned cryptographic
-evidence bound to the executing provider and attempt.
+effect/attempt number. Terminal observations additionally require independent
+issuer authentication; observation is fail-closed until that verifier exists.
 
 UNKNOWN is ambiguous and cannot be retried from caller-supplied authorization.
 Retry remains blocked until an independently deployed issuer/verifier is configured.
