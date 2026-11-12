@@ -628,6 +628,10 @@ def test_signer_shell_launcher_emits_verifiable_ed25519_envelope():
     assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
     envelope = json.loads(done.stdout.decode("utf-8"))
     auth = envelope["authentication"]
+    receipt = envelope["minimind_receipt"]
+    assert isinstance(receipt, dict), "launcher must return the workload receipt"
+    assert receipt["task_id"] == _contract()["task_id"]
+    assert receipt["capability"] == "minimind.learning@1"
     assert auth["key_id"] == fx["key_id"]
     ring = ProviderPublicKeyring({
         "minimind": {
@@ -636,6 +640,9 @@ def test_signer_shell_launcher_emits_verifiable_ed25519_envelope():
             "revoked": False,
         }
     })
+    # The signer signs the exact observation object {"minimind_receipt": receipt};
+    # the launcher envelope exposes that receipt under its protocol field, not
+    # as a top-level "observation" field.
     payload = ed25519_payload(
         key_id=auth["key_id"],
         receipt_id=auth["receipt_id"],
@@ -646,7 +653,7 @@ def test_signer_shell_launcher_emits_verifiable_ed25519_envelope():
         provider="minimind",
         provider_operation_id=envelope["provider_operation_id"],
         outcome=envelope["outcome"],
-        observation=envelope["observation"],
+        observation={"minimind_receipt": receipt},
         issued_at=auth["issued_at"],
         expires_at=auth["expires_at"],
     )
