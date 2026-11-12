@@ -479,7 +479,7 @@ def commit_batch(aios_dir, payloads):
         secure_makedirs_beneath(aios_dir, batch_rel)
         ops = []
         for dest, rel_dest, obj in prepared:
-            payload = (canonical_json(obj) + "\\n").encode("utf-8")
+            payload = (canonical_json(obj) + "\n").encode("utf-8")
             tmp_rel = f"{batch_rel}/{uuid.uuid4().hex}.tmp"
             secure_write_bytes_beneath(aios_dir, tmp_rel, payload)
             ops.append({"tmp": os.path.join(os.fspath(aios_dir), *tmp_rel.split("/")),
