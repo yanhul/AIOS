@@ -54,7 +54,7 @@ print(json.dumps({"minimind_receipt": {"capability": "minimind.learning@1", "tas
       "evidence": {"training_receipt": {**a, "steps": 1}, "provenance": {**a},
                    "evaluation_receipt": {**a, "independent": True, "holdout": True}}}}))
 PYEOF
-printf '#!/bin/sh\nexec /usr/bin/python3 -I -B %s\n' "$BASE/bin/receipt-demo.py" > "$RLAUNCHER"
+printf '#!/bin/sh\nexec /usr/bin/python3 -I -S -B %s\n' "$BASE/bin/receipt-demo.py" > "$RLAUNCHER"
 chmod 0755 "$RLAUNCHER"; chmod 0644 "$BASE/bin/receipt-demo.py"
 
 write_config() {  # path receipt_launcher [sha]
