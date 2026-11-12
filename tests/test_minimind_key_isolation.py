@@ -449,7 +449,6 @@ def test_signer_package_import_does_not_execute_contract_or_provider(tmp_path):
     fake = tmp_path / "fake-import-root"
     (fake / "adapters" / "minimind").mkdir(parents=True)
     (fake / "core").mkdir()
-    shutil.copyfile(repo / "adapters" / "__init__.py", fake / "adapters" / "__init__.py")
     shutil.copyfile(repo / "adapters" / "minimind" / "__init__.py",
                     fake / "adapters" / "minimind" / "__init__.py")
     shutil.copyfile(repo / "adapters" / "minimind" / "isolation.py",
