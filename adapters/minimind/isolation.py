@@ -132,6 +132,37 @@ def resolve_trusted_symlinks(path: str, *, kind: str, max_hops: int = 8) -> str:
     raise IsolationError(f"{kind}: too many symlink hops")
 
 
+def _tree_contains_importable_python_code(root: str) -> bool:
+    """Return whether a directory tree contains files Python can import as code.
+
+    Site-package trees can contain symlinked locale/resource data directories that
+    are writable by a data owner. Such a directory cannot contribute modules through
+    normal Python import resolution. Code-bearing targets are fully validated.
+    """
+    code_suffixes = (".py", ".pyc", ".pyo", ".so", ".pyd", ".dll", ".zip", ".egg")
+    pending = [root]
+    visited = set()
+    while pending:
+        directory = pending.pop()
+        real = os.path.realpath(directory)
+        if real in visited:
+            continue
+        visited.add(real)
+        try:
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    try:
+                        if entry.is_dir(follow_symlinks=True):
+                            pending.append(entry.path)
+                        elif entry.is_file(follow_symlinks=True) and entry.name.lower().endswith(code_suffixes):
+                            return True
+                    except OSError as exc:
+                        raise IsolationError(f"cannot inspect import-tree entry {entry.path!r}: {exc}") from exc
+        except OSError as exc:
+            raise IsolationError(f"cannot inspect import-tree directory {directory!r}: {exc}") from exc
+    return False
+
+
 def check_trusted_tree(root: str, *, kind: str, _visited: set | None = None) -> int:
     """Validate a root-owned import tree, including the targets of internal symlinks.
 
@@ -158,7 +189,12 @@ def check_trusted_tree(root: str, *, kind: str, _visited: set | None = None) -> 
                 except OSError as exc:
                     raise IsolationError(f"{kind}: broken/unreadable symlink {entry!r}") from exc
                 if stat.S_ISDIR(target_st.st_mode):
-                    count += check_trusted_tree(target, kind=f"{kind} symlink directory target", _visited=visited)
+                    # Writable data-only symlink directories (for example locale-data)
+                    # cannot supply modules via normal Python imports. Validate every
+                    # target that contains source, bytecode, native code, or import archives.
+                    if _tree_contains_importable_python_code(target):
+                        count += check_trusted_tree(target, kind=f"{kind} symlink directory target",
+                                                    _visited=visited)
                 elif stat.S_ISREG(target_st.st_mode):
                     check_trusted_path(target, kind=f"{kind} symlink file target")
                     count += 1
