@@ -486,7 +486,7 @@ def commit_batch(aios_dir, payloads):
                 with open(op["tmp"], "rb") as fh:
                     payload = fh.read()
                 atomic_write_beneath(aios_dir, op["rel_dest"], payload.decode("utf-8"))
-            except (SecureWriteError, UnicodeDecodeError) as exc:
+            except (OSError, SecureWriteError, UnicodeDecodeError) as exc:
                 raise MutationError(
                     f"secure mutation destination rejected: {op['rel_dest']!r}"
                 ) from exc
