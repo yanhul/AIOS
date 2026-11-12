@@ -169,6 +169,16 @@ def persist_memory(store, record: Mapping[str, Any], *, decision_id: str,
     """Persist only after native, persisted AIOS authority authorizes MEMORY_WRITE."""
     validate_memory_record(record)
     _text(aios_dir, "aios_dir")
+    # Store/root binding (Batch 3): the WAL and snapshots written below must
+    # live beneath the SAME trusted state root that authorizes the write; a
+    # caller cannot redirect an authorized memory mutation to external paths.
+    from .wal_state_store import WalStateStore
+    if not isinstance(store, WalStateStore):
+        raise ValueError("memory store must be a WalStateStore bound to aios_dir")
+    try:
+        store.assert_bound_to(aios_dir)
+    except SecureWriteError as exc:
+        raise ValueError(f"memory store is not bound to the trusted state root: {exc}") from exc
     _text(contract_id, "contract_id")
     _text(permit_id, "permit_id")
     _text(actor, "actor")

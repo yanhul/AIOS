@@ -7,24 +7,27 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
+import secrets
+import stat
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Mapping
 
 from .durable_wal import DurableTransitionLog
+from .secure_fs import (
+    SecureWriteError, open_regular_at, read_all_fd, relative_beneath,
+    require_secure_platform, secure_parent_dir_beneath, write_all_fd,
+)
 
 
-def _fsync_parent_dir(path: Path) -> None:
-    """Persist atomic snapshot replacement on POSIX filesystems."""
-    if os.name == "nt":
-        return
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-    fd = os.open(str(path.parent), flags)
-    try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
+def _fsync_dir(dir_fd: int, label: Path) -> None:
+    """Persist atomic snapshot replacement for the directory held by
+    ``dir_fd`` (``label`` is informational)."""
+    os.fsync(dir_fd)
+
+
+class StoreRootMismatchError(SecureWriteError):
+    """A store's WAL/snapshot is not bound to the required trusted root."""
 
 
 class WalStateStore:
@@ -33,17 +36,68 @@ class WalStateStore:
     WAL_TRANSITION = "STATE_COMMITTED"
     NAMESPACE_TRANSITION = "NAMESPACE_COMMITTED"
 
-    def __init__(self, snapshot_path: str, wal_path: str | None = None) -> None:
-        self.snapshot_path = Path(snapshot_path)
-        self.wal_path = Path(wal_path) if wal_path else self.snapshot_path.with_suffix(
-            self.snapshot_path.suffix + ".wal.jsonl"
-        )
-        self.snapshot_path.parent.mkdir(parents=True, exist_ok=True)
-        self.wal = DurableTransitionLog(str(self.wal_path))
+    MEMORY_SUBDIR = "memory"
+
+    def __init__(self, snapshot_path: str, wal_path: str | None = None, *,
+                 root: str | None = None) -> None:
+        """Bind snapshot and WAL to ONE trusted state root.
+
+        ``root`` defaults to the snapshot's parent directory. Both paths must
+        lie beneath ``root`` (no ``..``, no escape); every I/O operation then
+        walks from a no-follow, owner/mode-checked descriptor for ``root``.
+        A WAL outside the snapshot's root raises :class:`StoreRootMismatchError`.
+        """
+        snapshot = Path(snapshot_path)
+        wal = Path(wal_path) if wal_path else snapshot.with_suffix(snapshot.suffix + ".wal.jsonl")
+        self._root = os.path.abspath(root) if root is not None else os.path.dirname(
+            os.path.abspath(snapshot))
+        try:
+            self._snapshot_rel = relative_beneath(self._root, snapshot)
+            self._wal_rel = relative_beneath(self._root, wal)
+        except SecureWriteError as exc:
+            raise StoreRootMismatchError(
+                f"snapshot and WAL must share trusted root {self._root!r}: {exc}") from exc
+        stem, _, _ = self._snapshot_rel.rpartition("/")
+        name = Path(self._snapshot_rel.rsplit("/", 1)[-1])
+        self._memory_rel = (stem + "/" if stem else "") + name.stem + ".memory.json"
+        self.snapshot_path = Path(self._root, *self._snapshot_rel.split("/"))
+        self.wal_path = Path(self._root, *self._wal_rel.split("/"))
+        self.wal = DurableTransitionLog(str(self.wal_path), root=self._root)
+        # Create/validate the root and the snapshot's parent securely now so
+        # an unsafe location fails at construction, not mid-transaction.
+        require_secure_platform()
+        with secure_parent_dir_beneath(self._root, self._snapshot_rel, create=True):
+            pass
+
+    @classmethod
+    def for_aios_dir(cls, aios_dir: str, name: str = "state.json") -> "WalStateStore":
+        """Store bound to the AIOS state root, under ``<aios_dir>/memory/``."""
+        if not isinstance(name, str) or "/" in name or "\\" in name or name in ("", ".", ".."):
+            raise ValueError("invalid store name")
+        root = os.path.abspath(aios_dir)
+        return cls(os.path.join(root, cls.MEMORY_SUBDIR, name), root=root)
+
+    @property
+    def root(self) -> str:
+        return self._root
+
+    def assert_bound_to(self, aios_dir: str) -> None:
+        """Refuse unless this store (snapshot AND WAL) is rooted exactly at
+        ``aios_dir``. Binding is to the root descriptor walk, not a path
+        prefix: intermediate components beneath the root are opened no-follow
+        on every operation."""
+        expected = os.path.abspath(aios_dir)
+        if self._root != expected:
+            raise StoreRootMismatchError(
+                f"store root {self._root!r} is not the trusted state root {expected!r}")
+        wal = self.wal
+        if (type(wal) is not DurableTransitionLog or wal.root != self._root
+                or wal.relative_path != self._wal_rel):
+            raise StoreRootMismatchError("store WAL is not bound to the trusted state root")
 
     @property
     def _memory_snapshot_path(self) -> Path:
-        return self.snapshot_path.with_name(self.snapshot_path.stem + ".memory.json")
+        return Path(self._root, *self._memory_rel.split("/"))
 
     @staticmethod
     def _validate_state(value: Any) -> dict[str, Any]:
@@ -141,34 +195,70 @@ class WalStateStore:
             self._write_namespace_snapshot(namespace, latest)
         return deepcopy(dict(committed_item)), appended
 
-    def _write_json_atomic(self, path: Path, value: Any) -> None:
-        parent = path.parent
-        fd, tmp_name = tempfile.mkstemp(
-            prefix=f".{path.name}.", suffix=".tmp", dir=str(parent), text=True
-        )
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
-                json.dump(value, fh, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-                fh.write("\n")
-                fh.flush()
-                os.fsync(fh.fileno())
-            os.replace(tmp_name, path)
-            _fsync_parent_dir(path)
-        except Exception:
+    def _write_json_atomic(self, rel: str, value: Any) -> None:
+        """Atomic snapshot replace, entirely descriptor-relative.
+
+        The temp file is created O_EXCL|O_NOFOLLOW in the validated parent
+        directory fd, written and fsynced, then renamed over the target with
+        ``renameat`` on the same fd; the directory fd is fsynced. An existing
+        target that is not a regular file (symlink, FIFO, dir, ...) is
+        refused before anything is written. The temp entry is unlinked
+        (descriptor-relative) on every failure path."""
+        data = (json.dumps(value, sort_keys=True, separators=(",", ":"),
+                           ensure_ascii=False) + "\n").encode("utf-8")
+        label = Path(self._root, *rel.split("/"))
+        with secure_parent_dir_beneath(self._root, rel, create=True) as (dir_fd, name):
             try:
-                os.unlink(tmp_name)
+                st = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
             except FileNotFoundError:
-                pass
-            raise
+                st = None
+            if st is not None and not stat.S_ISREG(st.st_mode):
+                raise SecureWriteError(f"refusing non-regular snapshot target: {rel!r}")
+            tmp = f".{name}.{secrets.token_hex(12)}.tmp"
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+                         | getattr(os, "O_CLOEXEC", 0), 0o600, dir_fd=dir_fd)
+            replaced = False
+            try:
+                try:
+                    write_all_fd(fd, data)
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+                os.replace(tmp, name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+                replaced = True
+                _fsync_dir(dir_fd, label)
+            finally:
+                if not replaced:
+                    try:
+                        os.unlink(tmp, dir_fd=dir_fd)
+                    except FileNotFoundError:
+                        pass
+
+    def _read_json(self, rel: str) -> tuple[bool, Any]:
+        """(exists, value). Missing root/parent/file -> (False, None). Any
+        unsafe entry raises SecureWriteError (never treated as missing)."""
+        try:
+            with secure_parent_dir_beneath(self._root, rel, create=False) as (dir_fd, name):
+                try:
+                    fd = open_regular_at(dir_fd, name, os.O_RDONLY)
+                except FileNotFoundError:
+                    return False, None
+                try:
+                    raw = read_all_fd(fd)
+                finally:
+                    os.close(fd)
+        except FileNotFoundError:
+            return False, None
+        return True, json.loads(raw.decode("utf-8"))
 
     def _write_snapshot(self, state: Mapping[str, Any]) -> None:
-        self._write_json_atomic(self.snapshot_path, state)
+        self._write_json_atomic(self._snapshot_rel, state)
 
     def _write_namespace_snapshot(self, namespace: str, value: Any) -> None:
         if namespace == "state":
             self._write_snapshot(value)
         elif namespace == "memory":
-            self._write_json_atomic(self._memory_snapshot_path, value)
+            self._write_json_atomic(self._memory_rel, value)
 
     def _latest(self, namespace: str):
         replay = self.wal.replay()
@@ -195,21 +285,21 @@ class WalStateStore:
         latest = self._latest("state")
         if latest is not None:
             return self._validate_state(latest)
-        if not self.snapshot_path.exists():
+        exists, value = self._read_json(self._snapshot_rel)
+        if not exists:
             return None
-        with self.snapshot_path.open("r", encoding="utf-8") as fh:
-            return self._validate_state(json.load(fh))
+        return self._validate_state(value)
 
     def load_namespace(self, namespace: str, default: Any = None) -> Any:
         namespace = self._validate_namespace(namespace)
         latest = self._latest(namespace)
         if latest is not None:
             return deepcopy(latest)
-        snapshot = self._memory_snapshot_path if namespace == "memory" else self.snapshot_path
-        if snapshot.exists():
-            with snapshot.open("r", encoding="utf-8") as fh:
-                return deepcopy(json.load(fh))
+        rel = self._memory_rel if namespace == "memory" else self._snapshot_rel
+        exists, value = self._read_json(rel)
+        if exists:
+            return deepcopy(value)
         return deepcopy(default)
 
 
-__all__ = ["WalStateStore"]
+__all__ = ["WalStateStore", "StoreRootMismatchError"]

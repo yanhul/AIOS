@@ -111,15 +111,15 @@ def test_wal_append_fsyncs_parent_directory_after_file_fsync(tmp_path, monkeypat
 
     path = tmp_path / "nested" / "wal.jsonl"
     calls = []
-    original = durable_wal._fsync_parent_dir
+    original = durable_wal._fsync_dir
 
-    def checked_fsync_parent(target):
+    def checked_fsync_parent(dir_fd, target):
         assert path.exists()
         assert path.read_bytes().endswith(b"\n")
         calls.append(target)
-        original(target)
+        original(dir_fd, target)
 
-    monkeypatch.setattr(durable_wal, "_fsync_parent_dir", checked_fsync_parent)
+    monkeypatch.setattr(durable_wal, "_fsync_dir", checked_fsync_parent)
     wal = DurableTransitionLog(str(path))
     wal.append(transition="ENQUEUED", payload={"id": "w1"})
     assert calls == [str(path)]
@@ -135,13 +135,13 @@ def test_wal_truncation_fsyncs_parent_directory(tmp_path, monkeypatch):
         fh.write(b'{"partial":')
 
     calls = []
-    original = durable_wal._fsync_parent_dir
+    original = durable_wal._fsync_dir
 
-    def checked_fsync_parent(target):
+    def checked_fsync_parent(dir_fd, target):
         calls.append(target)
-        original(target)
+        original(dir_fd, target)
 
-    monkeypatch.setattr(durable_wal, "_fsync_parent_dir", checked_fsync_parent)
+    monkeypatch.setattr(durable_wal, "_fsync_dir", checked_fsync_parent)
     wal.append(transition="STARTED", payload={"id": "w1"})
     assert calls == [str(path), str(path)]
     assert [r["sequence"] for r in wal.replay().records] == [1, 2]

@@ -21,8 +21,11 @@ checked, never creating anything). Symlinks, dangling symlinks, FIFOs,
 sockets, devices and wrongly-typed entries are REPORTED (CORRUPTED), never
 followed or read. Journal ``dest``/``tmp`` paths are confined to the state
 root lexically before any (secure) existence probe. The sweep holds the
-mutation lock in SHARED mode when the lock file exists, so it does not
-interleave with a commit or recovery holding it exclusively.
+mutation lock in SHARED mode, acquired BEFORE the root is listed, so it does
+not interleave with a commit or recovery holding it exclusively. Results
+carry ``synchronized``: True only if the shared lock was held for the whole
+observation window. A missing lock file (existing root) yields a PENDING
+``G.unsynchronized_sweep`` finding, never a clean VALID.
 
 Snapshot status semantics (Phase 1):
     COMMITTED  a successful mutation transaction emitted its paired
@@ -65,6 +68,7 @@ _ENTITY_DIRS = {
 }
 _MANAGED_DIRS = set(_ENTITY_DIRS.values()) | {
     "tasks", "verifications", "snapshots", "events",
+    "memory",  # WalStateStore.for_aios_dir (governed memory WAL/snapshots)
 }
 _KNOWN_EVENT_ACTIONS = {"entity.imported", "verification.recorded"}
 
@@ -258,37 +262,51 @@ def reconcile(aios_dir, source_root=None):
         findings.append({"check": check, "severity": severity,
                          "detail": detail})
 
-    try:
-        root_names = secure_listdir_beneath(aios_dir, None)
-    except FileNotFoundError:
-        root_names = None
-    except (OSError, SecureWriteError) as exc:
-        add("G.unsafe_root", "CORRUPTED",
-            f"refusing unsafe AIOS state root {aios_dir}: {exc}")
-        return _summarize(findings)
-
+    # Lock ordering: acquire the shared mutation lock FIRST, then list the
+    # root, so the listing and the whole sweep are one locked observation
+    # window (no stale pre-lock listing).
+    synchronized = False
+    lock_error = None
     try:
         lock = _SharedReadLock(aios_dir)
         lock.__enter__()
     except MutationError as exc:
-        lock = None
-        add("G.unsafe_lock", "CORRUPTED",
-            f"refusing unsafe .mutation.lock (sweep ran unlocked): {exc.__cause__ or exc}")
+        lock, lock_error = None, exc
     try:
+        if lock is not None and lock.held:
+            synchronized = True
+        try:
+            root_names = secure_listdir_beneath(aios_dir, None)
+        except FileNotFoundError:
+            root_names = None
+        except (OSError, SecureWriteError) as exc:
+            add("G.unsafe_root", "CORRUPTED",
+                f"refusing unsafe AIOS state root {aios_dir}: {exc}")
+            return _summarize(findings, False)
+        if lock_error is not None:
+            add("G.unsafe_lock", "CORRUPTED",
+                f"refusing unsafe .mutation.lock (sweep ran unlocked): "
+                f"{lock_error.__cause__ or lock_error}")
+        if lock is not None and not lock.held and root_names is not None:
+            # No lock file: a concurrent mutation is NOT excluded, so a clean
+            # sweep cannot be reported as a synchronized VALID result.
+            add("G.unsynchronized_sweep", "PENDING",
+                "no .mutation.lock under the state root; sweep could not be "
+                "synchronized with mutation/recovery (result incomplete)")
         _sweep(aios_dir, source_root, root_names, add)
     finally:
         if lock is not None:
             lock.__exit__(None, None, None)
-    return _summarize(findings)
+    return _summarize(findings, synchronized)
 
 
-def _summarize(findings):
+def _summarize(findings, synchronized):
     overall = "VALID"
     rank = {s: i for i, s in enumerate(SEVERITY_ORDER)}
     for f in findings:
         if rank[f["severity"]] > rank[overall]:
             overall = f["severity"]
-    return {"overall": overall, "findings": findings}
+    return {"overall": overall, "findings": findings, "synchronized": synchronized}
 
 
 def _sweep(aios_dir, source_root, root_names, add):

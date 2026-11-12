@@ -71,7 +71,7 @@ def _authorization(aios_dir, *, scope="memory:write", policy_rules=("MEMORY_WRIT
 
 def test_memory_write_requires_governed_mutation_and_lineage(tmp_path):
     auth = _authorization(str(tmp_path / "aios"))
-    store = WalStateStore(str(tmp_path / "state.json"))
+    store = WalStateStore.for_aios_dir(str(tmp_path / "aios"))
     with pytest.raises(ValueError):
         persist_memory(store, _record(), decision_id="D-1", mutation_id="M-1", authority="NONE", **auth)
     persist_memory(store, _record(), decision_id="D-1", mutation_id="M-1", authority="AIOS_CONTROL_PLANE", **auth)
@@ -90,7 +90,7 @@ def test_memory_write_requires_governed_mutation_and_lineage(tmp_path):
 
 def test_memory_mutation_id_is_idempotent_and_cannot_be_reused(tmp_path):
     auth = _authorization(str(tmp_path / "aios"))
-    store = WalStateStore(str(tmp_path / "state.json"))
+    store = WalStateStore.for_aios_dir(str(tmp_path / "aios"))
     record = _record()
     first = persist_memory(
         store, record, decision_id="D-1", mutation_id="M-idempotent",
@@ -119,7 +119,7 @@ def test_memory_mutation_id_is_idempotent_and_cannot_be_reused(tmp_path):
 
 def test_memory_replay_rejects_duplicate_mutation_ids(tmp_path):
     auth = _authorization(str(tmp_path / "aios"))
-    store = WalStateStore(str(tmp_path / "state.json"))
+    store = WalStateStore.for_aios_dir(str(tmp_path / "aios"))
     envelope = persist_memory(
         store, _record(), decision_id="D-1", mutation_id="M-duplicate",
         authority="AIOS_CONTROL_PLANE", **auth,
@@ -130,31 +130,34 @@ def test_memory_replay_rejects_duplicate_mutation_ids(tmp_path):
 
 
 def test_memory_write_fails_closed_for_forged_or_insufficient_authority(tmp_path):
-    store = WalStateStore(str(tmp_path / "state.json"))
+    # Each store is bound to the state root whose authority is presented
+    # (Batch 3 store/root binding); authority checks are exercised per root.
+    def store_for(auth):
+        return WalStateStore.for_aios_dir(auth["aios_dir"])
     good = _authorization(str(tmp_path / "good"))
     with pytest.raises(Exception):
-        persist_memory(store, _record(), decision_id="D-1", mutation_id="M-1",
+        persist_memory(store_for(good), _record(), decision_id="D-1", mutation_id="M-1",
                        authority="AIOS_CONTROL_PLANE", **{**good, "permit_id": "PT-forged"})
     with pytest.raises(ValueError, match="actor"):
-        persist_memory(store, _record(), decision_id="D-1", mutation_id="M-2",
+        persist_memory(store_for(good), _record(), decision_id="D-1", mutation_id="M-2",
                        authority="AIOS_CONTROL_PLANE", **{**good, "actor": "attacker"})
     bad_scope = _authorization(str(tmp_path / "bad-scope"), scope="execution")
     with pytest.raises(ValueError, match="scope"):
-        persist_memory(store, _record(), decision_id="D-1", mutation_id="M-3",
+        persist_memory(store_for(bad_scope), _record(), decision_id="D-1", mutation_id="M-3",
                        authority="AIOS_CONTROL_PLANE", **bad_scope)
     bad_policy = _authorization(str(tmp_path / "bad-policy"), policy_rules=())
     with pytest.raises(ValueError, match="policy"):
-        persist_memory(store, _record(), decision_id="D-1", mutation_id="M-4",
+        persist_memory(store_for(bad_policy), _record(), decision_id="D-1", mutation_id="M-4",
                        authority="AIOS_CONTROL_PLANE", **bad_policy)
     bad_capability = _authorization(str(tmp_path / "bad-capability"), permissions=())
     with pytest.raises(ValueError, match="capability"):
-        persist_memory(store, _record(), decision_id="D-1", mutation_id="M-5",
+        persist_memory(store_for(bad_capability), _record(), decision_id="D-1", mutation_id="M-5",
                        authority="AIOS_CONTROL_PLANE", **bad_capability)
 
 
 def test_memory_write_binds_record_predecessor_to_authorized_decision(tmp_path):
     auth = _authorization(str(tmp_path / "aios"))
-    store = WalStateStore(str(tmp_path / "state.json"))
+    store = WalStateStore.for_aios_dir(str(tmp_path / "aios"))
     with pytest.raises(ValueError, match="predecessor must match"):
         persist_memory(
             store, _record(), decision_id="D-2", mutation_id="M-mismatch",
@@ -165,7 +168,7 @@ def test_memory_write_binds_record_predecessor_to_authorized_decision(tmp_path):
 
 def test_memory_write_rejects_missing_decision_and_unresolved_evidence(tmp_path):
     auth = _authorization(str(tmp_path / "aios"))
-    store = WalStateStore(str(tmp_path / "state.json"))
+    store = WalStateStore.for_aios_dir(str(tmp_path / "aios"))
     missing_decision_record = build_memory_record(
         memory_type="SEMANTIC", content={"topic": "missing decision"},
         evidence_refs=[["EVIDENCE", "EV-1"]], predecessor="D-999",
@@ -192,7 +195,7 @@ def test_memory_write_rejects_tampered_persisted_evidence(tmp_path):
     evidence["statement"] = "tampered evidence"
     evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
     with pytest.raises(ValueError, match="unresolved at write time"):
-        persist_memory(WalStateStore(str(tmp_path / "state.json")), _record(),
+        persist_memory(WalStateStore.for_aios_dir(str(tmp_path / "aios")), _record(),
                        decision_id="D-1", mutation_id="M-12",
                        authority="AIOS_CONTROL_PLANE", **auth)
 
@@ -204,14 +207,14 @@ def test_memory_write_rejects_tampered_persisted_decision(tmp_path):
     decision["statement"] = "tampered decision"
     decision_path.write_text(json.dumps(decision), encoding="utf-8")
     with pytest.raises(Exception):
-        persist_memory(WalStateStore(str(tmp_path / "state.json")), _record(),
+        persist_memory(WalStateStore.for_aios_dir(str(tmp_path / "aios")), _record(),
                        decision_id="D-1", mutation_id="M-11",
                        authority="AIOS_CONTROL_PLANE", **auth)
 
 
 def test_unknown_execution_lineage_never_materializes(tmp_path):
     auth = _authorization(str(tmp_path / "aios"))
-    store = WalStateStore(str(tmp_path / "state.json"))
+    store = WalStateStore.for_aios_dir(str(tmp_path / "aios"))
     with pytest.raises(ValueError, match="UNKNOWN"):
         persist_memory(
             store, _record(), decision_id="D-1", mutation_id="M-1",
@@ -222,7 +225,7 @@ def test_unknown_execution_lineage_never_materializes(tmp_path):
 
 def test_memory_wal_tamper_fails_closed(tmp_path):
     auth = _authorization(str(tmp_path / "aios"))
-    store = WalStateStore(str(tmp_path / "state.json"))
+    store = WalStateStore.for_aios_dir(str(tmp_path / "aios"))
     persist_memory(store, _record(), decision_id="D-1", mutation_id="M-1", authority="AIOS_CONTROL_PLANE", **auth)
     path = store.wal_path
     lines = path.read_text(encoding="utf-8").splitlines()
@@ -235,8 +238,9 @@ def test_memory_wal_tamper_fails_closed(tmp_path):
 
 
 def test_memory_crash_after_wal_before_snapshot(tmp_path):
-    state = tmp_path / "state.json"
-    wal = tmp_path / "shared.wal.jsonl"
+    aios = tmp_path / "aios"
+    state = aios / "memory" / "state.json"
+    wal = aios / "memory" / "shared.wal.jsonl"
     memory = _record()
     auth = _authorization(str(tmp_path / "aios"))
     script = (
@@ -247,13 +251,13 @@ def test_memory_crash_after_wal_before_snapshot(tmp_path):
         "class CrashStore(WalStateStore):\n"
         "    def _write_namespace_snapshot(self, namespace, value):\n"
         "        os._exit(137)\n"
-        + "store = CrashStore(" + repr(str(state)) + ", " + repr(str(wal)) + ")\n"
+        + "store = CrashStore(" + repr(str(state)) + ", " + repr(str(wal)) + ", root=" + repr(str(aios)) + ")\n"
         + "persist_memory(store, " + repr(memory) + ", decision_id='D-1', mutation_id='M-1', authority='AIOS_CONTROL_PLANE', **auth)\n"
     )
     proc = subprocess.run([sys.executable, "-c", script], cwd=os.getcwd())
     assert proc.returncode == 137
-    assert not (tmp_path / "state.memory.json").exists()
-    recovered = load_memory(WalStateStore(str(state), str(wal)))
+    assert not (aios / "memory" / "state.memory.json").exists()
+    recovered = load_memory(WalStateStore(str(state), str(wal), root=str(aios)))
     assert recovered == [memory]
 
 

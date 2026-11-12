@@ -54,6 +54,7 @@ import errno
 import os
 import secrets
 import stat
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 
 
@@ -527,3 +528,104 @@ def secure_fd_matches_beneath(root, relative: str, fd: int) -> bool:
         return False
     held = os.fstat(fd)
     return stat.S_ISREG(st.st_mode) and (st.st_dev, st.st_ino) == (held.st_dev, held.st_ino)
+
+
+# ---------------------------------------------------------------------------
+# Batch 3: primitives for WAL / snapshot persistence (core.durable_wal,
+# core.wal_state_store). Same trust model as above.
+# ---------------------------------------------------------------------------
+
+def relative_beneath(root, path) -> str:
+    """Return ``path`` as a validated '/'-joined relative path beneath ``root``.
+
+    Purely lexical: ``..`` components in the raw path are refused outright
+    (never normalized away), absolute results outside ``root`` are refused,
+    and ``path == root`` is refused. No I/O; the result is later walked
+    no-follow from a descriptor for ``root``."""
+    raw = os.fspath(path)
+    if not isinstance(raw, str) or not raw or "\x00" in raw:
+        raise SecureWriteError("invalid persistence path")
+    if any(part == ".." for part in raw.replace("\\", "/").split("/")):
+        raise SecureWriteError(f"persistence path must not contain '..': {raw!r}")
+    root_abs = os.path.abspath(os.fspath(root))
+    rel = os.path.relpath(os.path.abspath(raw), root_abs)
+    if rel == "." or rel == ".." or rel.startswith(".." + os.sep) or os.path.isabs(rel):
+        raise SecureWriteError(
+            f"persistence path {raw!r} is not beneath trusted root {root_abs!r}")
+    rel = rel.replace(os.sep, "/")
+    _parts(rel)
+    return rel
+
+
+@contextmanager
+def secure_parent_dir_beneath(root, relative: str, *, create: bool):
+    """Yield ``(parent_fd, leaf_name)`` for ``relative`` beneath ``root``.
+
+    ``root`` and every intermediate directory are opened no-follow and
+    owner/mode-checked (state-tree mode). ``create=False`` creates nothing and
+    raises ``FileNotFoundError`` for a missing root/parent. All descriptors
+    are closed on exit, success or failure."""
+    parts = _parts(relative)
+    root_fd = _open_root_fd(root, create=create)
+    parent_fd, opened = _walk_parent_or_close(root_fd, parts, create=create)
+    try:
+        yield parent_fd, parts[-1]
+    finally:
+        for fd in reversed(opened):
+            os.close(fd)
+        os.close(root_fd)
+
+
+def open_regular_at(parent_fd: int, name: str, flags: int, *, single_link: bool = True,
+                    mode: int = 0o600) -> int:
+    """Open ``name`` beneath ``parent_fd`` no-follow/non-blocking/cloexec and
+    return the fd only if it is a regular file (``fstat`` on the opened fd)
+    and, with ``single_link``, has ``st_nlink == 1``. Never truncates (callers
+    must not pass ``O_TRUNC``)."""
+    if flags & getattr(os, "O_TRUNC", 0):
+        raise SecureWriteError("O_TRUNC is not permitted before validation")
+    fd = _open_regular_at(parent_fd, name, flags, mode)
+    if single_link:
+        try:
+            if os.fstat(fd).st_nlink != 1:
+                raise SecureWriteError(f"refusing hard-linked file: {name!r}")
+        except BaseException:
+            os.close(fd)
+            raise
+    return fd
+
+
+def fd_matches_entry_at(parent_fd: int, name: str, fd: int) -> bool:
+    """True iff ``name`` (no-follow, beneath ``parent_fd``) is a regular file
+    naming the same inode as ``fd``."""
+    try:
+        st = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return False
+    held = os.fstat(fd)
+    return stat.S_ISREG(st.st_mode) and (st.st_dev, st.st_ino) == (held.st_dev, held.st_ino)
+
+
+def read_all_fd(fd: int) -> bytes:
+    """Read an opened regular file from offset 0 to EOF."""
+    chunks = []
+    offset = 0
+    while True:
+        block = os.pread(fd, 1048576, offset)
+        if not block:
+            return b"".join(chunks)
+        chunks.append(block)
+        offset += len(block)
+
+
+def write_all_fd(fd: int, data: bytes) -> None:
+    view = memoryview(data)
+    while view:
+        written = os.write(fd, view)
+        if written <= 0:
+            raise OSError(errno.EIO, "short write")
+        view = view[written:]
+
+
+def require_secure_platform() -> None:
+    _require_platform()

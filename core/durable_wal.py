@@ -10,63 +10,58 @@ import hashlib
 import json
 import os
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from .secure_fs import (
+    SecureWriteError, fd_matches_entry_at, open_regular_at, read_all_fd,
+    relative_beneath, require_secure_platform, secure_parent_dir_beneath,
+    write_all_fd,
+)
 
-def _fsync_parent_dir(path: str) -> None:
-    """Persist directory-entry changes on POSIX after durable file writes.
+try:  # POSIX only; non-POSIX fails closed in require_secure_platform().
+    import fcntl
+except ImportError:  # pragma: no cover
+    fcntl = None
 
-    Windows does not expose a portable directory-fsync equivalent through
-    Python's standard library; file contents are still flushed there.
-    """
-    if os.name == "nt":
-        return
-    directory = os.path.dirname(os.path.abspath(path)) or "."
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-    fd = os.open(directory, flags)
+
+def _fsync_dir(dir_fd: int, label: str) -> None:
+    """Persist directory-entry changes for the directory held by ``dir_fd``.
+
+    ``label`` is informational (the WAL path); the fsync always targets the
+    descriptor that was actually used for the file operation."""
+    os.fsync(dir_fd)
+
+
+_LOCK_MAX_ATTEMPTS = 16
+
+
+def _acquire_lock_at(dir_fd: int, name: str) -> int:
+    """Exclusive ``flock`` on ``name`` beneath ``dir_fd``.
+
+    The lock file is opened no-follow, never truncated, must be a regular,
+    singly-linked file, and after ``flock`` it must still be the inode named
+    by ``name`` (otherwise it was replaced/unlinked and mutual exclusion would
+    be split between inodes): retry, then fail closed."""
+    for _ in range(_LOCK_MAX_ATTEMPTS):
+        fd = open_regular_at(dir_fd, name, os.O_RDWR | os.O_CREAT)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            if fd_matches_entry_at(dir_fd, name, fd):
+                return fd
+        except BaseException:
+            os.close(fd)
+            raise
+        os.close(fd)
+    raise DurableWalSecurityError("WAL lock file keeps being replaced; refusing")
+
+
+def _release_lock(fd: int) -> None:
     try:
-        os.fsync(fd)
+        fcntl.flock(fd, fcntl.LOCK_UN)
     finally:
         os.close(fd)
-
-
-class _ProcessFileLock:
-    """Cross-process lock for one WAL file."""
-
-    def __init__(self, path: str):
-        self.path = path + ".lock"
-        self.fh = None
-
-    def __enter__(self):
-        os.makedirs(os.path.dirname(self.path), exist_ok=True)
-        self.fh = open(self.path, "a+b")
-        if os.name == "nt":
-            import msvcrt
-            self.fh.seek(0)
-            while True:
-                try:
-                    msvcrt.locking(self.fh.fileno(), msvcrt.LK_LOCK, 1)
-                    break
-                except OSError:
-                    continue
-        else:
-            import fcntl
-            fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX)
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        try:
-            if os.name == "nt":
-                import msvcrt
-                self.fh.seek(0)
-                msvcrt.locking(self.fh.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                import fcntl
-                fcntl.flock(self.fh.fileno(), fcntl.LOCK_UN)
-        finally:
-            self.fh.close()
-        return False
 
 
 class DurableWalError(RuntimeError):
@@ -77,6 +72,13 @@ class DurableWalIntegrityError(DurableWalError):
     """Raised when committed WAL data fails integrity validation."""
 
 
+class DurableWalSecurityError(DurableWalError):
+    """Raised when the WAL, its lock or a parent is unsafe (symlink, special
+    file, hard link, escape from the trusted root, untrusted owner/mode) or
+    secure descriptor-relative I/O is unavailable. Never downgraded to an
+    empty WAL."""
+
+
 @dataclass(frozen=True)
 class WalReplay:
     records: tuple[Mapping[str, Any], ...]
@@ -84,13 +86,61 @@ class WalReplay:
 
 
 class DurableTransitionLog:
-    """Append-only, fsynced JSONL journal with deterministic replay."""
+    """Append-only, fsynced JSONL journal with deterministic replay.
+
+    Filesystem model (Batch 3): every operation opens the trusted ``root``
+    (default: the WAL's parent directory) no-follow and owner/mode-checked,
+    walks to the WAL's parent with descriptor-relative no-follow opens, and
+    then works ONLY through that parent descriptor: the ``<wal>.lock`` file
+    and the WAL itself are opened no-follow/non-blocking, ``fstat``-verified
+    regular and singly linked. Append, replay, tail repair and fsync all use
+    the same validated WAL descriptor; nothing is reopened by pathname.
+    See core.secure_fs for the precise trust model and residual risks.
+
+    Lock ordering: the WAL lock is a leaf lock. No other AIOS lock (e.g. the
+    state-tree ``.mutation.lock``) is acquired while it is held.
+    """
 
     VERSION = 1
 
-    def __init__(self, path: str):
+    def __init__(self, path: str, *, root: str | None = None):
         self.path = os.path.abspath(path)
+        self.root = os.path.abspath(root) if root is not None else os.path.dirname(self.path)
+        try:
+            self._rel = relative_beneath(self.root, path)
+        except SecureWriteError as exc:
+            raise DurableWalSecurityError(str(exc)) from exc
+        self._lock_rel = self._rel + ".lock"
         self._lock = threading.RLock()
+
+    @property
+    def relative_path(self) -> str:
+        return self._rel
+
+    @contextmanager
+    def _locked(self):
+        """Hold the thread lock and the cross-process WAL lock; yield the
+        validated parent directory fd and the WAL leaf name."""
+        with self._lock:
+            try:
+                require_secure_platform()
+                with secure_parent_dir_beneath(self.root, self._rel, create=True) as (dir_fd, name):
+                    lock_fd = _acquire_lock_at(dir_fd, name + ".lock")
+                    try:
+                        yield dir_fd, name
+                    finally:
+                        _release_lock(lock_fd)
+            except SecureWriteError as exc:
+                raise DurableWalSecurityError(f"unsafe WAL location {self.path!r}: {exc}") from exc
+
+    def _open_wal(self, dir_fd: int, name: str, *, write: bool) -> int | None:
+        flags = (os.O_RDWR | os.O_CREAT | os.O_APPEND) if write else os.O_RDONLY
+        try:
+            return open_regular_at(dir_fd, name, flags)
+        except FileNotFoundError:
+            if write:
+                raise
+            return None
 
     @staticmethod
     def _canonical(record: Mapping[str, Any]) -> bytes:
@@ -108,21 +158,23 @@ class DurableTransitionLog:
     def _checksum(cls, record: Mapping[str, Any]) -> str:
         return hashlib.sha256(cls._canonical(record)).hexdigest()
 
-    def append(
-        self, *, transition: str, payload: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
-        if not isinstance(transition, str) or not transition.strip():
-            raise ValueError("transition must be a non-empty string")
-        if not isinstance(payload, Mapping):
-            raise ValueError("payload must be a mapping")
-
-        os.makedirs(os.path.dirname(self.path), exist_ok=True)
-        with self._lock, _ProcessFileLock(self.path):
-            replay = self._replay_unlocked()
+    def _append_locked(self, dir_fd: int, name: str, transition: str,
+                       payload: Mapping[str, Any], match=None):
+        fd = self._open_wal(dir_fd, name, write=True)
+        try:
+            data = read_all_fd(fd)
+            replay, valid_length = self._parse(data)
             if replay.dropped_tail_records:
-                self._truncate_incomplete_tail()
-                replay = self._replay_unlocked()
-
+                # Repair in place on the SAME validated descriptor: the
+                # committed prefix is preserved (never rewritten).
+                os.ftruncate(fd, valid_length)
+                os.fsync(fd)
+                _fsync_dir(dir_fd, self.path)
+                replay, _ = self._parse(read_all_fd(fd))
+            if match is not None:
+                existing = match(replay.records)
+                if existing is not None:
+                    return dict(existing), False
             body = {
                 "version": self.VERSION,
                 "sequence": len(replay.records) + 1,
@@ -130,12 +182,23 @@ class DurableTransitionLog:
                 "payload": dict(payload),
             }
             record = {**body, "checksum": self._checksum(body)}
-            with open(self.path, "ab") as fh:
-                fh.write(self._canonical(record))
-                fh.flush()
-                os.fsync(fh.fileno())
-            _fsync_parent_dir(self.path)
-            return dict(record)
+            write_all_fd(fd, self._canonical(record))
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        _fsync_dir(dir_fd, self.path)
+        return dict(record), True
+
+    def append(
+        self, *, transition: str, payload: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        if not isinstance(transition, str) or not transition.strip():
+            raise ValueError("transition must be a non-empty string")
+        if not isinstance(payload, Mapping):
+            raise ValueError("payload must be a mapping")
+        with self._locked() as (dir_fd, name):
+            record, _ = self._append_locked(dir_fd, name, transition, payload)
+            return record
 
     def append_once(
         self, *, transition: str, payload: Mapping[str, Any],
@@ -164,64 +227,48 @@ class DurableTransitionLog:
                 current = current[part]
             return current
 
-        os.makedirs(os.path.dirname(self.path), exist_ok=True)
-        with self._lock, _ProcessFileLock(self.path):
-            replay = self._replay_unlocked()
-            if replay.dropped_tail_records:
-                self._truncate_incomplete_tail()
-                replay = self._replay_unlocked()
-            for existing in replay.records:
+        def match(records):
+            for existing in records:
                 if existing.get("transition") != transition:
                     continue
                 existing_payload = existing.get("payload")
                 if scope_path and resolve(existing_payload, scope_path) != scope_value:
                     continue
                 if resolve(existing_payload, unique_path) == unique_value:
-                    return dict(existing), False
-            body = {
-                "version": self.VERSION,
-                "sequence": len(replay.records) + 1,
-                "transition": transition,
-                "payload": dict(payload),
-            }
-            record = {**body, "checksum": self._checksum(body)}
-            with open(self.path, "ab") as fh:
-                fh.write(self._canonical(record))
-                fh.flush()
-                os.fsync(fh.fileno())
-            _fsync_parent_dir(self.path)
-            return dict(record), True
+                    return existing
+            return None
+
+        with self._locked() as (dir_fd, name):
+            return self._append_locked(dir_fd, name, transition, payload, match)
 
     def replay(self) -> WalReplay:
         """Replay only while holding the cross-process WAL lock."""
-        with self._lock, _ProcessFileLock(self.path):
-            return self._replay_unlocked()
+        with self._locked() as (dir_fd, name):
+            fd = self._open_wal(dir_fd, name, write=False)
+            if fd is None:
+                return WalReplay((), 0)
+            try:
+                return self._parse(read_all_fd(fd))[0]
+            finally:
+                os.close(fd)
 
-    def _truncate_incomplete_tail(self) -> None:
-        # Preserve the committed prefix in place. Rewriting the whole WAL with
-        # mode "wb" would destroy every committed record if the process died
-        # between truncation and rewriting the prefix.
-        with open(self.path, "rb") as fh:
-            lines = fh.readlines()
-        if not lines:
-            return
-        valid_length = sum(len(line) for line in lines[:-1])
-        fd = os.open(self.path, os.O_WRONLY)
-        try:
-            os.ftruncate(fd, valid_length)
-            os.fsync(fd)
-        finally:
-            os.close(fd)
-        _fsync_parent_dir(self.path)
+    @staticmethod
+    def _split_lines(data: bytes) -> list[bytes]:
+        # Same semantics as binary readlines(): split on b"\n" only.
+        if not data:
+            return []
+        pieces = data.split(b"\n")
+        lines = [piece + b"\n" for piece in pieces[:-1]]
+        if pieces[-1]:
+            lines.append(pieces[-1])
+        return lines
 
-    def _replay_unlocked(self) -> WalReplay:
-        if not os.path.exists(self.path):
-            return WalReplay((), 0)
-
+    def _parse(self, data: bytes) -> tuple[WalReplay, int]:
+        """Validate WAL bytes. Returns (replay, committed_prefix_length)."""
         records = []
         dropped = 0
-        with open(self.path, "rb") as fh:
-            lines = fh.readlines()
+        lines = self._split_lines(data)
+        valid_length = 0
 
         for index, raw in enumerate(lines):
             # A record is committed only with its terminating newline. Even
@@ -231,9 +278,6 @@ class DurableTransitionLog:
                 dropped += 1
                 break
             if not raw.strip():
-                if index == len(lines) - 1 and not raw.endswith(b"\n"):
-                    dropped += 1
-                    break
                 raise DurableWalIntegrityError(
                     f"blank committed WAL record at line {index + 1}"
                 )
@@ -241,9 +285,6 @@ class DurableTransitionLog:
             try:
                 record = json.loads(raw.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError):
-                if index == len(lines) - 1 and not raw.endswith(b"\n"):
-                    dropped += 1
-                    break
                 raise DurableWalIntegrityError(
                     f"invalid committed WAL record at line {index + 1}"
                 )
@@ -279,13 +320,15 @@ class DurableTransitionLog:
                     f"WAL payload invalid at line {index + 1}"
                 )
             records.append(record)
+            valid_length += len(raw)
 
-        return WalReplay(tuple(records), dropped)
+        return WalReplay(tuple(records), dropped), valid_length
 
 
 __all__ = [
     "DurableWalError",
     "DurableWalIntegrityError",
+    "DurableWalSecurityError",
     "WalReplay",
     "DurableTransitionLog",
 ]

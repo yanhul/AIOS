@@ -288,7 +288,7 @@ def test_verification_record_symlink_and_event_symlink_fail_closed(env):
 def mem(tmp_path):
     aios = tmp_path / "aios"
     auth = _authorization(str(aios))
-    store = WalStateStore(str(tmp_path / "state.json"))
+    store = WalStateStore.for_aios_dir(str(tmp_path / "aios"))
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / "D-1.json").write_bytes((aios / "decisions" / "D-1.json").read_bytes())

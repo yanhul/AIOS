@@ -103,14 +103,14 @@ def test_snapshot_replace_fsyncs_parent_directory(tmp_path, monkeypatch):
     snapshot = tmp_path / "state.json"
     store = WalStateStore(str(snapshot), str(tmp_path / "wal.jsonl"))
     calls = []
-    original = state_store._fsync_parent_dir
+    original = state_store._fsync_dir
 
-    def checked_fsync_parent(path):
+    def checked_fsync_parent(dir_fd, path):
         assert snapshot.exists()
         assert snapshot.read_text(encoding="utf-8").strip() == '{"status":"RUNNING"}'
         calls.append(path)
-        original(path)
+        original(dir_fd, path)
 
-    monkeypatch.setattr(state_store, "_fsync_parent_dir", checked_fsync_parent)
+    monkeypatch.setattr(state_store, "_fsync_dir", checked_fsync_parent)
     store._write_snapshot({"status": "RUNNING"})
     assert calls == [snapshot]
