@@ -569,6 +569,6 @@ def test_import_tree_classifies_versioned_and_suffixless_elf_native_code(tmp_pat
     versioned = tmp_path / "libssl.so.3"
     suffixless = tmp_path / "native_payload"
     versioned.write_bytes(b"not-elf-but-versioned")
-    suffixless.write_bytes(b"\\x7fELF" + b"\\x00" * 32)
+    suffixless.write_bytes(b"\x7fELF" + b"\x00" * 32)
     assert _is_importable_python_code(str(versioned))
     assert _is_importable_python_code(str(suffixless))
