@@ -370,9 +370,35 @@ root_only = pytest.mark.skipif(ROLE != "root", reason="OS isolation e2e not prov
 
 def _run_entry(fx, lib, config):
     request = json.dumps({"contract": _contract(), "effect": _effect(), "attempt_id": "a-root"}).encode()
-    return subprocess.run(["/usr/bin/sudo", "-n", "-u", fx["workload_user"], "/usr/bin/python3", "-I", "-B",
+    return subprocess.run(["/usr/bin/sudo", "-n", "-u", fx["workload_user"], "/usr/bin/python3", "-I", "-S", "-B",
                            f"{lib}/adapters/minimind/workload_entry.py", config],
                           input=request, capture_output=True, timeout=60, check=False, cwd="/")
+
+
+@root_only
+def test_signer_startup_does_not_execute_pth_code():
+    """A root-owned executable .pth fixture must remain inert under the production -S launch."""
+    import tempfile
+
+    site_dir = "/usr/lib/python3/dist-packages"
+    if not os.path.isdir(site_dir):
+        pytest.skip("system dist-packages directory is absent")
+    marker = os.path.join(tempfile.gettempdir(), f"aios-pth-executed-{os.getpid()}")
+    pth = os.path.join(site_dir, f"aios-hostile-{os.getpid()}.pth")
+    with open(pth, "w", encoding="utf-8") as fh:
+        fh.write("import pathlib; pathlib.Path(" + repr(marker) + ").write_text('executed')\\n")
+    os.chmod(pth, 0o644)
+    try:
+        fx = _fixture()
+        done = _run_entry(fx, fx["lib"], fx["config"])
+        assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
+        assert not os.path.exists(marker), "executable .pth code ran before signer trust checks"
+    finally:
+        for path in (pth, marker):
+            try:
+                os.unlink(path)
+            except FileNotFoundError:
+                pass
 
 
 @root_only
