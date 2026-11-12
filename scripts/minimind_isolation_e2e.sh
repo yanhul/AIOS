@@ -74,6 +74,10 @@ chmod 0644 "$FIXTURE"
 rm -rf "$WORK" "$LOGS"; mkdir -p "$WORK" "$LOGS"
 cp -r "$SRC/." "$WORK/"; rm -rf "$WORK/.git"; chown -R "$PARENT:$PARENT" "$WORK"; chmod -R a+rX "$WORK"; chmod 0777 "$LOGS"
 
+# Non-secret diagnostics of the boundary actually provisioned.
+ls -l /usr/bin/sudo; readlink -f /usr/bin/sudo; /usr/bin/sudo -V 2>&1 | head -1
+(cd / && sudo -u "$PARENT" /usr/bin/sudo -n -l) || echo "parent sudo -l failed"
+
 run_role() {  # role user
   (cd "$WORK" && sudo -u "$2" env -i PATH=/usr/bin:/bin HOME=/tmp PYTHONDONTWRITEBYTECODE=1 \
      AIOS_MINIMIND_ISOLATION_ROLE="$1" AIOS_MINIMIND_ISOLATION_FIXTURE="$FIXTURE" \

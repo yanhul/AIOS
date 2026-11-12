@@ -100,6 +100,32 @@ def check_trusted_path(path: str, *, kind: str, executable: bool = False, setuid
         current = parent
 
 
+def resolve_trusted_symlinks(path: str, *, kind: str, max_hops: int = 8) -> str:
+    """Follow symlinks only if every link is root-owned inside a trusted (root-owned, no g/o write) dir.
+
+    Distributions ship ``/usr/bin/sudo`` via alternatives symlinks; an attacker-controlled hop blocks.
+    """
+    if not isinstance(path, str) or not os.path.isabs(path):
+        raise IsolationError(f"{kind} path must be absolute: {path!r}")
+    current = os.path.normpath(path)
+    for _ in range(max_hops):
+        directory = os.path.dirname(current)
+        check_trusted_path(os.path.realpath(directory), kind=f"{kind} directory")
+        if os.path.realpath(directory) != directory:
+            current = os.path.join(os.path.realpath(directory), os.path.basename(current))
+            continue
+        try:
+            st = os.lstat(current)
+        except OSError as exc:
+            raise IsolationError(f"{kind}: cannot stat {current!r}: {exc.strerror}") from exc
+        if not stat.S_ISLNK(st.st_mode):
+            return current
+        if st.st_uid != 0:
+            raise IsolationError(f"{kind}: symlink {current!r} is not root-owned")
+        current = os.path.normpath(os.path.join(directory, os.readlink(current)))
+    raise IsolationError(f"{kind}: too many symlink hops")
+
+
 _RULE = re.compile(r"^\((?P<runas>[^)]*)\)\s+(?P<rest>.+)$")
 _TAG = re.compile(r"^(?:[A-Z_]+:\s*)+")
 
@@ -184,7 +210,8 @@ class WorkloadIsolation:
         if any(caps.values()):
             raise IsolationError(f"parent holds Linux capabilities {caps}: isolation BLOCKED")
 
-        check_trusted_path(self.sudo, kind="sudo", executable=True, setuid=True)
+        check_trusted_path(resolve_trusted_symlinks(self.sudo, kind="sudo"), kind="sudo", executable=True,
+                           setuid=True)
         check_trusted_path(self.launcher, kind="launcher", executable=True)
         for extra in self.trusted_paths:
             check_trusted_path(extra, kind="trusted path")
@@ -274,4 +301,5 @@ __all__ = [
     "load_workload_signer",
     "probe_key_unreadable",
     "read_workload_key",
+    "resolve_trusted_symlinks",
 ]
