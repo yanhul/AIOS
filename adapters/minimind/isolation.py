@@ -428,12 +428,12 @@ def validate_receipt_command(config: dict, *, signer_uid: int, parent_uids=()) -
     real = check_trusted_executable(launcher, kind="receipt launcher")
     if real != os.path.normpath(launcher):
         raise IsolationError("receipt launcher must be referenced by its real path (sudo matches it literally)")
-    invocation = parse_receipt_launcher(real)
-    check_trusted_executable(invocation["interpreter"], kind="receipt interpreter")
-    check_trusted_path(invocation["script"], kind="receipt script")
     actual = sha256_file(real)
     if actual != config["receipt_launcher_sha256"]:
         raise IsolationError("receipt launcher content does not match the config-bound sha256 (changed)")
+    invocation = parse_receipt_launcher(real)
+    check_trusted_executable(invocation["interpreter"], kind="receipt interpreter")
+    check_trusted_path(invocation["script"], kind="receipt script")
     return {"receipt_launcher": real, "runner_uid": runner.pw_uid,
             "receipt_launcher_sha256": actual, "receipt_interpreter": invocation["interpreter"],
             "receipt_script": invocation["script"]}
