@@ -45,7 +45,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 SUPPORTED_PLATFORM = "linux"
-_CAP_FIELDS = ("CapEff", "CapPrm", "CapAmb")
+# CapInh can be carried into execve and must be empty.
+# CapBnd is a ceiling, not a currently-held capability: record it for audit,
+# but do not reject ordinary unprivileged Linux processes merely because it is nonzero.
+_CAP_FIELDS = ("CapEff", "CapPrm", "CapInh", "CapAmb", "CapBnd")
+_CAP_ENFORCED_FIELDS = ("CapEff", "CapPrm", "CapInh", "CapAmb")
 _MINIMAL_ENV = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
 
 
@@ -520,7 +524,7 @@ class WorkloadIsolation:
         if workload.pw_gid in {os.getgid(), os.getegid(), *os.getgroups()}:
             raise IsolationError("parent is a member of the workload's primary group")
         caps = _process_capabilities()
-        if any(caps.values()):
+        if any(caps[name] for name in _CAP_ENFORCED_FIELDS):
             raise IsolationError(f"parent holds Linux capabilities {caps}: isolation BLOCKED")
 
         check_trusted_path(resolve_trusted_symlinks(self.sudo, kind="sudo"), kind="sudo", executable=True,
