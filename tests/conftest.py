@@ -2,7 +2,8 @@ import pytest
 
 from core.effect_authority import PROVIDER_KEYRING_ENV, RETRY_KEYRING_ENV
 from core.provider_authority import PROVIDER_SIGNING_KEYS_ENV
-from tests.provider_keys import KEYRING_JSON as PROVIDER_KEYRING_JSON, SIGNING_KEYS_JSON
+from core.provider_ed25519 import ED25519_KEYRING_ENV
+from tests.provider_keys import ED25519_PUBLIC_KEYRING_JSON, KEYRING_JSON as PROVIDER_KEYRING_JSON, SIGNING_KEYS_JSON
 from tests.retry_issuers import KEYRING_JSON
 
 
@@ -13,3 +14,6 @@ def _deployment_trust_anchors(monkeypatch):
     monkeypatch.setenv(PROVIDER_KEYRING_ENV, PROVIDER_KEYRING_JSON)
     # Provider-side signing keys: only test provider processes/adapters read these.
     monkeypatch.setenv(PROVIDER_SIGNING_KEYS_ENV, SIGNING_KEYS_JSON)
+    # Verifier-side Ed25519 PUBLIC keys only (MiniMind); private keys live with the test workload.
+    if ED25519_PUBLIC_KEYRING_JSON is not None:
+        monkeypatch.setenv(ED25519_KEYRING_ENV, ED25519_PUBLIC_KEYRING_JSON)

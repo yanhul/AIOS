@@ -1,11 +1,14 @@
 """Bounded subprocess adapter for an externally owned MiniMind workload.
 
-Trust boundary (audit F-04, model A: provider-authenticated execution)
-----------------------------------------------------------------------
+Trust boundary (audit F-04/F-04.1, model A: provider-authenticated execution)
+----------------------------------------------------------------------------
 The MiniMind workload is a separately installed process. It - not this
-adapter - signs its own receipt with the ``minimind`` provider key, which it
+adapter - signs its own receipt with its **Ed25519 private key**, which it
 obtains from its own secret store (separate uid/container/secret mount). The
-AIOS parent process and the executing agent never hold that key:
+AIOS verifier holds only the public key (``AIOS_PROVIDER_ED25519_KEYRING``);
+MiniMind is Ed25519-only, so no HMAC key in ``AIOS_PROVIDER_KEYRING`` can
+sign for it. The AIOS parent process and the executing agent never hold the
+private key:
 
 * this adapter has no signer and never signs or re-signs a workload result;
 * it refuses to run (fail closed) if the parent environment exposes the
@@ -17,7 +20,7 @@ The adapter only validates the workload receipt schema and its bindings and
 derives the effect outcome from the workload's terminal state:
 ``PROMOTE`` -> ``OBSERVED_SUCCESS``; ``REJECT``/``INCONCLUSIVE``/``BLOCKED``
 -> ``OBSERVED_FAILURE``. ``core.effect_authority.observe`` verifies the
-signature against the deployment ``AIOS_PROVIDER_KEYRING``; anything not
+Ed25519 signature against the registered public key and key id; anything not
 verifiable stays ``UNKNOWN``.
 """
 from __future__ import annotations
@@ -32,12 +35,13 @@ from adapters.bounded_process import OutputLimitExceeded, output_limit_error, ru
 
 from core.effect_authority import PROVIDER_KEYRING_ENV, RETRY_KEYRING_ENV
 from core.provider_authority import PROVIDER_SIGNING_KEYS_ENV
+from core.provider_ed25519 import ED25519_KEYRING_ENV
 from core.runtime import ProviderReceipt
 
 from .contract import MINIMIND_CAPABILITY, outcome_for_terminal_state, validate_receipt
 
 # Never forwarded to the workload process.
-WITHHELD_ENV = frozenset({PROVIDER_SIGNING_KEYS_ENV, PROVIDER_KEYRING_ENV, RETRY_KEYRING_ENV})
+WITHHELD_ENV = frozenset({PROVIDER_SIGNING_KEYS_ENV, PROVIDER_KEYRING_ENV, RETRY_KEYRING_ENV, ED25519_KEYRING_ENV})
 _ENVELOPE_REQUIRED = {"minimind_receipt", "outcome", "provider_operation_id"}
 _ENVELOPE_ALLOWED = _ENVELOPE_REQUIRED | {"authentication"}
 

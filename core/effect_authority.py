@@ -27,6 +27,7 @@ from .authority import authorize, load_contract, load_permit
 from .contract import verify_permit
 from .evidence import EvidenceRecord, verify_evidence
 from .mutation import TransitionError, canonical_json, commit_batch, recover_pending
+from . import provider_ed25519 as _ed
 
 STATES = ("PLANNED", "DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE")
 _ALLOWED = {
@@ -654,7 +655,61 @@ def provider_receipt_signature(secret: bytes, body) -> str:
     return hmac.new(secret, canonical_json(signed).encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-def _verify_provider_receipt(current, outcome, record, keyring, now):
+def _ed25519_keyring(public_keyring):
+    try:
+        return _ed.ProviderPublicKeyring.from_env() if public_keyring is None else public_keyring
+    except ValueError as exc:
+        raise ProviderAuthenticationError(str(exc)) from exc
+
+
+def _check_validity_window(auth, now):
+    t = _now(now)
+    if auth["expires_at"] - auth["issued_at"] > MAX_PROVIDER_RECEIPT_TTL_SECONDS or auth["expires_at"] <= auth["issued_at"]:
+        raise ProviderAuthenticationError("provider receipt validity window is invalid")
+    if t > auth["expires_at"]:
+        raise ProviderAuthenticationError("provider receipt has expired")
+    if auth["issued_at"] > t + _CLOCK_SKEW_SECONDS:
+        raise ProviderAuthenticationError("provider receipt is issued in the future")
+
+
+def _verify_ed25519_receipt(current, outcome, record, public_keyring, now):
+    """Ed25519-only path (audit F-04.1). No HMAC fallback; the verifier holds public keys only."""
+    auth = record.get("authentication")
+    if auth is None:
+        raise ProviderAuthenticationError("provider receipt is not authenticated; observation is non-authoritative")
+    if not isinstance(auth, dict) or set(auth) != set(_ed.ED25519_AUTH_FIELDS):
+        raise ProviderAuthenticationError("Ed25519 provider receipt authentication schema mismatch "
+                                          "(Ed25519 required for this provider)")
+    if (auth["type"] != _ed.ED25519_RECEIPT_TYPE or auth["algorithm"] != _ed.ED25519_ALGORITHM
+            or not isinstance(auth["key_id"], str)
+            or not isinstance(auth["receipt_id"], str) or not _PROVIDER_RECEIPT_ID.fullmatch(auth["receipt_id"])
+            or any(not isinstance(auth[k], (int, float)) or isinstance(auth[k], bool)
+                   for k in ("issued_at", "expires_at"))):
+        raise ProviderAuthenticationError("Ed25519 provider receipt authentication is malformed")
+    if not isinstance(public_keyring, _ed.ProviderPublicKeyring):
+        raise ProviderAuthenticationError("observation requires a deployment-supplied Ed25519 public keyring")
+    for key in ("contract_id", "permit_id"):
+        if auth[key] != current[key]:
+            raise ProviderAuthenticationError(f"provider receipt {key} binding mismatch")
+    # Every signed field is rebuilt from trusted effect state + the exact raw observation.
+    payload = _ed.ed25519_payload(
+        key_id=auth["key_id"], receipt_id=auth["receipt_id"], effect_id=current["effect_id"],
+        contract_id=current["contract_id"], permit_id=current["permit_id"], attempt_id=current["attempt_id"],
+        provider=current["provider"], provider_operation_id=record["provider_operation_id"], outcome=outcome,
+        observation=record["observation"], issued_at=auth["issued_at"], expires_at=auth["expires_at"])
+    try:
+        public_keyring.verify(current["provider"], auth["key_id"], auth["signature"], payload)
+    except ValueError as exc:
+        raise ProviderAuthenticationError(str(exc)) from exc
+    _check_validity_window(auth, now)
+    return auth
+
+
+def _verify_provider_receipt(current, outcome, record, keyring, now, public_keyring=None):
+    public_keyring = _ed25519_keyring(public_keyring)
+    provider = current["provider"]
+    if provider in _ed.ED25519_REQUIRED_PROVIDERS or (public_keyring is not None and provider in public_keyring):
+        return _verify_ed25519_receipt(current, outcome, record, public_keyring, now)
     auth = record.get("authentication")
     if auth is None:
         raise ProviderAuthenticationError("provider receipt is not authenticated; observation is non-authoritative")
@@ -686,13 +741,7 @@ def _verify_provider_receipt(current, outcome, record, keyring, now):
     if not hmac.compare_digest(auth["signature"], provider_receipt_signature(secret, body)):
         raise ProviderAuthenticationError("provider receipt signature is invalid or not bound to this "
                                           "effect/attempt/outcome/observation")
-    t = _now(now)
-    if auth["expires_at"] - auth["issued_at"] > MAX_PROVIDER_RECEIPT_TTL_SECONDS or auth["expires_at"] <= auth["issued_at"]:
-        raise ProviderAuthenticationError("provider receipt validity window is invalid")
-    if t > auth["expires_at"]:
-        raise ProviderAuthenticationError("provider receipt has expired")
-    if auth["issued_at"] > t + _CLOCK_SKEW_SECONDS:
-        raise ProviderAuthenticationError("provider receipt is issued in the future")
+    _check_validity_window(auth, now)
     return auth
 
 
@@ -710,7 +759,8 @@ def mint_observation_evidence(effect_id, attempt_id, provider, provider_operatio
     ).as_record()
 
 
-def observe(aios_dir, effect_id, actor, outcome, provider_observation, *, provider_keyring=None, now=None):
+def observe(aios_dir, effect_id, actor, outcome, provider_observation, *, provider_keyring=None, now=None,
+            provider_public_keyring=None):
     """The ONLY path into OBSERVED_SUCCESS / OBSERVED_FAILURE.
 
     The submitted observation is untrusted. It becomes authoritative only if
@@ -764,7 +814,8 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation, *, provid
             raise ValueError("evidence artifact_ref is not bound to the provider observation")
         if canonical_json(supplied) != canonical_json(minted):
             raise ValueError("supplied evidence is not the AIOS-minted envelope for this observation")
-    auth = _verify_provider_receipt(current, outcome, provider_observation, provider_keyring, now)
+    auth = _verify_provider_receipt(current, outcome, provider_observation, provider_keyring, now,
+                                    provider_public_keyring)
     record = {
         "provider": provider, "provider_operation_id": operation_id, "effect_id": effect_id,
         "attempt_id": attempt_id, "observation": raw, "provider_authentication": dict(auth),

@@ -8,6 +8,7 @@ HMAC-SHA256 keys, following the model of `core/attestation.py`.
 |---|---|---|---|
 | `AIOS_RETRY_ISSUER_KEYRING` | AIOS verifier | `retry_dispatch`, `issue_retry_authorization` | Registered retry approvers: `{"<issuer>": {"secret": "...", "scopes": ["effect.retry.approve"], "revoked": false}}` |
 | `AIOS_PROVIDER_KEYRING` | AIOS verifier | `observe` (via `core.runtime`) | Registered providers: `{"<provider>": {"secret": "...", "scopes": ["provider.receipt.sign"], "revoked": false}}` |
+| `AIOS_PROVIDER_ED25519_KEYRING` | AIOS verifier | `observe` | Ed25519 **public** keys only: `{"<provider>": {"key_id": "ed25519:<sha256(pub)[:32]>", "public_key": "<32-byte hex>", "revoked": false}}`. Any other field is rejected. |
 | `AIOS_PROVIDER_SIGNING_KEYS` | Provider side only | `ProviderReceiptSigner.from_env` | `{"<provider>": "<secret>"}`. Lives in the provider process or the AIOS adapter that supervises it. Never give it to the agent. Must **not** contain `minimind` in the AIOS process (see below). |
 
 Secrets must be at least 16 characters long. They are never written to AIOS state. Keyring and
@@ -28,29 +29,38 @@ signer `repr()` output never includes them.
   `apply_via_aios` defaults to `ProviderReceiptSigner.from_env("repo_patch")`.
 * A caller-supplied AIOS evidence record is never treated as proof of provider execution.
 
-## MiniMind workload (audit F-04, model A: provider-authenticated execution)
+## MiniMind workload (audit F-04 / F-04.1, model A: provider-authenticated execution, Ed25519)
 
-* The MiniMind workload process signs its own receipt with the `minimind` key, obtained from its own
-  secret store (separate uid, container or secret mount). The AIOS parent and the agent never hold it.
+* MiniMind is **Ed25519-only** (`core.provider_ed25519.ED25519_REQUIRED_PROVIDERS`; any provider
+  registered in `AIOS_PROVIDER_ED25519_KEYRING` is Ed25519-only as well). Its HMAC entries in
+  `AIOS_PROVIDER_KEYRING`, if any, are ignored. There is no HMAC fallback.
+* The workload holds the private key in its own secret store (e.g. a 0600 PEM file owned by the
+  workload user, read with `Ed25519ReceiptSigner.from_pem_file`). The AIOS verifier holds only the
+  public key, so nothing in the AIOS trust domain can produce a valid MiniMind signature. The private
+  key never travels via argv, environment, stdin/stdout or logs.
 * `MiniMindAdapter` never signs or re-signs. It refuses to run if the parent environment exposes a
-  `minimind` signing key (or an unparseable `AIOS_PROVIDER_SIGNING_KEYS`): the effect becomes `UNKNOWN`.
-* `AIOS_PROVIDER_SIGNING_KEYS`, `AIOS_PROVIDER_KEYRING` and `AIOS_RETRY_ISSUER_KEYRING` are withheld from
-  the child environment. An HMAC verifier keyring would let the child forge any provider.
+  `minimind` HMAC signing key (or an unparseable `AIOS_PROVIDER_SIGNING_KEYS`). It withholds
+  `AIOS_PROVIDER_SIGNING_KEYS`, `AIOS_PROVIDER_KEYRING`, `AIOS_PROVIDER_ED25519_KEYRING` and
+  `AIOS_RETRY_ISSUER_KEYRING` from the child.
 * Workload stdout: `{"minimind_receipt": {...}, "outcome": "...", "provider_operation_id":
-  "minimind:<task_id>:<attempt_id>", "authentication": {...}}`. The signature binds effect, contract,
-  permit, attempt, provider, operation id (task + attempt), outcome and the SHA-256 of
-  `{"minimind_receipt": ...}` (capability, task_id, terminal_state, artifact lineage, evidence),
-  receipt id, issued/expiry.
+  "minimind:<task_id>:<attempt_id>", "authentication": {"type": "PROVIDER_RECEIPT_ED25519",
+  "algorithm": "Ed25519", "key_id", "receipt_id", "contract_id", "permit_id", "issued_at",
+  "expires_at", "signature"}}`.
+* The signature covers the canonical JSON of: type, algorithm, key_id, receipt_id, effect_id,
+  contract_id, permit_id, attempt_id, provider, provider_operation_id, outcome, receipt_digest
+  (SHA-256 of `{"minimind_receipt": ...}`: task_id, capability, terminal_state, artifact lineage,
+  evidence), issued_at, expires_at. The verifier rebuilds every field from trusted effect state and
+  the exact raw observation; nothing unsigned is used. `key_id` must equal the key registered for the
+  **dispatched** provider, and the registered `key_id` must match its public key.
 * Outcome: `PROMOTE` → `OBSERVED_SUCCESS`; `REJECT` / `INCONCLUSIVE` / `BLOCKED` → `OBSERVED_FAILURE`.
-  A mismatch, a non-PROMOTE result labelled success, a wrong task/capability/operation, a schema error
-  or any verification failure → `UNKNOWN`. Promotion itself remains a separate AIOS decision.
-* Deployment requirement (not enforceable in code): the workload key store must be unreadable by the
-  AIOS process user and the agent. If it is readable, provider authentication degrades to adapter-level
-  attestation.
+  Any verification, binding, schema or configuration failure (missing/malformed/revoked key,
+  `cryptography` not installed) → `UNKNOWN`. Promotion itself remains a separate AIOS decision.
+* Deployment requirement (not enforceable in code): the workload key file must be unreadable by the
+  AIOS process user and the agent. Requires the `cryptography` package on the verifier and workload.
 
 ## Limitations
 
-* HMAC is symmetric. It authenticates against principals that do not hold the key, such as the
+* HMAC is symmetric (all providers except Ed25519-only ones such as MiniMind). It authenticates against principals that do not hold the key, such as the
   agent. It does not authenticate against whoever holds the verifier keyring. An adapter that runs
   inside the AIOS process holds its signing key in that process. Treat it as part of the
   deployment's trusted computing base.
