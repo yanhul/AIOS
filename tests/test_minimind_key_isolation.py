@@ -24,6 +24,7 @@ from adapters.minimind.isolation import (
     read_workload_key,
     resolve_trusted_symlinks,
     validate_receipt_command,
+    _process_capabilities,
 )
 from adapters.minimind.runner import MiniMindAdapter
 
@@ -63,6 +64,28 @@ def _effect():
 parent_only = pytest.mark.skipif(ROLE != "parent", reason="OS isolation e2e not provisioned (parent role): UNKNOWN")
 agent_only = pytest.mark.skipif(ROLE != "agent", reason="OS isolation e2e not provisioned (agent role): UNKNOWN")
 non_root_linux = pytest.mark.skipif(not LINUX or ROOT, reason="workload loader checks need a non-root Linux UID")
+
+
+def test_process_capabilities_reads_inheritable_and_bounding_sets(monkeypatch):
+    import builtins
+    import io
+
+    status = (
+        "CapInh:\\t0000000000000001\\n"
+        "CapPrm:\\t0000000000000000\\n"
+        "CapEff:\\t0000000000000000\\n"
+        "CapBnd:\\t00000000000000ff\\n"
+        "CapAmb:\\t0000000000000000\\n"
+    )
+    monkeypatch.setattr(builtins, "open", lambda *args, **kwargs: io.StringIO(status))
+    caps = _process_capabilities()
+    assert caps == {
+        "CapEff": 0,
+        "CapPrm": 0,
+        "CapInh": 1,
+        "CapAmb": 0,
+        "CapBnd": 255,
+    }
 
 
 # --- 6. missing isolation blocks execution (always run) -------------------------------------
