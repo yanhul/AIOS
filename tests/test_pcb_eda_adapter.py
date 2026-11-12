@@ -54,7 +54,7 @@ def test_adapter_runs_schematic_phase_and_validates_phase_receipt(tmp_path, monk
         )
         return subprocess.CompletedProcess(command, 0, "", "")
 
-    monkeypatch.setattr("adapters.pcb_eda.adapter.subprocess.run", fake_run)
+    monkeypatch.setattr("adapters.pcb_eda.adapter.run_bounded", fake_run)
     request = PcbEdaRequest(
         task_id="schematic-test", input_dir=str(input_dir), output_dir=str(output_dir),
         kit_root=str(kit), config=str(config), phase="SCHEMATIC",
@@ -80,7 +80,7 @@ def test_adapter_rejects_pass_receipt_if_provider_exits_nonzero(tmp_path, monkey
         )
         return subprocess.CompletedProcess(command, 7, "", "provider failed")
 
-    monkeypatch.setattr("adapters.pcb_eda.adapter.subprocess.run", fake_run)
+    monkeypatch.setattr("adapters.pcb_eda.adapter.run_bounded", fake_run)
     request = PcbEdaRequest(
         task_id="schematic-test", input_dir=str(input_dir), output_dir=str(output_dir),
         kit_root=str(kit), phase="SCHEMATIC",
@@ -98,7 +98,7 @@ def test_adapter_blocks_missing_schematic_receipt(tmp_path, monkeypatch):
     output_dir = tmp_path / "output"
     output_dir.mkdir()
     monkeypatch.setattr(
-        "adapters.pcb_eda.adapter.subprocess.run",
+        "adapters.pcb_eda.adapter.run_bounded",
         lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "", ""),
     )
     request = PcbEdaRequest(

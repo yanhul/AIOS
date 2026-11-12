@@ -32,7 +32,7 @@ def _inputs(tmp_path: Path, *, suffix=".kicad_sch", operation="project_inspect")
 
 def test_project_inspect_returns_bound_receipt_without_subprocess(tmp_path):
     project, contract, effect = _inputs(tmp_path)
-    with patch("adapters.kicad.adapter.subprocess.run") as run:
+    with patch("adapters.kicad.adapter.run_bounded") as run:
         receipt = KicadAdapter().execute(contract=contract, effect=effect, attempt_id=effect["attempt_id"])
     run.assert_not_called()
     assert receipt.provider == "kicad.eda"
@@ -77,7 +77,7 @@ def test_erc_reports_process_observation_not_quality_pass(tmp_path):
     with patch("adapters.kicad.adapter.shutil.which", return_value="/usr/bin/kicad-cli"), patch(
         "adapters.kicad.adapter.Path.is_file", autospec=True,
         side_effect=lambda p: True if str(p) == "/usr/bin/kicad-cli" else real_is_file(p),
-    ), patch("adapters.kicad.adapter.subprocess.run", side_effect=run_and_write_report):
+    ), patch("adapters.kicad.adapter.run_bounded", side_effect=run_and_write_report):
         receipt = KicadAdapter().execute(contract=contract, effect=effect, attempt_id=effect["attempt_id"])
     assert receipt.outcome == "OBSERVED_SUCCESS"
     assert receipt.observation["quality_verdict"] == "NOT_ASSESSED"
@@ -91,7 +91,7 @@ def test_nonzero_cli_exit_is_observed_failure(tmp_path):
     with patch("adapters.kicad.adapter.shutil.which", return_value="/usr/bin/kicad-cli"), patch(
         "adapters.kicad.adapter.Path.is_file", autospec=True,
         side_effect=lambda p: True if str(p) == "/usr/bin/kicad-cli" else real_is_file(p),
-    ), patch("adapters.kicad.adapter.subprocess.run", return_value=completed):
+    ), patch("adapters.kicad.adapter.run_bounded", return_value=completed):
         receipt = KicadAdapter().execute(contract=contract, effect=effect, attempt_id=effect["attempt_id"])
     assert receipt.outcome == "OBSERVED_FAILURE"
     assert receipt.observation["process_exit_code"] == 2
@@ -184,7 +184,7 @@ def test_source_mutation_during_cli_is_rejected(tmp_path):
     with patch("adapters.kicad.adapter.shutil.which", return_value="/usr/bin/kicad-cli"), patch(
         "adapters.kicad.adapter.Path.is_file", autospec=True,
         side_effect=lambda p: True if str(p) == "/usr/bin/kicad-cli" else real_is_file(p),
-    ), patch("adapters.kicad.adapter.subprocess.run", side_effect=mutate_source):
+    ), patch("adapters.kicad.adapter.run_bounded", side_effect=mutate_source):
         with pytest.raises(RuntimeError, match="changed the source project"):
             KicadAdapter().execute(contract=contract, effect=effect, attempt_id=effect["attempt_id"])
 
@@ -196,7 +196,7 @@ def test_cli_output_limit_fails_closed(tmp_path):
     with patch("adapters.kicad.adapter.shutil.which", return_value="/usr/bin/kicad-cli"), patch(
         "adapters.kicad.adapter.Path.is_file", autospec=True,
         side_effect=lambda p: True if str(p) == "/usr/bin/kicad-cli" else real_is_file(p),
-    ), patch("adapters.kicad.adapter.subprocess.run", return_value=completed):
+    ), patch("adapters.kicad.adapter.run_bounded", return_value=completed):
         with pytest.raises(ValueError, match="output exceeds configured limit"):
             KicadAdapter(max_output_bytes=3).execute(
                 contract=contract, effect=effect, attempt_id=effect["attempt_id"]
@@ -220,7 +220,7 @@ def test_real_cli_timeout_through_aios_is_unknown_not_success(tmp_path):
         "adapters.kicad.adapter.Path.is_file", autospec=True,
         side_effect=lambda p: True if str(p) == "/usr/bin/kicad-cli" else real_is_file(p),
     ), patch(
-        "adapters.kicad.adapter.subprocess.run",
+        "adapters.kicad.adapter.run_bounded",
         side_effect=subprocess.TimeoutExpired(cmd=["kicad-cli", "sch", "erc"], timeout=1),
     ):
         result = execute(
@@ -253,7 +253,7 @@ def test_zero_exit_without_report_is_observed_failure(tmp_path):
     with patch("adapters.kicad.adapter.shutil.which", return_value="/usr/bin/kicad-cli"), patch(
         "adapters.kicad.adapter.Path.is_file", autospec=True,
         side_effect=lambda p: True if str(p) == "/usr/bin/kicad-cli" else real_is_file(p),
-    ), patch("adapters.kicad.adapter.subprocess.run", return_value=completed):
+    ), patch("adapters.kicad.adapter.run_bounded", return_value=completed):
         receipt = KicadAdapter().execute(
             contract=contract, effect=effect, attempt_id=effect["attempt_id"]
         )

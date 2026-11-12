@@ -11,7 +11,7 @@ from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.policy_registry import persist_policy
 
-from core.effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
+from core.effect_authority import create_effect, dispatch, issue_retry_authorization, observe, retry_dispatch, unknown
 from core.evidence import EvidenceRecord
 from core.mutation import TransitionError
 
@@ -32,13 +32,13 @@ def _effect(tmp_path):
     permit = persist_permit(str(tmp_path), contract, "agent-1")
     return create_effect(str(tmp_path), contract_identity(contract), "op-1", "agent-1", permit["permit_id"], "external_effect")
 
-def _evidence(provider="provider-1"):
+def _evidence(provider="provider-1", run_id="run-1"):
     return EvidenceRecord(
         evidence_id="EV-1",
         level="OBSERVED",
         source_ref="provider://receipt/1",
         claim="provider completed operation",
-        run_id="run-1",
+        run_id=run_id,
         provider=provider,
     ).as_record()
 
@@ -47,7 +47,7 @@ def _observation(effect_id, provider="provider-1", attempt=1):
     return {
         "attempt_id": f"{effect_id}:attempt:{attempt}",
         "provider": provider,
-        "evidence": _evidence(provider),
+        "evidence": _evidence(provider, f"{effect_id}:attempt:{attempt}"),
     }
 
 
@@ -56,7 +56,7 @@ def test_effect_transition_is_atomic_and_audited(tmp_path):
     assert effect["state"] == "PLANNED"
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1")
     unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
-    retry_dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:2", "provider-1", 2, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":2})
+    retry_dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:2", "provider-1", 2, issue_retry_authorization(str(tmp_path), effect["effect_id"], "agent-1", 2, "operator:test", "test retry"))
     done = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", _observation(effect["effect_id"], attempt=2))
     assert done["state"] == "OBSERVED_SUCCESS"
     assert (tmp_path / "events" / ("effect-" + effect["effect_id"] + "-OBSERVED_SUCCESS.json")).exists()

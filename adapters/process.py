@@ -14,6 +14,8 @@ from typing import Sequence
 
 from core.runtime import ProviderReceipt
 
+from adapters.bounded_process import OutputLimitExceeded, run_bounded
+
 
 @dataclass(frozen=True)
 class SubprocessAdapter:
@@ -21,6 +23,7 @@ class SubprocessAdapter:
     command: Sequence[str]
     timeout_seconds: float = 30.0
     max_output_bytes: int = 64 * 1024
+    max_stderr_bytes: int = 64 * 1024
     max_input_bytes: int = 64 * 1024
 
     def execute(self, *, contract: dict, effect: dict, attempt_id: str) -> ProviderReceipt:
@@ -30,7 +33,7 @@ class SubprocessAdapter:
             raise ValueError("command must contain non-empty strings")
         if self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
-        if self.max_output_bytes <= 0 or self.max_input_bytes <= 0:
+        if self.max_output_bytes <= 0 or self.max_input_bytes <= 0 or self.max_stderr_bytes <= 0:
             raise ValueError("I/O limits must be positive")
 
         request = json.dumps(
@@ -42,19 +45,18 @@ class SubprocessAdapter:
             raise ValueError("provider request exceeds input limit")
 
         try:
-            completed = subprocess.run(
+            completed = run_bounded(
                 list(self.command),
                 input=request,
-                capture_output=True,
                 timeout=self.timeout_seconds,
-                check=False,
-                shell=False,
+                max_stdout_bytes=self.max_output_bytes,
+                max_stderr_bytes=self.max_stderr_bytes,
             )
         except subprocess.TimeoutExpired as exc:
-            raise TimeoutError("provider timed out") from exc
+            raise TimeoutError("provider timed out; process tree killed") from exc
+        except OutputLimitExceeded as exc:
+            raise ValueError(f"provider {exc.stream} exceeds output limit") from exc
 
-        if len(completed.stdout) > self.max_output_bytes:
-            raise ValueError("provider stdout exceeds output limit")
         if completed.returncode != 0:
             raise RuntimeError(f"provider exited with code {completed.returncode}")
 

@@ -411,10 +411,18 @@ def _require_committed_event(aios_dir, entity):
         f"with or predates M1.5")
 
 
-def commit_batch(aios_dir, payloads):
-    """Single shared atomic commit engine under the mutation lock."""
+def commit_batch(aios_dir, payloads, precondition=None):
+    """Single shared atomic commit engine under the mutation lock.
+
+    ``precondition`` (optional callable taking ``aios_dir``) runs while the
+    lock is held and before anything is staged. Raising aborts the batch with
+    no writes, which gives callers compare-and-swap semantics for the full
+    read -> validate -> write sequence.
+    """
     with _MutationLock(aios_dir):
         state_layout.ensure_state_dirs(aios_dir)
+        if precondition is not None:
+            precondition(aios_dir)
         staging_root = os.path.join(aios_dir, ".staging")
         batch_id = uuid.uuid4().hex
         batch_dir = os.path.join(staging_root, f"batch-{batch_id}")

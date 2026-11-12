@@ -14,6 +14,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from adapters.bounded_process import OutputLimitExceeded, run_bounded
+
 from core.runtime import ProviderReceipt
 
 CAPABILITY = "kicad.eda"
@@ -157,12 +159,16 @@ class KicadAdapter:
         command = self._command(operation, project, report)
         command[0] = cli
         try:
-            completed = subprocess.run(
-                command, capture_output=True, timeout=self.timeout_seconds,
-                check=False, shell=False, cwd=str(root),
+            completed = run_bounded(
+                command, timeout=self.timeout_seconds,
+                max_stdout_bytes=self.max_output_bytes,
+                max_stderr_bytes=self.max_output_bytes,
+                cwd=str(root),
             )
         except subprocess.TimeoutExpired as exc:
-            raise TimeoutError("KiCad CLI timed out; effect outcome requires reconciliation") from exc
+            raise TimeoutError("KiCad CLI timed out; process tree killed; effect outcome requires reconciliation") from exc
+        except OutputLimitExceeded as exc:
+            raise ValueError("KiCad CLI output exceeds configured limit") from exc
 
         stdout = completed.stdout or b""
         stderr = completed.stderr or b""

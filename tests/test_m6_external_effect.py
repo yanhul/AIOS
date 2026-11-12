@@ -14,16 +14,16 @@ from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.policy_registry import persist_policy
 from core.external_effect import ExternalEffectError, create_effect, load_effects, record_dispatch, record_observation, record_unknown
-from core.effect_authority import retry_dispatch
+from core.effect_authority import issue_retry_authorization, retry_dispatch
 
 
-def evidence(provider="provider:test"):
+def evidence(provider="provider:test", run_id="run-1"):
     return EvidenceRecord(
         evidence_id="EV-1",
         level="OBSERVED",
         source_ref="provider://receipt/1",
         claim="provider completed operation",
-        run_id="run-1",
+        run_id=run_id,
         provider=provider,
     ).as_record()
 
@@ -69,9 +69,9 @@ class TestExternalEffect(unittest.TestCase):
         record_unknown(self.aios, e["effect_id"], "agent:a", "provider timeout")
         self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "UNKNOWN")
         retry_attempt = f"{e['effect_id']}:attempt:2"
-        retry_dispatch(self.aios, e["effect_id"], "agent:a", retry_attempt, "provider:test", 2, {"mode":"EXPLICIT","effect_id":e["effect_id"],"attempt":2})
+        retry_dispatch(self.aios, e["effect_id"], "agent:a", retry_attempt, "provider:test", 2, issue_retry_authorization(self.aios, e["effect_id"], "agent:a", 2, "operator:test", "test retry"))
         record_observation(self.aios, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {
-            "attempt_id": retry_attempt, "provider": "provider:test", "evidence": evidence()
+            "attempt_id": retry_attempt, "provider": "provider:test", "evidence": evidence(run_id=retry_attempt)
         })
         self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "OBSERVED_SUCCESS")
 
