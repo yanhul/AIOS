@@ -343,7 +343,7 @@ def _recover_pending_unlocked(aios_dir):
                         with open(tmp, "rb") as fh:
                             payload = fh.read()
                         atomic_write_beneath(aios_dir, rel_dest, payload.decode("utf-8"))
-                    except (SecureWriteError, UnicodeDecodeError) as exc:
+                    except (OSError, SecureWriteError, UnicodeDecodeError) as exc:
                         raise StateConflictError(f"secure journal recovery refused destination: {dest}") from exc
                     os.unlink(tmp)
                 else:
