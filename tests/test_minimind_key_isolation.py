@@ -437,3 +437,66 @@ def test_receipt_command_changed_after_validation_is_blocked():
         validate_receipt_command(cfg, signer_uid=signer_uid)
     done = _run_entry(fx, fx["lib"], config)
     assert done.returncode == 3 and b"changed" in done.stderr and done.stdout == b""
+
+
+
+def test_signer_package_import_does_not_execute_contract_or_provider(tmp_path):
+    """Importing the signer isolation submodule must not initialize workload modules."""
+    import shutil
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    fake = tmp_path / "fake-import-root"
+    (fake / "adapters" / "minimind").mkdir(parents=True)
+    (fake / "core").mkdir()
+    shutil.copyfile(repo / "adapters" / "__init__.py", fake / "adapters" / "__init__.py")
+    shutil.copyfile(repo / "adapters" / "minimind" / "__init__.py",
+                    fake / "adapters" / "minimind" / "__init__.py")
+    shutil.copyfile(repo / "adapters" / "minimind" / "isolation.py",
+                    fake / "adapters" / "minimind" / "isolation.py")
+    marker = tmp_path / "unexpected-import"
+    payload = f"from pathlib import Path; Path({str(marker)!r}).write_text('executed')\n"
+    (fake / "adapters" / "minimind" / "contract.py").write_text(payload, encoding="utf-8")
+    (fake / "adapters" / "minimind" / "runner.py").write_text(
+        payload + "import core.provider_ed25519\n", encoding="utf-8")
+    (fake / "core" / "__init__.py").write_text("", encoding="utf-8")
+    (fake / "core" / "provider_ed25519.py").write_text(payload, encoding="utf-8")
+    script = (
+        "import sys\n"
+        "sys.path.insert(0, sys.argv[1])\n"
+        "import adapters.minimind.isolation\n"
+        "assert 'adapters.minimind.contract' not in sys.modules\n"
+        "assert 'adapters.minimind.runner' not in sys.modules\n"
+        "assert 'core.provider_ed25519' not in sys.modules\n"
+    )
+    done = subprocess.run([sys.executable, "-I", "-S", "-c", script, str(fake)],
+                          capture_output=True, text=True, timeout=20, check=False)
+    assert done.returncode == 0, done.stderr
+    assert not marker.exists(), "package initialization executed workload/provider code"
+
+
+def test_trusted_tree_allows_writable_data_only_symlink_directory(tmp_path):
+    from adapters.minimind.isolation import check_trusted_tree
+
+    root = tmp_path / "import-root"
+    target = tmp_path / "locale-data"
+    root.mkdir()
+    target.mkdir()
+    (target / "README.txt").write_text("data only", encoding="utf-8")
+    target.chmod(0o777)
+    (root / "locale-data").symlink_to(target, target_is_directory=True)
+    assert check_trusted_tree(str(root), kind="test import root") >= 0
+
+
+def test_trusted_tree_rejects_writable_symlink_directory_with_python_code(tmp_path):
+    from adapters.minimind.isolation import IsolationError, check_trusted_tree
+
+    root = tmp_path / "import-root"
+    target = tmp_path / "module-data"
+    root.mkdir()
+    target.mkdir()
+    (target / "injected.py").write_text("payload = True\n", encoding="utf-8")
+    target.chmod(0o777)
+    (root / "trusted_pkg").symlink_to(target, target_is_directory=True)
+    with pytest.raises(IsolationError, match="group/other writable"):
+        check_trusted_tree(str(root), kind="test import root")
