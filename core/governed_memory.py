@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from .mutation import canonical_json, validate_entity, _entity_relpath, _require_committed_event
+from .secure_fs import SecureWriteError, secure_read_bytes_beneath
 from .authority import authorize, load_contract
 from .capabilities import CapabilityRegistry
 from .policy_registry import resolve_policy
@@ -192,20 +193,33 @@ def persist_memory(store, record: Mapping[str, Any], *, decision_id: str,
         raise ValueError("memory predecessor must match the governed decision_id")
     # A caller-supplied ID is not a decision receipt: resolve the canonical
     # persisted DECISION and require its integrity-bound mutation event.
-    decision_path = os.path.join(aios_dir, "decisions", decision_id + ".json")
-    if not os.path.isfile(decision_path):
+    # The id is resolved strictly by name inside decisions/: separators and
+    # dot components are refused lexically, and the file is read via
+    # descriptor-relative, no-follow, fstat-verified I/O (core.secure_fs).
+    # Symlinked / dangling / FIFO / special / unreadable DECISION data is
+    # never authorization. Nothing is written before every check passes.
+    if ("/" in decision_id or "\\" in decision_id or "\x00" in decision_id
+            or decision_id in (".", "..")):
         raise ValueError("decision_id does not resolve to persisted DECISION")
+    decision_rel = f"decisions/{decision_id}.json"
     try:
-        with open(decision_path, "r", encoding="utf-8") as fh:
-            decision = json.load(fh)
+        raw = secure_read_bytes_beneath(aios_dir, decision_rel)
+    except FileNotFoundError as exc:
+        raise ValueError("decision_id does not resolve to persisted DECISION") from exc
+    except (OSError, SecureWriteError) as exc:
+        raise ValueError(f"decision_id is not integrity-bound persisted DECISION: "
+                         f"unsafe or unreadable DECISION entry refused: {exc}") from exc
+    try:
+        decision = json.loads(raw.decode("utf-8"))
+        if not isinstance(decision, dict):
+            raise ValueError("DECISION is not a JSON object")
         validate_entity(decision)
         if decision.get("entity_type") != "DECISION" or decision.get("entity_id") != decision_id:
             raise ValueError("decision identity mismatch")
-        expected = os.path.abspath(os.path.join(aios_dir, _entity_relpath(decision)))
-        if os.path.normcase(os.path.abspath(decision_path)) != os.path.normcase(expected):
+        if _entity_relpath(decision).replace(os.sep, "/") != decision_rel:
             raise ValueError("DECISION is not stored at its canonical path")
         _require_committed_event(aios_dir, decision)
-    except (OSError, ValueError, TypeError) as exc:
+    except (OSError, ValueError, TypeError, UnicodeDecodeError) as exc:
         raise ValueError(f"decision_id is not integrity-bound persisted DECISION: {exc}") from exc
     # Reuse native evidence resolution at write time, not only retrieval time.
     from .verification import resolve_evidence

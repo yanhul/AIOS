@@ -7,7 +7,7 @@ A caller cannot self-authorize an arbitrary policy digest.
 import hashlib
 import os
 
-from .mutation import canonical_json, commit_batch, recover_pending
+from .mutation import _committed_state, canonical_json, commit_batch, read_state_json, recover_pending
 
 POLICIES_DIR = "policies"
 POLICY_TYPE = "GOVERNING_POLICY"
@@ -31,12 +31,10 @@ def persist_policy(aios_dir, policy):
         raise ValueError("policy must be a governing policy artifact")
     digest = policy_digest(policy)
     recover_pending(aios_dir)
-    path = os.path.join(aios_dir, POLICIES_DIR, _policy_filename(digest))
     record = dict(policy)
     record["policy_digest"] = digest
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as fh:
-            existing = __import__("json").load(fh)
+    if _committed_state(aios_dir, os.path.join(POLICIES_DIR, _policy_filename(digest))):
+        existing = read_state_json(aios_dir, os.path.join(POLICIES_DIR, _policy_filename(digest)))
         if canonical_json(existing) != canonical_json(record):
             raise ValueError("existing policy identity has different content")
         return digest
@@ -48,15 +46,18 @@ def resolve_policy(aios_dir, digest):
     """Resolve and re-hash an immutable policy artifact; fail closed."""
     if not isinstance(digest, str) or not digest.startswith("sha256:"):
         raise ValueError("policy digest must be a sha256 content digest")
-    path = os.path.join(aios_dir, POLICIES_DIR, _policy_filename(digest))
-    legacy_path = os.path.join(aios_dir, POLICIES_DIR, digest + ".json")
+    path = f"{POLICIES_DIR}/{_policy_filename(digest)}"
+    legacy_path = f"{POLICIES_DIR}/{digest}.json"
     policy = None
     for candidate in (path, legacy_path):
+        # Unsafe entries (symlink / special / untrusted dir) raise
+        # StateConflictError: never followed, never treated as "not found".
         try:
-            with open(candidate, "r", encoding="utf-8") as fh:
-                policy = __import__("json").load(fh)
+            policy = read_state_json(aios_dir, candidate)
             break
-        except (FileNotFoundError, OSError, ValueError):
+        except FileNotFoundError:
+            continue
+        except ValueError:  # invalid JSON / encoding: try legacy, else fail
             continue
     if policy is None:
         raise ValueError("governing policy artifact not found")

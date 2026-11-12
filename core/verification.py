@@ -36,6 +36,10 @@ import hashlib
 import json
 import os
 
+from .secure_fs import (
+    SecureWriteError, secure_is_dir_beneath, secure_listdir_beneath,
+    secure_read_bytes_beneath,
+)
 from .mutation import (
     MutationError,
     TransitionError,
@@ -95,6 +99,37 @@ def _validate_refs(evidence_refs):
     return norm
 
 
+def _secure_json_names(aios_dir, dirname, exc_cls):
+    """Sorted ``*.json`` names in a state subdirectory via no-follow,
+    owner-checked descriptor I/O. Missing dir -> []. A symlinked/special/
+    untrusted directory raises ``exc_cls`` (fail closed, never followed)."""
+    try:
+        if not secure_is_dir_beneath(aios_dir, dirname):
+            # Regular file / special where a directory is required.
+            from .secure_fs import secure_exists_beneath
+            if secure_exists_beneath(aios_dir, dirname):
+                raise exc_cls(f"unsafe AIOS state directory refused: {dirname!r}")
+            return []
+        names = secure_listdir_beneath(aios_dir, dirname)
+    except FileNotFoundError:
+        return []
+    except (OSError, SecureWriteError) as exc:
+        raise exc_cls(f"unsafe AIOS state directory refused: {dirname!r}") from exc
+    return [fn for fn in names if fn.endswith(".json")]
+
+
+def _secure_read_entry(aios_dir, rel, exc_cls):
+    """Bytes of a regular state file, ``None`` if it vanished concurrently.
+    Symlinks, dangling symlinks, FIFOs, sockets, devices, directories and
+    unreadable entries raise ``exc_cls``: never followed, never "empty"."""
+    try:
+        return secure_read_bytes_beneath(aios_dir, rel)
+    except FileNotFoundError:
+        return None
+    except (OSError, SecureWriteError) as exc:
+        raise exc_cls(f"unsafe or unreadable AIOS state entry refused: {rel!r}") from exc
+
+
 def resolve_evidence(aios_dir, evidence_refs):
     """Resolve refs by reading persisted EVIDENCE entities from disk.
 
@@ -102,48 +137,41 @@ def resolve_evidence(aios_dir, evidence_refs):
     directly and trusts nothing but persisted entity files.
     """
     resolved, unresolved = [], []
-    evidence_dir = os.path.join(aios_dir, "evidence")
     cache = {}
     seen_ids = set()
     duplicate_ids = set()
-    if os.path.isdir(evidence_dir):
-        for fn in os.listdir(evidence_dir):
-            if not fn.endswith(".json"):
+    for fn in _secure_json_names(aios_dir, "evidence", VerificationError):
+        raw = _secure_read_entry(aios_dir, f"evidence/{fn}", VerificationError)
+        if raw is None:
+            continue  # vanished: cannot resolve -> ref stays unresolved
+        try:
+            ent = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue  # malformed evidence is never resolvable authority
+        if not isinstance(ent, dict):
+            continue
+        if ent.get("entity_type") == "EVIDENCE":
+            eid = ent.get("entity_id")
+            if isinstance(eid, str) and eid in seen_ids:
+                # Any second persisted representation of the same identity
+                # is ambiguous, even when the duplicate is malformed.
+                duplicate_ids.add(eid)
+                cache.pop(eid, None)
                 continue
+            if isinstance(eid, str):
+                seen_ids.add(eid)
             try:
-                with open(os.path.join(evidence_dir, fn), "r",
-                          encoding="utf-8") as fh:
-                    ent = json.load(fh)
-            except (OSError, json.JSONDecodeError):
-                continue
-            if ent.get("entity_type") == "EVIDENCE":
-                eid = ent.get("entity_id")
-                if isinstance(eid, str) and eid in seen_ids:
-                    # Any second persisted representation of the same identity
-                    # is ambiguous, even when the duplicate is malformed.
-                    duplicate_ids.add(eid)
-                    cache.pop(eid, None)
-                    continue
-                if isinstance(eid, str):
-                    seen_ids.add(eid)
-                try:
-                    validate_entity(ent)
-                    expected_path = os.path.join(
-                        evidence_dir, os.path.basename(_entity_relpath(ent))
+                validate_entity(ent)
+                if os.path.basename(_entity_relpath(ent)) != fn:
+                    raise MutationError(
+                        f"EVIDENCE {eid} is not stored at its canonical path"
                     )
-                    actual_path = os.path.join(evidence_dir, fn)
-                    if os.path.normcase(os.path.abspath(actual_path)) != os.path.normcase(
-                        os.path.abspath(expected_path)
-                    ):
-                        raise MutationError(
-                            f"EVIDENCE {eid} is not stored at its canonical path"
-                        )
-                    _require_entity_event(aios_dir, ent)
-                except (MutationError, OSError, json.JSONDecodeError):
-                    # Malformed, forged, relocated, or receipt-less evidence is
-                    # never resolvable authority.
-                    continue
-                cache[eid] = ent
+                _require_entity_event(aios_dir, ent)
+            except (MutationError, OSError, json.JSONDecodeError):
+                # Malformed, forged, relocated, or receipt-less evidence is
+                # never resolvable authority.
+                continue
+            cache[eid] = ent
 
     if duplicate_ids:
         # Ambiguous persisted identity cannot be used as verification evidence.
@@ -187,26 +215,29 @@ def _require_committed_event(aios_dir, record):
         "authority": record["authority"],
     }
     expected_event_id = event_identity(expected_event)
-    events_dir = os.path.join(aios_dir, "events")
-    if os.path.isdir(events_dir):
-        for fn in sorted(os.listdir(events_dir)):
-            if not fn.endswith(".json"):
-                continue
-            path = os.path.join(events_dir, fn)
-            try:
-                with open(path, "r", encoding="utf-8") as fh:
-                    ev = json.load(fh)
-            except (OSError, json.JSONDecodeError):
-                continue
-            if ev.get("kind") != "mutation" or ev.get("action") != "verification.recorded":
-                continue
-            if ev.get("verification_id") != verification_id:
-                continue
-            if ev.get("event_id") != expected_event_id:
-                continue
-            if os.path.basename(fn) != f"EVT-{fn.split('-', 2)[1]}-{expected_event_id}.json":
-                continue
-            return
+    # Materialize first: ANY unsafe event entry fails closed, even if a
+    # matching receipt sorts before it (same discipline as core.mutation).
+    entries = [(fn, _secure_read_entry(aios_dir, f"events/{fn}", TransitionError))
+               for fn in _secure_json_names(aios_dir, "events", TransitionError)]
+    for fn, raw in entries:
+        if raw is None:
+            continue
+        try:
+            ev = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue  # malformed event cannot be the matching receipt
+        if not isinstance(ev, dict):
+            continue
+        if ev.get("kind") != "mutation" or ev.get("action") != "verification.recorded":
+            continue
+        if ev.get("verification_id") != verification_id:
+            continue
+        if ev.get("event_id") != expected_event_id:
+            continue
+        name_parts = fn.split("-", 2)
+        if len(name_parts) < 3 or fn != f"EVT-{name_parts[1]}-{expected_event_id}.json":
+            continue
+        return
     raise TransitionError(
         f"verification record {verification_id} has no matching integrity-bound "
         f"audit event; state was tampered with or predates M2")
@@ -221,18 +252,13 @@ def load_verifications(aios_dir):
     overwritten by directory iteration order.
     """
     out = {}
-    vdir = os.path.join(aios_dir, _VERIFICATION_DIR)
-    if not os.path.isdir(vdir):
-        return out
-
-    for fn in sorted(os.listdir(vdir)):
-        if not fn.endswith(".json"):
-            continue
-        path = os.path.join(vdir, fn)
+    for fn in _secure_json_names(aios_dir, _VERIFICATION_DIR, TransitionError):
+        raw = _secure_read_entry(aios_dir, f"{_VERIFICATION_DIR}/{fn}", TransitionError)
+        if raw is None:
+            continue  # vanished concurrently: not loaded, never authoritative
         try:
-            with open(path, "r", encoding="utf-8") as fh:
-                rec = json.load(fh)
-        except (OSError, json.JSONDecodeError) as exc:
+            rec = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise TransitionError(
                 f"invalid persisted verification record {fn!r}"
             ) from exc

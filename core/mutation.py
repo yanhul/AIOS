@@ -272,6 +272,55 @@ class _MutationLock:
         return False
 
 
+class _SharedReadLock:
+    """Shared (``LOCK_SH``) counterpart of :class:`_MutationLock` for
+    read-only sweeps such as :func:`core.reconcile.reconcile`.
+
+    It never creates the state root, state directories or the lock file. If
+    the lock file does not exist no lock is taken (``held`` is False): no
+    mutation has ever completed lock acquisition there, and a mutation
+    starting concurrently is NOT excluded (documented residual window).
+    The same no-follow / regular / nlink==1 / inode re-check rules apply.
+    """
+    _MAX_ATTEMPTS = 16
+
+    def __init__(self, aios_dir):
+        self.aios_dir = aios_dir
+        self.fd = None
+        self.held = False
+
+    def __enter__(self):
+        import fcntl
+        try:
+            for _ in range(self._MAX_ATTEMPTS):
+                try:
+                    fd = secure_open_lock_beneath(self.aios_dir, _LOCK_NAME, create=False)
+                except FileNotFoundError:
+                    return self
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_SH)
+                    if secure_fd_matches_beneath(self.aios_dir, _LOCK_NAME, fd):
+                        self.fd, self.held = fd, True
+                        return self
+                except BaseException:
+                    os.close(fd)
+                    raise
+                os.close(fd)
+        except (OSError, SecureWriteError) as exc:
+            raise MutationError("cannot securely open AIOS mutation lock (shared)") from exc
+        raise MutationError("AIOS mutation lock file keeps being replaced; refusing")
+
+    def __exit__(self, exc_type, exc, tb):
+        import fcntl
+        fd, self.fd, self.held = self.fd, None, False
+        if fd is not None:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            finally:
+                os.close(fd)
+        return False
+
+
 def _digest_bytes(payload_bytes):
     return hashlib.sha256(payload_bytes).hexdigest()
 
@@ -347,7 +396,7 @@ def _recover_pending_unlocked(aios_dir):
                         payload = secure_read_bytes_beneath(aios_dir, tmp_rel)
                         if _digest_bytes(payload) != op["digest"]:
                             raise StateConflictError(f"staged file digest mismatch: {tmp_rel}")
-                        atomic_write_beneath(aios_dir, rel_dest, payload.decode("utf-8"))
+                        atomic_write_beneath(aios_dir, rel_dest, payload.decode("utf-8"), enforce_owner=True)
                         secure_unlink_beneath(aios_dir, tmp_rel)
                     else:
                         raise StateConflictError(f"journal op unrecoverable (temp and dest both missing): {rel_dest}")
@@ -406,6 +455,38 @@ def _load_existing(aios_dir, relpath):
         return json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise StateConflictError(f"committed state is not valid JSON: {rel!r}") from exc
+
+
+def read_state_json(aios_dir, relpath):
+    """Secure JSON read of one state file beneath ``aios_dir``.
+
+    Missing file/root -> ``FileNotFoundError`` (unchanged semantics for
+    callers that test absence). Symlinks, dangling symlinks, special files,
+    directories and untrusted directories -> :class:`StateConflictError`.
+    Invalid JSON -> ``json.JSONDecodeError`` (a ``ValueError``)."""
+    rel = _portable_rel(relpath)
+    try:
+        raw = secure_read_bytes_beneath(aios_dir, rel)
+    except FileNotFoundError:
+        raise
+    except (OSError, SecureWriteError) as exc:
+        raise StateConflictError(f"unsafe AIOS state entry refused: {rel!r}") from exc
+    return json.loads(raw.decode("utf-8"))
+
+
+def list_state_names(aios_dir, reldir):
+    """Sorted names in a state directory; missing -> []; unsafe -> StateConflictError."""
+    rel = _portable_rel(reldir)
+    try:
+        if not secure_is_dir_beneath(aios_dir, rel):
+            if secure_exists_beneath(aios_dir, rel):
+                raise StateConflictError(f"unsafe AIOS state directory refused: {rel!r}")
+            return []
+        return secure_listdir_beneath(aios_dir, rel)
+    except FileNotFoundError:
+        return []
+    except (OSError, SecureWriteError) as exc:
+        raise StateConflictError(f"unsafe AIOS state directory refused: {rel!r}") from exc
 
 
 def _require_committed_event(aios_dir, entity):

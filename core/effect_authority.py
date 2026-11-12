@@ -18,7 +18,7 @@ import os
 from .authority import authorize, load_contract, load_permit
 from .contract import verify_permit
 from .evidence import verify_evidence
-from .mutation import TransitionError, canonical_json, commit_batch, recover_pending
+from .mutation import TransitionError, _committed_state, canonical_json, commit_batch, read_state_json, recover_pending
 
 STATES = ("PLANNED", "DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE")
 _ALLOWED = {
@@ -36,12 +36,12 @@ def _id(contract_id, logical_operation_id, actor):
 
 
 def _path(aios_dir, effect_id):
-    return os.path.join(aios_dir, "effects", effect_id + ".json")
+    # (root, relative) pair: all access is descriptor-relative / no-follow.
+    return (aios_dir, f"effects/{effect_id}.json")
 
 
 def _load(path):
-    with open(path, "r", encoding="utf-8") as fh:
-        return json.load(fh)
+    return read_state_json(*path)
 
 
 def _validate_strings(*pairs):
@@ -99,7 +99,7 @@ def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id,
         "state": "PLANNED", "attempt": 0,
     }
     path = _path(aios_dir, effect_id)
-    if os.path.exists(path):
+    if _committed_state(*path):
         existing = _load(path)
         if canonical_json(existing) == canonical_json(rec):
             return existing
@@ -128,7 +128,7 @@ def transition(aios_dir, effect_id, target, actor, **fields):
         raise TransitionError("undefined external-effect transition: direct DISPATCHED entry is not allowed")
     recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
-    if not os.path.exists(path):
+    if not _committed_state(*path):
         raise KeyError(f"unknown effect: {effect_id}")
     current = _load(path)
     _validate_persisted_effect(aios_dir, current)
@@ -171,7 +171,7 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
                       ("attempt_id", attempt_id), ("provider", provider))
     recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
-    if not os.path.exists(path):
+    if not _committed_state(*path):
         raise KeyError(f"unknown effect: {effect_id}")
     current = _load(path)
     _validate_persisted_effect(aios_dir, current)
@@ -212,7 +212,7 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
         raise ValueError("provider_observation must be a non-empty dict")
     recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
-    if not os.path.exists(path):
+    if not _committed_state(*path):
         raise KeyError(f"unknown effect: {effect_id}")
     current = _load(path)
     _validate_persisted_effect(aios_dir, current)
