@@ -110,10 +110,29 @@ def test_workload_runner_direct_entry_blocks_before_adapter_launch(tmp_path):
 
     marker = tmp_path / "PWNED"
     runner = Path(__file__).parents[1] / "scripts" / "run_workload_adapter.py"
+    workload = tmp_path / "aios"
+    workload.mkdir()
+    (workload / "workload.json").write_text(
+        __import__("json").dumps({
+            "protocol_version": 1,
+            "capability": "try.research@1",
+            "owner": "yanhul/try",
+            "aios_authority": "yanhul/AIOS",
+            "adapter": "aios/adapter.py",
+            "entrypoint": "execute",
+            "terminal_states": ["BLOCKED"],
+            "verification_classes": ["provenance"],
+        }),
+        encoding="utf-8",
+    )
+    (workload / "adapter.py").write_text(
+        f"from pathlib import Path; Path({str(marker)!r}).write_text('executed')\\n",
+        encoding="utf-8",
+    )
     command = [
-        sys.executable, str(runner), "--",
-        sys.executable, "-c",
-        f"from pathlib import Path; Path({str(marker)!r}).write_text('executed')",
+        sys.executable, str(runner), "--workload-id", "yanhul/try",
+        "--execution-id", "lock-test", "--cwd", str(tmp_path),
+        "--problem", "lock regression", "--", sys.executable, "aios/adapter.py",
     ]
     proc = subprocess.run(command, cwd=Path(__file__).parents[1], capture_output=True, text=True)
     assert proc.returncode == 2
