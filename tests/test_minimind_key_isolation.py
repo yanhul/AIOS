@@ -520,3 +520,55 @@ def test_import_tree_classifies_symlinked_python_code_by_import_name(tmp_path):
     code.write_text("value = 1", encoding="utf-8")
     assert not _is_importable_python_code(str(data))
     assert _is_importable_python_code(str(code))
+
+
+
+def test_symlink_data_tree_rejects_writable_directory_before_code_is_added(tmp_path, monkeypatch):
+    """A data-only target must not be writable when it is reachable from an import root."""
+    import adapters.minimind.isolation as isolation
+
+    root = tmp_path / "import-root"
+    target = tmp_path / "locale-data"
+    root.mkdir()
+    target.mkdir()
+    (target / "README.txt").write_text("data only", encoding="utf-8")
+    target.chmod(0o777)
+
+    def check_path(path, *, kind, executable=False, setuid=False):
+        st = os.lstat(path)
+        if st.st_mode & 0o022:
+            raise IsolationError(f"{kind}: writable directory")
+
+    monkeypatch.setattr(isolation, "check_trusted_path", check_path)
+    with pytest.raises(IsolationError, match="writable directory"):
+        isolation._check_trusted_import_directories(str(target), kind="test import root")
+
+
+def test_symlink_data_tree_rejects_writable_nested_directory(tmp_path, monkeypatch):
+    """A protected root does not make a writable nested directory safe."""
+    import adapters.minimind.isolation as isolation
+
+    target = tmp_path / "locale-data"
+    nested = target / "nested"
+    nested.mkdir(parents=True)
+    nested.chmod(0o777)
+
+    def check_path(path, *, kind, executable=False, setuid=False):
+        st = os.lstat(path)
+        if st.st_mode & 0o022:
+            raise IsolationError(f"{kind}: writable directory")
+
+    monkeypatch.setattr(isolation, "check_trusted_path", check_path)
+    with pytest.raises(IsolationError, match="writable directory"):
+        isolation._check_trusted_import_directories(str(target), kind="test import root")
+
+
+def test_import_tree_classifies_versioned_and_suffixless_elf_native_code(tmp_path):
+    from adapters.minimind.isolation import _is_importable_python_code
+
+    versioned = tmp_path / "libssl.so.3"
+    suffixless = tmp_path / "native_payload"
+    versioned.write_bytes(b"not-elf-but-versioned")
+    suffixless.write_bytes(b"\\x7fELF" + b"\\x00" * 32)
+    assert _is_importable_python_code(str(versioned))
+    assert _is_importable_python_code(str(suffixless))
