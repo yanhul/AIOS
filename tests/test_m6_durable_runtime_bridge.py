@@ -14,6 +14,7 @@ from core.contract import contract_identity
 from core.durable_runtime import RuntimeSubmission
 from core.effect_authority import create_effect, dispatch, issue_retry_authorization, transition
 from core.policy_registry import persist_policy
+from tests.provider_keys import signed
 from core.runtime import ProviderReceipt, execute, execute_retry_attempt, resume_attempt
 
 
@@ -37,8 +38,8 @@ class GoodAdapter:
     name = "fake-provider"
 
     def execute(self, *, contract, effect, attempt_id):
-        return ProviderReceipt(self.name, effect["effect_id"], attempt_id,
-                               "provider-op", "OBSERVED_SUCCESS", {"status": "ok"})
+        return signed(ProviderReceipt(self.name, effect["effect_id"], attempt_id,
+                               "provider-op", "OBSERVED_SUCCESS", {"status": "ok"}), effect)
 
 
 class GoodRuntime:

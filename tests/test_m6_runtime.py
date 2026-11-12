@@ -14,6 +14,7 @@ from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.effect_authority import create_effect, dispatch, issue_retry_authorization, retry_dispatch, transition
 from core.policy_registry import persist_policy
+from tests.provider_keys import signed
 from core.runtime import ProviderReceipt, execute, execute_attempt, execute_retry_attempt
 
 
@@ -37,9 +38,9 @@ class GoodAdapter:
     name = "fake-provider"
 
     def execute(self, *, contract, effect, attempt_id):
-        return ProviderReceipt(provider=self.name, effect_id=effect["effect_id"], attempt_id=attempt_id,
+        return signed(ProviderReceipt(provider=self.name, effect_id=effect["effect_id"], attempt_id=attempt_id,
                                provider_operation_id="provider-op-1", outcome="OBSERVED_SUCCESS",
-                               observation={"status": "ok"})
+                               observation={"status": "ok"}), effect)
 
 
 class BrokenAdapter:
@@ -94,9 +95,9 @@ def test_mismatched_receipt_becomes_unknown(tmp_path):
     class BadReceipt:
         name = "fake-provider"
         def execute(self, *, contract, effect, attempt_id):
-            return ProviderReceipt(provider=self.name, effect_id=effect["effect_id"] + "-wrong",
+            return signed(ProviderReceipt(provider=self.name, effect_id=effect["effect_id"] + "-wrong",
                                    attempt_id=attempt_id, provider_operation_id="provider-op-2",
-                                   outcome="OBSERVED_SUCCESS", observation={"status": "ok"})
+                                   outcome="OBSERVED_SUCCESS", observation={"status": "ok"}), effect)
 
     result = execute(str(tmp_path), cid, pid, "op-1", "agent:test", BadReceipt())
     assert result["state"] == "UNKNOWN"

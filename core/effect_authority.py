@@ -280,7 +280,6 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
 
 RETRY_AUTH_DIR = "retry_authorizations"
 RETRY_APPROVE_SCOPE = "effect.retry.approve"
-RETRY_KEYRING_ENV = "AIOS_RETRY_ISSUER_KEYRING"
 DEFAULT_RETRY_AUTH_TTL_SECONDS = 900
 MAX_RETRY_AUTH_TTL_SECONDS = 86400
 _CLOCK_SKEW_SECONDS = 60
@@ -297,55 +296,71 @@ _CONSUMPTION_FIELDS = (
 )
 
 
-class RetryIssuerKeyring:
-    """Deployment-supplied trust anchor for retry approval. Never persisted."""
+class _HmacKeyring:
+    """Deployment-supplied HMAC trust anchor. Never persisted in AIOS state."""
+
+    ENV_VAR = None
+    LABEL = "principal"
 
     def __init__(self, issuers):
+        label = self.LABEL
         if not isinstance(issuers, Mapping) or not issuers:
-            raise ValueError("retry issuer keyring must be a non-empty mapping")
+            raise ValueError(f"{label} keyring must be a non-empty mapping")
         parsed = {}
         for issuer, entry in issuers.items():
-            _validate_strings(("issuer", issuer))
+            _validate_strings((label, issuer))
             if not isinstance(entry, Mapping):
-                raise ValueError(f"retry issuer entry must be a mapping: {issuer}")
+                raise ValueError(f"{label} entry must be a mapping: {issuer}")
             secret = entry.get("secret")
             if not isinstance(secret, str) or len(secret) < 16:
-                raise ValueError(f"retry issuer secret must be a string of at least 16 characters: {issuer}")
+                raise ValueError(f"{label} secret must be a string of at least 16 characters: {issuer}")
             scopes = entry.get("scopes", ())
             if not isinstance(scopes, (list, tuple)) or not all(isinstance(x, str) for x in scopes):
-                raise ValueError(f"retry issuer scopes must be a list of strings: {issuer}")
+                raise ValueError(f"{label} scopes must be a list of strings: {issuer}")
             revoked = entry.get("revoked", False)
             if not isinstance(revoked, bool):
-                raise ValueError(f"retry issuer revoked flag must be boolean: {issuer}")
+                raise ValueError(f"{label} revoked flag must be boolean: {issuer}")
             parsed[issuer] = {"secret": secret.encode("utf-8"), "scopes": frozenset(scopes), "revoked": revoked}
         self._issuers = parsed
 
     @classmethod
     def from_env(cls, environ=None):
-        raw = (os.environ if environ is None else environ).get(RETRY_KEYRING_ENV)
+        raw = (os.environ if environ is None else environ).get(cls.ENV_VAR)
         if not raw:
             return None
         try:
             data = json.loads(raw)
         except ValueError as exc:
-            raise TransitionError("retry issuer keyring environment is not valid JSON") from exc
+            raise TransitionError(f"{cls.LABEL} keyring environment is not valid JSON") from exc
         try:
             return cls(data)
         except ValueError as exc:
-            raise TransitionError(f"retry issuer keyring environment is invalid: {exc}") from exc
+            raise TransitionError(f"{cls.LABEL} keyring environment is invalid: {exc}") from exc
 
     def secret_for(self, issuer, scope):
+        label = self.LABEL
         entry = self._issuers.get(issuer) if isinstance(issuer, str) else None
         if entry is None:
-            raise TransitionError(f"retry issuer is not registered in the trusted keyring: {issuer!r}")
+            raise TransitionError(f"{label} is not registered in the trusted keyring: {issuer!r}")
         if entry["revoked"]:
-            raise TransitionError(f"retry issuer has been revoked: {issuer}")
+            raise TransitionError(f"{label} has been revoked: {issuer}")
         if scope not in entry["scopes"]:
-            raise TransitionError(f"retry issuer is not authorized for {scope}: {issuer}")
+            raise TransitionError(f"{label} is not authorized for {scope}: {issuer}")
         return entry["secret"]
 
     def __repr__(self):  # never leak secrets into logs/evidence
-        return f"RetryIssuerKeyring(issuers={sorted(self._issuers)})"
+        return f"{type(self).__name__}(principals={sorted(self._issuers)})"
+
+
+class RetryIssuerKeyring(_HmacKeyring):
+    """Trusted retry issuers (scope ``effect.retry.approve``)."""
+
+    ENV_VAR = "AIOS_RETRY_ISSUER_KEYRING"
+    LABEL = "retry issuer"
+
+
+RETRY_KEYRING_ENV = RetryIssuerKeyring.ENV_VAR
+PROVIDER_KEYRING_ENV = "AIOS_PROVIDER_KEYRING"
 
 
 def _resolve_keyring(keyring):
@@ -585,8 +600,100 @@ def observation_digest(observation):
 
 
 MAX_OBSERVATION_BYTES = 1024 * 1024
-_OBSERVATION_KEYS = {"provider", "provider_operation_id", "effect_id", "attempt_id", "observation", "evidence"}
-EVIDENCE_AUTHORITY = "AIOS_OBSERVE_BOUNDARY:SHA256_CONTENT_BINDING"
+_OBSERVATION_KEYS = {"provider", "provider_operation_id", "effect_id", "attempt_id", "observation",
+                     "authentication", "evidence"}
+EVIDENCE_AUTHORITY = "AIOS_OBSERVE_BOUNDARY:HMAC_PROVIDER_RECEIPT+SHA256_CONTENT_BINDING"
+
+# --- Provider receipt authority (audit F-04) --------------------------------
+#
+# A caller-supplied observation is an untrusted assertion. OBSERVED_* is only
+# committed when the receipt carries an HMAC-SHA256 signature by the
+# *dispatched* provider's key, registered in a deployment-supplied
+# ProviderKeyring (``AIOS_PROVIDER_KEYRING``; never persisted in AIOS state),
+# over effect, contract, permit, attempt, provider, provider operation id,
+# outcome, raw-observation digest, a random receipt id and a validity window.
+# Same symmetric-key limitation as core.attestation / retry authority: this
+# authenticates against callers that do not hold the provider's signing key.
+
+PROVIDER_RECEIPT_SCOPE = "provider.receipt.sign"
+PROVIDER_RECEIPT_TYPE = "PROVIDER_RECEIPT_AUTHENTICATION"
+MAX_PROVIDER_RECEIPT_TTL_SECONDS = 3600
+_PROVIDER_RECEIPT_ID = re.compile(r"PR-[0-9a-f]{32}")
+_PROVIDER_AUTH_FIELDS = ("type", "receipt_id", "contract_id", "permit_id", "issued_at", "expires_at",
+                         "algorithm", "signature")
+_PROVIDER_SIGNED_FIELDS = ("type", "receipt_id", "effect_id", "contract_id", "permit_id", "attempt_id",
+                           "provider", "provider_operation_id", "outcome", "observation_digest",
+                           "issued_at", "expires_at", "algorithm")
+
+
+class ProviderAuthenticationError(TransitionError):
+    """A provider receipt is missing, unauthenticated, expired or mismatched."""
+
+
+class ProviderKeyring(_HmacKeyring):
+    """Trusted provider receipt signers (scope ``provider.receipt.sign``)."""
+
+    ENV_VAR = "AIOS_PROVIDER_KEYRING"
+    LABEL = "provider"
+
+
+def provider_receipt_body(*, receipt_id, effect_id, contract_id, permit_id, attempt_id, provider,
+                          provider_operation_id, outcome, observation, issued_at, expires_at):
+    """Canonical body a provider signs (shared by signer and verifier)."""
+    return {
+        "type": PROVIDER_RECEIPT_TYPE, "receipt_id": receipt_id, "effect_id": effect_id,
+        "contract_id": contract_id, "permit_id": permit_id, "attempt_id": attempt_id,
+        "provider": provider, "provider_operation_id": provider_operation_id, "outcome": outcome,
+        "observation_digest": observation_digest(observation),
+        "issued_at": issued_at, "expires_at": expires_at, "algorithm": "HMAC-SHA256",
+    }
+
+
+def provider_receipt_signature(secret: bytes, body) -> str:
+    signed = {key: body.get(key) for key in _PROVIDER_SIGNED_FIELDS}
+    return hmac.new(secret, canonical_json(signed).encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _verify_provider_receipt(current, outcome, record, keyring, now):
+    auth = record.get("authentication")
+    if auth is None:
+        raise ProviderAuthenticationError("provider receipt is not authenticated; observation is non-authoritative")
+    if not isinstance(auth, dict) or set(auth) != set(_PROVIDER_AUTH_FIELDS):
+        raise ProviderAuthenticationError("provider receipt authentication schema mismatch")
+    if (auth["type"] != PROVIDER_RECEIPT_TYPE or auth["algorithm"] != "HMAC-SHA256"
+            or not isinstance(auth["receipt_id"], str) or not _PROVIDER_RECEIPT_ID.fullmatch(auth["receipt_id"])
+            or not isinstance(auth["signature"], str)
+            or any(not isinstance(auth[k], (int, float)) or isinstance(auth[k], bool)
+                   for k in ("issued_at", "expires_at"))):
+        raise ProviderAuthenticationError("provider receipt authentication is malformed")
+    if keyring is None:
+        keyring = ProviderKeyring.from_env()
+    if not isinstance(keyring, ProviderKeyring):
+        raise ProviderAuthenticationError("observation requires a deployment-supplied trusted provider keyring")
+    # The key is selected by the DISPATCHED provider, never by a claim in the receipt.
+    try:
+        secret = keyring.secret_for(current["provider"], PROVIDER_RECEIPT_SCOPE)
+    except TransitionError as exc:
+        raise ProviderAuthenticationError(str(exc)) from exc
+    for key in ("contract_id", "permit_id"):
+        if auth[key] != current[key]:
+            raise ProviderAuthenticationError(f"provider receipt {key} binding mismatch")
+    body = provider_receipt_body(
+        receipt_id=auth["receipt_id"], effect_id=current["effect_id"], contract_id=current["contract_id"],
+        permit_id=current["permit_id"], attempt_id=current["attempt_id"], provider=current["provider"],
+        provider_operation_id=record["provider_operation_id"], outcome=outcome,
+        observation=record["observation"], issued_at=auth["issued_at"], expires_at=auth["expires_at"])
+    if not hmac.compare_digest(auth["signature"], provider_receipt_signature(secret, body)):
+        raise ProviderAuthenticationError("provider receipt signature is invalid or not bound to this "
+                                          "effect/attempt/outcome/observation")
+    t = _now(now)
+    if auth["expires_at"] - auth["issued_at"] > MAX_PROVIDER_RECEIPT_TTL_SECONDS or auth["expires_at"] <= auth["issued_at"]:
+        raise ProviderAuthenticationError("provider receipt validity window is invalid")
+    if t > auth["expires_at"]:
+        raise ProviderAuthenticationError("provider receipt has expired")
+    if auth["issued_at"] > t + _CLOCK_SKEW_SECONDS:
+        raise ProviderAuthenticationError("provider receipt is issued in the future")
+    return auth
 
 
 def mint_observation_evidence(effect_id, attempt_id, provider, provider_operation_id, observation):
@@ -603,13 +710,16 @@ def mint_observation_evidence(effect_id, attempt_id, provider, provider_operatio
     ).as_record()
 
 
-def observe(aios_dir, effect_id, actor, outcome, provider_observation):
+def observe(aios_dir, effect_id, actor, outcome, provider_observation, *, provider_keyring=None, now=None):
     """The ONLY path into OBSERVED_SUCCESS / OBSERVED_FAILURE.
 
-    The raw provider observation is untrusted input. AIOS mints its own
-    evidence envelope here, bound to the current attempt and to the digest of
-    the exact raw observation. A caller-supplied ``evidence`` record is
-    accepted only if it is identical to that envelope; it is never promoted.
+    The submitted observation is untrusted. It becomes authoritative only if
+    its ``authentication`` is a valid receipt signature by the dispatched
+    provider's deployment-registered key, bound to this effect, contract,
+    permit, attempt, provider operation, outcome and the exact raw
+    observation. Otherwise ``ProviderAuthenticationError`` is raised and the
+    effect is not changed. AIOS then mints its own evidence envelope; a
+    caller-supplied ``evidence`` record is accepted only if identical to it.
     """
     if outcome not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
         raise ValueError("invalid observation outcome")
@@ -654,14 +764,16 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
             raise ValueError("evidence artifact_ref is not bound to the provider observation")
         if canonical_json(supplied) != canonical_json(minted):
             raise ValueError("supplied evidence is not the AIOS-minted envelope for this observation")
+    auth = _verify_provider_receipt(current, outcome, provider_observation, provider_keyring, now)
     record = {
         "provider": provider, "provider_operation_id": operation_id, "effect_id": effect_id,
-        "attempt_id": attempt_id, "observation": raw, "evidence": minted,
-        "evidence_authority": EVIDENCE_AUTHORITY,
+        "attempt_id": attempt_id, "observation": raw, "provider_authentication": dict(auth),
+        "evidence": minted, "evidence_authority": EVIDENCE_AUTHORITY,
     }
     return _commit_transition(aios_dir, current, actor, outcome, {"provider_observation": record})
 
 
 __all__ = ["STATES", "create_effect", "transition", "dispatch", "retry_dispatch", "unknown", "observe",
            "issue_retry_authorization", "observation_digest", "mint_observation_evidence",
-           "RetryIssuerKeyring", "RETRY_AUTH_DIR", "RETRY_APPROVE_SCOPE", "RETRY_KEYRING_ENV"]
+           "RetryIssuerKeyring", "ProviderKeyring", "ProviderAuthenticationError", "provider_receipt_body",
+           "provider_receipt_signature", "PROVIDER_RECEIPT_SCOPE", "RETRY_AUTH_DIR", "RETRY_APPROVE_SCOPE", "RETRY_KEYRING_ENV"]

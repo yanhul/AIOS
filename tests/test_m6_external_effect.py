@@ -1,3 +1,4 @@
+from tests.provider_keys import sign_observation
 from tests.retry_issuers import signed_retry_auth
 # AIOS-CONTRACT: durable external-effect retry authority
 # AIOS-REGRESSION: Prevent ambiguous UNKNOWN effects from retrying without governed authority
@@ -71,10 +72,10 @@ class TestExternalEffect(unittest.TestCase):
         self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "UNKNOWN")
         retry_attempt = f"{e['effect_id']}:attempt:2"
         retry_dispatch(self.aios, e["effect_id"], "agent:a", retry_attempt, "provider:test", 2, signed_retry_auth(self.aios, e["effect_id"], "agent:a", 2, "operator:test", "test retry"))
-        record_observation(self.aios, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", {
+        record_observation(self.aios, e["effect_id"], "agent:a", "OBSERVED_SUCCESS", sign_observation(e, {
             "effect_id": e["effect_id"], "attempt_id": retry_attempt, "provider": "provider:test",
             "provider_operation_id": "op-1", "observation": {"status": "ok"},
-        })
+        }))
         self.assertEqual(load_effects(self.aios)[e["effect_id"]]["state"], "OBSERVED_SUCCESS")
 
     def test_attempt_mismatch_is_rejected(self):

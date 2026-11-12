@@ -7,13 +7,15 @@ import json
 import os
 import subprocess
 import sys
+import secrets
 import tempfile
 from pathlib import Path
 
 from core.authority import load_contract, persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
-from core.effect_authority import create_effect, dispatch
+from core.effect_authority import PROVIDER_RECEIPT_SCOPE, ProviderKeyring, create_effect, dispatch
+from core.provider_authority import ProviderReceiptSigner, authenticate_receipt
 from core.policy_registry import persist_policy
 from core.durable_runtime import RuntimeSubmission
 from core.runtime import ProviderReceipt, resume_attempt
@@ -21,6 +23,9 @@ from core.runtime import ProviderReceipt, resume_attempt
 
 ACTOR = "agent:product-e2e"
 PROVIDER = "crash-provider"
+# Ephemeral deployment key for this conformance run: the provider signs its
+# receipt, AIOS verifies it against the deployment keyring (audit F-04).
+_PROVIDER_KEY = secrets.token_hex(32)
 
 
 def contract_fixture():
@@ -92,14 +97,14 @@ class Provider:
     name = PROVIDER
 
     def execute(self, *, contract, effect, attempt_id):
-        return ProviderReceipt(
+        return authenticate_receipt(ProviderReceipt(
             self.name,
             effect["effect_id"],
             attempt_id,
             "provider-op-after-restart",
             "OBSERVED_SUCCESS",
             {"status": "observed-after-restart", "restarted": True},
-        )
+        ), effect, ProviderReceiptSigner(PROVIDER, _PROVIDER_KEY))
 
 
 def main() -> int:
@@ -130,7 +135,8 @@ def main() -> int:
         contract = load_contract(str(root), proof["contract_id"])
         runtime = RecordingRuntime()
         result = resume_attempt(
-            str(root), contract, effect, ACTOR, Provider(), runtime
+            str(root), contract, effect, ACTOR, Provider(), runtime,
+            provider_keyring=ProviderKeyring({PROVIDER: {"secret": _PROVIDER_KEY, "scopes": [PROVIDER_RECEIPT_SCOPE]}}),
         )
 
         assert runtime.resumed == (proof["effect_id"], proof["attempt_id"])

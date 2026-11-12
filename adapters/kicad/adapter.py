@@ -17,6 +17,7 @@ from pathlib import Path
 from adapters.bounded_process import OutputLimitExceeded, output_limit_error, run_bounded, timeout_error
 
 from core.runtime import ProviderReceipt
+from core.provider_authority import ProviderReceiptSigner, authenticate_receipt
 
 CAPABILITY = "kicad.eda"
 SUPPORTED_OPERATIONS = {"project_inspect", "erc_check", "drc_check"}
@@ -56,6 +57,8 @@ class KicadAdapter:
     # Deployment-bound workspace configuration is outside the immutable AIOS contract schema.
     workspace_root: str | None = None
     project_path: str | None = None
+    # Deployment-issued receipt signer; None -> receipts are non-authoritative.
+    signer: ProviderReceiptSigner | None = None
 
     def __post_init__(self) -> None:
         if self.name != CAPABILITY:
@@ -137,11 +140,11 @@ class KicadAdapter:
         if operation == "project_inspect":
             observation["project_suffix"] = project.suffix
             observation["project_size_bytes"] = project.stat().st_size
-            return ProviderReceipt(
+            return authenticate_receipt(ProviderReceipt(
                 provider=self.name, effect_id=effect_id, attempt_id=attempt_id,
                 provider_operation_id=provider_operation_id,
                 outcome="OBSERVED_SUCCESS", observation=observation,
-            )
+            ), effect, self.signer)
 
         cli = shutil.which(self.executable) if os.path.sep not in self.executable else self.executable
         if not cli or not Path(cli).is_file():
@@ -207,11 +210,11 @@ class KicadAdapter:
             if completed.returncode == 0 and report.is_file()
             else "OBSERVED_FAILURE"
         )
-        return ProviderReceipt(
+        return authenticate_receipt(ProviderReceipt(
             provider=self.name, effect_id=effect_id, attempt_id=attempt_id,
             provider_operation_id=provider_operation_id,
             outcome=outcome, observation=observation,
-        )
+        ), effect, self.signer)
 
 
 __all__ = ["KicadAdapter", "CAPABILITY", "SUPPORTED_OPERATIONS"]

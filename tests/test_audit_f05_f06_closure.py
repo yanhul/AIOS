@@ -316,3 +316,12 @@ def test_f06_output_dir_swapped_during_execution_rejected(tmp_path):
         f"os.symlink({str(decoy)!r}, a.output, target_is_directory=True)"))
     with pytest.raises(PermissionError, match="replaced or redirected"):
         run_kit(req, timeout_seconds=30)
+
+
+@pytest.mark.skipif(__import__("adapters.pcb_eda.adapter", fromlist=["x"])._DIRFD_SUPPORTED,
+                    reason="runs where dir_fd isolation is natively unavailable (e.g. Windows)")
+def test_f06_native_platform_without_dirfd_fails_closed(tmp_path):
+    req = _kit(tmp_path, "pass\n")
+    with pytest.raises(PermissionError, match="fail closed"):
+        run_kit(req, timeout_seconds=30)
+    assert not os.path.exists(req.output_dir)

@@ -14,6 +14,7 @@ from typing import Sequence
 from adapters.bounded_process import OutputLimitExceeded, output_limit_error, run_bounded, timeout_error
 
 from core.runtime import ProviderReceipt
+from core.provider_authority import ProviderReceiptSigner, authenticate_receipt
 
 from .contract import validate_receipt
 
@@ -27,6 +28,8 @@ class MiniMindAdapter:
     timeout_seconds: float = 60.0
     max_output_bytes: int = 256 * 1024
     max_input_bytes: int = 128 * 1024
+    # Deployment-issued receipt signer; None -> receipts are non-authoritative.
+    signer: ProviderReceiptSigner | None = None
 
     def execute(self, *, contract: dict, effect: dict, attempt_id: str) -> ProviderReceipt:
         if not self.name.strip():
@@ -73,14 +76,14 @@ class MiniMindAdapter:
         if receipt["capability"] != self._capability(contract):
             raise ValueError("MiniMind receipt capability binding mismatch")
 
-        return ProviderReceipt(
+        return authenticate_receipt(ProviderReceipt(
             provider=self.name,
             effect_id=effect["effect_id"],
             attempt_id=attempt_id,
             provider_operation_id=f"{self.name}:{receipt['task_id']}:{attempt_id}",
             outcome="OBSERVED_SUCCESS",
             observation={"minimind_receipt": receipt},
-        )
+        ), effect, self.signer)
 
     @staticmethod
     def _capability(contract: dict) -> str:

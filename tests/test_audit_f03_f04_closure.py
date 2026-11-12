@@ -20,6 +20,7 @@ from core.effect_authority import (
 from core.evidence import EvidenceRecord
 from core.mutation import TransitionError
 from core.runtime import execute_retry_attempt
+from tests.provider_keys import sign_observation
 from tests.retry_issuers import ISSUER_SECRETS, KEYRING, signed_retry_auth
 from tests.test_m6_effect_authority import _effect
 from tests.test_m6_runtime import setup_authority
@@ -375,7 +376,8 @@ def test_f04_valid_runtime_observation_succeeds_with_minted_evidence(tmp_path):
     effect = _effect(tmp_path)
     dispatch(str(tmp_path), effect["effect_id"], ACTOR, _aid(effect, 1), PROVIDER)
     raw = {"status": "ok", "evidence": {"evidence_id": "EV-smuggled", "level": "PROMOTED"}}
-    done = observe(str(tmp_path), effect["effect_id"], ACTOR, "OBSERVED_FAILURE", _obs(effect, observation=raw))
+    done = observe(str(tmp_path), effect["effect_id"], ACTOR, "OBSERVED_FAILURE",
+                   sign_observation(effect, _obs(effect, observation=raw), "OBSERVED_FAILURE"))
     assert done["state"] == "OBSERVED_FAILURE"
     ev = done["provider_observation"]["evidence"]
     assert ev == ea.mint_observation_evidence(effect["effect_id"], _aid(effect, 1), PROVIDER, "op-1", raw)

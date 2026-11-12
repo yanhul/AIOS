@@ -25,6 +25,7 @@ from core.evidence import EvidenceRecord
 from tests.retry_issuers import signed_retry_auth
 from core.mutation import TransitionError
 from core.pcb_eda import PcbEdaRequest
+from tests.provider_keys import signed
 from core.runtime import ProviderReceipt, execute
 from tests.test_m6_effect_authority import _effect
 from tests.test_m6_runtime import setup_authority
@@ -210,9 +211,9 @@ class _SmugglingAdapter:
     def execute(self, *, contract, effect, attempt_id):
         old = EvidenceRecord(evidence_id="EV-old", level="VERIFIED_DIGITAL", source_ref="old",
                              claim="old run", run_id="old-run", provider=self.name).as_record()
-        return ProviderReceipt(provider=self.name, effect_id=effect["effect_id"], attempt_id=attempt_id,
+        return signed(ProviderReceipt(provider=self.name, effect_id=effect["effect_id"], attempt_id=attempt_id,
                                provider_operation_id="op", outcome="OBSERVED_SUCCESS",
-                               observation={"status": "ok", "evidence": old})
+                               observation={"status": "ok", "evidence": old}), effect)
 
 
 def test_f04_runtime_never_promotes_provider_supplied_evidence(tmp_path):

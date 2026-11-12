@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.provider_keys import signer
 from adapters.kicad.adapter import KicadAdapter
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
@@ -127,7 +128,7 @@ def _authorized_kicad(tmp_path: Path, project: Path):
 def test_kicad_provider_runs_through_aios_authority_and_receipt_boundary(tmp_path):
     project, _, _ = _inputs(tmp_path)
     contract_id, permit_id = _authorized_kicad(tmp_path, project)
-    result = execute(str(tmp_path), contract_id, permit_id, "project_inspect", "agent:test", KicadAdapter(workspace_root=str(tmp_path), project_path=project.name))
+    result = execute(str(tmp_path), contract_id, permit_id, "project_inspect", "agent:test", KicadAdapter(workspace_root=str(tmp_path), project_path=project.name, signer=signer("kicad.eda")))
     assert result["state"] == "OBSERVED_SUCCESS", result.get("unknown_reason", result)
     observation = result["provider_observation"]
     assert observation["provider"] == "kicad.eda"

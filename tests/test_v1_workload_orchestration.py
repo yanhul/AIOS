@@ -6,6 +6,7 @@ from core.contract import contract_identity
 from core.durable_loop import LoopPolicy, MemoryStateStore
 from core.orchestrator import GovernedRuntimeExecutor, run_governed_execution
 from core.policy_registry import persist_policy
+from tests.provider_keys import signed
 from core.runtime import ProviderReceipt
 
 # Only executable workloads belong in this orchestration smoke test. MiniMind is
@@ -24,14 +25,14 @@ class WorkloadAdapter:
 
     def execute(self, *, contract, effect, attempt_id):
         self.calls += 1
-        return ProviderReceipt(
+        return signed(ProviderReceipt(
             self.name,
             effect["effect_id"],
             attempt_id,
             f"{self.name}:operation:{self.calls}",
             "OBSERVED_SUCCESS",
             {"workload": self.name, "effect": effect["effect_id"]},
-        )
+        ), effect)
 
 
 def _contract(capability, policy_digest):

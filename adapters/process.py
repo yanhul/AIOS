@@ -74,6 +74,9 @@ class SubprocessAdapter:
             provider_operation_id=payload.get("provider_operation_id", ""),
             outcome=payload.get("outcome", ""),
             observation=payload.get("observation", {}),
+            # Signed by the provider process with its own key (core.provider_authority);
+            # absent -> non-authoritative (UNKNOWN). AIOS never signs on its behalf.
+            authentication=payload.get("authentication"),
         )
 
 

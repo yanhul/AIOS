@@ -1,3 +1,4 @@
+from tests.provider_keys import sign_observation
 # AIOS-CONTRACT: durable external-effect retry authority
 # AIOS-REGRESSION: Prevent ambiguous UNKNOWN effects from retrying without governed authority
 # AIOS-OWNER: AIOS control-plane durable execution
@@ -115,6 +116,7 @@ def test_observation_requires_current_attempt_and_valid_aios_evidence():
         dispatch(td, effect["effect_id"], "bc-controller", attempt_id, "provider-a")
         obs = {"effect_id": effect["effect_id"], "attempt_id": attempt_id, "provider": "provider-a",
                "provider_operation_id": "op-1", "observation": {"status": "done"}}
+        obs = sign_observation(effect, obs)
         observed = observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS", obs)
         assert observed["state"] == "OBSERVED_SUCCESS"
         assert observed["provider_observation"]["evidence"]["run_id"] == attempt_id

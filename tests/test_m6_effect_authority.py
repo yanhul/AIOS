@@ -1,3 +1,4 @@
+from tests.provider_keys import sign_observation
 # AIOS-CONTRACT: durable external-effect retry authority
 # AIOS-REGRESSION: Prevent ambiguous UNKNOWN effects from retrying without governed authority
 # AIOS-OWNER: AIOS control-plane durable execution
@@ -61,7 +62,8 @@ def test_effect_transition_is_atomic_and_audited(tmp_path):
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1")
     unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
     retry_dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:2", "provider-1", 2, signed_retry_auth(str(tmp_path), effect["effect_id"], "agent-1", 2, "operator:test", "test retry"))
-    done = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", _observation(effect["effect_id"], attempt=2))
+    done = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS",
+                   sign_observation(effect, _observation(effect["effect_id"], attempt=2)))
     assert done["state"] == "OBSERVED_SUCCESS"
     assert (tmp_path / "events" / ("effect-" + effect["effect_id"] + "-OBSERVED_SUCCESS.json")).exists()
 

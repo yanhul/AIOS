@@ -9,7 +9,9 @@ from typing import Protocol
 
 from .authority import authorize, load_contract, load_permit
 from .durable_runtime import DurableRuntime, validate_submission
-from .effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
+from .effect_authority import (
+    ProviderAuthenticationError, create_effect, dispatch, observation_digest, observe, retry_dispatch, unknown,
+)
 
 
 @dataclass(frozen=True)
@@ -20,6 +22,9 @@ class ProviderReceipt:
     provider_operation_id: str
     outcome: str
     observation: dict
+    # Provider receipt signature (core.provider_authority). Without it the
+    # observation is non-authoritative and the effect is recorded UNKNOWN.
+    authentication: dict | None = None
 
 
 class ProviderAdapter(Protocol):
@@ -74,7 +79,7 @@ def validate_receipt(receipt, effect, attempt_id, provider_name):
         raise ValueError("receipt observation must be a non-empty dict")
 
 
-def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
+def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id, *, provider_keyring=None, now=None):
     """Execute exactly one dispatched attempt and record its observation."""
     _text(actor, "actor")
     _text(attempt_id, "attempt_id")
@@ -114,10 +119,24 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
         "attempt_id": receipt.attempt_id,
         "observation": receipt.observation,
     }
-    return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, provider_observation)
+    if receipt.authentication is not None:
+        provider_observation["authentication"] = receipt.authentication
+    try:
+        return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, provider_observation,
+                       provider_keyring=provider_keyring, now=now)
+    except ProviderAuthenticationError as exc:
+        # Never promote an unauthenticated assertion: keep it as UNKNOWN.
+        try:
+            digest = observation_digest(receipt.observation)
+        except (TypeError, ValueError):
+            digest = "unencodable"
+        return unknown(aios_dir, effect["effect_id"], actor,
+                       f"non-authoritative provider observation ({exc}); claimed_outcome={receipt.outcome}; "
+                       f"provider_operation_id={receipt.provider_operation_id}; observation_digest={digest}")
 
 
-def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: DurableRuntime):
+def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: DurableRuntime, *,
+                   provider_keyring=None, now=None):
     """Resume the exact currently-dispatched attempt without allocating a new attempt ID."""
     _text(actor, "actor")
     if not isinstance(contract, dict) or not contract:
@@ -136,11 +155,13 @@ def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: 
     if "external_effect" not in contract.get("allowed_effects", []):
         raise PermissionError("external effect is not authorized by contract")
     _submit_runtime(durable_runtime, "resume", effect, attempt_id, provider_name)
-    return execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id)
+    return execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id,
+                           provider_keyring=provider_keyring, now=now)
 
 
 def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapter, attempt_id, attempt,
-                          durable_runtime: DurableRuntime | None = None, *, retry_keyring=None, now=None):
+                          durable_runtime: DurableRuntime | None = None, *, retry_keyring=None,
+                          provider_keyring=None, now=None):
     """Authorize, dispatch and execute one explicit retry of an UNKNOWN effect.
 
     The external runtime may schedule/persist the attempt, but AIOS remains the
@@ -188,11 +209,12 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
     dispatched = retry_dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name, attempt,
                                 retry_authorization=retry_auth, keyring=retry_keyring, now=now)
     _submit_runtime(durable_runtime, "retry", dispatched, attempt_id, provider_name, attempt=attempt)
-    return execute_attempt(aios_dir, contract, dispatched, actor, adapter, attempt_id)
+    return execute_attempt(aios_dir, contract, dispatched, actor, adapter, attempt_id,
+                           provider_keyring=provider_keyring, now=now)
 
 
 def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapter,
-            durable_runtime: DurableRuntime | None = None):
+            durable_runtime: DurableRuntime | None = None, *, provider_keyring=None, now=None):
     """Authorize/create/dispatch the first attempt, then delegate execution."""
     _text(logical_operation_id, "logical_operation_id")
     _text(actor, "actor")
@@ -218,7 +240,8 @@ def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapt
     attempt_id = f"{effect['effect_id']}:attempt:1"
     effect = dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name)
     _submit_runtime(durable_runtime, "submit", effect, attempt_id, provider_name)
-    return execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id)
+    return execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id,
+                           provider_keyring=provider_keyring, now=now)
 
 
 __all__ = [
