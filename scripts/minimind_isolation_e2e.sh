@@ -27,7 +27,7 @@ for u in $PARENT $WL $RUN $AGENT; do id "$u" >/dev/null 2>&1 || useradd --system
 # directory with mode 0777. The signer correctly rejects that mutable directory.
 # Harden this known distro resource tree in the ephemeral test host before exercising
 # the signer; production hosts must independently meet the same root-owned/no-write rule.
-BABEL_LOCALE_DATA=/usr/share/python-babel-localedata/locale-data
+BABEL_LOCALE_DATA=/usr/share/python-babel-localedata
 if [ -d "$BABEL_LOCALE_DATA" ]; then
   find "$BABEL_LOCALE_DATA" -type d -exec chown root:root {} + -exec chmod go-w {} +
 fi
