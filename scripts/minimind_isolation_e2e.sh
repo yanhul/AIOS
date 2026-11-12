@@ -176,6 +176,17 @@ cp -r "$SRC/." "$WORK/"; rm -rf "$WORK/.git"; chown -R "$PARENT:$PARENT" "$WORK"
 ls -l /usr/bin/sudo; readlink -f /usr/bin/sudo; /usr/bin/sudo -V 2>&1 | head -1
 (cd / && sudo -u "$PARENT" /usr/bin/sudo -n -l) || echo "parent sudo -l failed"
 (cd / && sudo -u "$WL" /usr/bin/sudo -n -l) || echo "signer sudo -l failed"
+# The receipt runner is untrusted with the key and must have no sudo authority.
+if (cd / && sudo -u "$RUN" /usr/bin/sudo -n -l >"$LOGS/runner-sudo-list.txt" 2>&1); then
+  echo "FAIL: receipt runner has sudo privileges" >&2
+  cat "$LOGS/runner-sudo-list.txt" >&2
+  exit 1
+fi
+if grep -q "may run the following commands" "$LOGS/runner-sudo-list.txt"; then
+  echo "FAIL: receipt runner sudo policy is present" >&2
+  cat "$LOGS/runner-sudo-list.txt" >&2
+  exit 1
+fi
 
 run_role() {  # role user
   local runas=(); [ "$2" = root ] || runas=(sudo -u "$2")
