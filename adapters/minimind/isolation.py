@@ -153,6 +153,56 @@ def check_trusted_tree(root: str, *, kind: str) -> int:
     return count
 
 
+def prepare_trusted_python_imports(lib: str) -> int:
+    """Validate every Python import root before third-party code is allowed to import.
+
+    The signer launcher uses -S, so Python has not processed site directories or .pth files.
+    This function validates the stdlib roots, the AIOS code tree, and known platform
+    site/dist-packages roots before adding those dependency roots to sys.path.
+    """
+    import glob
+    import sysconfig
+
+    checked = set()
+    roots = set()
+    for key in ("stdlib", "platstdlib", "purelib", "platlib"):
+        value = sysconfig.get_paths().get(key)
+        if value:
+            roots.add(os.path.abspath(value))
+    version = f"{sys.version_info.major}.{sys.version_info.minor}"
+    roots.update({
+        f"/usr/lib/python{version}",
+        "/usr/lib/python3/dist-packages",
+        f"/usr/local/lib/python{version}/site-packages",
+        f"/usr/local/lib/python{version}/dist-packages",
+        f"/usr/lib/python{version}/site-packages",
+    })
+    roots.update(os.path.abspath(p) for p in sys.path if p)
+    roots.add(os.path.abspath(lib))
+
+    for root in sorted(roots):
+        if root in checked or not os.path.exists(root):
+            continue
+        checked.add(root)
+        if os.path.isdir(root):
+            check_trusted_tree(root, kind=f"Python import tree {root}")
+        else:
+            check_trusted_path(root, kind=f"Python import file {root}")
+
+    # Only add package roots after their complete trees passed the trust check.
+    for key in ("purelib", "platlib"):
+        value = sysconfig.get_paths().get(key)
+        if value and os.path.isdir(value) and value not in sys.path:
+            sys.path.append(value)
+    for root in ("/usr/lib/python3/dist-packages",
+                 f"/usr/local/lib/python{version}/site-packages",
+                 f"/usr/local/lib/python{version}/dist-packages",
+                 f"/usr/lib/python{version}/site-packages"):
+        if os.path.isdir(root) and root not in sys.path:
+            sys.path.append(root)
+    return len(checked)
+
+
 def check_trusted_executable(path: str, *, kind: str) -> str:
     """Resolve root-owned symlink hops, then require a trusted executable. Returns the resolved path."""
     real = resolve_trusted_symlinks(path, kind=kind)
