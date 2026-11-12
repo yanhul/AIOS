@@ -10,6 +10,11 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping
 
+# Support direct execution as `python scripts/<runner>.py`.
+AIOS_ROOT = Path(__file__).resolve().parents[1]
+if str(AIOS_ROOT) not in sys.path:
+    sys.path.insert(0, str(AIOS_ROOT))
+
 from core.continue_contract import build_continue_contract
 from core.durable_loop import LoopPolicy, run_durable_loop
 from core.pcb_eda import validate_schematic_receipt
