@@ -24,13 +24,17 @@ score alone is not accepted as promotion evidence.
 
 `{"contract": ..., "effect": ..., "attempt_id": ...}`
 
-The external process MUST emit exactly one JSON receipt on stdout matching the
-MiniMind receipt contract. The adapter validates capability, task binding,
-artifact lineage, and required evidence before converting the result into the
-AIOS `ProviderReceipt`. Non-zero exit, timeout, oversized I/O, malformed JSON,
-or invalid receipts fail closed.
+The external process MUST emit exactly one JSON envelope on stdout:
 
-The provider operation is considered an observed execution success when a
-schema-valid workload receipt is returned. `PROMOTE` remains a separate AIOS
-terminal decision based on the independent locked-holdout evidence in that
-receipt; the workload cannot promote itself by returning `PROMOTE`.
+`{"minimind_receipt": <MiniMind receipt>, "outcome": "OBSERVED_SUCCESS|OBSERVED_FAILURE",
+"provider_operation_id": "minimind:<task_id>:<attempt_id>", "authentication": <provider receipt signature>}`
+
+The workload signs with its own `minimind` key (`core.provider_authority.ProviderReceiptSigner`), held
+in its own secret store. The AIOS parent never holds that key, never signs, and withholds AIOS keys and
+keyrings from the child environment (see `docs/TRUST_ANCHORS.md`). The adapter validates capability,
+task binding, artifact lineage, required evidence and operation id. Non-zero exit, timeout, oversized
+I/O, malformed JSON, invalid receipts or a missing/invalid signature leave the effect `UNKNOWN`.
+
+Only `PROMOTE` is an observed success. `REJECT`, `INCONCLUSIVE` and `BLOCKED` are recorded as
+`OBSERVED_FAILURE` and never read as task success. `PROMOTE` remains a separate AIOS terminal decision
+based on the independent locked-holdout evidence; the workload cannot promote itself.

@@ -6,6 +6,8 @@ is supplied by the deployment to the provider side only, e.g. via
 ``AIOS_PROVIDER_SIGNING_KEYS`` (JSON ``{"<provider>": "<secret>"}``) in the
 provider's environment. The verifier side holds ``AIOS_PROVIDER_KEYRING``.
 Neither is ever stored in AIOS state or passed to the executing agent.
+Externally owned workloads (MiniMind) sign in their own process with a key the
+AIOS parent never holds; their adapter has no signer.
 
 Without a signer a receipt stays unauthenticated and ``core.runtime`` records
 the effect as UNKNOWN (non-authoritative) instead of OBSERVED_*.

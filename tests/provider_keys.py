@@ -11,7 +11,9 @@ KEYRING_SPEC = {name: {"secret": secret, "scopes": [PROVIDER_RECEIPT_SCOPE]} for
 KEYRING_SPEC["provider-revoked"] = {"secret": "revoked-provider-signing-key", "scopes": [PROVIDER_RECEIPT_SCOPE],
                                     "revoked": True}
 KEYRING_JSON = json.dumps(KEYRING_SPEC)
-SIGNING_KEYS_JSON = json.dumps(SECRETS)  # provider-side environment
+# Provider-side environment of in-process adapters. "minimind" is deliberately
+# absent: the MiniMind workload holds its own key and the AIOS parent must not.
+SIGNING_KEYS_JSON = json.dumps({k: v for k, v in SECRETS.items() if k != "minimind"})
 KEYRING = ProviderKeyring(KEYRING_SPEC)
 
 
