@@ -560,19 +560,82 @@ def _check_private(st: os.stat_result, *, what: str, euid: int, allow_root: bool
         raise IsolationError(f"{what} grants group/other access ({oct(st.st_mode & 0o777)})")
 
 
+def _open_private_key_directory(path: str, *, euid: int) -> int:
+    """Open the key directory component-by-component without following symlinks.
+
+    Keep the directory descriptors pinned until the key has been opened. This prevents
+    an attacker from swapping an ancestor after its permissions have been checked.
+    Root-owned non-writable ancestors and the sticky shared temporary directory are
+    accepted; every other ancestor must be owned by root/the workload and not writable
+    by group or other users. The final key directory is private to root/the workload.
+    """
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    current_fd = os.open("/", flags)
+    try:
+        parts = [part for part in os.path.normpath(path).split(os.sep) if part]
+        if not parts:
+            raise IsolationError("key path must name a file below a directory")
+        for index, part in enumerate(parts):
+            try:
+                next_fd = os.open(part, flags, dir_fd=current_fd)
+            except OSError as exc:
+                raise IsolationError(
+                    f"cannot safely open key path directory component {part!r}: {exc.strerror}"
+                ) from exc
+            st = os.fstat(next_fd)
+            if not stat.S_ISDIR(st.st_mode):
+                os.close(next_fd)
+                raise IsolationError(f"key path component {part!r} is not a directory")
+            is_key_directory = index == len(parts) - 1
+            if is_key_directory:
+                try:
+                    _check_private(st, what="key directory", euid=euid, allow_root=True)
+                except Exception:
+                    os.close(next_fd)
+                    raise
+            else:
+                if st.st_uid not in (0, euid):
+                    os.close(next_fd)
+                    raise IsolationError(
+                        f"key path ancestor {part!r} is owned by untrusted uid {st.st_uid}"
+                    )
+                writable = bool(st.st_mode & 0o022)
+                sticky_shared = bool(st.st_mode & stat.S_ISVTX)
+                if writable and not sticky_shared:
+                    os.close(next_fd)
+                    raise IsolationError(
+                        f"key path ancestor {part!r} is group/other writable"
+                    )
+            os.close(current_fd)
+            current_fd = next_fd
+        return current_fd
+    except Exception:
+        os.close(current_fd)
+        raise
+
+
 def read_workload_key(path: str) -> bytes:
-    """Workload side: read the PEM key only if it is private to the workload identity."""
+    """Workload side: read the PEM key only if its entire path is private and stable."""
     _require_linux()
     euid = os.geteuid()
     if euid == 0:
         raise IsolationError("workload must not run as root")
-    if not os.path.isabs(path):
+    if not isinstance(path, str) or not os.path.isabs(path):
         raise IsolationError("key path must be absolute")
-    _check_private(os.lstat(os.path.dirname(path)), what="key directory", euid=euid, allow_root=True)
+    normalized = os.path.normpath(path)
+    key_name = os.path.basename(normalized)
+    if key_name in ("", ".", ".."):
+        raise IsolationError("key path must name a file")
+    directory_fd = _open_private_key_directory(os.path.dirname(normalized), euid=euid)
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
-    except OSError as exc:
-        raise IsolationError(f"cannot open workload key without following links: {exc.strerror}") from exc
+        try:
+            fd = os.open(key_name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=directory_fd)
+        except OSError as exc:
+            raise IsolationError(
+                f"cannot open workload key without following links: {exc.strerror}"
+            ) from exc
+    finally:
+        os.close(directory_fd)
     try:
         st = os.fstat(fd)
         if not stat.S_ISREG(st.st_mode):
