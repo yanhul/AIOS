@@ -133,15 +133,32 @@ def resolve_trusted_symlinks(path: str, *, kind: str, max_hops: int = 8) -> str:
 
 
 def check_trusted_tree(root: str, *, kind: str) -> int:
-    """``root`` and every entry below it: root-owned, no group/other write, no symlinks. Returns file count."""
+    """Validate a root-owned tree; allow only safe file symlinks to trusted regular files.
+
+    Python distributions may ship a root-owned sitecustomize.py symlink. Directory
+    symlinks remain forbidden (they would make the scanned import tree incomplete).
+    """
     check_trusted_path(root, kind=kind)
     count = 0
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-        for name in dirnames + filenames:
+        for name in list(dirnames) + filenames:
             entry = os.path.join(dirpath, name)
             st = os.lstat(entry)
             if stat.S_ISLNK(st.st_mode):
-                raise IsolationError(f"{kind}: symlink inside trusted tree: {entry!r}")
+                if name in dirnames:
+                    raise IsolationError(f"{kind}: directory symlink inside trusted tree: {entry!r}")
+                if st.st_uid != 0 or st.st_mode & 0o022:
+                    raise IsolationError(f"{kind}: untrusted symlink inside trusted tree: {entry!r}")
+                target = os.path.realpath(entry)
+                try:
+                    target_st = os.stat(entry)
+                except OSError as exc:
+                    raise IsolationError(f"{kind}: broken/unreadable symlink {entry!r}") from exc
+                if not stat.S_ISREG(target_st.st_mode):
+                    raise IsolationError(f"{kind}: symlink target is not a regular file: {entry!r}")
+                check_trusted_path(target, kind=f"{kind} symlink target")
+                count += 1
+                continue
             if st.st_uid != 0:
                 raise IsolationError(f"{kind}: {entry!r} is not root-owned (uid {st.st_uid})")
             if st.st_mode & 0o022:
