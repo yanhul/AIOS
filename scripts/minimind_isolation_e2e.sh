@@ -97,7 +97,7 @@ import sys, xml.etree.ElementTree as ET
 s = ET.parse(sys.argv[1]).getroot(); s = s if s.tag == "testsuite" else s[0]
 t, f, e, k = (int(s.get(x, 0)) for x in ("tests", "failures", "errors", "skipped"))
 print(f"{sys.argv[2]}: tests={t} failures={f} errors={e} skipped={k}")
-expected = {"parent": 21, "agent": 16}[sys.argv[2]]
+expected = {"parent": 22, "agent": 17}[sys.argv[2]]
 ran = t - k
 if f or e or ran < expected: sys.exit(f"{sys.argv[2]}: expected >= {expected} executed OS tests, got {ran}")
 PYEOF

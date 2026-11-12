@@ -21,6 +21,7 @@ from adapters.minimind.isolation import (
     check_sudo_rules,
     iter_uid_processes,
     read_workload_key,
+    resolve_trusted_symlinks,
 )
 from adapters.minimind.runner import MiniMindAdapter
 
@@ -107,6 +108,14 @@ def test_sudo_rights_broader_than_launcher_are_rejected(rule):
     listing = f"User p may run the following commands on h:\n    {rule}\n"
     with pytest.raises(IsolationError):
         check_sudo_rules(listing, workload_user="aios-minimind", launcher=LAUNCHER)
+
+
+@pytest.mark.skipif(not LINUX, reason="Linux path trust")
+def test_untrusted_symlink_to_sudo_is_rejected(tmp_path):
+    link = tmp_path / "sudo"
+    os.symlink("/usr/bin/sudo", link)
+    with pytest.raises(IsolationError):
+        resolve_trusted_symlinks(str(link), kind="sudo")
 
 
 def test_sudo_rights_exact_launcher_rule_accepted():
