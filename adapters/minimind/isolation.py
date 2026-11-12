@@ -147,8 +147,8 @@ def check_trusted_tree(root: str, *, kind: str) -> int:
             if stat.S_ISLNK(st.st_mode):
                 if name in dirnames:
                     raise IsolationError(f"{kind}: directory symlink inside trusted tree: {entry!r}")
-                if st.st_uid != 0 or st.st_mode & 0o022:
-                    raise IsolationError(f"{kind}: untrusted symlink inside trusted tree: {entry!r}")
+                if st.st_uid != 0:
+                    raise IsolationError(f"{kind}: symlink inside trusted tree is not root-owned: {entry!r}")
                 target = os.path.realpath(entry)
                 try:
                     target_st = os.stat(entry)
