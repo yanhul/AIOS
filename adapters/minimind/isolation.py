@@ -228,7 +228,7 @@ _LAUNCHER_EXEC = re.compile(r"^exec (?P<interp>/\S+) -I -S -B (?P<entry>/\S+/ada
 
 
 def parse_signer_launcher(path: str) -> dict:
-    """The signer launcher must be exactly ``#!/bin/sh`` + ``exec <python> -I -B <lib>/...workload_entry.py <config>``.
+    """The signer launcher must be exactly ``#!/bin/sh`` + ``exec <python> -I -S -B <lib>/...workload_entry.py <config>``.
 
     This binds the launcher (which the parent may start) to one interpreter, one code tree and one
     root-owned config; nothing in it comes from the caller.
