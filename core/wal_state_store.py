@@ -147,7 +147,8 @@ class WalStateStore:
         if namespace == "memory":
             raise PermissionError("memory writes require governed persist_memory")
         if namespace == "state":
-            raise ValueError("append is not authorized for state namespace")        self.wal.append(
+            raise ValueError("append is not authorized for state namespace")
+        self.wal.append(
             transition="NAMESPACE_APPENDED",
             payload={"namespace": namespace, "item": deepcopy(item)},
         )
