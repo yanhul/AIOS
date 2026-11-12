@@ -20,7 +20,7 @@ from core.effect_authority import (
     unknown,
 )
 from core.evidence import EvidenceRecord
-from core.mutation import TransitionError
+from core.mutation import MutationError, TransitionError, commit_batch
 from core.policy_registry import persist_policy
 
 
@@ -141,3 +141,21 @@ def test_tampered_persisted_authority_blocks_future_transition():
             json.dump(rec, fh)
         with pytest.raises(TransitionError):
             unknown(td, effect["effect_id"], "bc-controller", "should be blocked")
+
+
+@pytest.mark.parametrize(
+    "destination",
+    [
+        "../outside.json",
+        "effects/../../outside.json",
+        "/tmp/aios-outside.json",
+        r"C:\\aios-outside.json",
+    ],
+)
+def test_commit_batch_rejects_destinations_outside_state_root(tmp_path, destination):
+    state_root = tmp_path / "state"
+    outside = tmp_path / "outside.json"
+    with pytest.raises(MutationError, match="relative path|escapes AIOS state root"):
+        commit_batch(str(state_root), [(destination, {"forged": True})])
+    assert not outside.exists()
+    assert not (state_root / "effects" / "outside.json").exists()
