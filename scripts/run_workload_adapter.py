@@ -224,10 +224,10 @@ def main() -> int:
                     "AIOS_PROBLEM": args.problem})
         existing_pythonpath = env.get("PYTHONPATH")
         env["PYTHONPATH"] = str(cwd) + (os.pathsep + existing_pythonpath if existing_pythonpath else "")
-    try:
-        require_external_execution_enabled()
-    except PermissionError as exc:
-        return blocked(str(exc))
+        try:
+            require_external_execution_enabled()
+        except PermissionError as exc:
+            return blocked(str(exc))
 
         proc = subprocess.run(command, cwd=cwd, env=env, text=True, capture_output=True,
                               timeout=args.timeout_seconds, check=False, shell=False)
