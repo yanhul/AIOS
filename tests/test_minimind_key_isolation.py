@@ -659,3 +659,22 @@ def test_signer_shell_launcher_emits_verifiable_ed25519_envelope():
     )
     ring.verify("minimind", auth["key_id"], auth["signature"], payload)
     assert "PRIVATE KEY" not in done.stdout.decode("utf-8")
+
+
+
+def test_check_trusted_tree_fails_closed_on_walk_errors(tmp_path, monkeypatch):
+    """A partial os.walk result must never be accepted as a trusted import tree."""
+    import adapters.minimind.isolation as isolation
+
+    root = tmp_path / "import-root"
+    root.mkdir()
+    monkeypatch.setattr(isolation, "check_trusted_path", lambda *args, **kwargs: None)
+
+    def failing_walk(path, *, followlinks, onerror):
+        assert followlinks is False
+        onerror(PermissionError("permission denied while scanning nested directory"))
+        return iter(())
+
+    monkeypatch.setattr(isolation.os, "walk", failing_walk)
+    with pytest.raises(IsolationError, match="cannot traverse trusted tree"):
+        isolation.check_trusted_tree(str(root), kind="test import tree")
