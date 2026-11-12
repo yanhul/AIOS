@@ -232,7 +232,13 @@ def check_trusted_tree(root: str, *, kind: str, _visited: set | None = None) -> 
     visited.add(real_root)
     check_trusted_path(root, kind=kind)
     count = 0
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+
+    def fail_on_walk_error(exc: OSError) -> None:
+        # os.walk silently ignores traversal errors unless onerror is supplied.
+        # A partial trust scan is never sufficient evidence for signer execution.
+        raise IsolationError(f"{kind}: cannot traverse trusted tree: {exc}") from exc
+
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False, onerror=fail_on_walk_error):
         for name in list(dirnames) + filenames:
             entry = os.path.join(dirpath, name)
             st = os.lstat(entry)
