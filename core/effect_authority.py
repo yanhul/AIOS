@@ -17,6 +17,7 @@ authorization signed by a deployment-registered issuer (see RetryIssuerKeyring).
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
 import secrets
@@ -372,10 +373,20 @@ def _resolve_keyring(keyring):
     return keyring
 
 
+def _is_finite_number(value):
+    """True only for a real, finite int/float (bool, NaN and +/-Infinity rejected)."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:  # int too large for float
+        return False
+
+
 def _now(now):
     value = time.time() if now is None else now
-    if not isinstance(value, (int, float)) or isinstance(value, bool):
-        raise ValueError("now must be a number")
+    if not _is_finite_number(value):
+        raise ValueError("now must be a finite number")
     return float(value)
 
 
@@ -508,7 +519,9 @@ def _verify_retry_authorization(aios_dir, supplied, current, actor, attempt, att
             or record.get("authorization_id") != authorization_id
             or record.get("mode") != "EXPLICIT" or record.get("algorithm") != "HMAC-SHA256"
             or record.get("scope") != RETRY_APPROVE_SCOPE
-            or not isinstance(record.get("signature"), str)):
+            or not isinstance(record.get("signature"), str)
+            or not _is_finite_number(record.get("issued_at"))
+            or not _is_finite_number(record.get("expires_at"))):
         raise TransitionError("retry authorization record failed integrity check")
     secret = _resolve_keyring(keyring).secret_for(record["issuer"], RETRY_APPROVE_SCOPE)
     if not hmac.compare_digest(record["signature"], _retry_signature(secret, record)):
@@ -527,7 +540,7 @@ def _verify_retry_authorization(aios_dir, supplied, current, actor, attempt, att
         if record.get(key) != value:
             raise TransitionError(f"retry authorization {key} binding mismatch")
     t = _now(now)
-    if not isinstance(record["issued_at"], (int, float)) or not isinstance(record["expires_at"], (int, float)):
+    if not _is_finite_number(record["issued_at"]) or not _is_finite_number(record["expires_at"]):
         raise TransitionError("retry authorization record failed integrity check")
     if t > record["expires_at"]:
         raise TransitionError("retry authorization has expired")
@@ -663,6 +676,10 @@ def _ed25519_keyring(public_keyring):
 
 
 def _check_validity_window(auth, now):
+    # Fail closed on non-finite bounds: NaN compares False everywhere and
+    # inf - inf is NaN, so ordinary comparisons alone would accept them.
+    if not _is_finite_number(auth.get("issued_at")) or not _is_finite_number(auth.get("expires_at")):
+        raise ProviderAuthenticationError("provider receipt validity window is invalid")
     t = _now(now)
     if auth["expires_at"] - auth["issued_at"] > MAX_PROVIDER_RECEIPT_TTL_SECONDS or auth["expires_at"] <= auth["issued_at"]:
         raise ProviderAuthenticationError("provider receipt validity window is invalid")
@@ -683,8 +700,7 @@ def _verify_ed25519_receipt(current, outcome, record, public_keyring, now):
     if (auth["type"] != _ed.ED25519_RECEIPT_TYPE or auth["algorithm"] != _ed.ED25519_ALGORITHM
             or not isinstance(auth["key_id"], str)
             or not isinstance(auth["receipt_id"], str) or not _PROVIDER_RECEIPT_ID.fullmatch(auth["receipt_id"])
-            or any(not isinstance(auth[k], (int, float)) or isinstance(auth[k], bool)
-                   for k in ("issued_at", "expires_at"))):
+            or any(not _is_finite_number(auth[k]) for k in ("issued_at", "expires_at"))):
         raise ProviderAuthenticationError("Ed25519 provider receipt authentication is malformed")
     if not isinstance(public_keyring, _ed.ProviderPublicKeyring):
         raise ProviderAuthenticationError("observation requires a deployment-supplied Ed25519 public keyring")
@@ -718,8 +734,7 @@ def _verify_provider_receipt(current, outcome, record, keyring, now, public_keyr
     if (auth["type"] != PROVIDER_RECEIPT_TYPE or auth["algorithm"] != "HMAC-SHA256"
             or not isinstance(auth["receipt_id"], str) or not _PROVIDER_RECEIPT_ID.fullmatch(auth["receipt_id"])
             or not isinstance(auth["signature"], str)
-            or any(not isinstance(auth[k], (int, float)) or isinstance(auth[k], bool)
-                   for k in ("issued_at", "expires_at"))):
+            or any(not _is_finite_number(auth[k]) for k in ("issued_at", "expires_at"))):
         raise ProviderAuthenticationError("provider receipt authentication is malformed")
     if keyring is None:
         keyring = ProviderKeyring.from_env()

@@ -186,8 +186,12 @@ def validate_entity(entity):
 # ---------------------------------------------------------------------------
 
 def canonical_json(obj):
-    """Deterministic JSON serialization (sorted keys, tight separators)."""
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    """Deterministic JSON serialization (sorted keys, tight separators).
+
+    Non-finite floats (NaN/Infinity) are not valid JSON and have no canonical
+    form; they are rejected (ValueError) so they can never be signed or hashed.
+    """
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
 
 
 def event_identity(event):

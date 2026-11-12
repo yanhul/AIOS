@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import math
 import os
 import secrets
 import time
@@ -59,6 +60,8 @@ class ProviderReceiptSigner:
     def sign(self, *, effect: dict, attempt_id: str, provider_operation_id: str, outcome: str,
              observation: dict, now: float | None = None) -> dict:
         issued_at = float(time.time() if now is None else now)
+        if not math.isfinite(issued_at):
+            raise ValueError("now must be a finite number")
         auth = {
             "type": PROVIDER_RECEIPT_TYPE, "receipt_id": "PR-" + secrets.token_hex(16),
             "contract_id": effect["contract_id"], "permit_id": effect["permit_id"],
