@@ -88,6 +88,27 @@ def test_process_capabilities_reads_inheritable_and_bounding_sets(monkeypatch):
     }
 
 
+@pytest.mark.skipif(not LINUX, reason="Linux capability gate")
+def test_verify_blocks_parent_with_inheritable_capabilities(monkeypatch):
+    from types import SimpleNamespace
+    import adapters.minimind.isolation as isolation
+
+    monkeypatch.setattr(isolation.os, "getuid", lambda: 1000)
+    monkeypatch.setattr(isolation.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(isolation.os, "getgid", lambda: 1000)
+    monkeypatch.setattr(isolation.os, "getegid", lambda: 1000)
+    monkeypatch.setattr(isolation.os, "getgroups", lambda: [1000])
+    monkeypatch.setattr(isolation.pwd if hasattr(isolation, "pwd") else __import__("pwd"),
+                        "getpwnam", lambda _name: SimpleNamespace(pw_uid=2000, pw_gid=2000))
+    monkeypatch.setattr(isolation, "_process_capabilities", lambda: {
+        "CapEff": 0, "CapPrm": 0, "CapInh": 1, "CapAmb": 0, "CapBnd": 255,
+    })
+    boundary = WorkloadIsolation(workload_user="aios-minimind",
+                                 launcher="/not-reached", key_path="/not-reached")
+    with pytest.raises(IsolationError, match="holds Linux capabilities"):
+        boundary.verify()
+
+
 # --- 6. missing isolation blocks execution (always run) -------------------------------------
 
 def test_adapter_without_isolation_refuses_to_start(tmp_path):
