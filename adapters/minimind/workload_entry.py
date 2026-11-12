@@ -1,7 +1,7 @@
 """Isolated MiniMind signer entry point (runs as the dedicated key-owning workload UID).
 
 Started only by the root-owned launcher through ``sudo -n -u <workload_user> -- <launcher>``.
-Usage (inside the launcher): ``python3 -I -B <lib>/adapters/minimind/workload_entry.py <config.json>``
+Usage (inside the launcher): ``python3 -I -S -B <lib>/adapters/minimind/workload_entry.py <config.json>``
 
 Trust split (audit P1, executable trust boundary):
 
