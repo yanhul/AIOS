@@ -3,10 +3,9 @@
 # AIOS-OWNER: AIOS control-plane durable execution
 # AIOS-COVERAGE-GAP: Covers exact DISPATCHED attempt resume and bounded retry
 # AIOS-BASELINE: Tests target the existing M6 durable runtime bridge baseline
+import pytest
 
 pytestmark = pytest.mark.allow_unlocked_runtime
-
-import pytest
 
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
