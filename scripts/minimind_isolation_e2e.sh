@@ -63,7 +63,7 @@ write_config() {  # path receipt_launcher [sha]
     "$KEY" "$RUN" "$2" "$sha" > "$1"; chmod 0644 "$1"
 }
 write_signer_launcher() {  # path lib config
-  printf '#!/bin/sh\nexec /usr/bin/python3 -I -B %s/adapters/minimind/workload_entry.py %s\n' "$2" "$3" > "$1"; chmod 0755 "$1"
+  printf '#!/bin/sh\nexec /usr/bin/python3 -I -S -B %s/adapters/minimind/workload_entry.py %s\n' "$2" "$3" > "$1"; chmod 0755 "$1"
 }
 write_config "$CONFIG" "$RLAUNCHER"
 write_signer_launcher "$LAUNCHER" "$BASE/lib" "$CONFIG"
