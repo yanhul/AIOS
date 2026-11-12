@@ -390,9 +390,19 @@ def test_signer_startup_does_not_execute_pth_code():
     os.chmod(pth, 0o644)
     try:
         fx = _fixture()
+        # Positive control: normal isolated Python startup processes system .pth files.
+        probe = subprocess.run(
+            ["/usr/bin/sudo", "-n", "-u", fx["runner_user"], "/usr/bin/python3", "-I", "-B", "-c", "pass"],
+            stdin=subprocess.DEVNULL, capture_output=True, timeout=20, check=False,
+        )
+        assert probe.returncode == 0, probe.stderr.decode("utf-8", "replace")
+        assert os.path.exists(marker), "positive control: executable .pth fixture did not run"
+        os.unlink(marker)
+
+        # The signer and its receipt runner both use -S; the fixture must stay inert.
         done = _run_entry(fx, fx["lib"], fx["config"])
         assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
-        assert not os.path.exists(marker), "executable .pth code ran before signer trust checks"
+        assert not os.path.exists(marker), "executable .pth code ran during isolated signer execution"
     finally:
         for path in (pth, marker):
             try:
