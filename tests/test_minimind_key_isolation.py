@@ -563,6 +563,38 @@ def test_symlink_data_tree_rejects_writable_nested_directory(tmp_path, monkeypat
         isolation._check_trusted_import_directories(str(target), kind="test import root")
 
 
+def test_check_trusted_tree_rejects_writable_symlink_data_target(tmp_path, monkeypatch):
+    """The production tree walker must enforce directory immutability before import."""
+    import stat
+    from types import SimpleNamespace
+    import adapters.minimind.isolation as isolation
+
+    root = tmp_path / "import-root"
+    target = tmp_path / "locale-data"
+    root.mkdir()
+    target.mkdir()
+    (target / "README.txt").write_text("data only", encoding="utf-8")
+    target.chmod(0o777)
+    (root / "locale-data").symlink_to(target, target_is_directory=True)
+
+    real_lstat = os.lstat
+    def root_owned_symlink(path):
+        st = real_lstat(path)
+        if stat.S_ISLNK(st.st_mode):
+            return SimpleNamespace(st_uid=0, st_mode=st.st_mode)
+        return st
+
+    def check_path(path, *, kind, executable=False, setuid=False):
+        st = real_lstat(path)
+        if st.st_mode & 0o022:
+            raise IsolationError(f"{kind}: writable directory")
+
+    monkeypatch.setattr(isolation.os, "lstat", root_owned_symlink)
+    monkeypatch.setattr(isolation, "check_trusted_path", check_path)
+    with pytest.raises(IsolationError, match="writable directory"):
+        isolation.check_trusted_tree(str(root), kind="test import root")
+
+
 def test_import_tree_classifies_versioned_and_suffixless_elf_native_code(tmp_path):
     from adapters.minimind.isolation import _is_importable_python_code
 
@@ -572,6 +604,9 @@ def test_import_tree_classifies_versioned_and_suffixless_elf_native_code(tmp_pat
     suffixless.write_bytes(b"\x7fELF" + b"\x00" * 32)
     assert _is_importable_python_code(str(versioned))
     assert _is_importable_python_code(str(suffixless))
+    alias = tmp_path / "native_resource"
+    alias.symlink_to(suffixless)
+    assert _is_importable_python_code(str(alias)), "ELF symlink aliases must not be treated as data"
 
 
 
