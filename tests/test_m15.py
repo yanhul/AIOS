@@ -22,6 +22,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from core import mutation  # noqa: E402
+ORIGINAL_ATOMIC_WRITE = mutation.atomic_write_beneath
 from core.mutation import (  # noqa: E402
     ActorError,
     ContractError,
@@ -294,7 +295,7 @@ class TestAtomicity(Base):
             calls["n"] += 1
             if calls["n"] == fail_at:
                 raise RuntimeError(f"injected failure at secure commit #{fail_at}")
-            return mutation.atomic_write_beneath_original(root, rel_dest, content)
+            return ORIGINAL_ATOMIC_WRITE(root, rel_dest, content)
         return fake
 
     def test_MN_interrupted_commit_recovers_with_pairing_intact(self):
