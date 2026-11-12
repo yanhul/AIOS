@@ -23,13 +23,43 @@ LOGS=/tmp/aios-isolation-logs; PROBE=$LOGS/runner-probe.json
 
 for u in $PARENT $WL $RUN $AGENT; do id "$u" >/dev/null 2>&1 || useradd --system --user-group --no-create-home --shell /usr/sbin/nologin "$u"; done
 /usr/bin/python3 -c 'import cryptography' 2>/dev/null || { apt-get update -qq && apt-get install -y -qq python3-cryptography; }
-# The disposable Ubuntu runner ships Babel locale-data as a symlinked import-tree
-# directory with mode 0777. The signer correctly rejects that mutable directory.
-# Harden this known distro resource tree in the ephemeral test host before exercising
-# the signer; production hosts must independently meet the same root-owned/no-write rule.
+# The disposable runner may expose Babel locale-data through a symlink.
+# The signer validates the resolved target AND every ancestor, because a writable
+# ancestor can replace the target after validation. Harden only this disposable host;
+# never weaken the signer policy or silently chown a non-root-owned system path.
 BABEL_LOCALE_DATA=/usr/share/python-babel-localedata
-if [ -d "$BABEL_LOCALE_DATA" ]; then
-  find "$BABEL_LOCALE_DATA" -type d -exec chown root:root {} + -exec chmod go-w {} +
+if [ -e "$BABEL_LOCALE_DATA" ]; then
+  BABEL_REAL=$(readlink -f -- "$BABEL_LOCALE_DATA")
+  [ -n "$BABEL_REAL" ] && [ -d "$BABEL_REAL" ] || {
+    echo "FAIL: cannot resolve Babel locale-data directory: $BABEL_LOCALE_DATA" >&2
+    exit 1
+  }
+
+  # Secure every ancestor checked by check_trusted_path, up to filesystem root.
+  # Require existing root ownership; only remove group/other write bits.
+  current="$BABEL_REAL"
+  while :; do
+    [ -d "$current" ] || {
+      echo "FAIL: Babel path ancestor is not a directory: $current" >&2
+      exit 1
+    }
+    owner=$(stat -c '%u' -- "$current")
+    mode=$(stat -c '%a' -- "$current")
+    [ "$owner" = 0 ] || {
+      echo "FAIL: Babel path ancestor is not root-owned: $current (uid=$owner)" >&2
+      exit 1
+    }
+    if [ $((8#$mode & 0022)) -ne 0 ]; then
+      echo "HARDEN: removing group/other write from $current (mode=$mode)"
+      chmod go-w -- "$current"
+    fi
+    [ "$current" = / ] && break
+    current=$(dirname -- "$current")
+  done
+
+  # Secure nested data directories too; find does not follow symlinked roots,
+  # hence the explicit readlink -f above.
+  find "$BABEL_REAL" -type d -exec chown root:root {} + -exec chmod go-w {} +
 fi
 rm -rf "$LOGS"; mkdir -p "$LOGS"; chmod 0777 "$LOGS"
 
