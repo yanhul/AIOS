@@ -332,6 +332,7 @@ def _recover_pending_unlocked(aios_dir):
         except (OSError, SecureWriteError) as exc:
             raise StateConflictError(f"unsafe staging batch: {batch_rel}") from exc
         if has_journal:
+            try:
                 journal = json.loads(secure_read_bytes_beneath(aios_dir, journal_rel).decode("utf-8"))
             except (OSError, SecureWriteError, UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise StateConflictError(f"invalid or unsafe mutation journal: {journal_rel}") from exc
