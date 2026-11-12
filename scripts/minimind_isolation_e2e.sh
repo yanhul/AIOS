@@ -11,7 +11,7 @@ SRC=$(realpath "$1"); PY=$2
 case "$(uname -s)" in Linux) ;; *) echo "BLOCKED: unsupported platform $(uname -s)" >&2; exit 2;; esac
 
 PARENT=aios-parent; WL=aios-minimind; AGENT=aios-agent
-BASE=/opt/aios-minimind; KEYDIR=/var/lib/aios-minimind/keys; KEY=$KEYDIR/ed25519.pem
+BASE=/usr/lib/aios-minimind; KEYDIR=/var/lib/aios-minimind/keys; KEY=$KEYDIR/ed25519.pem
 LAUNCHER=$BASE/bin/minimind-workload; FIXTURE=$BASE/etc/test-fixture.json
 NEG=/opt/aios-minimind-neg; WORK=/srv/aios-test; LOGS=/tmp/aios-isolation-logs
 

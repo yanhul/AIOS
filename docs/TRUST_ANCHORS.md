@@ -94,9 +94,11 @@ no automatic fallback to same-UID execution.
 (schema above). The key path appears only in the root-owned workload config, never on argv.
 
 **Provisioning.** Reference: `scripts/minimind_isolation_e2e.sh` (users `aios-parent`, `aios-minimind`,
-`aios-agent`; code in `/opt/aios-minimind/lib`, config `/opt/aios-minimind/etc/workload.json`,
-launcher `/opt/aios-minimind/bin/minimind-workload`, key `/var/lib/aios-minimind/keys/ed25519.pem`
+`aios-agent`; code in `/usr/lib/aios-minimind/lib`, config `/usr/lib/aios-minimind/etc/workload.json`,
+launcher `/usr/lib/aios-minimind/bin/minimind-workload`, key `/var/lib/aios-minimind/keys/ed25519.pem`
 (dir `0700`, file `0600`, owner `aios-minimind`), sudoers `/etc/sudoers.d/aios-minimind` `0440`).
+Do not install under a directory with group/other write on any ancestor (e.g. GitHub-hosted runners ship
+`/opt` as `0777`; `verify()` rejects it because the parent could rename the tree).
 The key is generated *as the workload user* (`O_CREAT|O_EXCL|O_NOFOLLOW`, umask 077); only the public
 key leaves the workload. Validate sudoers with `visudo -cf`.
 
@@ -118,7 +120,7 @@ verifier's `AIOS_PROVIDER_ED25519_KEYRING`. `key_id = key_id_for(public_key)` is
 | macOS / other POSIX | **Not implemented → BLOCKED** (`verify()` refuses) |
 
 **Operational verification.** On the deployment host, as the AIOS user:
-`python -c "from adapters.minimind.isolation import WorkloadIsolation as W; print(W(workload_user='aios-minimind', launcher='/opt/aios-minimind/bin/minimind-workload', key_path='/var/lib/aios-minimind/keys/ed25519.pem', trusted_paths=('/opt/aios-minimind/lib','/opt/aios-minimind/etc/workload.json')).verify())"`
+`python -c "from adapters.minimind.isolation import WorkloadIsolation as W; print(W(workload_user='aios-minimind', launcher='/usr/lib/aios-minimind/bin/minimind-workload', key_path='/var/lib/aios-minimind/keys/ed25519.pem', trusted_paths=('/usr/lib/aios-minimind/lib','/usr/lib/aios-minimind/etc/workload.json')).verify())"`
 must print evidence with `key_probe: EACCES`. Also confirm `sudo -n -l` shows only the launcher rule,
 and run `scripts/minimind_isolation_e2e.sh` on a disposable host built from the same image.
 

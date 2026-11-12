@@ -29,7 +29,7 @@ ROLE = os.environ.get("AIOS_MINIMIND_ISOLATION_ROLE", "")
 FIXTURE_PATH = os.environ.get("AIOS_MINIMIND_ISOLATION_FIXTURE", "")
 LINUX = sys.platform.startswith("linux")
 ROOT = LINUX and os.geteuid() == 0
-LAUNCHER = "/opt/aios-minimind/bin/minimind-workload"
+LAUNCHER = "/usr/lib/aios-minimind/bin/minimind-workload"
 
 
 def _fixture():
