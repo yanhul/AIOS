@@ -132,14 +132,20 @@ def resolve_trusted_symlinks(path: str, *, kind: str, max_hops: int = 8) -> str:
     raise IsolationError(f"{kind}: too many symlink hops")
 
 
+_PYTHON_IMPORT_SUFFIXES = (".py", ".pyc", ".pyo", ".so", ".pyd", ".dll", ".zip", ".egg")
+
+
+def _is_importable_python_code(path: str) -> bool:
+    return path.lower().endswith(_PYTHON_IMPORT_SUFFIXES)
+
+
 def _tree_contains_importable_python_code(root: str) -> bool:
     """Return whether a directory tree contains files Python can import as code.
 
-    Site-package trees can contain symlinked locale/resource data directories that
-    are writable by a data owner. Such a directory cannot contribute modules through
-    normal Python import resolution. Code-bearing targets are fully validated.
+    Site-package trees can contain symlinked locale/resource data that is writable
+    by a data owner. Such files cannot supply modules through normal Python import
+    resolution. Code-bearing targets are fully validated.
     """
-    code_suffixes = (".py", ".pyc", ".pyo", ".so", ".pyd", ".dll", ".zip", ".egg")
     pending = [root]
     visited = set()
     while pending:
@@ -154,7 +160,7 @@ def _tree_contains_importable_python_code(root: str) -> bool:
                     try:
                         if entry.is_dir(follow_symlinks=True):
                             pending.append(entry.path)
-                        elif entry.is_file(follow_symlinks=True) and entry.name.lower().endswith(code_suffixes):
+                        elif entry.is_file(follow_symlinks=True) and _is_importable_python_code(entry.name):
                             return True
                     except OSError as exc:
                         raise IsolationError(f"cannot inspect import-tree entry {entry.path!r}: {exc}") from exc
@@ -196,8 +202,12 @@ def check_trusted_tree(root: str, *, kind: str, _visited: set | None = None) -> 
                         count += check_trusted_tree(target, kind=f"{kind} symlink directory target",
                                                     _visited=visited)
                 elif stat.S_ISREG(target_st.st_mode):
-                    check_trusted_path(target, kind=f"{kind} symlink file target")
-                    count += 1
+                    # Data symlinks (for example Babel's global.dat) are not Python
+                    # import targets. A .py/.so/.zip symlink remains executable code
+                    # and its resolved target must satisfy the full trust policy.
+                    if _is_importable_python_code(entry):
+                        check_trusted_path(target, kind=f"{kind} symlink file target")
+                        count += 1
                 else:
                     raise IsolationError(f"{kind}: symlink target is not a regular file or directory: {entry!r}")
                 continue
