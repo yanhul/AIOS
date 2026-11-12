@@ -386,7 +386,7 @@ def test_signer_startup_does_not_execute_pth_code():
     marker = os.path.join(tempfile.gettempdir(), f"aios-pth-executed-{os.getpid()}")
     pth = os.path.join(site_dir, f"aios-hostile-{os.getpid()}.pth")
     with open(pth, "w", encoding="utf-8") as fh:
-        fh.write("import pathlib; pathlib.Path(" + repr(marker) + ").write_text('executed')\\n")
+        fh.write("import pathlib; pathlib.Path(" + repr(marker) + ").write_text('executed')")
     os.chmod(pth, 0o644)
     try:
         fx = _fixture()
