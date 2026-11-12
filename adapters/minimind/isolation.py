@@ -389,12 +389,31 @@ def load_workload_config(config_path: str) -> dict:
     return config
 
 
+_RECEIPT_LAUNCHER_EXEC = re.compile(
+    r"^exec (?P<interp>/\\S+) -I -S -B (?P<script>/\\S+\\.py)$"
+)
+
+
+def parse_receipt_launcher(path: str) -> dict:
+    """Require a fixed isolated-Python invocation with no caller-controlled arguments."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lines = [line.rstrip("\\n") for line in fh.read(4096).splitlines()]
+    except OSError as exc:
+        raise IsolationError(f"cannot read receipt launcher: {exc}") from exc
+    if len(lines) != 2 or lines[0] != "#!/bin/sh":
+        raise IsolationError("receipt launcher must be exactly '#!/bin/sh' + one exec line")
+    match = _RECEIPT_LAUNCHER_EXEC.fullmatch(lines[1])
+    if not match:
+        raise IsolationError("receipt launcher must invoke an absolute interpreter with exactly -I -S -B and one .py script")
+    return {"interpreter": match.group("interp"), "script": match.group("script")}
+
+
 def validate_receipt_command(config: dict, *, signer_uid: int, parent_uids=()) -> dict:
     """Validate the key-isolated receipt runner and its immutable launcher.
 
-    The launcher bytes are root-owned and config-hash-bound. This function does not
-    parse or enforce interpreter flags inside that launcher; deployments must audit
-    the configured launcher separately. The CI fixture uses -I -S -B.
+    The launcher is hash-bound and its invocation is constrained to isolated Python
+    startup (-I -S -B), with one root-owned script and no additional arguments.
     Returns the resolved launcher path and runner UID; raises IsolationError otherwise.
     """
     import pwd
@@ -409,10 +428,15 @@ def validate_receipt_command(config: dict, *, signer_uid: int, parent_uids=()) -
     real = check_trusted_executable(launcher, kind="receipt launcher")
     if real != os.path.normpath(launcher):
         raise IsolationError("receipt launcher must be referenced by its real path (sudo matches it literally)")
+    invocation = parse_receipt_launcher(real)
+    check_trusted_executable(invocation["interpreter"], kind="receipt interpreter")
+    check_trusted_path(invocation["script"], kind="receipt script")
     actual = sha256_file(real)
     if actual != config["receipt_launcher_sha256"]:
         raise IsolationError("receipt launcher content does not match the config-bound sha256 (changed)")
-    return {"receipt_launcher": real, "runner_uid": runner.pw_uid, "receipt_launcher_sha256": actual}
+    return {"receipt_launcher": real, "runner_uid": runner.pw_uid,
+            "receipt_launcher_sha256": actual, "receipt_interpreter": invocation["interpreter"],
+            "receipt_script": invocation["script"]}
 
 
 _RULE = re.compile(r"^\((?P<runas>[^)]*)\)\s+(?P<rest>.+)$")
