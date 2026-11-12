@@ -20,7 +20,7 @@ import pytest
 
 pytest.importorskip("cryptography")
 
-from adapters.minimind.runner import MiniMindAdapter, WITHHELD_ENV  # noqa: E402
+from adapters.minimind.runner import UNISOLATED_FOR_TESTS, MiniMindAdapter, WITHHELD_ENV  # noqa: E402
 from core import effect_authority as ea  # noqa: E402
 from core import provider_ed25519 as ed  # noqa: E402
 from core.authority import persist_contract, persist_permit  # noqa: E402
@@ -93,7 +93,7 @@ def _adapter(tmp_path, name="cfg", signed=True, **cfg):
         cfg["key_file"] = _key_file(tmp_path)
     path = tmp_path / f"{name}.json"
     path.write_text(json.dumps(cfg), encoding="utf-8")
-    return MiniMindAdapter(command=[sys.executable, "-I", STUB, REPO, str(path)])
+    return MiniMindAdapter(command=[sys.executable, "-I", STUB, REPO, str(path)], isolation=UNISOLATED_FOR_TESTS)
 
 
 def _run(tmp_path, adapter, op="op-1", **kw):
@@ -170,7 +170,7 @@ class _HmacResigningParent(MiniMindAdapter):
 
 def test_parent_with_full_hmac_keyring_cannot_forge(tmp_path):
     base = _adapter(tmp_path, signed=False, receipt=_receipt("REJECT"))
-    result, _ = _run(tmp_path, _HmacResigningParent(command=base.command))
+    result, _ = _run(tmp_path, _HmacResigningParent(command=base.command, isolation=UNISOLATED_FOR_TESTS))
     _assert_unknown(result, "Ed25519 required")
 
 
@@ -189,7 +189,7 @@ class _PublicKeyOnlyParent(MiniMindAdapter):
 
 def test_parent_with_only_public_key_cannot_sign(tmp_path):
     base = _adapter(tmp_path, signed=False)
-    result, _ = _run(tmp_path, _PublicKeyOnlyParent(command=base.command), now=1e12)
+    result, _ = _run(tmp_path, _PublicKeyOnlyParent(command=base.command, isolation=UNISOLATED_FOR_TESTS), now=1e12)
     _assert_unknown(result, "Ed25519 signature is invalid")
 
 
@@ -213,7 +213,7 @@ class _TamperingParent(MiniMindAdapter):
 
 
 def test_parent_cannot_modify_authenticated_receipt(tmp_path):
-    result, _ = _run(tmp_path, _TamperingParent(command=_adapter(tmp_path).command))
+    result, _ = _run(tmp_path, _TamperingParent(command=_adapter(tmp_path).command, isolation=UNISOLATED_FOR_TESTS))
     _assert_unknown(result, "Ed25519 signature is invalid")
 
 
@@ -224,7 +224,7 @@ class _OutcomeFlipParent(MiniMindAdapter):
 
 
 def test_parent_cannot_flip_outcome_of_signed_reject(tmp_path):
-    result, _ = _run(tmp_path, _OutcomeFlipParent(command=_adapter(tmp_path, receipt=_receipt("REJECT")).command))
+    result, _ = _run(tmp_path, _OutcomeFlipParent(command=_adapter(tmp_path, receipt=_receipt("REJECT")).command, isolation=UNISOLATED_FOR_TESTS))
     _assert_unknown(result, "Ed25519 signature is invalid")
 
 

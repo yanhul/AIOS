@@ -55,8 +55,77 @@ signer `repr()` output never includes them.
 * Outcome: `PROMOTE` → `OBSERVED_SUCCESS`; `REJECT` / `INCONCLUSIVE` / `BLOCKED` → `OBSERVED_FAILURE`.
   Any verification, binding, schema or configuration failure (missing/malformed/revoked key,
   `cryptography` not installed) → `UNKNOWN`. Promotion itself remains a separate AIOS decision.
-* Deployment requirement (not enforceable in code): the workload key file must be unreadable by the
-  AIOS process user and the agent. Requires the `cryptography` package on the verifier and workload.
+* Key isolation is enforced at runtime by `adapters/minimind/isolation.py` (see next section). Requires
+  the `cryptography` package on the verifier and workload.
+
+## MiniMind private-key isolation (deployment/runtime boundary)
+
+**Threat model.** Attackers: the AIOS parent process (and any code it runs, including the executing
+agent) and every other agent identity on the host. Goal: obtain or use the MiniMind Ed25519 private key
+to forge `PROVIDER_RECEIPT_ED25519` receipts. Out of scope: root / `CAP_DAC_*` / `CAP_SYS_PTRACE`
+holders, kernel compromise, the workload identity itself (it is the signer). Mode `0600` alone is not
+treated as isolation: the boundary is a distinct UID plus checks that the parent cannot cross it.
+
+**Trust boundary.** `aios-parent` (AIOS) ─stdin JSON request→ `sudo -n -u aios-minimind -- <launcher>`
+→ `workload_entry.py` (workload UID) ─stdout signed envelope→ parent. The parent holds only the public key.
+
+**Required OS properties (Linux; all checked by `WorkloadIsolation.verify()` before every launch).**
+
+| Property | Check | On failure |
+|---|---|---|
+| Parent is not root, not the workload UID, not in the workload's primary group | `getuid/geteuid/getgroups`, `pwd` | `IsolationError`, no launch |
+| Parent has no Linux capabilities | `/proc/self/status` `CapEff/CapPrm/CapAmb == 0` | `IsolationError` |
+| `sudo` is root-owned setuid; launcher, workload code (`trusted_paths`) and config root-owned, no g/o write on any ancestor, no symlinks | `lstat` walk to `/` | `IsolationError` |
+| Parent sudo rights are **exactly** `(workload_user) NOPASSWD: <launcher> ""` (no args, no other rule, no root) | `sudo -n -l` parsed | `IsolationError` |
+| Parent `open(key_path)` fails with `EACCES` (real kernel probe; `ENOENT`/`ELOOP`/success all block) | `os.open(O_NOFOLLOW)` | `IsolationError` |
+
+Workload side (`read_workload_key`): key opened with `O_NOFOLLOW`; must be a regular file, `st_nlink == 1`,
+owned by the workload euid, mode `& 0o077 == 0`; key directory owned by the workload (or root) with
+mode `& 0o077 == 0`; workload must not be root. The key is read only after the receipt command has
+finished and is never written to stdout/stderr/argv/env.
+
+**Adapter contract.** `MiniMindAdapter(isolation=WorkloadIsolation(...))` (`command` must be empty; the
+launcher is fixed). `isolation=None` → refuses to run. `UNISOLATED_FOR_TESTS` is an explicit test-only
+opt-out reported as `isolation_status == "UNISOLATED"`; it must never be used in deployment. There is
+no automatic fallback to same-UID execution.
+
+**Parent/child communication.** Child env is exactly `PATH`, `LANG` (sudo `env_reset` also applies);
+`sudo` closes inherited fds > 2. Request on stdin (≤128 KiB). Child stdout: the signed envelope only
+(schema above). The key path appears only in the root-owned workload config, never on argv.
+
+**Provisioning.** Reference: `scripts/minimind_isolation_e2e.sh` (users `aios-parent`, `aios-minimind`,
+`aios-agent`; code in `/opt/aios-minimind/lib`, config `/opt/aios-minimind/etc/workload.json`,
+launcher `/opt/aios-minimind/bin/minimind-workload`, key `/var/lib/aios-minimind/keys/ed25519.pem`
+(dir `0700`, file `0600`, owner `aios-minimind`), sudoers `/etc/sudoers.d/aios-minimind` `0440`).
+The key is generated *as the workload user* (`O_CREAT|O_EXCL|O_NOFOLLOW`, umask 077); only the public
+key leaves the workload. Validate sudoers with `visudo -cf`.
+
+**Rotation.** As the workload user generate a new key to a new file, publish the new `public_key`
+/`key_id` in `AIOS_PROVIDER_ED25519_KEYRING` (verifier), atomically switch `key_path` in the root-owned
+config, then remove the old key file. To revoke, set `"revoked": true` for the old entry; receipts
+signed by it become `UNKNOWN`.
+
+**Public-key distribution.** Only `{"key_id", "public_key", "revoked"}` per provider, via the
+verifier's `AIOS_PROVIDER_ED25519_KEYRING`. `key_id = key_id_for(public_key)` is re-checked on load.
+
+**Platform coverage.**
+
+| Platform | Status |
+|---|---|
+| Linux (dedicated UID via restricted sudo) | Implemented; OS-level tests in CI job `minimind-key-isolation` |
+| Linux containers | Supported only if the parent runs in a separate container/user namespace *and* the above checks still hold; not separately tested → treat as UNKNOWN |
+| Windows | **Not implemented → BLOCKED** (`verify()` refuses) |
+| macOS / other POSIX | **Not implemented → BLOCKED** (`verify()` refuses) |
+
+**Operational verification.** On the deployment host, as the AIOS user:
+`python -c "from adapters.minimind.isolation import WorkloadIsolation as W; print(W(workload_user='aios-minimind', launcher='/opt/aios-minimind/bin/minimind-workload', key_path='/var/lib/aios-minimind/keys/ed25519.pem', trusted_paths=('/opt/aios-minimind/lib','/opt/aios-minimind/etc/workload.json')).verify())"`
+must print evidence with `key_probe: EACCES`. Also confirm `sudo -n -l` shows only the launcher rule,
+and run `scripts/minimind_isolation_e2e.sh` on a disposable host built from the same image.
+
+**Deployment is BLOCKED if any of:** `verify()` raises; the AIOS user is root, has capabilities or any
+other sudo right; the agent runs as the workload UID; the key, launcher, workload code or config is
+writable/replaceable by the parent; platform is not Linux; the adapter is configured with
+`UNISOLATED_FOR_TESTS` or `isolation=None`; `cryptography` is missing on the workload.
 
 ## Limitations
 

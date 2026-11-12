@@ -1,6 +1,6 @@
 import sys
 import pytest
-from adapters.minimind.runner import MiniMindAdapter
+from adapters.minimind.runner import UNISOLATED_FOR_TESTS, MiniMindAdapter
 
 def _receipt():
     artifacts={"workload_revision":"rev-1","dataset_digest":"sha256:data","tokenizer_digest":"sha256:tok","model_digest":"sha256:model","environment_digest":"sha256:env"}
@@ -9,7 +9,7 @@ def _envelope(receipt, outcome="OBSERVED_FAILURE"):
     return {"minimind_receipt":receipt,"outcome":outcome,"provider_operation_id":"minimind:task-1:attempt-1"}
 def _adapter(payload):
     code="import json,sys; print(json.dumps("+repr(payload)+"))"
-    return MiniMindAdapter(command=[sys.executable,"-c",code])
+    return MiniMindAdapter(command=[sys.executable,"-c",code],isolation=UNISOLATED_FOR_TESTS)
 def _contract(): return {"task_id":"task-1","capabilities":["minimind.learning@1"]}
 def _effect(): return {"effect_id":"effect-1"}
 def test_runner_accepts_valid_receipt_and_binds_operation():
@@ -26,7 +26,7 @@ def test_runner_rejects_wrong_task_binding():
 def test_runner_requires_minimind_capability():
     with pytest.raises(PermissionError,match="capability"): _adapter(_envelope(_receipt())).execute(contract={"task_id":"task-1","capabilities":["other@1"]},effect=_effect(),attempt_id="attempt-1")
 def test_runner_fails_closed_on_nonzero_exit():
-    adapter=MiniMindAdapter(command=[sys.executable,"-c","raise SystemExit(7)"])
+    adapter=MiniMindAdapter(command=[sys.executable,"-c","raise SystemExit(7)"],isolation=UNISOLATED_FOR_TESTS)
     with pytest.raises(RuntimeError,match="code 7"): adapter.execute(contract=_contract(),effect=_effect(),attempt_id="attempt-1")
 def test_runner_preserves_workload_terminal_state_as_observation():
     value=_receipt(); value["terminal_state"]="REJECT"

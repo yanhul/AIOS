@@ -22,23 +22,44 @@ derives the effect outcome from the workload's terminal state:
 -> ``OBSERVED_FAILURE``. ``core.effect_authority.observe`` verifies the
 Ed25519 signature against the registered public key and key id; anything not
 verifiable stays ``UNKNOWN``.
+
+Runtime isolation (deployment level, see ``docs/TRUST_ANCHORS.md``): ``isolation`` must be a
+:class:`~adapters.minimind.isolation.WorkloadIsolation`; it is verified before every launch and
+the workload is started only through its restricted ``sudo`` launcher. With ``isolation=None``
+the adapter refuses to run. ``UNISOLATED_FOR_TESTS`` is an explicit, named opt-out for in-process
+tests only; it never claims isolation (``isolation_status == "UNISOLATED"``).
 """
 from __future__ import annotations
 
 import json
 import os
 import subprocess
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Mapping, Sequence
 
-from adapters.bounded_process import OutputLimitExceeded, output_limit_error, run_bounded, timeout_error
-
+from adapters.bounded_process import (
+    OutputLimitExceeded,
+    output_limit_error,
+    run_bounded,
+    timeout_error,
+)
 from core.effect_authority import PROVIDER_KEYRING_ENV, RETRY_KEYRING_ENV
 from core.provider_authority import PROVIDER_SIGNING_KEYS_ENV
 from core.provider_ed25519 import ED25519_KEYRING_ENV
 from core.runtime import ProviderReceipt
 
 from .contract import MINIMIND_CAPABILITY, outcome_for_terminal_state, validate_receipt
+from .isolation import IsolationError, WorkloadIsolation
+
+
+class _Unisolated:
+    """Explicit test-only opt-out: same-UID execution, never reported as isolated."""
+
+    def __repr__(self):
+        return "UNISOLATED_FOR_TESTS"
+
+
+UNISOLATED_FOR_TESTS = _Unisolated()
 
 # Never forwarded to the workload process.
 WITHHELD_ENV = frozenset({PROVIDER_SIGNING_KEYS_ENV, PROVIDER_KEYRING_ENV, RETRY_KEYRING_ENV, ED25519_KEYRING_ENV})
@@ -66,11 +87,32 @@ def _parent_holds_key(provider: str, environ: Mapping[str, str]) -> bool:
 class MiniMindAdapter:
     """Execute one bounded MiniMind workload operation through a subprocess."""
 
-    command: Sequence[str]
+    command: Sequence[str] = ()
     name: str = "minimind"
     timeout_seconds: float = 60.0
     max_output_bytes: int = 256 * 1024
     max_input_bytes: int = 128 * 1024
+    isolation: WorkloadIsolation | _Unisolated | None = None
+
+    @property
+    def isolation_status(self) -> str:
+        if isinstance(self.isolation, WorkloadIsolation):
+            return "DEDICATED_UID"
+        return "UNISOLATED" if self.isolation is UNISOLATED_FOR_TESTS else "MISSING"
+
+    def _launch(self, environ: Mapping[str, str] | None = None):
+        """Return (command, env) or raise IsolationError. Never falls back to same-UID execution."""
+        if isinstance(self.isolation, WorkloadIsolation):
+            if self.command:
+                raise ValueError("command must be empty when isolation is configured (launcher is fixed)")
+            self.child_environment(environ)  # parent-held key check still applies
+            self.isolation.verify()
+            return self.isolation.launch_command(), self.isolation.child_environment()
+        if self.isolation is UNISOLATED_FOR_TESTS:
+            if not self.command or any(not isinstance(part, str) or not part for part in self.command):
+                raise ValueError("command must contain non-empty strings")
+            return list(self.command), self.child_environment(environ)
+        raise IsolationError("MiniMind workload isolation is not configured: refusing to run (fail closed)")
 
     def child_environment(self, environ: Mapping[str, str] | None = None) -> dict:
         source = os.environ if environ is None else environ
@@ -83,8 +125,6 @@ class MiniMindAdapter:
     def execute(self, *, contract: dict, effect: dict, attempt_id: str) -> ProviderReceipt:
         if not self.name.strip():
             raise ValueError("provider name must be non-empty")
-        if not self.command or any(not isinstance(part, str) or not part for part in self.command):
-            raise ValueError("command must contain non-empty strings")
         if self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
         if self.max_output_bytes <= 0 or self.max_input_bytes <= 0:
@@ -93,7 +133,7 @@ class MiniMindAdapter:
         task_id = contract.get("task_id")
         if not isinstance(task_id, str) or not task_id.strip():
             raise ValueError("contract task_id must be a non-empty string")
-        env = self.child_environment()
+        command, env = self._launch()
 
         request = json.dumps(
             {"contract": dict(contract), "effect": dict(effect), "attempt_id": attempt_id},
@@ -105,7 +145,7 @@ class MiniMindAdapter:
 
         try:
             completed = run_bounded(
-                list(self.command),
+                command,
                 input=request,
                 timeout=self.timeout_seconds,
                 max_stdout_bytes=self.max_output_bytes,
@@ -118,7 +158,9 @@ class MiniMindAdapter:
             raise output_limit_error(f"MiniMind {exc.stream} exceeds output limit", exc) from exc
 
         if completed.returncode != 0:
-            raise RuntimeError(f"MiniMind workload exited with code {completed.returncode}")
+            detail = completed.stderr[:512].decode("utf-8", "replace").strip()
+            raise RuntimeError(f"MiniMind workload exited with code {completed.returncode}"
+                               + (f": {detail}" if detail else ""))
 
         try:
             envelope = json.loads(completed.stdout.decode("utf-8"))
@@ -160,4 +202,4 @@ class MiniMindAdapter:
         return MINIMIND_CAPABILITY
 
 
-__all__ = ["MiniMindAdapter", "WITHHELD_ENV", "provider_operation_id"]
+__all__ = ["UNISOLATED_FOR_TESTS", "WITHHELD_ENV", "MiniMindAdapter", "provider_operation_id"]
