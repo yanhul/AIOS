@@ -36,6 +36,7 @@ import shutil
 import uuid
 
 from . import state as state_layout
+from .secure_fs import SecureWriteError, atomic_write_beneath
 
 __all__ = [
     "MutationError",
@@ -331,9 +332,20 @@ def _recover_pending_unlocked(aios_dir):
                             f"committed file diverges from journal: {dest}"
                         )
                 elif os.path.exists(tmp):
-                    os.makedirs(os.path.dirname(dest), exist_ok=True)
-                    _replace(tmp, dest)
-                    _fsync_dir(os.path.dirname(dest))
+                    rel_dest = op.get("rel_dest")
+                    if not rel_dest:
+                        root = os.path.abspath(os.fspath(aios_dir))
+                        try:
+                            rel_dest = os.path.relpath(dest, root).replace(os.sep, "/")
+                        except ValueError as exc:
+                            raise StateConflictError("journal destination is outside AIOS state root") from exc
+                    try:
+                        with open(tmp, "rb") as fh:
+                            payload = fh.read()
+                        atomic_write_beneath(aios_dir, rel_dest, payload.decode("utf-8"))
+                    except (SecureWriteError, UnicodeDecodeError) as exc:
+                        raise StateConflictError(f"secure journal recovery refused destination: {dest}") from exc
+                    os.unlink(tmp)
                 else:
                     raise StateConflictError(
                         f"journal op unrecoverable (temp and dest both missing): {dest}"
@@ -438,7 +450,8 @@ def commit_batch(aios_dir, payloads):
     # Validate every destination before staging or writing any payload. This
     # prevents caller-controlled IDs from turning a state-relative path into
     # a write outside <aios_dir> (for example effects/../../authority.json).
-    prepared = [(_safe_commit_destination(aios_dir, rel_dest), obj) for rel_dest, obj in payloads]
+    prepared = [(_safe_commit_destination(aios_dir, rel_dest), rel_dest.replace("\\\\", "/"), obj)
+                for rel_dest, obj in payloads]
     with _MutationLock(aios_dir):
         state_layout.ensure_state_dirs(aios_dir)
         staging_root = os.path.join(aios_dir, ".staging")
@@ -447,13 +460,14 @@ def commit_batch(aios_dir, payloads):
         os.makedirs(batch_dir, exist_ok=True)
 
         ops = []
-        for dest, obj in prepared:
+        for dest, rel_dest, obj in prepared:
             payload = (canonical_json(obj) + "\n").encode("utf-8")
             tmp = os.path.join(batch_dir, f"{uuid.uuid4().hex}.tmp")
             _write_staged(tmp, payload)
             ops.append({
                 "tmp": tmp,
                 "dest": dest,
+                "rel_dest": rel_dest,
                 "digest": _digest_bytes(payload),
             })
 
@@ -465,9 +479,18 @@ def commit_batch(aios_dir, payloads):
         _fsync_dir(batch_dir)
 
         for op in ops:
-            os.makedirs(os.path.dirname(op["dest"]), exist_ok=True)
-            _replace(op["tmp"], op["dest"])
-            _fsync_dir(os.path.dirname(op["dest"]))
+            # Destination writes must stay beneath the opened state-root
+            # directory tree. Pathname-based os.replace() follows symlinked
+            # parent directories and can escape despite lexical containment.
+            try:
+                with open(op["tmp"], "rb") as fh:
+                    payload = fh.read()
+                atomic_write_beneath(aios_dir, op["rel_dest"], payload.decode("utf-8"))
+            except (SecureWriteError, UnicodeDecodeError) as exc:
+                raise MutationError(
+                    f"secure mutation destination rejected: {op['rel_dest']!r}"
+                ) from exc
+            os.unlink(op["tmp"])
 
         os.unlink(journal_path)
         shutil.rmtree(batch_dir, ignore_errors=True)
