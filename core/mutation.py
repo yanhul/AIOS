@@ -411,8 +411,34 @@ def _require_committed_event(aios_dir, entity):
         f"with or predates M1.5")
 
 
+def _safe_commit_destination(aios_dir, rel_dest):
+    """Resolve a strictly relative state destination without lexical escape."""
+    if not isinstance(rel_dest, str) or not rel_dest.strip() or "\x00" in rel_dest:
+        raise MutationError("mutation destination must be a non-empty relative path")
+    portable = rel_dest.replace("\\", "/")
+    parts = portable.split("/")
+    if (
+        portable.startswith("/")
+        or (len(portable) >= 2 and portable[1] == ":")
+        or any(part in {"", ".", ".."} for part in parts)
+    ):
+        raise MutationError(f"mutation destination escapes AIOS state root: {rel_dest!r}")
+    root = os.path.abspath(os.fspath(aios_dir))
+    dest = os.path.abspath(os.path.join(root, *parts))
+    try:
+        if os.path.commonpath((root, dest)) != root:
+            raise MutationError(f"mutation destination escapes AIOS state root: {rel_dest!r}")
+    except ValueError as exc:
+        raise MutationError(f"mutation destination escapes AIOS state root: {rel_dest!r}") from exc
+    return dest
+
+
 def commit_batch(aios_dir, payloads):
     """Single shared atomic commit engine under the mutation lock."""
+    # Validate every destination before staging or writing any payload. This
+    # prevents caller-controlled IDs from turning a state-relative path into
+    # a write outside <aios_dir> (for example effects/../../authority.json).
+    prepared = [(_safe_commit_destination(aios_dir, rel_dest), obj) for rel_dest, obj in payloads]
     with _MutationLock(aios_dir):
         state_layout.ensure_state_dirs(aios_dir)
         staging_root = os.path.join(aios_dir, ".staging")
@@ -421,13 +447,13 @@ def commit_batch(aios_dir, payloads):
         os.makedirs(batch_dir, exist_ok=True)
 
         ops = []
-        for rel_dest, obj in payloads:
+        for dest, obj in prepared:
             payload = (canonical_json(obj) + "\n").encode("utf-8")
             tmp = os.path.join(batch_dir, f"{uuid.uuid4().hex}.tmp")
             _write_staged(tmp, payload)
             ops.append({
                 "tmp": tmp,
-                "dest": os.path.join(aios_dir, rel_dest),
+                "dest": dest,
                 "digest": _digest_bytes(payload),
             })
 
@@ -446,7 +472,6 @@ def commit_batch(aios_dir, payloads):
         os.unlink(journal_path)
         shutil.rmtree(batch_dir, ignore_errors=True)
         return [op["dest"] for op in ops]
-
 
 def apply_mutations(aios_dir, entities, actor, notice_factory=None):
     """Apply a validated batch of entity mutations atomically.
