@@ -108,10 +108,6 @@ def persist_receipt(path: Path, receipt: dict) -> None:
 
 
 def main() -> int:
-    try:
-        require_external_execution_enabled()
-    except PermissionError as exc:
-        return blocked(str(exc))
     ap = argparse.ArgumentParser()
     ap.add_argument("--workload-id", required=True)
     ap.add_argument("--execution-id", required=True)
@@ -228,6 +224,11 @@ def main() -> int:
                     "AIOS_PROBLEM": args.problem})
         existing_pythonpath = env.get("PYTHONPATH")
         env["PYTHONPATH"] = str(cwd) + (os.pathsep + existing_pythonpath if existing_pythonpath else "")
+    try:
+        require_external_execution_enabled()
+    except PermissionError as exc:
+        return blocked(str(exc))
+
         proc = subprocess.run(command, cwd=cwd, env=env, text=True, capture_output=True,
                               timeout=args.timeout_seconds, check=False, shell=False)
         if proc.returncode != 0:
