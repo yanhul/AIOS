@@ -384,8 +384,11 @@ def load_workload_config(config_path: str) -> dict:
 
 
 def validate_receipt_command(config: dict, *, signer_uid: int, parent_uids=()) -> dict:
-    """The receipt command runs as a *separate* UID (no key access) through an immutable root-owned launcher.
+    """Validate the key-isolated receipt runner and its immutable launcher.
 
+    The launcher bytes are root-owned and config-hash-bound. This function does not
+    parse or enforce interpreter flags inside that launcher; deployments must audit
+    the configured launcher separately. The CI fixture uses -I -S -B.
     Returns the resolved launcher path and runner UID; raises IsolationError otherwise.
     """
     import pwd
