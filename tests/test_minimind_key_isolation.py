@@ -678,3 +678,32 @@ def test_check_trusted_tree_fails_closed_on_walk_errors(tmp_path, monkeypatch):
     monkeypatch.setattr(isolation.os, "walk", failing_walk)
     with pytest.raises(IsolationError, match="cannot traverse trusted tree"):
         isolation.check_trusted_tree(str(root), kind="test import tree")
+
+
+
+def test_receipt_launcher_requires_isolated_python_flags(tmp_path):
+    from adapters.minimind.isolation import parse_receipt_launcher
+
+    launcher = tmp_path / "receipt-launcher"
+    launcher.write_text(
+        "#!/bin/sh\nexec /usr/bin/python3 -I -S -B /opt/aios/receipt.py\n",
+        encoding="utf-8",
+    )
+    assert parse_receipt_launcher(str(launcher)) == {
+        "interpreter": "/usr/bin/python3",
+        "script": "/opt/aios/receipt.py",
+    }
+
+    launcher.write_text(
+        "#!/bin/sh\nexec /usr/bin/python3 -S /opt/aios/receipt.py\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(IsolationError, match="exactly -I -S -B"):
+        parse_receipt_launcher(str(launcher))
+
+    launcher.write_text(
+        "#!/bin/sh\nexec /usr/bin/python3 -I -S -B /opt/aios/receipt.py --unsafe\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(IsolationError, match="exactly -I -S -B"):
+        parse_receipt_launcher(str(launcher))
