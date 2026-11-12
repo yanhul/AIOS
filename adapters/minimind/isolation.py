@@ -160,7 +160,6 @@ def prepare_trusted_python_imports(lib: str) -> int:
     This function validates the stdlib roots, the AIOS code tree, and known platform
     site/dist-packages roots before adding those dependency roots to sys.path.
     """
-    import glob
     import sysconfig
 
     checked = set()
@@ -224,7 +223,7 @@ def sha256_file(path: str) -> str:
         os.close(fd)
 
 
-_LAUNCHER_EXEC = re.compile(r"^exec (?P<interp>/\S+) -I -B (?P<entry>/\S+/adapters/minimind/workload_entry\.py) "
+_LAUNCHER_EXEC = re.compile(r"^exec (?P<interp>/\S+) -I -S -B (?P<entry>/\S+/adapters/minimind/workload_entry\.py) "
                             r"(?P<config>/\S+\.json)$")
 
 
