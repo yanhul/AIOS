@@ -1,6 +1,10 @@
 import json
 import sys
 
+import pytest
+
+pytestmark = pytest.mark.allow_unlocked_runtime
+
 from adapters.process import SubprocessAdapter
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
