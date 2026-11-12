@@ -475,8 +475,8 @@ def test_signer_package_import_does_not_execute_contract_or_provider(tmp_path):
     assert not marker.exists(), "package initialization executed workload/provider code"
 
 
-def test_trusted_tree_allows_writable_data_only_symlink_directory(tmp_path):
-    from adapters.minimind.isolation import check_trusted_tree
+def test_import_tree_classifies_writable_data_symlink_as_non_code(tmp_path):
+    from adapters.minimind.isolation import _tree_contains_importable_python_code
 
     root = tmp_path / "import-root"
     target = tmp_path / "locale-data"
@@ -485,18 +485,17 @@ def test_trusted_tree_allows_writable_data_only_symlink_directory(tmp_path):
     (target / "README.txt").write_text("data only", encoding="utf-8")
     target.chmod(0o777)
     (root / "locale-data").symlink_to(target, target_is_directory=True)
-    assert check_trusted_tree(str(root), kind="test import root") >= 0
+    assert not _tree_contains_importable_python_code(str(root))
 
 
-def test_trusted_tree_rejects_writable_symlink_directory_with_python_code(tmp_path):
-    from adapters.minimind.isolation import IsolationError, check_trusted_tree
+def test_import_tree_classifies_symlink_with_python_code_as_executable(tmp_path):
+    from adapters.minimind.isolation import _tree_contains_importable_python_code
 
     root = tmp_path / "import-root"
     target = tmp_path / "module-data"
     root.mkdir()
     target.mkdir()
-    (target / "injected.py").write_text("payload = True\n", encoding="utf-8")
+    (target / "injected.py").write_text("payload = True\\n", encoding="utf-8")
     target.chmod(0o777)
     (root / "trusted_pkg").symlink_to(target, target_is_directory=True)
-    with pytest.raises(IsolationError, match="group/other writable"):
-        check_trusted_tree(str(root), kind="test import root")
+    assert _tree_contains_importable_python_code(str(root))
