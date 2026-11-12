@@ -23,6 +23,14 @@ LOGS=/tmp/aios-isolation-logs; PROBE=$LOGS/runner-probe.json
 
 for u in $PARENT $WL $RUN $AGENT; do id "$u" >/dev/null 2>&1 || useradd --system --user-group --no-create-home --shell /usr/sbin/nologin "$u"; done
 /usr/bin/python3 -c 'import cryptography' 2>/dev/null || { apt-get update -qq && apt-get install -y -qq python3-cryptography; }
+# The disposable Ubuntu runner ships Babel locale-data as a symlinked import-tree
+# directory with mode 0777. The signer correctly rejects that mutable directory.
+# Harden this known distro resource tree in the ephemeral test host before exercising
+# the signer; production hosts must independently meet the same root-owned/no-write rule.
+BABEL_LOCALE_DATA=/usr/share/python-babel-localedata/locale-data
+if [ -d "$BABEL_LOCALE_DATA" ]; then
+  find "$BABEL_LOCALE_DATA" -type d -exec chown root:root {} + -exec chmod go-w {} +
+fi
 rm -rf "$LOGS"; mkdir -p "$LOGS"; chmod 0777 "$LOGS"
 
 # Immutable root-owned signer code, config and launchers.
