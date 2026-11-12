@@ -572,3 +572,48 @@ def test_import_tree_classifies_versioned_and_suffixless_elf_native_code(tmp_pat
     suffixless.write_bytes(b"\x7fELF" + b"\x00" * 32)
     assert _is_importable_python_code(str(versioned))
     assert _is_importable_python_code(str(suffixless))
+
+
+
+@root_only
+def test_signer_shell_launcher_emits_verifiable_ed25519_envelope():
+    """Exercise the installed shell launcher and verify its real Ed25519 output."""
+    from core.provider_ed25519 import ProviderPublicKeyring, ed25519_payload
+
+    fx = _fixture()
+    request = json.dumps({
+        "contract": _contract(),
+        "effect": _effect(),
+        "attempt_id": "a-launcher-e2e",
+    }).encode()
+    done = subprocess.run(
+        ["/usr/bin/sudo", "-n", "-u", fx["workload_user"], fx["launcher"]],
+        input=request, capture_output=True, timeout=60, check=False, cwd="/",
+    )
+    assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
+    envelope = json.loads(done.stdout.decode("utf-8"))
+    auth = envelope["authentication"]
+    assert auth["key_id"] == fx["key_id"]
+    ring = ProviderPublicKeyring({
+        "minimind": {
+            "key_id": fx["key_id"],
+            "public_key": fx["public_key"],
+            "revoked": False,
+        }
+    })
+    payload = ed25519_payload(
+        key_id=auth["key_id"],
+        receipt_id=auth["receipt_id"],
+        effect_id="EF-iso-1",
+        contract_id="C-iso-1",
+        permit_id="P-iso-1",
+        attempt_id="a-launcher-e2e",
+        provider="minimind",
+        provider_operation_id=envelope["provider_operation_id"],
+        outcome=envelope["outcome"],
+        observation=envelope["observation"],
+        issued_at=auth["issued_at"],
+        expires_at=auth["expires_at"],
+    )
+    ring.verify("minimind", auth["key_id"], auth["signature"], payload)
+    assert "PRIVATE KEY" not in done.stdout.decode("utf-8")
