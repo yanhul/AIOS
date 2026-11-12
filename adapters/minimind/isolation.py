@@ -133,10 +133,60 @@ def resolve_trusted_symlinks(path: str, *, kind: str, max_hops: int = 8) -> str:
 
 
 _PYTHON_IMPORT_SUFFIXES = (".py", ".pyc", ".pyo", ".so", ".pyd", ".dll", ".zip", ".egg")
+_VERSIONED_NATIVE_LIBRARY = re.compile(r"\\.so(?:\\.\\d+)+$", re.IGNORECASE)
 
 
 def _is_importable_python_code(path: str) -> bool:
-    return path.lower().endswith(_PYTHON_IMPORT_SUFFIXES)
+    """Classify Python modules and native code-bearing import dependencies."""
+    lowered = path.lower()
+    if lowered.endswith(_PYTHON_IMPORT_SUFFIXES) or _VERSIONED_NATIVE_LIBRARY.search(lowered):
+        return True
+    # Native ELF shared objects may be versioned unusually or have no suffix.
+    try:
+        with open(path, "rb") as stream:
+            return stream.read(4) == b"\\x7fELF"
+    except OSError as exc:
+        raise IsolationError(f"cannot inspect import candidate {path!r}: {exc}") from exc
+
+
+def _check_trusted_import_directories(root: str, *, kind: str) -> None:
+    """Require every directory in a symlinked import subtree to be immutable by non-root.
+
+    Data files may be writable for distro resource packages, but no untrusted user
+    may be able to add/replace an importable file after this check.
+    """
+    pending = [os.path.realpath(root)]
+    visited = set()
+    while pending:
+        directory = pending.pop()
+        if directory in visited:
+            continue
+        visited.add(directory)
+        check_trusted_path(directory, kind=f"{kind} directory")
+        try:
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            pending.append(entry.path)
+                        elif entry.is_symlink():
+                            st = entry.stat(follow_symlinks=False)
+                            if st.st_uid != 0:
+                                raise IsolationError(
+                                    f"{kind}: symlink inside import subtree is not root-owned: {entry.path!r}"
+                                )
+                            target = os.path.realpath(entry.path)
+                            target_st = os.stat(entry.path)
+                            if stat.S_ISDIR(target_st.st_mode):
+                                pending.append(target)
+                            elif stat.S_ISREG(target_st.st_mode) and _is_importable_python_code(target):
+                                check_trusted_path(target, kind=f"{kind} symlink code target")
+                        elif entry.is_file(follow_symlinks=False) and _is_importable_python_code(entry.path):
+                            check_trusted_path(entry.path, kind=f"{kind} code file")
+                    except OSError as exc:
+                        raise IsolationError(f"cannot inspect import-tree entry {entry.path!r}: {exc}") from exc
+        except OSError as exc:
+            raise IsolationError(f"cannot inspect import-tree directory {directory!r}: {exc}") from exc
 
 
 def _tree_contains_importable_python_code(root: str) -> bool:
@@ -195,9 +245,9 @@ def check_trusted_tree(root: str, *, kind: str, _visited: set | None = None) -> 
                 except OSError as exc:
                     raise IsolationError(f"{kind}: broken/unreadable symlink {entry!r}") from exc
                 if stat.S_ISDIR(target_st.st_mode):
-                    # Writable data-only symlink directories (for example locale-data)
-                    # cannot supply modules via normal Python imports. Validate every
-                    # target that contains source, bytecode, native code, or import archives.
+                    # Even data-only targets must have immutable directory structure:
+                    # otherwise code could be added after classification (TOCTOU).
+                    _check_trusted_import_directories(target, kind=f"{kind} symlink directory target")
                     if _tree_contains_importable_python_code(target):
                         count += check_trusted_tree(target, kind=f"{kind} symlink directory target",
                                                     _visited=visited)
