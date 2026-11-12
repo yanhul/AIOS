@@ -390,7 +390,7 @@ def load_workload_config(config_path: str) -> dict:
 
 
 _RECEIPT_LAUNCHER_EXEC = re.compile(
-    r"^exec (?P<interp>/\\S+) -I -S -B (?P<script>/\\S+\\.py)$"
+    r"^exec (?P<interp>/\S+) -I -S -B (?P<script>/\S+\.py)$"
 )
 
 
@@ -398,7 +398,7 @@ def parse_receipt_launcher(path: str) -> dict:
     """Require a fixed isolated-Python invocation with no caller-controlled arguments."""
     try:
         with open(path, encoding="utf-8") as fh:
-            lines = [line.rstrip("\\n") for line in fh.read(4096).splitlines()]
+            lines = [line.rstrip("\n") for line in fh.read(4096).splitlines()]
     except OSError as exc:
         raise IsolationError(f"cannot read receipt launcher: {exc}") from exc
     if len(lines) != 2 or lines[0] != "#!/bin/sh":
