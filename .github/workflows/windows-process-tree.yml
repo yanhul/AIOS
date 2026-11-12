@@ -19,7 +19,11 @@ jobs:
     timeout-minutes: 15
     steps:
       # Sparse checkout: the repository contains state files whose names are
-      # not valid on Windows (e.g. "policies/sha256:<digest>.json").
+      # not valid on Windows (e.g. "policies/sha256:<digest>.json"). Git for
+      # Windows rejects such index entries even outside the sparse cone unless
+      # NTFS path protection is relaxed; those paths are never materialized.
+      - name: Allow sparse checkout of repo with non-NTFS paths
+        run: git config --global core.protectNTFS false
       - uses: actions/checkout@v4
         with:
           sparse-checkout: |
