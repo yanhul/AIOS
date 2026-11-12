@@ -14,6 +14,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", required=True)
     ap.add_argument("--adapter", default="adapters/minimind/adapter.py")
+    ap.add_argument("--require-available", action="store_true",
+                    help="exit 2 unless status is AVAILABLE (production-capability gate)")
     args = ap.parse_args()
 
     root = Path(args.root).resolve()
@@ -62,6 +64,15 @@ def main() -> int:
     # The check process can succeed while the capability is BLOCKED. Never label
     # that outcome CHECK_PASS: machine-readable status must carry the verdict.
     print(json.dumps({"MINIMIND_CAPABILITY_CHECK": receipt}, sort_keys=True))
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        mode = "production gate" if args.require_available else "non-production readiness report"
+        with open(summary, "a", encoding="utf-8") as fh:
+            fh.write(f"MiniMind capability ({mode}): **{receipt['status']}**. "
+                     "A green CI run is not MiniMind runtime readiness.\n")
+    if args.require_available and receipt["status"] != "AVAILABLE":
+        print(f"MINIMIND_PRODUCTION_CAPABILITY_REQUIRED: status={receipt['status']}", file=sys.stderr)
+        return 2
     return 0
 
 

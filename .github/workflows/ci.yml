@@ -6,6 +6,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      require_minimind_production:
+        description: "Fail the minimind-capability-readiness job unless MiniMind is AVAILABLE"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -40,16 +45,6 @@ jobs:
         run: python -m pip install --upgrade pytest PyYAML cryptography
       - name: Run test suite
         run: python -m pytest -q
-      - name: Checkout MiniMind capability provider
-        run: |
-          git clone --depth 1 --no-checkout https://github.com/jingyaogong/minimind.git "$RUNNER_TEMP/minimind"
-          git -C "$RUNNER_TEMP/minimind" fetch --depth 1 origin 6fc918beb68a0d8c40452338df6319fe168014ba
-          git -C "$RUNNER_TEMP/minimind" checkout --detach 6fc918beb68a0d8c40452338df6319fe168014ba
-      - name: Check MiniMind capability
-        env:
-          MINIMIND_ROOT: ${{ runner.temp }}/minimind
-          MINIMIND_EXPECTED_REV: 6fc918beb68a0d8c40452338df6319fe168014ba
-        run: python scripts/check_minimind_capability.py --root "$RUNNER_TEMP/minimind"
 
   minimind-key-isolation:
     name: minimind-key-isolation
@@ -72,3 +67,30 @@ jobs:
           path: /tmp/aios-isolation-logs/
           if-no-files-found: warn
           retention-days: 30
+
+  # Non-production readiness report: MiniMind capability BLOCKED/INCONCLUSIVE is reported, not hidden,
+  # and does not make full-suite green or red. Dispatch with require_minimind_production=true to make it
+  # a hard production gate. Do not add this check to branch protection as evidence of runtime readiness.
+  minimind-capability-readiness:
+    name: minimind-capability-readiness (non-production)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Checkout MiniMind capability provider
+        run: |
+          git clone --depth 1 --no-checkout https://github.com/jingyaogong/minimind.git "$RUNNER_TEMP/minimind"
+          git -C "$RUNNER_TEMP/minimind" fetch --depth 1 origin 6fc918beb68a0d8c40452338df6319fe168014ba
+          git -C "$RUNNER_TEMP/minimind" checkout --detach 6fc918beb68a0d8c40452338df6319fe168014ba
+      - name: Check MiniMind capability
+        env:
+          MINIMIND_ROOT: ${{ runner.temp }}/minimind
+          MINIMIND_EXPECTED_REV: 6fc918beb68a0d8c40452338df6319fe168014ba
+          REQUIRE: ${{ inputs.require_minimind_production && 'true' || 'false' }}
+        run: |
+          flag=""; [ "$REQUIRE" = true ] && flag="--require-available"
+          python scripts/check_minimind_capability.py --root "$RUNNER_TEMP/minimind" $flag
+

@@ -63,11 +63,17 @@ signer `repr()` output never includes them.
 **Threat model.** Attackers: the AIOS parent process (and any code it runs, including the executing
 agent) and every other agent identity on the host. Goal: obtain or use the MiniMind Ed25519 private key
 to forge `PROVIDER_RECEIPT_ED25519` receipts. Out of scope: root / `CAP_DAC_*` / `CAP_SYS_PTRACE`
-holders, kernel compromise, the workload identity itself (it is the signer). Mode `0600` alone is not
+holders, kernel compromise, the signer identity itself. The receipt command (the MiniMind workload
+proper: training/evaluation code, data loaders) is **not trusted with the key**; it is in the threat model
+and runs under its own UID. Mode `0600` alone is not
 treated as isolation: the boundary is a distinct UID plus checks that the parent cannot cross it.
 
-**Trust boundary.** `aios-parent` (AIOS) ─stdin JSON request→ `sudo -n -u aios-minimind -- <launcher>`
-→ `workload_entry.py` (workload UID) ─stdout signed envelope→ parent. The parent holds only the public key.
+**Trust boundary.** `aios-parent` (AIOS) ─stdin request→ `sudo -n -u aios-minimind -- <signer launcher>`
+→ `workload_entry.py` (signer UID, key owner, immutable root-owned code only) ─stdin request→
+`sudo -n -u aios-minimind-run -- <receipt launcher>` (runner UID, **no key access**) ─stdout
+`{"minimind_receipt"}`→ signer validates and signs ─stdout signed envelope→ parent. The parent holds only
+the public key. A compromised receipt command can lie about the current receipt's content (that trust
+belongs to the MiniMind workload) but cannot read the key or sign anything.
 
 **Required OS properties (Linux; all checked by `WorkloadIsolation.verify()` before every launch).**
 
@@ -75,11 +81,20 @@ treated as isolation: the boundary is a distinct UID plus checks that the parent
 |---|---|---|
 | Parent is not root, not the workload UID, not in the workload's primary group | `getuid/geteuid/getgroups`, `pwd` | `IsolationError`, no launch |
 | Parent has no Linux capabilities | `/proc/self/status` `CapEff/CapPrm/CapAmb == 0` | `IsolationError` |
-| `sudo` is root-owned setuid; launcher, workload code (`trusted_paths`) and config root-owned, no g/o write on any ancestor, no symlinks | `lstat` walk to `/` | `IsolationError` |
+| `sudo` is root-owned setuid (root-owned symlink hops only); signer launcher root-owned | `lstat` walk to `/` | `IsolationError` |
+| Complete executable chain derived from the signer launcher, **not** from caller `trusted_paths`: launcher must be exactly `#!/bin/sh` + `exec <python> -I -B <lib>/adapters/minimind/workload_entry.py <config>`; interpreter, every file of `<lib>` (recursive, no symlinks), config | `parse_signer_launcher`, `check_trusted_tree` | `IsolationError` |
+| Config keys exactly `provider,key_path,runner_user,receipt_launcher,receipt_launcher_sha256,timeout,ttl` (legacy `receipt_command` rejected); `key_path` equals the caller's | `load_workload_config` | `IsolationError` |
+| Receipt launcher root-owned, no g/o write on any ancestor, referenced by its real path, sha256 equals config; `runner_user` exists, non-root, ≠ signer, ≠ parent | `validate_receipt_command` | `IsolationError` |
 | Parent sudo rights are **exactly** `(workload_user) NOPASSWD: <launcher> ""` (no args, no other rule, no root) | `sudo -n -l` parsed | `IsolationError` |
 | Parent `open(key_path)` fails with `EACCES` (real kernel probe; `ENOENT`/`ELOOP`/success all block) | `os.open(O_NOFOLLOW)` | `IsolationError` |
 
-Workload side (`read_workload_key`): key opened with `O_NOFOLLOW`; must be a regular file, `st_nlink == 1`,
+Signer side (`workload_entry.py`, independent of the parent): before reading the key it re-runs the
+config/receipt-chain validation, checks its own `sudo -n -l` is exactly `(runner_user) <receipt launcher> ""`,
+and verifies its interpreter, its code tree, every `sys.path` import root and every loaded module file
+(all imports, including `cryptography`, are done before this check; it is repeated right before the key
+is read). The receipt launcher is executed via sudo as `runner_user` with a minimal env.
+
+Key loading (`read_workload_key`): key opened with `O_NOFOLLOW`; must be a regular file, `st_nlink == 1`,
 owned by the workload euid, mode `& 0o077 == 0`; key directory owned by the workload (or root) with
 mode `& 0o077 == 0`; workload must not be root. The key is read only after the receipt command has
 finished and is never written to stdout/stderr/argv/env.
@@ -91,12 +106,17 @@ no automatic fallback to same-UID execution.
 
 **Parent/child communication.** Child env is exactly `PATH`, `LANG` (sudo `env_reset` also applies);
 `sudo` closes inherited fds > 2. Request on stdin (≤128 KiB). Child stdout: the signed envelope only
-(schema above). The key path appears only in the root-owned workload config, never on argv.
+(schema above). The key path appears only in the root-owned workload config, never on argv. The receipt runner gets the
+same request on stdin and returns only `{"minimind_receipt": {...}}`.
 
-**Provisioning.** Reference: `scripts/minimind_isolation_e2e.sh` (users `aios-parent`, `aios-minimind`,
-`aios-agent`; code in `/usr/lib/aios-minimind/lib`, config `/usr/lib/aios-minimind/etc/workload.json`,
-launcher `/usr/lib/aios-minimind/bin/minimind-workload`, key `/var/lib/aios-minimind/keys/ed25519.pem`
-(dir `0700`, file `0600`, owner `aios-minimind`), sudoers `/etc/sudoers.d/aios-minimind` `0440`).
+**Provisioning.** Reference: `scripts/minimind_isolation_e2e.sh` (users `aios-parent`, `aios-minimind`
+(signer), `aios-minimind-run` (receipt runner), `aios-agent`; code in `/usr/lib/aios-minimind/lib`, config
+`/usr/lib/aios-minimind/etc/workload.json`, signer launcher `/usr/lib/aios-minimind/bin/minimind-workload`,
+receipt launcher `/usr/lib/aios-minimind/bin/receipt-launcher`, key `/var/lib/aios-minimind/keys/ed25519.pem`
+(dir `0700`, file `0600`, owner `aios-minimind`), sudoers `/etc/sudoers.d/aios-minimind` `0440` with exactly
+`aios-parent ALL=(aios-minimind) NOPASSWD: <signer launcher> ""` and
+`aios-minimind ALL=(aios-minimind-run) NOPASSWD: <receipt launcher> ""`). Updating the receipt launcher
+requires updating `receipt_launcher_sha256` in the config (root). The runner UID must have no sudo rights.
 Do not install under a directory with group/other write on any ancestor (e.g. GitHub-hosted runners ship
 `/opt` as `0777`; `verify()` rejects it because the parent could rename the tree).
 The key is generated *as the workload user* (`O_CREAT|O_EXCL|O_NOFOLLOW`, umask 077); only the public
@@ -127,7 +147,14 @@ and run `scripts/minimind_isolation_e2e.sh` on a disposable host built from the 
 **Deployment is BLOCKED if any of:** `verify()` raises; the AIOS user is root, has capabilities or any
 other sudo right; the agent runs as the workload UID; the key, launcher, workload code or config is
 writable/replaceable by the parent; platform is not Linux; the adapter is configured with
-`UNISOLATED_FOR_TESTS` or `isolation=None`; `cryptography` is missing on the workload.
+`UNISOLATED_FOR_TESTS` or `isolation=None`; `cryptography` is missing on the workload; the receipt command
+runs as the signer UID or any component of either launcher chain is not immutable root-owned code.
+
+**CI semantics.** `full-suite` and `minimind-key-isolation` prove source behaviour and the boundary on a
+disposable runner only. `minimind-capability-readiness (non-production)` reports the MiniMind capability
+status (currently BLOCKED: required runtime surface missing) without gating; dispatching CI with
+`require_minimind_production=true` turns it into a hard gate (exit 2 unless AVAILABLE). No green CI run is
+evidence of MiniMind runtime or production readiness.
 
 ## Limitations
 

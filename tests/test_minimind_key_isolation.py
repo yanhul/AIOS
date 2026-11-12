@@ -20,8 +20,10 @@ from adapters.minimind.isolation import (
     WorkloadIsolation,
     check_sudo_rules,
     iter_uid_processes,
+    probe_key_unreadable,
     read_workload_key,
     resolve_trusted_symlinks,
+    validate_receipt_command,
 )
 from adapters.minimind.runner import MiniMindAdapter
 
@@ -40,8 +42,7 @@ def _fixture():
 
 
 def _isolation(fx, **override):
-    kw = {"workload_user": fx["workload_user"], "launcher": fx["launcher"], "key_path": fx["key_path"],
-          "trusted_paths": tuple(fx["trusted_paths"])}
+    kw = {"workload_user": fx["workload_user"], "launcher": fx["launcher"], "key_path": fx["key_path"]}
     kw.update(override)
     return WorkloadIsolation(**kw)
 
@@ -196,17 +197,20 @@ def test_parent_cannot_replace_or_redirect_key_or_workload_code(tmp_path):
     for target in [fx["launcher"], *fx["trusted_files"]]:
         with pytest.raises(PermissionError):
             _read(target, "ab")
-    for directory in [p for p in fx["trusted_paths"] if os.path.isdir(p)]:
+    for directory in fx["trusted_dirs"]:
         with pytest.raises(PermissionError):
             _read(os.path.join(directory, "injected.py"), "w")
     # Pointing the boundary at a parent-controlled key is refused by the probe.
     own = tmp_path / "own.pem"
     own.write_text("x")
     with pytest.raises(IsolationError, match="can open"):
-        _isolation(fx, key_path=str(own)).verify()
+        probe_key_unreadable(str(own))
     os.symlink(fx["key_path"], tmp_path / "link.pem")
     with pytest.raises(IsolationError, match="ELOOP"):
-        _isolation(fx, key_path=str(tmp_path / "link.pem")).verify()
+        probe_key_unreadable(str(tmp_path / "link.pem"))
+    # The caller cannot redirect the boundary to another key: key_path is bound by the root-owned config.
+    with pytest.raises(IsolationError, match="does not match the root-owned workload config"):
+        _isolation(fx, key_path=str(own)).verify()
 
 
 @parent_only
@@ -223,12 +227,47 @@ def test_parent_cannot_run_arbitrary_commands_as_workload_or_root():
 @parent_only
 def test_misconfigured_boundary_blocks_execution():
     fx = _fixture()
-    for override, pattern in (({"key_path": fx["neg_readable_key"]}, "can open"),
+    with pytest.raises(IsolationError, match="can open"):
+        probe_key_unreadable(fx["neg_readable_key"])
+    for override, pattern in (({"key_path": fx["neg_readable_key"]}, "does not match"),
                               ({"launcher": fx["neg_launcher"]}, "not root-owned"),
                               ({"workload_user": "aios-no-such-user"}, "does not exist")):
         adapter = MiniMindAdapter(isolation=_isolation(fx, **override))
         with pytest.raises(IsolationError, match=pattern):
             adapter.execute(contract=_contract(), effect=_effect(), attempt_id="a-neg")
+
+
+NEG_CHAIN = (
+    ("agent-exec", "not root-owned"),            # receipt executable writable by another agent
+    ("open-ancestor", "group/other writable"),   # writable ancestor directory
+    ("symlink-agent", "not root-owned"),         # symlink redirection to an agent-owned file
+    ("symlink-trusted", "real path"),            # symlink alias (sudo matches literally)
+    ("sha-mismatch", "changed"),                 # launcher content not bound by config
+    ("legacy", "legacy 'receipt_command'"),      # inline command list is never accepted
+)
+
+
+@parent_only
+def test_untrusted_receipt_chain_blocks_parent_side():
+    fx = _fixture()
+    cases = [*NEG_CHAIN, ("agent-lib", "workload code")]  # script in signer code tree writable by agent
+    for name, pattern in cases:
+        adapter = MiniMindAdapter(isolation=_isolation(fx, launcher=f"{fx['neg']}/{name}-launcher"))
+        with pytest.raises(IsolationError, match=pattern):
+            adapter.execute(contract=_contract(), effect=_effect(), attempt_id=f"a-{name}")
+
+
+@parent_only
+def test_receipt_command_cannot_read_private_key():
+    import pwd
+    fx = _fixture()
+    if os.path.exists(fx["runner_probe"]):
+        os.unlink(fx["runner_probe"])
+    MiniMindAdapter(isolation=_isolation(fx)).execute(contract=_contract(), effect=_effect(), attempt_id="a-probe")
+    with open(fx["runner_probe"], encoding="utf-8") as fh:
+        probe = json.load(fh)
+    assert probe == {"uid": pwd.getpwnam(fx["runner_user"]).pw_uid, "key_probe": "EACCES"}
+    assert probe["uid"] != pwd.getpwnam(fx["workload_user"]).pw_uid
 
 
 @parent_only
@@ -309,3 +348,66 @@ def test_other_agent_cannot_read_key_or_start_workload():
     assert done.returncode != 0
     with pytest.raises(IsolationError):
         _isolation(fx).verify()
+
+
+@agent_only
+def test_other_agent_cannot_modify_executable_chain():
+    fx = _fixture()
+    for target in fx["trusted_files"]:
+        with pytest.raises(PermissionError):
+            _read(target, "ab")
+        with pytest.raises(PermissionError):
+            os.rename(target, target + ".moved")
+    for directory in fx["trusted_dirs"]:
+        with pytest.raises(PermissionError):
+            _read(os.path.join(directory, "injected.py"), "w")
+
+
+# --- OS end-to-end: root harness (signer-side enforcement, independent of the parent) ---------
+
+root_only = pytest.mark.skipif(ROLE != "root", reason="OS isolation e2e not provisioned (root role): UNKNOWN")
+
+
+def _run_entry(fx, lib, config):
+    request = json.dumps({"contract": _contract(), "effect": _effect(), "attempt_id": "a-root"}).encode()
+    return subprocess.run(["/usr/bin/sudo", "-n", "-u", fx["workload_user"], "/usr/bin/python3", "-I", "-B",
+                           f"{lib}/adapters/minimind/workload_entry.py", config],
+                          input=request, capture_output=True, timeout=60, check=False, cwd="/")
+
+
+@root_only
+def test_signer_entry_refuses_untrusted_receipt_chain():
+    fx = _fixture()
+    for name, pattern in NEG_CHAIN:
+        done = _run_entry(fx, fx["lib"], f"{fx['neg']}/{name}.json")
+        assert done.returncode == 3 and done.stdout == b"", (name, done.stderr)
+        assert pattern.encode() in done.stderr, (name, done.stderr)
+    done = _run_entry(fx, f"{fx['neg']}/lib", fx["config"])  # agent-writable script in signer code
+    assert done.returncode == 3 and b"not root-owned" in done.stderr and done.stdout == b""
+
+
+@root_only
+def test_receipt_command_changed_after_validation_is_blocked():
+    import hashlib
+    import pwd
+    import shutil
+    fx = _fixture()
+    mut = f"{fx['neg']}/mut"
+    launcher, config = f"{mut}/receipt-launcher", f"{mut}/workload.json"
+    shutil.copyfile(fx["receipt_launcher"], launcher)
+    os.chmod(launcher, 0o755)
+    with open(fx["config"], encoding="utf-8") as fh:
+        cfg = json.load(fh)
+    with open(launcher, "rb") as fh:
+        cfg.update(receipt_launcher=launcher, receipt_launcher_sha256=hashlib.sha256(fh.read()).hexdigest())
+    with open(config, "w", encoding="utf-8") as fh:
+        json.dump(cfg, fh)
+    os.chmod(config, 0o644)
+    signer_uid = pwd.getpwnam(fx["workload_user"]).pw_uid
+    assert validate_receipt_command(cfg, signer_uid=signer_uid)["receipt_launcher"] == launcher
+    with open(launcher, "a", encoding="utf-8") as fh:
+        fh.write(f"cat {fx['key_path']}\n")
+    with pytest.raises(IsolationError, match="changed"):
+        validate_receipt_command(cfg, signer_uid=signer_uid)
+    done = _run_entry(fx, fx["lib"], config)
+    assert done.returncode == 3 and b"changed" in done.stderr and done.stdout == b""

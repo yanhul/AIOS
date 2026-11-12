@@ -15,6 +15,12 @@ Parent side (:class:`WorkloadIsolation`), checked before every launch, fail clos
 * the parent's ``sudo -n -l`` rights are **exactly** ``(workload_user) <launcher> ""``
   (no arguments, no other rule): the parent can start the workload but cannot run
   any other command as the workload user or as root;
+* the complete executable chain is derived from the launcher itself (exact two-line form binding one
+  interpreter, one code tree and one config): interpreter (root-owned symlink hops only), every file
+  of the workload code tree, the config, and the receipt launcher (sha256 bound in the config);
+  caller-supplied ``trusted_paths`` are optional extras, never proof;
+* the receipt command (the MiniMind workload proper, not trusted with the key) runs as a separate
+  ``runner_user`` UID that is neither the signer, the parent nor root;
 * a real ``open()`` of the private-key path by the parent is refused by the kernel
   with ``EACCES`` (OS-level probe, not a mode-bit inference).
 
@@ -126,6 +132,112 @@ def resolve_trusted_symlinks(path: str, *, kind: str, max_hops: int = 8) -> str:
     raise IsolationError(f"{kind}: too many symlink hops")
 
 
+def check_trusted_tree(root: str, *, kind: str) -> int:
+    """``root`` and every entry below it: root-owned, no group/other write, no symlinks. Returns file count."""
+    check_trusted_path(root, kind=kind)
+    count = 0
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        for name in dirnames + filenames:
+            entry = os.path.join(dirpath, name)
+            st = os.lstat(entry)
+            if stat.S_ISLNK(st.st_mode):
+                raise IsolationError(f"{kind}: symlink inside trusted tree: {entry!r}")
+            if st.st_uid != 0:
+                raise IsolationError(f"{kind}: {entry!r} is not root-owned (uid {st.st_uid})")
+            if st.st_mode & 0o022:
+                raise IsolationError(f"{kind}: {entry!r} is group/other writable ({oct(st.st_mode & 0o777)})")
+            if stat.S_ISREG(st.st_mode):
+                count += 1
+            elif not stat.S_ISDIR(st.st_mode):
+                raise IsolationError(f"{kind}: {entry!r} is not a regular file or directory")
+    return count
+
+
+def check_trusted_executable(path: str, *, kind: str) -> str:
+    """Resolve root-owned symlink hops, then require a trusted executable. Returns the resolved path."""
+    real = resolve_trusted_symlinks(path, kind=kind)
+    check_trusted_path(real, kind=kind, executable=True)
+    return real
+
+
+def sha256_file(path: str) -> str:
+    import hashlib
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        digest = hashlib.sha256()
+        while True:
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                return digest.hexdigest()
+            digest.update(chunk)
+    finally:
+        os.close(fd)
+
+
+_LAUNCHER_EXEC = re.compile(r"^exec (?P<interp>/\S+) -I -B (?P<entry>/\S+/adapters/minimind/workload_entry\.py) "
+                            r"(?P<config>/\S+\.json)$")
+
+
+def parse_signer_launcher(path: str) -> dict:
+    """The signer launcher must be exactly ``#!/bin/sh`` + ``exec <python> -I -B <lib>/...workload_entry.py <config>``.
+
+    This binds the launcher (which the parent may start) to one interpreter, one code tree and one
+    root-owned config; nothing in it comes from the caller.
+    """
+    with open(path, encoding="utf-8") as fh:
+        lines = [line.rstrip("\n") for line in fh.read(4096).splitlines()]
+    if len(lines) != 2 or lines[0] != "#!/bin/sh":
+        raise IsolationError("signer launcher must be exactly '#!/bin/sh' + one exec line")
+    match = _LAUNCHER_EXEC.match(lines[1])
+    if not match:
+        raise IsolationError("signer launcher exec line has an unexpected form")
+    entry = match.group("entry")
+    lib = entry[: -len("/adapters/minimind/workload_entry.py")]
+    return {"interpreter": match.group("interp"), "entry": entry, "lib": lib, "config": match.group("config")}
+
+
+CONFIG_KEYS = frozenset({"provider", "key_path", "runner_user", "receipt_launcher", "receipt_launcher_sha256",
+                         "timeout", "ttl"})
+
+
+def load_workload_config(config_path: str) -> dict:
+    """Load and validate the root-owned workload config (both parent and workload side)."""
+    check_trusted_path(config_path, kind="workload config")
+    import json
+    with open(config_path, encoding="utf-8") as fh:
+        config = json.load(fh)
+    if not isinstance(config, dict) or set(config) != CONFIG_KEYS:
+        raise IsolationError(f"workload config keys must be exactly {sorted(CONFIG_KEYS)} "
+                             "(legacy 'receipt_command' is not accepted)")
+    for name in ("provider", "key_path", "runner_user", "receipt_launcher", "receipt_launcher_sha256"):
+        if not isinstance(config[name], str) or not config[name]:
+            raise IsolationError(f"workload config {name} must be a non-empty string")
+    return config
+
+
+def validate_receipt_command(config: dict, *, signer_uid: int, parent_uids=()) -> dict:
+    """The receipt command runs as a *separate* UID (no key access) through an immutable root-owned launcher.
+
+    Returns the resolved launcher path and runner UID; raises IsolationError otherwise.
+    """
+    import pwd
+    try:
+        runner = pwd.getpwnam(config["runner_user"])
+    except KeyError as exc:
+        raise IsolationError(f"receipt runner user {config['runner_user']!r} does not exist") from exc
+    if runner.pw_uid == 0 or runner.pw_uid == signer_uid or runner.pw_uid in set(parent_uids):
+        raise IsolationError("receipt command must run as a dedicated non-root UID distinct from the "
+                             "signing identity and the parent")
+    launcher = config["receipt_launcher"]
+    real = check_trusted_executable(launcher, kind="receipt launcher")
+    if real != os.path.normpath(launcher):
+        raise IsolationError("receipt launcher must be referenced by its real path (sudo matches it literally)")
+    actual = sha256_file(real)
+    if actual != config["receipt_launcher_sha256"]:
+        raise IsolationError("receipt launcher content does not match the config-bound sha256 (changed)")
+    return {"receipt_launcher": real, "runner_uid": runner.pw_uid, "receipt_launcher_sha256": actual}
+
+
 _RULE = re.compile(r"^\((?P<runas>[^)]*)\)\s+(?P<rest>.+)$")
 _TAG = re.compile(r"^(?:[A-Z_]+:\s*)+")
 
@@ -213,7 +325,15 @@ class WorkloadIsolation:
         check_trusted_path(resolve_trusted_symlinks(self.sudo, kind="sudo"), kind="sudo", executable=True,
                            setuid=True)
         check_trusted_path(self.launcher, kind="launcher", executable=True)
-        for extra in self.trusted_paths:
+        # The complete trust set is derived from the launcher and its config, never from the caller.
+        bound = parse_signer_launcher(self.launcher)
+        check_trusted_executable(bound["interpreter"], kind="signer interpreter")
+        check_trusted_tree(bound["lib"], kind="workload code")
+        config = load_workload_config(bound["config"])
+        if os.path.normpath(config["key_path"]) != os.path.normpath(self.key_path):
+            raise IsolationError("key_path does not match the root-owned workload config")
+        receipt = validate_receipt_command(config, signer_uid=workload.pw_uid, parent_uids=uids)
+        for extra in self.trusted_paths:  # optional extras only; never a substitute for the above
             check_trusted_path(extra, kind="trusted path")
 
         try:
@@ -227,7 +347,8 @@ class WorkloadIsolation:
                          launcher=self.launcher)
         probe = probe_key_unreadable(self.key_path)
         return {"platform": sys.platform, "parent_uid": os.geteuid(), "workload_uid": workload.pw_uid,
-                "key_probe": probe, "launcher": self.launcher}
+                "key_probe": probe, "launcher": self.launcher, "config": bound["config"],
+                "runner_uid": receipt["runner_uid"], "receipt_launcher_sha256": receipt["receipt_launcher_sha256"]}
 
 
 def _check_private(st: os.stat_result, *, what: str, euid: int, allow_root: bool) -> None:
