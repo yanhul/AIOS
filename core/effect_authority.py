@@ -4,20 +4,28 @@ This module is the single write boundary for provider-facing effects. An
 external effect cannot be created, dispatched, retried, or observed unless the
 immutable contract and permit authorize the requested effect. Identity fields
 are immutable after creation; attempt IDs are deterministic and tied to the
-effect/attempt number; observations must carry AIOS-owned cryptographic
-evidence bound to the executing provider and attempt.
+effect/attempt number. Terminal OBSERVED_* states are reachable only through
+``observe()``, which mints the AIOS evidence envelope itself (SHA-256 content
+binding of the exact raw observation to the current attempt; this is integrity
+binding, not issuer authenticity).
 
 UNKNOWN is deliberately non-terminal. It can only re-enter DISPATCHED through
-the explicit retry path, subject to the contract attempt budget.
+the explicit retry path, subject to the contract attempt budget and a retry
+authorization signed by a deployment-registered issuer (see RetryIssuerKeyring).
 """
 
 import hashlib
+import hmac
 import json
 import os
+import re
+import secrets
+import time
+from collections.abc import Mapping
 
 from .authority import authorize, load_contract, load_permit
 from .contract import verify_permit
-from .evidence import verify_evidence
+from .evidence import EvidenceRecord, verify_evidence
 from .mutation import TransitionError, canonical_json, commit_batch, recover_pending
 
 STATES = ("PLANNED", "DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE")
@@ -28,6 +36,7 @@ _ALLOWED = {
     "OBSERVED_SUCCESS": set(),
     "OBSERVED_FAILURE": set(),
 }
+_OBSERVED = frozenset({"OBSERVED_SUCCESS", "OBSERVED_FAILURE"})
 
 
 def _id(contract_id, logical_operation_id, actor):
@@ -190,7 +199,15 @@ def transition(aios_dir, effect_id, target, actor, **fields):
         raise TransitionError("effect transition attempted to mutate protected or unsupported fields")
     if target == "DISPATCHED":
         raise TransitionError("undefined external-effect transition: direct DISPATCHED entry is not allowed")
+    if target in _OBSERVED:
+        raise TransitionError("observation outcomes can only be recorded through observe(); "
+                              f"direct {target} transition is not allowed")
     current, _contract = _load_owned_effect(aios_dir, effect_id, actor, "effect transition")
+    return _commit_transition(aios_dir, current, actor, target, fields)
+
+
+def _commit_transition(aios_dir, current, actor, target, fields):
+    effect_id = current["effect_id"]
     if current.get("state") not in _ALLOWED or target not in _ALLOWED[current["state"]]:
         raise TransitionError(f"undefined external-effect transition: {current.get('state')} -> {target}")
     updated = dict(current)
@@ -208,13 +225,15 @@ def transition(aios_dir, effect_id, target, actor, **fields):
 
 
 def _transition_dispatch(aios_dir, current, actor, *, attempt, attempt_id, provider,
-                         extra_payloads=(), extra_checks=()):
+                         extra_fields=None, extra_payloads=(), extra_checks=()):
     """Dispatch mutation. ``current`` is the validated snapshot; the commit is a
     CAS against it so a concurrent writer cannot be silently overwritten."""
     effect_id = current["effect_id"]
     updated = dict(current)
     updated.update({"state": "DISPATCHED", "attempt": attempt,
                     "attempt_id": attempt_id, "provider": provider})
+    if extra_fields:
+        updated.update(extra_fields)
     event = {
         "kind": "external_effect", "action": "dispatch", "effect_id": effect_id,
         "from_state": current["state"], "to_state": "DISPATCHED", "actor": actor,
@@ -244,98 +263,274 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
 
 
 # --- Retry authority -------------------------------------------------------
+#
+# Trust model (audit F-03). Files under ``aios_dir`` are NOT a trust anchor for
+# retry approval: anything an agent can write there it could also forge. Retry
+# issuers are registered in a deployment-supplied ``RetryIssuerKeyring``
+# (explicit ``keyring=`` argument, or the ``AIOS_RETRY_ISSUER_KEYRING`` JSON
+# environment variable), which is never persisted in AIOS state. This reuses
+# the existing deployment-secret/HMAC authority model of ``core.attestation``.
+# An authorization is an HMAC-SHA256 signature by the issuer's registered
+# secret over the complete retry context, including the digest of the exact
+# UNKNOWN effect record it approves, so it can only ever match one state.
+#
+# Limitation (by design of the existing model): HMAC is symmetric. It
+# authenticates the issuer against principals that do not hold the issuer's
+# secret (e.g. the executing agent), not against the deployment itself.
 
 RETRY_AUTH_DIR = "retry_authorizations"
-_RETRY_AUTH_FIELDS = ("authorization_id", "effect_id", "contract_id", "permit_id", "actor",
-                      "attempt", "issuer", "reason", "unknown_reason", "mode")
+RETRY_APPROVE_SCOPE = "effect.retry.approve"
+RETRY_KEYRING_ENV = "AIOS_RETRY_ISSUER_KEYRING"
+DEFAULT_RETRY_AUTH_TTL_SECONDS = 900
+MAX_RETRY_AUTH_TTL_SECONDS = 86400
+_CLOCK_SKEW_SECONDS = 60
+_RETRY_AUTH_ID = re.compile(r"RA-[0-9a-f]{32}")
+_RETRY_SIGNED_FIELDS = (
+    "record_type", "authorization_id", "effect_id", "contract_id", "permit_id", "actor",
+    "issuer", "scope", "effect_state_digest", "previous_attempt", "previous_attempt_id",
+    "attempt", "attempt_id", "reason", "unknown_reason", "issued_at", "expires_at",
+    "mode", "algorithm",
+)
+_CONSUMPTION_FIELDS = (
+    "record_type", "authorization_id", "authorization_signature", "effect_id",
+    "consumed_by_attempt_id", "consumed_provider", "consumed_from_state_digest",
+)
+
+
+class RetryIssuerKeyring:
+    """Deployment-supplied trust anchor for retry approval. Never persisted."""
+
+    def __init__(self, issuers):
+        if not isinstance(issuers, Mapping) or not issuers:
+            raise ValueError("retry issuer keyring must be a non-empty mapping")
+        parsed = {}
+        for issuer, entry in issuers.items():
+            _validate_strings(("issuer", issuer))
+            if not isinstance(entry, Mapping):
+                raise ValueError(f"retry issuer entry must be a mapping: {issuer}")
+            secret = entry.get("secret")
+            if not isinstance(secret, str) or len(secret) < 16:
+                raise ValueError(f"retry issuer secret must be a string of at least 16 characters: {issuer}")
+            scopes = entry.get("scopes", ())
+            if not isinstance(scopes, (list, tuple)) or not all(isinstance(x, str) for x in scopes):
+                raise ValueError(f"retry issuer scopes must be a list of strings: {issuer}")
+            revoked = entry.get("revoked", False)
+            if not isinstance(revoked, bool):
+                raise ValueError(f"retry issuer revoked flag must be boolean: {issuer}")
+            parsed[issuer] = {"secret": secret.encode("utf-8"), "scopes": frozenset(scopes), "revoked": revoked}
+        self._issuers = parsed
+
+    @classmethod
+    def from_env(cls, environ=None):
+        raw = (os.environ if environ is None else environ).get(RETRY_KEYRING_ENV)
+        if not raw:
+            return None
+        try:
+            data = json.loads(raw)
+        except ValueError as exc:
+            raise TransitionError("retry issuer keyring environment is not valid JSON") from exc
+        try:
+            return cls(data)
+        except ValueError as exc:
+            raise TransitionError(f"retry issuer keyring environment is invalid: {exc}") from exc
+
+    def secret_for(self, issuer, scope):
+        entry = self._issuers.get(issuer) if isinstance(issuer, str) else None
+        if entry is None:
+            raise TransitionError(f"retry issuer is not registered in the trusted keyring: {issuer!r}")
+        if entry["revoked"]:
+            raise TransitionError(f"retry issuer has been revoked: {issuer}")
+        if scope not in entry["scopes"]:
+            raise TransitionError(f"retry issuer is not authorized for {scope}: {issuer}")
+        return entry["secret"]
+
+    def __repr__(self):  # never leak secrets into logs/evidence
+        return f"RetryIssuerKeyring(issuers={sorted(self._issuers)})"
+
+
+def _resolve_keyring(keyring):
+    if keyring is None:
+        keyring = RetryIssuerKeyring.from_env()
+    if not isinstance(keyring, RetryIssuerKeyring):
+        raise TransitionError("retry authorization requires a deployment-supplied trusted issuer keyring")
+    return keyring
+
+
+def _now(now):
+    value = time.time() if now is None else now
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise ValueError("now must be a number")
+    return float(value)
+
+
+def _effect_state_digest(effect):
+    return hashlib.sha256(canonical_json(effect).encode("utf-8")).hexdigest()
 
 
 def _retry_auth_rel(authorization_id):
     return os.path.join(RETRY_AUTH_DIR, authorization_id + ".json")
 
 
-def _retry_auth_digest(record):
-    body = {key: record.get(key) for key in _RETRY_AUTH_FIELDS}
+def _retry_consumption_rel(authorization_id):
+    return os.path.join(RETRY_AUTH_DIR, authorization_id + ".consumed.json")
+
+
+def _retry_signature(secret, record):
+    body = {key: record.get(key) for key in _RETRY_SIGNED_FIELDS}
+    return hmac.new(secret, canonical_json(body).encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _consumption_digest(record):
+    body = {key: record.get(key) for key in _CONSUMPTION_FIELDS}
     return hashlib.sha256(canonical_json(body).encode("utf-8")).hexdigest()
 
 
-def issue_retry_authorization(aios_dir, effect_id, actor, attempt, issuer, reason):
-    """Persist an AIOS-issued, single-use authorization to retry an UNKNOWN effect.
+def _load_json_dict(aios_dir, rel, label):
+    path = os.path.join(aios_dir, rel)
+    if os.path.islink(path):
+        raise TransitionError(f"{label} must not be a symlink")
+    try:
+        record = _load(path)
+    except (OSError, ValueError) as exc:
+        raise TransitionError(f"{label} is unreadable: {exc}") from exc
+    if not isinstance(record, dict):
+        raise TransitionError(f"{label} failed integrity check")
+    return record
 
-    The issuer must be a party other than the executing actor (separation of
-    duties): an executor cannot authorize its own retry of an ambiguous effect.
+
+def _verify_consumption_history(aios_dir, current):
+    """Fail closed if any previously consumed authorization record was tampered."""
+    consumed = current.get("consumed_retry_authorizations", [])
+    if not isinstance(consumed, list) or len(set(map(str, consumed))) != len(consumed):
+        raise TransitionError("effect retry consumption history is malformed")
+    for authorization_id in consumed:
+        if not isinstance(authorization_id, str) or not _RETRY_AUTH_ID.fullmatch(authorization_id):
+            raise TransitionError("effect retry consumption history is malformed")
+        rec = _load_json_dict(aios_dir, _retry_consumption_rel(authorization_id), "retry consumption record")
+        auth = _load_json_dict(aios_dir, _retry_auth_rel(authorization_id), "consumed retry authorization")
+        if (set(rec) != set(_CONSUMPTION_FIELDS) | {"digest"}
+                or rec.get("record_type") != "RETRY_AUTHORIZATION_CONSUMPTION"
+                or rec.get("authorization_id") != authorization_id
+                or rec.get("effect_id") != current["effect_id"]
+                or rec.get("digest") != _consumption_digest(rec)
+                or not isinstance(auth.get("signature"), str)
+                or not hmac.compare_digest(rec.get("authorization_signature") or "", auth["signature"])
+                or auth.get("attempt_id") != rec.get("consumed_by_attempt_id")):
+            raise TransitionError("retry consumption record failed integrity check")
+
+
+def issue_retry_authorization(aios_dir, effect_id, actor, attempt, issuer, reason, *,
+                              issuer_secret, keyring=None, ttl_seconds=DEFAULT_RETRY_AUTH_TTL_SECONDS, now=None):
+    """Persist a signed, single-use authorization to retry one exact UNKNOWN effect state.
+
+    ``issuer`` must be registered in the trusted keyring with the
+    ``effect.retry.approve`` scope and must prove possession of its registered
+    secret. It must differ from the executing actor (separation of duties).
     """
     _validate_strings(("issuer", issuer), ("reason", reason))
     if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 2:
         raise ValueError("retry attempt must be an integer >= 2")
     if issuer == actor:
-        raise TransitionError("retry authorization issuer must differ from the executing actor")
-    current, _contract = _load_owned_effect(aios_dir, effect_id, actor, "retry authorization")
+        raise TransitionError("retry authorization issuer must differ from the executing actor (self-approval)")
+    if (not isinstance(ttl_seconds, (int, float)) or isinstance(ttl_seconds, bool)
+            or not 0 < ttl_seconds <= MAX_RETRY_AUTH_TTL_SECONDS):
+        raise ValueError("ttl_seconds must be within (0, 86400]")
+    if not isinstance(issuer_secret, str) or not issuer_secret:
+        raise TransitionError("retry authorization requires the issuer's signing secret")
+    registered = _resolve_keyring(keyring).secret_for(issuer, RETRY_APPROVE_SCOPE)
+    if not hmac.compare_digest(registered, issuer_secret.encode("utf-8")):
+        raise TransitionError(f"retry issuer failed authentication: {issuer}")
+    current, contract = _load_owned_effect(aios_dir, effect_id, actor, "retry authorization")
+    if issuer == contract["actor"]:
+        raise TransitionError("retry authorization issuer must differ from the contract actor (self-approval)")
+    _verify_consumption_history(aios_dir, current)
     if current.get("state") != "UNKNOWN":
         raise TransitionError(f"retry authorization requires UNKNOWN effect, got {current.get('state')}")
     if attempt != int(current["attempt"]) + 1:
         raise TransitionError(f"retry authorization attempt must be {int(current['attempt']) + 1}, got {attempt}")
     if attempt > int(current["max_attempts"]):
         raise TransitionError("retry authorization exceeds contract attempt budget")
-    authorization_id = "RA-" + hashlib.sha256(
-        canonical_json({"effect_id": effect_id, "attempt": attempt}).encode("utf-8")).hexdigest()
+    issued_at = _now(now)
+    authorization_id = "RA-" + secrets.token_hex(16)
     rec = {
         "record_type": "RETRY_AUTHORIZATION", "authorization_id": authorization_id,
         "effect_id": effect_id, "contract_id": current["contract_id"], "permit_id": current["permit_id"],
-        "actor": actor, "attempt": attempt, "issuer": issuer, "reason": reason,
-        "unknown_reason": current.get("unknown_reason"), "mode": "EXPLICIT",
+        "actor": actor, "issuer": issuer, "scope": RETRY_APPROVE_SCOPE,
+        "effect_state_digest": _effect_state_digest(current),
+        "previous_attempt": int(current["attempt"]), "previous_attempt_id": current.get("attempt_id"),
+        "attempt": attempt, "attempt_id": _attempt_id(effect_id, attempt),
+        "reason": reason, "unknown_reason": current.get("unknown_reason"),
+        "issued_at": issued_at, "expires_at": issued_at + float(ttl_seconds),
+        "mode": "EXPLICIT", "algorithm": "HMAC-SHA256",
     }
-    rec["digest"] = _retry_auth_digest(rec)
-    rec["status"] = "ISSUED"
+    rec["signature"] = _retry_signature(registered, rec)
     rel = _retry_auth_rel(authorization_id)
-    existing_path = os.path.join(aios_dir, rel)
-    if os.path.exists(existing_path):
-        existing = _load(existing_path)
-        if existing.get("status") == "ISSUED" and existing.get("digest") == rec["digest"]:
-            return existing
-        raise TransitionError("retry authorization already exists for this attempt (consumed or conflicting)")
     event = {"kind": "external_effect", "action": "retry_authorized", "effect_id": effect_id,
              "authorization_id": authorization_id, "attempt": attempt, "issuer": issuer, "actor": actor}
     commit_batch(aios_dir, [(rel, rec),
-                            (os.path.join("events", "effect-" + effect_id + "-RETRY-AUTH-attempt-" + str(attempt) + ".json"), event)],
+                            (os.path.join("events", "effect-" + effect_id + "-RETRY-AUTH-" + authorization_id + ".json"), event)],
                  precondition=_all_of(_expect_unchanged(_effect_rel(effect_id), current),
                                       _expect_unchanged(rel, None)))
-    return rec
+    return dict(rec)
 
 
-def _verify_retry_authorization(aios_dir, supplied, current, actor, attempt):
+def _verify_retry_authorization(aios_dir, supplied, current, actor, attempt, attempt_id, keyring, now):
     if isinstance(supplied, str):
         authorization_id = supplied
     elif isinstance(supplied, dict):
         authorization_id = supplied.get("authorization_id")
     else:
         authorization_id = None
-    if not isinstance(authorization_id, str) or not authorization_id.startswith("RA-"):
+    if not isinstance(authorization_id, str) or not _RETRY_AUTH_ID.fullmatch(authorization_id):
         raise TransitionError("UNKNOWN retry requires an AIOS-issued retry authorization")
     rel = _retry_auth_rel(authorization_id)
-    path = os.path.join(aios_dir, rel)
-    if not os.path.exists(path):
+    if not os.path.lexists(os.path.join(aios_dir, rel)):
         raise TransitionError("retry authorization was not issued by AIOS")
-    record = _load(path)
-    if record.get("record_type") != "RETRY_AUTHORIZATION" or record.get("digest") != _retry_auth_digest(record):
+    record = _load_json_dict(aios_dir, rel, "retry authorization record")
+    if (set(record) != set(_RETRY_SIGNED_FIELDS) | {"signature"}
+            or record.get("record_type") != "RETRY_AUTHORIZATION"
+            or record.get("authorization_id") != authorization_id
+            or record.get("mode") != "EXPLICIT" or record.get("algorithm") != "HMAC-SHA256"
+            or record.get("scope") != RETRY_APPROVE_SCOPE
+            or not isinstance(record.get("signature"), str)):
         raise TransitionError("retry authorization record failed integrity check")
-    if record.get("status") != "ISSUED":
-        raise TransitionError("retry authorization already consumed or revoked")
+    secret = _resolve_keyring(keyring).secret_for(record["issuer"], RETRY_APPROVE_SCOPE)
+    if not hmac.compare_digest(record["signature"], _retry_signature(secret, record)):
+        raise TransitionError("retry authorization record failed integrity/authenticity check")
+    if record["issuer"] in (actor, current.get("actor")):
+        raise TransitionError("retry authorization issuer must differ from the executing actor (self-approval)")
+    if (authorization_id in current.get("consumed_retry_authorizations", [])
+            or os.path.lexists(os.path.join(aios_dir, _retry_consumption_rel(authorization_id)))):
+        raise TransitionError("retry authorization already consumed")
     for key, value in (("effect_id", current["effect_id"]), ("contract_id", current["contract_id"]),
-                       ("permit_id", current["permit_id"]), ("actor", actor), ("attempt", attempt)):
+                       ("permit_id", current["permit_id"]), ("actor", actor), ("attempt", attempt),
+                       ("attempt_id", attempt_id), ("previous_attempt", int(current["attempt"])),
+                       ("previous_attempt_id", current.get("attempt_id")),
+                       ("unknown_reason", current.get("unknown_reason")),
+                       ("effect_state_digest", _effect_state_digest(current))):
         if record.get(key) != value:
             raise TransitionError(f"retry authorization {key} binding mismatch")
+    t = _now(now)
+    if not isinstance(record["issued_at"], (int, float)) or not isinstance(record["expires_at"], (int, float)):
+        raise TransitionError("retry authorization record failed integrity check")
+    if t > record["expires_at"]:
+        raise TransitionError("retry authorization has expired")
+    if record["issued_at"] > t + _CLOCK_SKEW_SECONDS:
+        raise TransitionError("retry authorization is issued in the future")
     if isinstance(supplied, dict):
-        for key in _RETRY_AUTH_FIELDS:
-            if key in supplied and supplied[key] != record.get(key):
+        for key in supplied:
+            if key not in record or supplied[key] != record[key]:
                 raise TransitionError(f"supplied retry authorization differs from issued record: {key}")
     return rel, record
 
 
-def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, retry_authorization=None):
+def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, retry_authorization=None, *,
+                   keyring=None, now=None):
     """Explicitly dispatch the next attempt for an UNKNOWN effect.
 
-    Consumes the AIOS-issued retry authorization atomically with the dispatch.
+    Consumes the signed retry authorization atomically with the dispatch: the
+    effect CAS, the create-once consumption record and the unchanged issued
+    record are all checked under the mutation lock in one commit batch.
     """
     _validate_strings(("effect_id", effect_id), ("actor", actor),
                       ("attempt_id", attempt_id), ("provider", provider))
@@ -343,6 +538,7 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
         raise ValueError("retry attempt must be an integer >= 2")
     current, contract = _load_owned_effect(aios_dir, effect_id, actor, "retry")
     _require_provider_authorized(contract, provider)
+    _verify_consumption_history(aios_dir, current)
     if current.get("state") != "UNKNOWN":
         raise TransitionError(f"retry requires UNKNOWN effect, got {current.get('state')}")
     expected = int(current.get("attempt", 0)) + 1
@@ -352,13 +548,25 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
         raise TransitionError("retry exceeds contract attempt budget")
     if attempt_id != _attempt_id(effect_id, attempt):
         raise ValueError("attempt_id does not match retry attempt")
-    auth_rel, auth = _verify_retry_authorization(aios_dir, retry_authorization, current, actor, attempt)
-    consumed = dict(auth)
-    consumed.update({"status": "CONSUMED", "consumed_by_attempt_id": attempt_id, "consumed_provider": provider})
+    auth_rel, auth = _verify_retry_authorization(aios_dir, retry_authorization, current, actor,
+                                                 attempt, attempt_id, keyring, now)
+    authorization_id = auth["authorization_id"]
+    consumption = {
+        "record_type": "RETRY_AUTHORIZATION_CONSUMPTION", "authorization_id": authorization_id,
+        "authorization_signature": auth["signature"], "effect_id": effect_id,
+        "consumed_by_attempt_id": attempt_id, "consumed_provider": provider,
+        "consumed_from_state_digest": auth["effect_state_digest"],
+    }
+    consumption["digest"] = _consumption_digest(consumption)
+    consumption_rel = _retry_consumption_rel(authorization_id)
+    history = list(current.get("consumed_retry_authorizations", [])) + [authorization_id]
     return _transition_dispatch(aios_dir, current, actor,
                                 attempt=attempt, attempt_id=attempt_id, provider=provider,
-                                extra_payloads=[(auth_rel, consumed)],
-                                extra_checks=[_expect_unchanged(auth_rel, auth)])
+                                extra_fields={"consumed_retry_authorizations": history,
+                                              "retry_authorization_id": authorization_id},
+                                extra_payloads=[(consumption_rel, consumption)],
+                                extra_checks=[_expect_unchanged(auth_rel, auth),
+                                              _expect_unchanged(consumption_rel, None)])
 
 
 def unknown(aios_dir, effect_id, actor, reason):
@@ -367,41 +575,93 @@ def unknown(aios_dir, effect_id, actor, reason):
 
 
 def observation_digest(observation):
-    """Digest AIOS binds into the evidence envelope for a raw provider observation."""
+    """Content digest AIOS binds into its evidence envelope for a raw observation.
+
+    This is integrity binding of the exact bytes AIOS accepted, NOT proof of
+    who produced them.
+    """
     return hashlib.sha256(json.dumps(observation, sort_keys=True, separators=(",", ":"),
-                                     ensure_ascii=True).encode("utf-8")).hexdigest()
+                                     ensure_ascii=True, allow_nan=False).encode("utf-8")).hexdigest()
+
+
+MAX_OBSERVATION_BYTES = 1024 * 1024
+_OBSERVATION_KEYS = {"provider", "provider_operation_id", "effect_id", "attempt_id", "observation", "evidence"}
+EVIDENCE_AUTHORITY = "AIOS_OBSERVE_BOUNDARY:SHA256_CONTENT_BINDING"
+
+
+def mint_observation_evidence(effect_id, attempt_id, provider, provider_operation_id, observation):
+    """AIOS-owned evidence envelope, minted only at the observe() boundary."""
+    raw_digest = observation_digest(observation)
+    return EvidenceRecord(
+        evidence_id="EV-" + hashlib.sha256(f"{effect_id}:{attempt_id}:{raw_digest}".encode("utf-8")).hexdigest()[:24],
+        level="OBSERVED",
+        source_ref=f"provider://{provider}/{provider_operation_id}",
+        claim="provider returned a bounded execution observation",
+        run_id=attempt_id,
+        provider=provider,
+        artifact_ref=raw_digest,
+    ).as_record()
 
 
 def observe(aios_dir, effect_id, actor, outcome, provider_observation):
+    """The ONLY path into OBSERVED_SUCCESS / OBSERVED_FAILURE.
+
+    The raw provider observation is untrusted input. AIOS mints its own
+    evidence envelope here, bound to the current attempt and to the digest of
+    the exact raw observation. A caller-supplied ``evidence`` record is
+    accepted only if it is identical to that envelope; it is never promoted.
+    """
     if outcome not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
         raise ValueError("invalid observation outcome")
     if not isinstance(provider_observation, dict) or not provider_observation:
         raise ValueError("provider_observation must be a non-empty dict")
+    extra = set(provider_observation) - _OBSERVATION_KEYS
+    if extra:
+        raise ValueError(f"provider_observation contains unsupported fields: {sorted(extra)}")
     current, _contract = _load_owned_effect(aios_dir, effect_id, actor, "observation")
-    attempt_id = provider_observation.get("attempt_id")
-    provider = provider_observation.get("provider")
-    evidence = provider_observation.get("evidence")
     if current.get("state") != "DISPATCHED":
         raise TransitionError("observation requires a currently DISPATCHED attempt")
+    attempt_id = provider_observation.get("attempt_id")
+    provider = provider_observation.get("provider")
     if attempt_id != current.get("attempt_id"):
         raise TransitionError("observation attempt does not match dispatched attempt")
     if provider != current.get("provider"):
         raise TransitionError("observation provider does not match dispatched provider")
-    if "effect_id" in provider_observation and provider_observation["effect_id"] != effect_id:
+    if provider_observation.get("effect_id") != effect_id:
         raise TransitionError("observation effect does not match effect")
-    if not isinstance(evidence, dict) or not verify_evidence(evidence):
-        raise ValueError("observation requires a valid AIOS evidence record")
-    if evidence.get("provider") != provider:
-        raise ValueError("evidence provider does not match effect provider")
-    # Bind evidence to THIS attempt: a digest-valid record from an earlier run
-    # (or another effect) must not be replayable into a new attempt.
-    if evidence.get("run_id") != current.get("attempt_id"):
-        raise ValueError("evidence run_id is not bound to the current attempt")
     raw = provider_observation.get("observation")
-    if raw is not None and evidence.get("artifact_ref") != observation_digest(raw):
-        raise ValueError("evidence artifact_ref is not bound to the provider observation")
-    return transition(aios_dir, effect_id, outcome, actor, provider_observation=provider_observation)
+    if not isinstance(raw, dict) or not raw:
+        raise ValueError("observation requires a non-empty raw provider observation")
+    try:
+        encoded = json.dumps(raw, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"raw provider observation is malformed: {exc}") from exc
+    if len(encoded) > MAX_OBSERVATION_BYTES:
+        raise ValueError("raw provider observation exceeds size limit")
+    operation_id = provider_observation.get("provider_operation_id")
+    if not isinstance(operation_id, str) or not operation_id.strip():
+        raise ValueError("provider_operation_id must be a non-empty string")
+    minted = mint_observation_evidence(effect_id, attempt_id, provider, operation_id, raw)
+    supplied = provider_observation.get("evidence")
+    if supplied is not None:
+        if not isinstance(supplied, dict) or not verify_evidence(supplied):
+            raise ValueError("observation requires a valid AIOS evidence record")
+        if supplied.get("provider") != provider:
+            raise ValueError("evidence provider does not match effect provider")
+        if supplied.get("run_id") != current.get("attempt_id"):
+            raise ValueError("evidence run_id is not bound to the current attempt")
+        if supplied.get("artifact_ref") != minted["artifact_ref"]:
+            raise ValueError("evidence artifact_ref is not bound to the provider observation")
+        if canonical_json(supplied) != canonical_json(minted):
+            raise ValueError("supplied evidence is not the AIOS-minted envelope for this observation")
+    record = {
+        "provider": provider, "provider_operation_id": operation_id, "effect_id": effect_id,
+        "attempt_id": attempt_id, "observation": raw, "evidence": minted,
+        "evidence_authority": EVIDENCE_AUTHORITY,
+    }
+    return _commit_transition(aios_dir, current, actor, outcome, {"provider_observation": record})
 
 
 __all__ = ["STATES", "create_effect", "transition", "dispatch", "retry_dispatch", "unknown", "observe",
-           "issue_retry_authorization", "observation_digest", "RETRY_AUTH_DIR"]
+           "issue_retry_authorization", "observation_digest", "mint_observation_evidence",
+           "RetryIssuerKeyring", "RETRY_AUTH_DIR", "RETRY_APPROVE_SCOPE", "RETRY_KEYRING_ENV"]

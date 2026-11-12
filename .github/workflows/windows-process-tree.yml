@@ -1,0 +1,28 @@
+name: Windows process-tree containment
+
+# Narrow, path-filtered job: only runs when the bounded subprocess layer or its
+# regression tests change, so it does not consume CI quota on unrelated PRs.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - adapters/bounded_process.py
+      - tests/test_audit_f05_f06_closure.py
+      - .github/workflows/windows-process-tree.yml
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: python -m pip install pytest PyYAML
+      - name: Process-tree / bounded subprocess tests (Windows)
+        run: python -m pytest -q -rs tests/test_audit_f05_f06_closure.py tests/test_audit_p1_p2_hardening.py

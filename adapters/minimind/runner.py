@@ -11,7 +11,7 @@ import subprocess
 from dataclasses import dataclass
 from typing import Sequence
 
-from adapters.bounded_process import OutputLimitExceeded, run_bounded
+from adapters.bounded_process import OutputLimitExceeded, output_limit_error, run_bounded, timeout_error
 
 from core.runtime import ProviderReceipt
 
@@ -55,9 +55,9 @@ class MiniMindAdapter:
                 max_stderr_bytes=self.max_output_bytes,
             )
         except subprocess.TimeoutExpired as exc:
-            raise TimeoutError("MiniMind workload timed out; process tree killed") from exc
+            raise timeout_error("MiniMind workload timed out", exc) from exc
         except OutputLimitExceeded as exc:
-            raise ValueError(f"MiniMind {exc.stream} exceeds output limit") from exc
+            raise output_limit_error(f"MiniMind {exc.stream} exceeds output limit", exc) from exc
 
         if completed.returncode != 0:
             raise RuntimeError(f"MiniMind workload exited with code {completed.returncode}")

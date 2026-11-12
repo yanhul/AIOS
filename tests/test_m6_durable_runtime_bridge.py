@@ -6,6 +6,8 @@
 
 import pytest
 
+from tests.retry_issuers import signed_retry_auth
+
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
@@ -118,7 +120,7 @@ def test_retry_bridges_explicit_bounded_retry(tmp_path):
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test",
                         unknown_reason="timeout")
-    effect["retry_authorization"] = issue_retry_authorization(str(tmp_path), effect["effect_id"], "agent:test", 2, "operator:test", "test retry")
+    effect["retry_authorization"] = signed_retry_auth(str(tmp_path), effect["effect_id"], "agent:test", 2, "operator:test", "test retry")
     result = execute_retry_attempt(
         str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
         f"{effect['effect_id']}:attempt:2", 2, GoodRuntime()

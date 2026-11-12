@@ -14,7 +14,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from adapters.bounded_process import OutputLimitExceeded, run_bounded
+from adapters.bounded_process import OutputLimitExceeded, output_limit_error, run_bounded, timeout_error
 
 from core.runtime import ProviderReceipt
 
@@ -166,9 +166,9 @@ class KicadAdapter:
                 cwd=str(root),
             )
         except subprocess.TimeoutExpired as exc:
-            raise TimeoutError("KiCad CLI timed out; process tree killed; effect outcome requires reconciliation") from exc
+            raise timeout_error("KiCad CLI timed out; effect outcome requires reconciliation", exc) from exc
         except OutputLimitExceeded as exc:
-            raise ValueError("KiCad CLI output exceeds configured limit") from exc
+            raise output_limit_error("KiCad CLI output exceeds configured limit", exc) from exc
 
         stdout = completed.stdout or b""
         stderr = completed.stderr or b""
@@ -176,6 +176,7 @@ class KicadAdapter:
             raise ValueError("KiCad CLI output exceeds configured limit")
 
         observation["process_exit_code"] = completed.returncode
+        observation["process_cleanup_status"] = (getattr(completed, "cleanup", None) or {}).get("status", "CLEANUP_UNKNOWN")
         observation["stdout_sha256"] = hashlib.sha256(stdout).hexdigest()
         observation["stderr_sha256"] = hashlib.sha256(stderr).hexdigest()
         observation["project_sha256_after"] = _sha256(project)

@@ -14,7 +14,7 @@ from typing import Sequence
 
 from core.runtime import ProviderReceipt
 
-from adapters.bounded_process import OutputLimitExceeded, run_bounded
+from adapters.bounded_process import OutputLimitExceeded, output_limit_error, run_bounded, timeout_error
 
 
 @dataclass(frozen=True)
@@ -53,9 +53,9 @@ class SubprocessAdapter:
                 max_stderr_bytes=self.max_stderr_bytes,
             )
         except subprocess.TimeoutExpired as exc:
-            raise TimeoutError("provider timed out; process tree killed") from exc
+            raise timeout_error("provider timed out", exc) from exc
         except OutputLimitExceeded as exc:
-            raise ValueError(f"provider {exc.stream} exceeds output limit") from exc
+            raise output_limit_error(f"provider {exc.stream} exceeds output limit", exc) from exc
 
         if completed.returncode != 0:
             raise RuntimeError(f"provider exited with code {completed.returncode}")

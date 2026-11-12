@@ -22,6 +22,7 @@ from core.effect_authority import (
     dispatch, issue_retry_authorization, observe, retry_dispatch, unknown,
 )
 from core.evidence import EvidenceRecord
+from tests.retry_issuers import signed_retry_auth
 from core.mutation import TransitionError
 from core.pcb_eda import PcbEdaRequest
 from core.runtime import ProviderReceipt, execute
@@ -65,7 +66,7 @@ def test_f01_dispatch_rejects_provider_outside_contract(tmp_path):
 def test_f01_retry_rejects_provider_substitution(tmp_path):
     effect = _effect(tmp_path)
     _to_unknown(tmp_path, effect)
-    auth = issue_retry_authorization(str(tmp_path), effect["effect_id"], ACTOR, 2, "operator:x", "r")
+    auth = signed_retry_auth(str(tmp_path), effect["effect_id"], ACTOR, 2, "operator:x", "r")
     with pytest.raises(TransitionError, match="provider is not authorized"):
         retry_dispatch(str(tmp_path), effect["effect_id"], ACTOR,
                        f"{effect['effect_id']}:attempt:2", "provider-evil", 2, auth)
@@ -108,7 +109,7 @@ def test_f02_concurrent_dispatch_has_exactly_one_winner(tmp_path):
 def test_f02_concurrent_retry_consumes_authorization_once(tmp_path):
     effect = _effect(tmp_path)
     _to_unknown(tmp_path, effect)
-    auth = issue_retry_authorization(str(tmp_path), effect["effect_id"], ACTOR, 2, "operator:x", "r")
+    auth = signed_retry_auth(str(tmp_path), effect["effect_id"], ACTOR, 2, "operator:x", "r")
     barrier = threading.Barrier(3)
     results = []
 
@@ -144,31 +145,32 @@ def test_f03_actor_cannot_self_authorize_retry(tmp_path):
     effect = _effect(tmp_path)
     _to_unknown(tmp_path, effect)
     with pytest.raises(TransitionError, match="issuer"):
-        issue_retry_authorization(str(tmp_path), effect["effect_id"], ACTOR, 2, ACTOR, "r")
+        signed_retry_auth(str(tmp_path), effect["effect_id"], ACTOR, 2, ACTOR, "r")
 
 
 def test_f03_authorization_is_single_use_and_records_provenance(tmp_path):
     effect = _effect(tmp_path)
     _to_unknown(tmp_path, effect)
-    auth = issue_retry_authorization(str(tmp_path), effect["effect_id"], ACTOR, 2, "operator:x", "manual reconcile")
+    auth = signed_retry_auth(str(tmp_path), effect["effect_id"], ACTOR, 2, "operator:x", "manual reconcile")
     assert auth["issuer"] == "operator:x" and auth["reason"] == "manual reconcile"
-    assert auth["unknown_reason"] == "timeout" and auth["status"] == "ISSUED"
-    retry_dispatch(str(tmp_path), effect["effect_id"], ACTOR, f"{effect['effect_id']}:attempt:2", PROVIDER, 2, auth)
-    path = os.path.join(str(tmp_path), ea.RETRY_AUTH_DIR, auth["authorization_id"] + ".json")
+    assert auth["unknown_reason"] == "timeout" and auth["previous_attempt"] == 1
+    a2 = f"{effect['effect_id']}:attempt:2"
+    done = retry_dispatch(str(tmp_path), effect["effect_id"], ACTOR, a2, PROVIDER, 2, auth)
+    assert done["consumed_retry_authorizations"] == [auth["authorization_id"]]
+    path = os.path.join(str(tmp_path), ea.RETRY_AUTH_DIR, auth["authorization_id"] + ".consumed.json")
     with open(path, encoding="utf-8") as fh:
         stored = json.load(fh)
-    assert stored["status"] == "CONSUMED"
-    assert stored["consumed_by_attempt_id"] == f"{effect['effect_id']}:attempt:2"
+    assert stored["consumed_by_attempt_id"] == a2 and stored["consumed_provider"] == PROVIDER
 
 
 def test_f03_tampered_authorization_record_is_rejected(tmp_path):
     effect = _effect(tmp_path)
     _to_unknown(tmp_path, effect)
-    auth = issue_retry_authorization(str(tmp_path), effect["effect_id"], ACTOR, 2, "operator:x", "r")
+    auth = signed_retry_auth(str(tmp_path), effect["effect_id"], ACTOR, 2, "operator:x", "r")
     path = os.path.join(str(tmp_path), ea.RETRY_AUTH_DIR, auth["authorization_id"] + ".json")
     with open(path, encoding="utf-8") as fh:
         rec = json.load(fh)
-    rec["issuer"] = "someone-else"
+    rec["reason"] = "tampered reason"
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(rec, fh)
     with pytest.raises(TransitionError, match="integrity"):
@@ -178,16 +180,20 @@ def test_f03_tampered_authorization_record_is_rejected(tmp_path):
 
 # --- F-04 ------------------------------------------------------------------
 
+def _obs(effect, attempt_id, **extra):
+    return {"effect_id": effect["effect_id"], "attempt_id": attempt_id, "provider": PROVIDER,
+            "provider_operation_id": "op", "observation": {"status": "ok"}, **extra}
+
+
 def test_f04_observe_rejects_evidence_from_previous_attempt(tmp_path):
     effect = _effect(tmp_path)
     _to_unknown(tmp_path, effect)
-    auth = issue_retry_authorization(str(tmp_path), effect["effect_id"], ACTOR, 2, "operator:x", "r")
+    auth = signed_retry_auth(str(tmp_path), effect["effect_id"], ACTOR, 2, "operator:x", "r")
     a2 = f"{effect['effect_id']}:attempt:2"
     retry_dispatch(str(tmp_path), effect["effect_id"], ACTOR, a2, PROVIDER, 2, auth)
-    replayed = _ev(run_id=_a1(effect))  # digest-valid, same provider, OLD attempt
+    replayed = ea.mint_observation_evidence(effect["effect_id"], _a1(effect), PROVIDER, "op", {"status": "ok"})
     with pytest.raises(ValueError, match="run_id"):
-        observe(str(tmp_path), effect["effect_id"], ACTOR, "OBSERVED_SUCCESS",
-                {"attempt_id": a2, "provider": PROVIDER, "evidence": replayed})
+        observe(str(tmp_path), effect["effect_id"], ACTOR, "OBSERVED_SUCCESS", _obs(effect, a2, evidence=replayed))
 
 
 def test_f04_observe_rejects_evidence_not_bound_to_receipt(tmp_path):
@@ -195,8 +201,7 @@ def test_f04_observe_rejects_evidence_not_bound_to_receipt(tmp_path):
     dispatch(str(tmp_path), effect["effect_id"], ACTOR, _a1(effect), PROVIDER)
     with pytest.raises(ValueError, match="artifact_ref"):
         observe(str(tmp_path), effect["effect_id"], ACTOR, "OBSERVED_SUCCESS",
-                {"attempt_id": _a1(effect), "provider": PROVIDER,
-                 "observation": {"status": "ok"}, "evidence": _ev(run_id=_a1(effect))})
+                _obs(effect, _a1(effect), evidence=_ev(run_id=_a1(effect))))
 
 
 class _SmugglingAdapter:
@@ -250,7 +255,7 @@ def test_f05_timeout_kills_process_tree(tmp_path):
     with pytest.raises(subprocess.TimeoutExpired) as info:
         run_bounded([sys.executable, "-c", script], timeout=1.5,
                     max_stdout_bytes=1024, max_stderr_bytes=1024)
-    assert info.value.cleanup["exited"] is True
+    assert info.value.cleanup["status"] == "CLEANUP_CONFIRMED" and info.value.cleanup["direct_child_exited"]
     grandchild = int(pidfile.read_text())
     for _ in range(50):
         try:

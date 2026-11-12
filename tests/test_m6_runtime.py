@@ -7,6 +7,8 @@
 import os
 import pytest
 
+from tests.retry_issuers import signed_retry_auth
+
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
@@ -142,7 +144,7 @@ def test_retry_dispatch_requires_unknown_and_increments_attempt(tmp_path):
     first = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                      f"{effect['effect_id']}:attempt:1", "fake-provider")
     unknown_effect = transition(str(tmp_path), first["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
-    auth = issue_retry_authorization(str(tmp_path), effect["effect_id"], "agent:test", 2, "operator:test", "test retry")
+    auth = signed_retry_auth(str(tmp_path), effect["effect_id"], "agent:test", 2, "operator:test", "test retry")
     retried = retry_dispatch(str(tmp_path), unknown_effect["effect_id"], "agent:test",
                              f"{effect['effect_id']}:attempt:2", "fake-provider", 2, auth)
     assert retried["effect_id"] == effect["effect_id"]
@@ -167,7 +169,7 @@ def test_execute_retry_attempt_is_bounded_by_contract(tmp_path):
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
-    effect["retry_authorization"] = issue_retry_authorization(str(tmp_path), effect["effect_id"], "agent:test", 2, "operator:test", "test retry")
+    effect["retry_authorization"] = signed_retry_auth(str(tmp_path), effect["effect_id"], "agent:test", 2, "operator:test", "test retry")
     result = execute_retry_attempt(str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
                                    f"{effect['effect_id']}:attempt:2", 2)
     assert result["state"] == "OBSERVED_SUCCESS"
