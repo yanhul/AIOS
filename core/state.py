@@ -8,6 +8,8 @@ primitive).
 
 import os
 
+from .secure_fs import secure_makedirs_beneath
+
 STATE_DIRS = [
     "requirements",
     "decisions",
@@ -30,10 +32,17 @@ ENTITY_TO_DIR = {
 
 
 def ensure_state_dirs(project_aios_dir):
-    """Create the standard .aios state directories; returns their paths."""
+    """Create the standard .aios state directories; returns their paths.
+
+    Uses descriptor-relative, no-follow creation (core.secure_fs): ancestors
+    of ``project_aios_dir`` are trusted (created by pathname if missing);
+    a symlinked/non-directory state root or state subdirectory, or one not
+    owned by the effective uid / group- or world-writable, is refused with
+    SecureWriteError. There is no pathname ``os.makedirs`` fallback; on
+    non-POSIX platforms this fails closed (UnsupportedPlatformError).
+    """
     created = []
     for name in STATE_DIRS:
-        d = os.path.join(project_aios_dir, name)
-        os.makedirs(d, exist_ok=True)
-        created.append(d)
+        secure_makedirs_beneath(project_aios_dir, name)
+        created.append(os.path.join(project_aios_dir, name))
     return created

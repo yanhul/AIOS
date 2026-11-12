@@ -99,6 +99,10 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
     if "external_effect" not in contract.get("allowed_effects", []):
         raise PermissionError("external effect is not authorized by contract")
 
+    # This is the enforcement boundary: validate authority and bindings first,
+    # then fail closed immediately before crossing into provider code.
+    from .execution_lock import require_external_execution_enabled
+    require_external_execution_enabled()
     try:
         receipt = adapter.execute(contract=dict(contract), effect=dict(effect), attempt_id=attempt_id)
         validate_receipt(receipt, effect, attempt_id, provider_name)
@@ -160,6 +164,8 @@ def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: 
         raise PermissionError("provider capability is not authorized by contract")
     if "external_effect" not in contract.get("allowed_effects", []):
         raise PermissionError("external effect is not authorized by contract")
+    from .execution_lock import require_external_execution_enabled
+    require_external_execution_enabled()
     _submit_runtime(durable_runtime, "resume", effect, attempt_id, provider_name)
     return execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id)
 
@@ -234,6 +240,10 @@ def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapt
     if "external_effect" not in contract["allowed_effects"]:
         raise PermissionError("external effect is not authorized by contract")
 
+    # Do not persist DISPATCHED or submit work when the deployment trust root
+    # is absent. Authority/state-machine helpers remain independently usable.
+    from .execution_lock import require_external_execution_enabled
+    require_external_execution_enabled()
     effect = create_effect(
         aios_dir, contract_id, logical_operation_id, actor, permit_id, "external_effect"
     )

@@ -1,4 +1,6 @@
 import pytest
+
+pytestmark = pytest.mark.allow_unlocked_runtime
 from adapters.minimind.contract import MINIMIND_CAPABILITY, validate_receipt
 
 def receipt(**overrides):

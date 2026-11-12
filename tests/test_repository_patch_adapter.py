@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.allow_unlocked_runtime
+
 from core.agent_repair_worker import ProposedFile
 from core.repository_patch_adapter import RepositoryPatchAdapter
 

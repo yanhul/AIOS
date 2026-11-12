@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from .mutation import commit_batch
+from .mutation import MutationError, _committed_state, commit_batch, read_state_json
 
 ALLOWED_EDGE_TYPES = frozenset({"requires", "produces", "composes_with", "validated_by", "works_under"})
 VERIFICATION_LEVELS = frozenset({"OBSERVED", "EVIDENCED", "VERIFIED_DIGITAL", "VERIFIED_PHYSICAL", "PROMOTED"})
@@ -200,10 +200,16 @@ class CapabilityRegistry:
     @classmethod
     def load(cls, aios_dir: str | Path) -> "CapabilityRegistry":
         filename = Path(aios_dir) / CAPABILITY_STATE_FILE
-        if not filename.is_file():
-            raise CapabilityError(f"capability registry not found: {filename}")
+        # Descriptor-relative, no-follow read: a symlinked / special /
+        # untrusted registry file is refused, never followed.
         try:
-            data = json.loads(filename.read_text(encoding="utf-8"))
+            if not _committed_state(str(aios_dir), CAPABILITY_STATE_FILE):
+                raise CapabilityError(f"capability registry not found: {filename}")
+            data = read_state_json(str(aios_dir), CAPABILITY_STATE_FILE)
+        except FileNotFoundError as exc:
+            raise CapabilityError(f"capability registry not found: {filename}") from exc
+        except MutationError as exc:
+            raise CapabilityError(f"unsafe capability registry refused: {filename}") from exc
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             raise CapabilityError(f"invalid capability registry JSON: {exc}") from exc
         if not isinstance(data, dict):

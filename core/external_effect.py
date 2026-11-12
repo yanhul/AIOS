@@ -28,15 +28,11 @@ def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id,
 
 def load_effects(aios_dir):
     out = {}
-    d = os.path.join(aios_dir, "effects")
-    if not os.path.isdir(d):
-        return out
-    import json
-    for fn in os.listdir(d):
+    from .mutation import list_state_names, read_state_json
+    for fn in list_state_names(aios_dir, "effects"):
         if fn.endswith(".json"):
-            with open(os.path.join(d, fn), "r", encoding="utf-8") as fh:
-                rec = json.load(fh)
-            if rec.get("record_type") == "EXTERNAL_EFFECT":
+            rec = read_state_json(aios_dir, f"effects/{fn}")
+            if isinstance(rec, dict) and rec.get("record_type") == "EXTERNAL_EFFECT":
                 out[rec["effect_id"]] = rec
     return out
 

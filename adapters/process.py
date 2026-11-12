@@ -24,6 +24,8 @@ class SubprocessAdapter:
     max_input_bytes: int = 64 * 1024
 
     def execute(self, *, contract: dict, effect: dict, attempt_id: str) -> ProviderReceipt:
+        from core.execution_lock import require_external_execution_enabled
+        require_external_execution_enabled()
         if not self.name.strip():
             raise ValueError("provider name must be non-empty")
         if not self.command or any(not isinstance(part, str) or not part for part in self.command):

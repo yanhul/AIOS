@@ -1,6 +1,6 @@
 """Authoritative AIOS state mutation boundary (M1.5).
 
-The operational mutation lock is stored alongside the state tree; every AIOS state mutation produced by the application MUST pass through
+Every AIOS state mutation produced by the application MUST pass through
 ``apply_mutations``. There is deliberately no other supported way to write
 entity or audit-event files.
 
@@ -21,8 +21,11 @@ Enforcement provided by this module (and nothing more):
   at the start of every mutation.
 
 Not provided by this module (explicitly out of scope for M1.5): agents,
-policy, gates, verification, contradiction resolution, concurrency control
-beyond single-process atomic commit, OS-level protection of the RX50 tree.
+policy, gates, verification, contradiction resolution, OS-level protection
+of the RX50 tree. Concurrency: one POSIX ``flock`` on ``<aios_dir>/.mutation.lock``
+serializes mutations/recovery across processes. All state I/O is
+descriptor-relative and no-follow via core.secure_fs; non-POSIX platforms
+(including Windows) fail closed.
 
 Stdlib only. Never writes outside ``<aios_dir>``.
 """
@@ -32,10 +35,16 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import uuid
 
 from . import state as state_layout
+from .secure_fs import (
+    SecureWriteError, atomic_write_beneath, secure_makedirs_beneath,
+    secure_write_bytes_beneath, secure_read_bytes_beneath,
+    secure_exists_beneath, secure_is_dir_beneath, secure_listdir_beneath,
+    secure_unlink_beneath, secure_rmtree_beneath, secure_open_lock_beneath,
+    secure_regular_file_state_beneath, secure_fd_matches_beneath,
+)
 
 __all__ = [
     "MutationError",
@@ -214,77 +223,102 @@ def _utc_iso():
 # Staging / atomic commit helpers
 # ---------------------------------------------------------------------------
 
-# Indirection kept module-level so failure-injection tests can patch the
-# actual commit boundary without mocking assertions.
-_replace = os.replace
-
-
-def _fsync_file(fh):
-    fh.flush()
-    os.fsync(fh.fileno())
-
-
-def _fsync_dir(path):
-    # Directory fsync is unsupported on some platforms (notably Windows);
-    # it is a durability optimization, never a correctness gate here.
-    try:
-        fd = os.open(path, os.O_RDONLY)
-    except OSError:
-        return
-    try:
-        os.fsync(fd)
-    except OSError:
-        pass
-    finally:
-        os.close(fd)
-
-
-def _mutation_lock_path(aios_dir):
-    return os.path.join(os.path.dirname(aios_dir), ".aios.mutation.lock")
+_LOCK_NAME = ".mutation.lock"
 
 
 class _MutationLock:
-    """Cross-platform exclusive lock for one AIOS state tree."""
+    """Exclusive inter-process lock for one AIOS state tree (POSIX flock).
+
+    The lock file lives directly beneath the state root and is opened
+    no-follow, never truncated, and must be a regular, singly-linked file.
+    After ``flock`` the path is re-checked to still name the locked inode;
+    if it was replaced/unlinked meanwhile (which would split mutual
+    exclusion between holders of different inodes) acquisition retries.
+    Non-POSIX platforms fail closed (see core.secure_fs).
+    """
+    _MAX_ATTEMPTS = 16
+
     def __init__(self, aios_dir):
         self.aios_dir = aios_dir
-        self.fh = None
+        self.fd = None
 
     def __enter__(self):
-        state_layout.ensure_state_dirs(self.aios_dir)
-        os.makedirs(os.path.dirname(_mutation_lock_path(self.aios_dir)), exist_ok=True)
-        self.fh = open(_mutation_lock_path(self.aios_dir), "a+b")
-        self.fh.seek(0)
-        if os.name == "nt":
-            import msvcrt
-            while True:
+        import fcntl
+        try:
+            for state_dir in state_layout.STATE_DIRS:
+                secure_makedirs_beneath(self.aios_dir, state_dir)
+            for _ in range(self._MAX_ATTEMPTS):
+                fd = secure_open_lock_beneath(self.aios_dir, _LOCK_NAME)
                 try:
-                    msvcrt.locking(self.fh.fileno(), msvcrt.LK_LOCK, 1)
-                    break
-                except OSError:
-                    continue
-        else:
-            import fcntl
-            fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX)
-        return self
+                    fcntl.flock(fd, fcntl.LOCK_EX)
+                    if secure_fd_matches_beneath(self.aios_dir, _LOCK_NAME, fd):
+                        self.fd = fd
+                        return self
+                except BaseException:
+                    os.close(fd)
+                    raise
+                os.close(fd)
+        except (OSError, SecureWriteError) as exc:
+            raise MutationError("cannot securely open AIOS mutation lock") from exc
+        raise MutationError("AIOS mutation lock file keeps being replaced; refusing")
 
     def __exit__(self, exc_type, exc, tb):
+        import fcntl
+        fd, self.fd = self.fd, None
         try:
-            if os.name == "nt":
-                import msvcrt
-                self.fh.seek(0)
-                msvcrt.locking(self.fh.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                import fcntl
-                fcntl.flock(self.fh.fileno(), fcntl.LOCK_UN)
+            fcntl.flock(fd, fcntl.LOCK_UN)
         finally:
-            self.fh.close()
+            os.close(fd)
         return False
 
 
-def _write_staged(path, payload_bytes):
-    with open(path, "wb") as fh:
-        fh.write(payload_bytes)
-        _fsync_file(fh)
+class _SharedReadLock:
+    """Shared (``LOCK_SH``) counterpart of :class:`_MutationLock` for
+    read-only sweeps such as :func:`core.reconcile.reconcile`.
+
+    It never creates the state root, state directories or the lock file. If
+    the lock file does not exist no lock is taken (``held`` is False): no
+    mutation has ever completed lock acquisition there, and a mutation
+    starting concurrently is NOT excluded (documented residual window).
+    The same no-follow / regular / nlink==1 / inode re-check rules apply.
+    """
+    _MAX_ATTEMPTS = 16
+
+    def __init__(self, aios_dir):
+        self.aios_dir = aios_dir
+        self.fd = None
+        self.held = False
+
+    def __enter__(self):
+        import fcntl
+        try:
+            for _ in range(self._MAX_ATTEMPTS):
+                try:
+                    fd = secure_open_lock_beneath(self.aios_dir, _LOCK_NAME, create=False)
+                except FileNotFoundError:
+                    return self
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_SH)
+                    if secure_fd_matches_beneath(self.aios_dir, _LOCK_NAME, fd):
+                        self.fd, self.held = fd, True
+                        return self
+                except BaseException:
+                    os.close(fd)
+                    raise
+                os.close(fd)
+        except (OSError, SecureWriteError) as exc:
+            raise MutationError("cannot securely open AIOS mutation lock (shared)") from exc
+        raise MutationError("AIOS mutation lock file keeps being replaced; refusing")
+
+    def __exit__(self, exc_type, exc, tb):
+        import fcntl
+        fd, self.fd, self.held = self.fd, None, False
+        if fd is not None:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            finally:
+                os.close(fd)
+        return False
 
 
 def _digest_bytes(payload_bytes):
@@ -310,36 +344,66 @@ _JOURNAL_NAME = "journal.json"
 
 
 def _recover_pending_unlocked(aios_dir):
-    """Roll forward journaled batches; caller owns the mutation lock."""
-    staging = os.path.join(aios_dir, ".staging")
-    if not os.path.isdir(staging):
-        return
-    for entry in sorted(os.listdir(staging)):
-        batch_dir = os.path.join(staging, entry)
-        journal_path = os.path.join(batch_dir, _JOURNAL_NAME)
-        if os.path.isfile(journal_path):
-            with open(journal_path, "r", encoding="utf-8") as fh:
-                journal = json.load(fh)
+    """Roll forward journaled batches using descriptor-relative no-follow I/O."""
+    try:
+        if not secure_is_dir_beneath(aios_dir, ".staging"):
+            return
+        entries = secure_listdir_beneath(aios_dir, ".staging")
+    except (OSError, SecureWriteError) as exc:
+        raise StateConflictError("unsafe AIOS staging directory refused") from exc
+    for entry in entries:
+        if not entry.startswith("batch-") or "/" in entry or entry in (".", ".."):
+            raise StateConflictError(f"unexpected staging entry: {entry!r}")
+        batch_rel = f".staging/{entry}"
+        journal_rel = f"{batch_rel}/{_JOURNAL_NAME}"
+        try:
+            has_journal = secure_exists_beneath(aios_dir, journal_rel)
+        except (OSError, SecureWriteError) as exc:
+            raise StateConflictError(f"unsafe staging batch: {batch_rel}") from exc
+        if has_journal:
+            try:
+                journal = json.loads(secure_read_bytes_beneath(aios_dir, journal_rel).decode("utf-8"))
+            except (OSError, SecureWriteError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise StateConflictError(f"invalid or unsafe mutation journal: {journal_rel}") from exc
+            if not isinstance(journal, dict) or not isinstance(journal.get("ops"), list):
+                raise StateConflictError(f"malformed mutation journal: {journal_rel}")
             for op in journal["ops"]:
-                dest = op["dest"]
-                tmp = op["tmp"]
-                if os.path.exists(dest):
-                    with open(dest, "rb") as fh:
-                        actual = _digest_bytes(fh.read())
-                    if actual != op["digest"]:
-                        raise StateConflictError(
-                            f"committed file diverges from journal: {dest}"
-                        )
-                elif os.path.exists(tmp):
-                    os.makedirs(os.path.dirname(dest), exist_ok=True)
-                    _replace(tmp, dest)
-                    _fsync_dir(os.path.dirname(dest))
-                else:
-                    raise StateConflictError(
-                        f"journal op unrecoverable (temp and dest both missing): {dest}"
-                    )
-            os.unlink(journal_path)
-        shutil.rmtree(batch_dir, ignore_errors=True)
+                if not isinstance(op, dict):
+                    raise StateConflictError("malformed journal operation")
+                rel_dest = op.get("rel_dest")
+                if not rel_dest:
+                    dest = op.get("dest")
+                    if not isinstance(dest, str):
+                        raise StateConflictError("journal destination missing")
+                    try:
+                        rel_dest = os.path.relpath(dest, os.path.abspath(os.fspath(aios_dir))).replace(os.sep, "/")
+                    except ValueError as exc:
+                        raise StateConflictError("journal destination is outside AIOS state root") from exc
+                try:
+                    _safe_commit_destination(aios_dir, rel_dest)
+                    tmp_rel = op.get("tmp_rel")
+                    if not tmp_rel:
+                        tmp = op.get("tmp")
+                        if not isinstance(tmp, str):
+                            raise StateConflictError("journal staged path missing")
+                        tmp_rel = os.path.relpath(tmp, os.path.abspath(os.fspath(aios_dir))).replace(os.sep, "/")
+                    _safe_commit_destination(aios_dir, tmp_rel)
+                    if secure_exists_beneath(aios_dir, rel_dest):
+                        actual = _digest_bytes(secure_read_bytes_beneath(aios_dir, rel_dest))
+                        if actual != op["digest"]:
+                            raise StateConflictError(f"committed file diverges from journal: {rel_dest}")
+                    elif secure_exists_beneath(aios_dir, tmp_rel):
+                        payload = secure_read_bytes_beneath(aios_dir, tmp_rel)
+                        if _digest_bytes(payload) != op["digest"]:
+                            raise StateConflictError(f"staged file digest mismatch: {tmp_rel}")
+                        atomic_write_beneath(aios_dir, rel_dest, payload.decode("utf-8"), enforce_owner=True)
+                        secure_unlink_beneath(aios_dir, tmp_rel)
+                    else:
+                        raise StateConflictError(f"journal op unrecoverable (temp and dest both missing): {rel_dest}")
+                except (OSError, SecureWriteError, UnicodeDecodeError, KeyError, TypeError) as exc:
+                    raise StateConflictError(f"secure journal recovery refused operation: {rel_dest!r}") from exc
+            secure_unlink_beneath(aios_dir, journal_rel)
+        secure_rmtree_beneath(aios_dir, batch_rel)
 
 
 def recover_pending(aios_dir):
@@ -361,9 +425,68 @@ def _require_actor(actor):
     return actor
 
 
-def _load_existing(path):
-    with open(path, "r", encoding="utf-8") as fh:
-        return json.load(fh)
+def _portable_rel(relpath):
+    return os.fspath(relpath).replace(os.sep, "/")
+
+
+def _committed_state(aios_dir, relpath):
+    """True if a committed regular file exists at ``relpath``; False if absent.
+
+    A symlink (leaf or parent), directory or special file at the destination
+    is a security conflict, never "absent" and never a valid entity.
+    """
+    try:
+        return secure_regular_file_state_beneath(aios_dir, _portable_rel(relpath))
+    except (OSError, SecureWriteError) as exc:
+        raise StateConflictError(
+            f"unsafe committed state path refused: {relpath!r}") from exc
+
+
+def _load_existing(aios_dir, relpath):
+    """Load committed JSON beneath ``aios_dir`` via no-follow, fstat-verified
+    descriptor-relative I/O. Unsafe or unreadable data raises
+    StateConflictError; it is never treated as an empty entity."""
+    rel = _portable_rel(relpath)
+    try:
+        raw = secure_read_bytes_beneath(aios_dir, rel)
+    except (OSError, SecureWriteError) as exc:
+        raise StateConflictError(f"cannot securely read committed state: {rel!r}") from exc
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise StateConflictError(f"committed state is not valid JSON: {rel!r}") from exc
+
+
+def read_state_json(aios_dir, relpath):
+    """Secure JSON read of one state file beneath ``aios_dir``.
+
+    Missing file/root -> ``FileNotFoundError`` (unchanged semantics for
+    callers that test absence). Symlinks, dangling symlinks, special files,
+    directories and untrusted directories -> :class:`StateConflictError`.
+    Invalid JSON -> ``json.JSONDecodeError`` (a ``ValueError``)."""
+    rel = _portable_rel(relpath)
+    try:
+        raw = secure_read_bytes_beneath(aios_dir, rel)
+    except FileNotFoundError:
+        raise
+    except (OSError, SecureWriteError) as exc:
+        raise StateConflictError(f"unsafe AIOS state entry refused: {rel!r}") from exc
+    return json.loads(raw.decode("utf-8"))
+
+
+def list_state_names(aios_dir, reldir):
+    """Sorted names in a state directory; missing -> []; unsafe -> StateConflictError."""
+    rel = _portable_rel(reldir)
+    try:
+        if not secure_is_dir_beneath(aios_dir, rel):
+            if secure_exists_beneath(aios_dir, rel):
+                raise StateConflictError(f"unsafe AIOS state directory refused: {rel!r}")
+            return []
+        return secure_listdir_beneath(aios_dir, rel)
+    except FileNotFoundError:
+        return []
+    except (OSError, SecureWriteError) as exc:
+        raise StateConflictError(f"unsafe AIOS state directory refused: {rel!r}") from exc
 
 
 def _require_committed_event(aios_dir, entity):
@@ -373,78 +496,122 @@ def _require_committed_event(aios_dir, entity):
     source location must not borrow an unrelated valid receipt. The event's
     content-derived identity and canonical filename are checked as well.
     """
-    events_dir = os.path.join(aios_dir, "events")
-    if os.path.isdir(events_dir):
-        for fn in sorted(os.listdir(events_dir)):
-            if not fn.endswith(".json"):
-                continue
-            try:
-                with open(os.path.join(events_dir, fn), "r", encoding="utf-8") as fh:
-                    ev = json.load(fh)
-            except (OSError, json.JSONDecodeError):
-                continue
-            if not isinstance(ev, dict) or ev.get("kind") != "mutation":
-                continue
-            if ev.get("action") != "entity.imported":
-                continue
-            fields = (
-                "entity_type", "entity_id", "status", "statement",
-                "source_file", "source_line", "snapshot_id",
-            )
-            if any(ev.get(field) != entity.get(field) for field in fields):
-                continue
-            event_id = ev.get("event_id")
-            if not isinstance(event_id, str):
-                continue
-            logical_event = {
-                key: value for key, value in ev.items()
-                if key not in ("timestamp_utc", "event_id")
-            }
-            if event_identity(logical_event) != event_id:
-                continue
-            if not fn.endswith(f"-{event_id}.json"):
-                continue
-            return
+    # Materialize first: ANY unsafe event entry fails closed, even if a
+    # matching receipt sorts before it.
+    for fn, ev in list(_iter_event_records(aios_dir)):
+        if not isinstance(ev, dict) or ev.get("kind") != "mutation":
+            continue
+        if ev.get("action") != "entity.imported":
+            continue
+        fields = (
+            "entity_type", "entity_id", "status", "statement",
+            "source_file", "source_line", "snapshot_id",
+        )
+        if any(ev.get(field) != entity.get(field) for field in fields):
+            continue
+        event_id = ev.get("event_id")
+        if not isinstance(event_id, str):
+            continue
+        logical_event = {
+            key: value for key, value in ev.items()
+            if key not in ("timestamp_utc", "event_id")
+        }
+        if event_identity(logical_event) != event_id:
+            continue
+        if not fn.endswith(f"-{event_id}.json"):
+            continue
+        return
     raise StateConflictError(
         f"committed entity {entity['entity_type']} {entity['entity_id']} "
         f"has no matching integrity-bound audit event; state was tampered "
         f"with or predates M1.5")
 
 
+def _iter_event_records(aios_dir):
+    """Yield (filename, parsed JSON) for ``events/*.json`` using secure I/O.
+
+    Fails closed (StateConflictError) if the events directory or any event
+    file is a symlink / special file. Malformed JSON or a file that vanished
+    concurrently is skipped (it cannot match; absence of a match fails
+    closed in the caller).
+    """
+    try:
+        if not secure_is_dir_beneath(aios_dir, "events"):
+            return
+        names = secure_listdir_beneath(aios_dir, "events")
+    except FileNotFoundError:
+        return
+    except (OSError, SecureWriteError) as exc:
+        raise StateConflictError("unsafe AIOS events directory refused") from exc
+    for fn in names:
+        if not fn.endswith(".json"):
+            continue
+        rel = f"events/{fn}"
+        try:
+            raw = secure_read_bytes_beneath(aios_dir, rel)
+        except FileNotFoundError:
+            continue
+        except (OSError, SecureWriteError) as exc:
+            raise StateConflictError(f"unsafe audit event refused: {rel!r}") from exc
+        try:
+            yield fn, json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+
+
+def _safe_commit_destination(aios_dir, rel_dest):
+    """Resolve a strictly relative state destination without lexical escape."""
+    if not isinstance(rel_dest, str) or not rel_dest.strip() or "\x00" in rel_dest:
+        raise MutationError("mutation destination must be a non-empty relative path")
+    portable = rel_dest.replace("\\", "/")
+    parts = portable.split("/")
+    if (
+        portable.startswith("/")
+        or (len(portable) >= 2 and portable[1] == ":")
+        or any(part in {"", ".", ".."} for part in parts)
+    ):
+        raise MutationError(f"mutation destination escapes AIOS state root: {rel_dest!r}")
+    root = os.path.abspath(os.fspath(aios_dir))
+    dest = os.path.abspath(os.path.join(root, *parts))
+    try:
+        if os.path.commonpath((root, dest)) != root:
+            raise MutationError(f"mutation destination escapes AIOS state root: {rel_dest!r}")
+    except ValueError as exc:
+        raise MutationError(f"mutation destination escapes AIOS state root: {rel_dest!r}") from exc
+    return dest
+
+
 def commit_batch(aios_dir, payloads):
     """Single shared atomic commit engine under the mutation lock."""
+    prepared = [(_safe_commit_destination(aios_dir, rel_dest), rel_dest.replace("\\\\", "/"), obj)
+                for rel_dest, obj in payloads]
     with _MutationLock(aios_dir):
-        state_layout.ensure_state_dirs(aios_dir)
-        staging_root = os.path.join(aios_dir, ".staging")
+        secure_makedirs_beneath(aios_dir, ".staging")
         batch_id = uuid.uuid4().hex
-        batch_dir = os.path.join(staging_root, f"batch-{batch_id}")
-        os.makedirs(batch_dir, exist_ok=True)
-
+        batch_rel = f".staging/batch-{batch_id}"
+        secure_makedirs_beneath(aios_dir, batch_rel)
         ops = []
-        for rel_dest, obj in payloads:
+        for dest, rel_dest, obj in prepared:
             payload = (canonical_json(obj) + "\n").encode("utf-8")
-            tmp = os.path.join(batch_dir, f"{uuid.uuid4().hex}.tmp")
-            _write_staged(tmp, payload)
-            ops.append({
-                "tmp": tmp,
-                "dest": os.path.join(aios_dir, rel_dest),
-                "digest": _digest_bytes(payload),
-            })
-
-        journal_path = os.path.join(batch_dir, _JOURNAL_NAME)
-        _write_staged(
-            journal_path,
-            canonical_json({"batch_id": batch_id, "ops": ops}).encode("utf-8"),
-        )
-        _fsync_dir(batch_dir)
-
+            tmp_rel = f"{batch_rel}/{uuid.uuid4().hex}.tmp"
+            secure_write_bytes_beneath(aios_dir, tmp_rel, payload)
+            ops.append({"tmp": os.path.join(os.fspath(aios_dir), *tmp_rel.split("/")),
+                        "tmp_rel": tmp_rel, "dest": dest, "rel_dest": rel_dest,
+                        "digest": _digest_bytes(payload)})
+        journal_rel = f"{batch_rel}/{_JOURNAL_NAME}"
+        secure_write_bytes_beneath(aios_dir, journal_rel,
+            canonical_json({"batch_id": batch_id, "ops": ops}).encode("utf-8"))
         for op in ops:
-            os.makedirs(os.path.dirname(op["dest"]), exist_ok=True)
-            _replace(op["tmp"], op["dest"])
-            _fsync_dir(os.path.dirname(op["dest"]))
-
-        os.unlink(journal_path)
-        shutil.rmtree(batch_dir, ignore_errors=True)
+            try:
+                payload = secure_read_bytes_beneath(aios_dir, op["tmp_rel"])
+                if _digest_bytes(payload) != op["digest"]:
+                    raise MutationError("staged mutation payload digest mismatch")
+                atomic_write_beneath(aios_dir, op["rel_dest"], payload.decode("utf-8"))
+            except (OSError, SecureWriteError, UnicodeDecodeError) as exc:
+                raise MutationError(f"secure mutation destination rejected: {op['rel_dest']!r}") from exc
+            secure_unlink_beneath(aios_dir, op["tmp_rel"])
+        secure_unlink_beneath(aios_dir, journal_rel)
+        secure_rmtree_beneath(aios_dir, batch_rel)
         return [op["dest"] for op in ops]
 
 
@@ -476,9 +643,9 @@ def apply_mutations(aios_dir, entities, actor, notice_factory=None):
 
     applied, replayed = [], []
     for ent in entities:
-        dest = os.path.join(aios_dir, _entity_relpath(ent))
-        if os.path.exists(dest):
-            existing = _load_existing(dest)
+        rel = _entity_relpath(ent)
+        if _committed_state(aios_dir, rel):
+            existing = _load_existing(aios_dir, rel)
             if canonical_json(existing) == canonical_json(ent):
                 _require_committed_event(aios_dir, ent)
                 replayed.append((ent["entity_type"], ent["entity_id"]))

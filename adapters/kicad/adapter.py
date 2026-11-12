@@ -86,6 +86,8 @@ class KicadAdapter:
         raise PermissionError(f"operation is not allowlisted: {operation}")
 
     def execute(self, *, contract: dict, effect: dict, attempt_id: str) -> ProviderReceipt:
+        from core.execution_lock import require_external_execution_enabled
+        require_external_execution_enabled()
         effect_id = _required_text(effect.get("effect_id"), "effect.effect_id")
         _required_text(attempt_id, "attempt_id")
         if effect.get("attempt_id") != attempt_id:

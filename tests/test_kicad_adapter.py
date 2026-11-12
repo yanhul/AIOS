@@ -3,7 +3,6 @@
 # AIOS-OWNER: AIOS candidate kicad.eda provider boundary.
 # AIOS-COVERAGE-GAP: Cover read-only inspection and bounded CLI observation without KiCad hardware.
 # AIOS-BASELINE: Keep provider success distinct from electrical acceptance PASS.
-
 from __future__ import annotations
 
 import hashlib
@@ -13,6 +12,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
+pytestmark = pytest.mark.allow_unlocked_runtime
 
 from adapters.kicad.adapter import KicadAdapter
 from core.authority import persist_contract, persist_permit

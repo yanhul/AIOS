@@ -18,7 +18,7 @@ import os
 from .authority import authorize, load_contract, load_permit
 from .contract import verify_permit
 from .evidence import verify_evidence
-from .mutation import TransitionError, canonical_json, commit_batch, recover_pending
+from .mutation import TransitionError, _committed_state, canonical_json, commit_batch, read_state_json, recover_pending
 
 STATES = ("PLANNED", "DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE")
 _ALLOWED = {
@@ -36,12 +36,12 @@ def _id(contract_id, logical_operation_id, actor):
 
 
 def _path(aios_dir, effect_id):
-    return os.path.join(aios_dir, "effects", effect_id + ".json")
+    # (root, relative) pair: all access is descriptor-relative / no-follow.
+    return (aios_dir, f"effects/{effect_id}.json")
 
 
 def _load(path):
-    with open(path, "r", encoding="utf-8") as fh:
-        return json.load(fh)
+    return read_state_json(*path)
 
 
 def _validate_strings(*pairs):
@@ -99,7 +99,7 @@ def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id,
         "state": "PLANNED", "attempt": 0,
     }
     path = _path(aios_dir, effect_id)
-    if os.path.exists(path):
+    if _committed_state(*path):
         existing = _load(path)
         if canonical_json(existing) == canonical_json(rec):
             return existing
@@ -128,7 +128,7 @@ def transition(aios_dir, effect_id, target, actor, **fields):
         raise TransitionError("undefined external-effect transition: direct DISPATCHED entry is not allowed")
     recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
-    if not os.path.exists(path):
+    if not _committed_state(*path):
         raise KeyError(f"unknown effect: {effect_id}")
     current = _load(path)
     _validate_persisted_effect(aios_dir, current)
@@ -167,13 +167,16 @@ def _transition_dispatch(aios_dir, effect_id, actor, *, attempt, attempt_id, pro
 
 
 def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
-    _validate_strings(("attempt_id", attempt_id), ("provider", provider))
+    _validate_strings(("effect_id", effect_id), ("actor", actor),
+                      ("attempt_id", attempt_id), ("provider", provider))
     recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
-    if not os.path.exists(path):
+    if not _committed_state(*path):
         raise KeyError(f"unknown effect: {effect_id}")
     current = _load(path)
     _validate_persisted_effect(aios_dir, current)
+    if current.get("actor") != actor:
+        raise TransitionError("dispatch actor does not match effect owner")
     if current.get("state") != "PLANNED":
         raise TransitionError(f"initial dispatch requires PLANNED effect, got {current.get('state')}")
     expected = _attempt_id(effect_id, 1)
@@ -186,37 +189,15 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
 
 
 def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, retry_authorization=None):
-    """Explicitly dispatch the next attempt for an UNKNOWN effect."""
-    _validate_strings(("effect_id", effect_id), ("actor", actor),
-                      ("attempt_id", attempt_id), ("provider", provider))
-    if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 2:
-        raise ValueError("retry attempt must be an integer >= 2")
-    recover_pending(aios_dir)
-    path = _path(aios_dir, effect_id)
-    if not os.path.exists(path):
-        raise KeyError(f"unknown effect: {effect_id}")
-    current = _load(path)
-    _validate_persisted_effect(aios_dir, current)
-    if current.get("actor") != actor:
-        raise TransitionError("retry actor does not match effect owner")
-    if current.get("state") != "UNKNOWN":
-        raise TransitionError(f"retry requires UNKNOWN effect, got {current.get('state')}")
-    expected = int(current.get("attempt", 0)) + 1
-    if attempt != expected:
-        raise TransitionError(f"retry attempt must be {expected}, got {attempt}")
-    if attempt > int(current.get("max_attempts", 0)):
-        raise TransitionError("retry exceeds contract attempt budget")
-    if attempt_id != _attempt_id(effect_id, attempt):
-        raise ValueError("attempt_id does not match retry attempt")
-    if not isinstance(retry_authorization, dict) or retry_authorization.get("mode") != "EXPLICIT":
-        raise TransitionError("UNKNOWN retry requires explicit retry authorization")
-    if retry_authorization.get("effect_id") != effect_id:
-        raise TransitionError("retry authorization effect binding mismatch")
-    if retry_authorization.get("attempt") != attempt:
-        raise TransitionError("retry authorization attempt mismatch")
-    contract, _permit = _validate_persisted_effect(aios_dir, current)
-    return _transition_dispatch(aios_dir, effect_id, actor,
-                                attempt=attempt, attempt_id=attempt_id, provider=provider)
+    """Fail closed until an independent retry-authorization verifier exists.
+
+    The former EXPLICIT dictionary was entirely caller-controlled and did not
+    prove issuer identity or authorization provenance. Do not accept it as a
+    permit to re-dispatch an UNKNOWN external effect.
+    """
+    raise TransitionError(
+        "retry is disabled: independent issuer-backed authorization is not configured"
+    )
 
 
 def unknown(aios_dir, effect_id, actor, reason):
@@ -231,7 +212,7 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
         raise ValueError("provider_observation must be a non-empty dict")
     recover_pending(aios_dir)
     path = _path(aios_dir, effect_id)
-    if not os.path.exists(path):
+    if not _committed_state(*path):
         raise KeyError(f"unknown effect: {effect_id}")
     current = _load(path)
     _validate_persisted_effect(aios_dir, current)

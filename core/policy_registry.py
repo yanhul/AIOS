@@ -7,10 +7,16 @@ A caller cannot self-authorize an arbitrary policy digest.
 import hashlib
 import os
 
-from .mutation import canonical_json, commit_batch, recover_pending
+from .mutation import _committed_state, canonical_json, commit_batch, read_state_json, recover_pending
 
 POLICIES_DIR = "policies"
 POLICY_TYPE = "GOVERNING_POLICY"
+
+
+def _policy_filename(digest):
+    if not isinstance(digest, str) or not digest.startswith("sha256:"):
+        raise ValueError("policy digest must be a sha256 content digest")
+    return "sha256-" + digest.split(":", 1)[1] + ".json"
 
 
 def policy_digest(policy):
@@ -25,16 +31,14 @@ def persist_policy(aios_dir, policy):
         raise ValueError("policy must be a governing policy artifact")
     digest = policy_digest(policy)
     recover_pending(aios_dir)
-    path = os.path.join(aios_dir, POLICIES_DIR, digest + ".json")
     record = dict(policy)
     record["policy_digest"] = digest
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as fh:
-            existing = __import__("json").load(fh)
+    if _committed_state(aios_dir, os.path.join(POLICIES_DIR, _policy_filename(digest))):
+        existing = read_state_json(aios_dir, os.path.join(POLICIES_DIR, _policy_filename(digest)))
         if canonical_json(existing) != canonical_json(record):
             raise ValueError("existing policy identity has different content")
         return digest
-    commit_batch(aios_dir, [(os.path.join(POLICIES_DIR, digest + ".json"), record)])
+    commit_batch(aios_dir, [(os.path.join(POLICIES_DIR, _policy_filename(digest)), record)])
     return digest
 
 
@@ -42,12 +46,21 @@ def resolve_policy(aios_dir, digest):
     """Resolve and re-hash an immutable policy artifact; fail closed."""
     if not isinstance(digest, str) or not digest.startswith("sha256:"):
         raise ValueError("policy digest must be a sha256 content digest")
-    path = os.path.join(aios_dir, POLICIES_DIR, digest + ".json")
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            policy = __import__("json").load(fh)
-    except (FileNotFoundError, OSError, ValueError) as exc:
-        raise ValueError("governing policy artifact not found") from exc
+    path = f"{POLICIES_DIR}/{_policy_filename(digest)}"
+    legacy_path = f"{POLICIES_DIR}/{digest}.json"
+    policy = None
+    for candidate in (path, legacy_path):
+        # Unsafe entries (symlink / special / untrusted dir) raise
+        # StateConflictError: never followed, never treated as "not found".
+        try:
+            policy = read_state_json(aios_dir, candidate)
+            break
+        except FileNotFoundError:
+            continue
+        except ValueError:  # invalid JSON / encoding: try legacy, else fail
+            continue
+    if policy is None:
+        raise ValueError("governing policy artifact not found")
     if policy.get("policy_digest") != digest:
         raise ValueError("stored governing policy digest mismatch")
     content = dict(policy)

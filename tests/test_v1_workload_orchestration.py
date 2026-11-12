@@ -1,5 +1,7 @@
 import pytest
 
+pytestmark = pytest.mark.allow_unlocked_runtime
+
 from core.authority import persist_contract, persist_permit
 from core.capability_catalog import load_catalog
 from core.contract import contract_identity

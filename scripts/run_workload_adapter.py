@@ -20,6 +20,7 @@ from core.contract import contract_identity, issue_permit, validate_contract, ve
 from core.policy_registry import resolve_policy
 from core.workload_registry import WorkloadRegistry
 from core.mutation import canonical_json
+from core.execution_lock import require_external_execution_enabled
 
 AUTHORITY = "yanhul/AIOS"
 DEFAULT_POLICY = "sha256:0640840b0d5ab455470a7069163a928bd6d14a79168e834bb218a79559ba46b7"
@@ -223,6 +224,11 @@ def main() -> int:
                     "AIOS_PROBLEM": args.problem})
         existing_pythonpath = env.get("PYTHONPATH")
         env["PYTHONPATH"] = str(cwd) + (os.pathsep + existing_pythonpath if existing_pythonpath else "")
+        try:
+            require_external_execution_enabled()
+        except PermissionError as exc:
+            return blocked(str(exc))
+
         proc = subprocess.run(command, cwd=cwd, env=env, text=True, capture_output=True,
                               timeout=args.timeout_seconds, check=False, shell=False)
         if proc.returncode != 0:

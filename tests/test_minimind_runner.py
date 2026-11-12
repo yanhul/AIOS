@@ -1,6 +1,8 @@
 import json
 import sys
 import pytest
+
+pytestmark = pytest.mark.allow_unlocked_runtime
 from adapters.minimind.runner import MiniMindAdapter
 
 def _receipt():

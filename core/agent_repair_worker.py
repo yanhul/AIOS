@@ -4,10 +4,11 @@ from __future__ import annotations
 import hashlib
 import os
 import subprocess
-import tempfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Mapping, Protocol, Sequence
+
+from .secure_fs import atomic_write_beneath
 
 
 class RepairWorkerError(RuntimeError):
@@ -94,22 +95,28 @@ class AgentRepairWorker:
         if "\x00" in raw:
             raise RepairWorkerError("patch path contains NUL")
         path = raw.replace("\\", "/")
-        normalized = Path(path)
-        if path.startswith("/") or path.startswith("../") or "/../" in path:
+        normalized = PurePosixPath(path)
+        native = Path(path)
+        if path.startswith("/") or normalized.is_absolute() or native.is_absolute() or (len(path) >= 2 and path[1] == ":") or ".." in normalized.parts:
             raise RepairWorkerError(f"patch path escapes repository: {raw!r}")
-        if normalized.is_absolute() or ".." in normalized.parts:
-            raise RepairWorkerError(f"patch path escapes repository: {raw!r}")
+        canonical = "/".join(normalized.parts)
         if normalized.name in self._DENIED_FILES or any(
-            path == prefix.rstrip("/") or path.startswith(prefix) for prefix in self._DENIED_PREFIXES
+            canonical == prefix.rstrip("/") or canonical.startswith(prefix) for prefix in self._DENIED_PREFIXES
         ):
             raise RepairWorkerError(f"patch path is protected: {raw!r}")
-        target = (self.root / normalized).resolve()
+        # Reject symlinks in every existing path component before resolving.
+        # Checking target.is_symlink() after resolve is ineffective: resolve()
+        # has already followed the symlink and returns its destination.
+        cursor = self.root
+        for part in normalized.parts:
+            cursor = cursor / part
+            if cursor.is_symlink():
+                raise RepairWorkerError(f"refusing symlink path component: {raw!r}")
+        target = cursor.resolve()
         try:
             target.relative_to(self.root)
         except ValueError as exc:
             raise RepairWorkerError(f"patch path escapes repository: {raw!r}") from exc
-        if target.exists() and target.is_symlink():
-            raise RepairWorkerError(f"refusing to overwrite symlink: {raw!r}")
         return target
 
     def _git(self, *args: str) -> str:
@@ -138,23 +145,15 @@ class AgentRepairWorker:
                 "repository contains unowned dirty paths: " + ", ".join(unexpected)
             )
 
-    def _atomic_write(self, target: Path, content: str) -> None:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp_name = tempfile.mkstemp(prefix=f".{target.name}.repair-", dir=target.parent)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
-                fh.write(content)
-                fh.flush()
-                os.fsync(fh.fileno())
-            os.replace(tmp_name, target)
-        finally:
-            if os.path.exists(tmp_name):
-                os.unlink(tmp_name)
+    def _atomic_write(self, raw_path: str, content: str) -> None:
+        atomic_write_beneath(self.root, raw_path, content)
 
     def apply(
         self, *, base_sha: str, files: Sequence[ProposedFile],
         allowed_dirty_paths: frozenset[str] = frozenset(),
     ) -> WorkerEvidence:
+        from .execution_lock import require_external_execution_enabled
+        require_external_execution_enabled()
         owned = frozenset(set(allowed_dirty_paths) | self._owned_dirty_paths)
         self._require_base(base_sha, allowed_dirty_paths=owned)
         if not files:
@@ -171,7 +170,7 @@ class AgentRepairWorker:
         for item, target in zip(proposed, targets):
             if not isinstance(item.content, str):
                 raise RepairWorkerError(f"patch content must be text: {item.path!r}")
-            self._atomic_write(target, item.content)
+            self._atomic_write(item.path, item.content)
             changed.append({"path": item.path, "content_sha256": self._sha256_text(item.content)})
         return WorkerEvidence("APPLY_PATCH", "APPLIED",
                               (f"repair:base:{base_sha}", f"repair:permit:{permit_id}"),

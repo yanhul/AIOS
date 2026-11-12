@@ -3,6 +3,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from scripts.run_workload_adapter import parse_single_json_document
+
 
 def _manifest(adapter="aios/adapter.py", terminal_states=None):
     return {
@@ -21,66 +23,59 @@ def _runner():
     return Path(__file__).parents[1] / "scripts" / "run_workload_adapter.py"
 
 
-def _result(status="BLOCKED"):
-    return {
-        "status": status,
-        "evidence_refs": ["e"],
-        "verification_refs": ["provenance"],
-        "provenance": {"producer": "yanhul/try", "adapter": "try.research@1"},
-    }
+def _invoke(tmp_path, command):
+    (tmp_path / "aios").mkdir(exist_ok=True)
+    (tmp_path / "aios" / "workload.json").write_text(json.dumps(_manifest()), encoding="utf-8")
+    (tmp_path / "aios" / "adapter.py").write_text(command, encoding="utf-8")
+    return subprocess.run([
+        sys.executable, str(_runner()), "--workload-id", "yanhul/try",
+        "--execution-id", "test", "--cwd", str(tmp_path), "--problem", "p",
+        "--", sys.executable, "aios/adapter.py"
+    ], capture_output=True, text=True)
 
 
-def test_runner_rejects_undeclared_adapter(tmp_path):
+def test_runner_rejects_undeclared_adapter_before_execution(tmp_path):
     (tmp_path / "aios").mkdir()
-    (tmp_path / "aios" / "workload.json").write_text(json.dumps(_manifest()))
-    (tmp_path / "aios" / "adapter.py").write_text("print('{}')\n")
-    (tmp_path / "aios" / "other.py").write_text("print('{}')\n")
+    (tmp_path / "aios" / "workload.json").write_text(json.dumps(_manifest()), encoding="utf-8")
+    (tmp_path / "aios" / "adapter.py").write_text("print('{}')\n", encoding="utf-8")
+    (tmp_path / "aios" / "other.py").write_text("print('{}')\n", encoding="utf-8")
     p = subprocess.run([
         sys.executable, str(_runner()), "--workload-id", "yanhul/try",
         "--execution-id", "e1", "--cwd", str(tmp_path), "--problem", "p",
         "--", sys.executable, "aios/other.py"], capture_output=True, text=True)
-    assert p.returncode != 0
+    assert p.returncode == 2
     assert "does not match manifest adapter" in p.stdout
 
 
-def test_runner_rejects_non_json_adapter(tmp_path):
+def test_runner_blocks_valid_python_adapter_before_launch(tmp_path):
+    marker = tmp_path / "PWNED"
+    p = _invoke(tmp_path, f"from pathlib import Path; Path({str(marker)!r}).write_text('ran')\n")
+    assert p.returncode == 2
+    assert "independent actor issuer" in p.stdout
+    assert not marker.exists()
+
+
+def test_runner_blocks_valid_shell_adapter_before_launch(tmp_path):
     (tmp_path / "aios").mkdir()
-    (tmp_path / "aios" / "workload.json").write_text(json.dumps(_manifest()))
-    (tmp_path / "aios" / "adapter.py").write_text("print('not json')\n")
-    p = subprocess.run([
-        sys.executable, str(_runner()), "--workload-id", "yanhul/try",
-        "--execution-id", "e1", "--cwd", str(tmp_path), "--problem", "p",
-        "--", sys.executable, "aios/adapter.py"], capture_output=True, text=True)
-    assert p.returncode != 0
-    assert "valid JSON" in p.stdout
-
-
-def test_runner_accepts_pretty_json_python_adapter(tmp_path):
-    (tmp_path / "aios").mkdir()
-    (tmp_path / "aios" / "workload.json").write_text(json.dumps(_manifest()))
-    (tmp_path / "aios" / "adapter.py").write_text(
-        "import json\nprint(json.dumps(" + repr(_result()) + ", indent=2))\n"
-    )
-    p = subprocess.run([
-        sys.executable, str(_runner()), "--workload-id", "yanhul/try",
-        "--execution-id", "pretty", "--cwd", str(tmp_path), "--problem", "p",
-        "--", sys.executable, "aios/adapter.py"], capture_output=True, text=True)
-    assert p.returncode == 0, p.stdout
-    receipt = json.loads(p.stdout)
-    assert receipt["status"] == "BLOCKED"
-    assert receipt["provenance"]["producer"] == "yanhul/try"
-
-
-def test_runner_accepts_declared_shell_adapter(tmp_path):
-    (tmp_path / "aios").mkdir()
-    (tmp_path / "aios" / "workload.json").write_text(json.dumps(_manifest("aios/adapter.sh")))
-    (tmp_path / "aios" / "adapter.sh").write_text(
-        "printf '%s\\n' '{\"status\":\"BLOCKED\",\"evidence_refs\":[\"e\"],"
-        "\"verification_refs\":[\"provenance\"],\"provenance\":{\"producer\":\"yanhul/try\",\"adapter\":\"try.research@1\"}}'\n"
-    )
+    (tmp_path / "aios" / "workload.json").write_text(json.dumps(_manifest("aios/adapter.sh")), encoding="utf-8")
+    marker = tmp_path / "PWNED"
+    (tmp_path / "aios" / "adapter.sh").write_text(f"touch {str(marker)!r}\n", encoding="utf-8")
     p = subprocess.run([
         sys.executable, str(_runner()), "--workload-id", "yanhul/try",
         "--execution-id", "shell", "--cwd", str(tmp_path), "--problem", "p",
         "--", "bash", "aios/adapter.sh"], capture_output=True, text=True)
-    assert p.returncode == 0, p.stdout
-    assert json.loads(p.stdout)["status"] == "BLOCKED"
+    assert p.returncode == 2
+    assert "independent actor issuer" in p.stdout
+    assert not marker.exists()
+
+
+def test_parse_single_json_document_accepts_pretty_json():
+    assert parse_single_json_document('{\n  "status": "BLOCKED"\n}') == {"status": "BLOCKED"}
+
+
+def test_parse_single_json_document_rejects_non_json_and_trailing_data():
+    import pytest
+    with pytest.raises(ValueError, match="not valid JSON"):
+        parse_single_json_document("not json")
+    with pytest.raises(ValueError, match="exactly one"):
+        parse_single_json_document('{"status":"BLOCKED"}\nextra')

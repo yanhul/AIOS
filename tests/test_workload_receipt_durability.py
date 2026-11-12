@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 
-def test_terminal_receipt_is_reused_without_reexecuting_adapter(tmp_path):
+def test_workload_runner_fails_closed_before_adapter_or_receipt(tmp_path):
     aios = tmp_path / "aios"
     aios.mkdir()
     (aios / "workload.json").write_text(json.dumps({
@@ -33,11 +33,13 @@ def test_terminal_receipt_is_reused_without_reexecuting_adapter(tmp_path):
                "--execution-id", "durable-1", "--cwd", str(tmp_path), "--problem", "p",
                "--receipt-path", str(receipt), "--", sys.executable, "aios/adapter.py"]
     first = subprocess.run(command, capture_output=True, text=True)
-    assert first.returncode == 0, first.stdout
-    assert marker.read_text() == "x"
-    first_receipt = json.loads(first.stdout)
+    assert first.returncode == 2, first.stdout + first.stderr
+    assert "independent actor issuer" in first.stdout
+    assert not marker.exists()
+    assert not receipt.exists()
 
     second = subprocess.run(command, capture_output=True, text=True)
-    assert second.returncode == 0, second.stdout
-    assert marker.read_text() == "x"
-    assert json.loads(second.stdout) == first_receipt
+    assert second.returncode == 2, second.stdout + second.stderr
+    assert "independent actor issuer" in second.stdout
+    assert not marker.exists()
+    assert not receipt.exists()

@@ -3,8 +3,9 @@
 # AIOS-OWNER: AIOS control-plane durable execution
 # AIOS-COVERAGE-GAP: Covers exact DISPATCHED attempt resume and bounded retry
 # AIOS-BASELINE: Tests target the existing M6 durable runtime bridge baseline
-
 import pytest
+
+pytestmark = pytest.mark.allow_unlocked_runtime
 
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
@@ -119,12 +120,11 @@ def test_retry_bridges_explicit_bounded_retry(tmp_path):
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test",
                         unknown_reason="timeout")
     effect["retry_authorization"] = {"mode": "EXPLICIT", "effect_id": effect["effect_id"], "attempt": 2}
-    result = execute_retry_attempt(
-        str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
-        f"{effect['effect_id']}:attempt:2", 2, GoodRuntime()
-    )
-    assert result["state"] == "OBSERVED_SUCCESS"
-    assert result["attempt"] == 2
+    with pytest.raises(Exception, match="independent issuer-backed"):
+        execute_retry_attempt(
+            str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
+            f"{effect['effect_id']}:attempt:2", 2, GoodRuntime()
+        )
 
 
 def test_unknown_retry_requires_explicit_authorization(tmp_path):

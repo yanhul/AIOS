@@ -22,6 +22,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from core import mutation  # noqa: E402
+ORIGINAL_ATOMIC_WRITE = mutation.atomic_write_beneath
 from core.mutation import (  # noqa: E402
     ActorError,
     ContractError,
@@ -287,14 +288,14 @@ class TestActorAndIdentity(Base):
 
 class TestAtomicity(Base):
     @staticmethod
-    def _flaky_replace(fail_at):
+    def _flaky_atomic_write(fail_at):
         calls = {"n": 0}
 
-        def fake(src, dst):
+        def fake(root, rel_dest, content):
             calls["n"] += 1
             if calls["n"] == fail_at:
-                raise RuntimeError(f"injected failure at replace #{fail_at}")
-            return os.replace(src, dst)
+                raise RuntimeError(f"injected failure at secure commit #{fail_at}")
+            return ORIGINAL_ATOMIC_WRITE(root, rel_dest, content)
         return fake
 
     def test_MN_interrupted_commit_recovers_with_pairing_intact(self):
@@ -303,8 +304,10 @@ class TestAtomicity(Base):
         for fail_at in range(1, total_ops + 1):
             aios = os.path.join(self.tmp, f"case{fail_at}", ".aios")
             with self.assertRaises(RuntimeError):
-                with mock.patch.object(mutation, "_replace",
-                                       self._flaky_replace(fail_at)):
+                with mock.patch.object(
+                    mutation, "atomic_write_beneath",
+                    self._flaky_atomic_write(fail_at),
+                ):
                     apply_mutations(aios, [dict(e) for e in ents], ACTOR)
             # interrupted state must be journal-marked pending, never silent
             self.assertEqual(len(self.pending_batches(aios)), 1,

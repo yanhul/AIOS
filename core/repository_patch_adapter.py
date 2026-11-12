@@ -5,10 +5,11 @@ from __future__ import annotations
 import hashlib
 import os
 import subprocess
-import tempfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Mapping, Sequence
+
+from .secure_fs import atomic_write_beneath
 
 from .agent_repair_worker import ProposedFile
 from .effect_authority import create_effect
@@ -59,6 +60,8 @@ class RepositoryPatchAdapter:
         self._plans[effect_id] = (proposed, base_sha or "", frozenset(allowed_dirty_paths))
 
     def execute(self, *, contract: dict, effect: dict, attempt_id: str) -> ProviderReceipt:
+        from core.execution_lock import require_external_execution_enabled
+        require_external_execution_enabled()
         effect_id = effect["effect_id"]
         plan = self._plans.get(effect_id)
         if plan is None:
@@ -70,7 +73,7 @@ class RepositoryPatchAdapter:
         changed = []
         for item in files:
             target = _safe_repo_path(self.root, item.path)
-            _atomic_write(target, item.content)
+            atomic_write_beneath(self.root, item.path, item.content)
             changed.append({
                 "path": item.path,
                 "content_sha256": _sha256_text(item.content),
@@ -119,20 +122,29 @@ def _safe_repo_path(root: Path, raw: str) -> Path:
     if not isinstance(raw, str) or not raw.strip() or "\x00" in raw:
         raise ValueError("invalid repository patch path")
     path = raw.replace("\\", "/")
-    p = Path(path)
-    if p.is_absolute() or path.startswith("/") or ".." in p.parts:
+    # Normalize dot segments before checking protected path prefixes.
+    p = PurePosixPath(path)
+    native = Path(path)
+    if native.is_absolute() or p.is_absolute() or path.startswith("/") or (len(path) >= 2 and path[1] == ":") or ".." in p.parts:
         raise ValueError("repository patch path escapes root")
+    canonical = "/".join(p.parts)
     if p.name in RepositoryPatchAdapter._DENIED_FILES or any(
-        path == prefix[:-1] or path.startswith(prefix) for prefix in RepositoryPatchAdapter._DENIED_PREFIXES
+        canonical == prefix[:-1] or canonical.startswith(prefix) for prefix in RepositoryPatchAdapter._DENIED_PREFIXES
     ):
         raise ValueError("repository patch path is protected")
-    target = (root / p).resolve()
+    root = root.resolve()
+    cursor = root
+    # Inspect lexical components before resolve(); checking is_symlink() on a
+    # resolved target cannot detect the symlink that was followed.
+    for part in p.parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise ValueError("refusing symlink path component")
+    target = cursor.resolve()
     try:
         target.relative_to(root)
     except ValueError as exc:
         raise ValueError("repository patch path escapes root") from exc
-    if target.exists() and target.is_symlink():
-        raise ValueError("refusing to overwrite symlink")
     return target
 
 
@@ -169,20 +181,6 @@ def _require_clean_base(root: Path, base_sha: str, *, allowed_dirty_paths: froze
             "repository contains unowned dirty paths before AIOS mutation: "
             + ", ".join(unexpected)
         )
-
-
-def _atomic_write(target: Path, content: str) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(prefix=f".{target.name}.repair-", dir=target.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
-            fh.write(content)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp_name, target)
-    finally:
-        if os.path.exists(tmp_name):
-            os.unlink(tmp_name)
 
 
 def apply_via_aios(

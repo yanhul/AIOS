@@ -3,9 +3,10 @@
 # AIOS-OWNER: AIOS control-plane durable execution
 # AIOS-COVERAGE-GAP: Covers bounded UNKNOWN retry, authority binding, and duplicate-effect prevention
 # AIOS-BASELINE: Existing M6 effect/runtime regression suite extended for explicit retry authority
-
 import os
 import pytest
+
+pytestmark = pytest.mark.allow_unlocked_runtime
 
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
@@ -144,11 +145,11 @@ def test_retry_dispatch_requires_unknown_and_increments_attempt(tmp_path):
     unknown_effect = transition(str(tmp_path), first["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
     effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":effect["effect_id"], "attempt":2}
     unknown_effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":unknown_effect["effect_id"], "attempt":2}
-    retried = retry_dispatch(str(tmp_path), unknown_effect["effect_id"], "agent:test",
-                             f"{effect['effect_id']}:attempt:2", "fake-provider", 2, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":2})
-    assert retried["effect_id"] == effect["effect_id"]
-    assert retried["attempt"] == 2
-    assert retried["state"] == "DISPATCHED"
+    from core.mutation import TransitionError
+    with pytest.raises(TransitionError, match="independent issuer-backed"):
+        retry_dispatch(str(tmp_path), unknown_effect["effect_id"], "agent:test",
+                       f"{effect['effect_id']}:attempt:2", "fake-provider", 2, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":2})
+    assert unknown_effect["state"] == "UNKNOWN"
 
 
 def test_generic_transition_cannot_turn_unknown_into_dispatched(tmp_path):
@@ -169,10 +170,10 @@ def test_execute_retry_attempt_is_bounded_by_contract(tmp_path):
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
     effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":effect["effect_id"], "attempt":2}
-    result = execute_retry_attempt(str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
-                                   f"{effect['effect_id']}:attempt:2", 2)
-    assert result["state"] == "OBSERVED_SUCCESS"
-    assert result["attempt"] == 2
+    from core.mutation import TransitionError
+    with pytest.raises(TransitionError, match="independent issuer-backed"):
+        execute_retry_attempt(str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
+                              f"{effect['effect_id']}:attempt:2", 2)
 
 
 def test_execute_retry_attempt_rejects_over_max_before_dispatch(tmp_path):

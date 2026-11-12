@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.allow_unlocked_runtime
+
 from core.agent_repair_worker import AgentRepairWorker
 from core.repair_agent import AgentLoopError, AgentTurn, RepairAgent, ToolCall
 

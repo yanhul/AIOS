@@ -11,7 +11,8 @@ import os
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from .mutation import canonical_json, validate_entity, _entity_relpath, _require_committed_event
+from .mutation import (canonical_json, validate_entity, _entity_relpath, _require_committed_event, _MutationLock)
+from .secure_fs import SecureWriteError, secure_read_bytes_beneath
 from .authority import authorize, load_contract
 from .capabilities import CapabilityRegistry
 from .policy_registry import resolve_policy
@@ -168,6 +169,16 @@ def persist_memory(store, record: Mapping[str, Any], *, decision_id: str,
     """Persist only after native, persisted AIOS authority authorizes MEMORY_WRITE."""
     validate_memory_record(record)
     _text(aios_dir, "aios_dir")
+    # Store/root binding (Batch 3): the WAL and snapshots written below must
+    # live beneath the SAME trusted state root that authorizes the write; a
+    # caller cannot redirect an authorized memory mutation to external paths.
+    from .wal_state_store import WalStateStore, _MEMORY_WRITE_TOKEN
+    if not isinstance(store, WalStateStore):
+        raise ValueError("memory store must be a WalStateStore bound to aios_dir")
+    try:
+        store.assert_bound_to(aios_dir)
+    except SecureWriteError as exc:
+        raise ValueError(f"memory store is not bound to the trusted state root: {exc}") from exc
     _text(contract_id, "contract_id")
     _text(permit_id, "permit_id")
     _text(actor, "actor")
@@ -192,20 +203,33 @@ def persist_memory(store, record: Mapping[str, Any], *, decision_id: str,
         raise ValueError("memory predecessor must match the governed decision_id")
     # A caller-supplied ID is not a decision receipt: resolve the canonical
     # persisted DECISION and require its integrity-bound mutation event.
-    decision_path = os.path.join(aios_dir, "decisions", decision_id + ".json")
-    if not os.path.isfile(decision_path):
+    # The id is resolved strictly by name inside decisions/: separators and
+    # dot components are refused lexically, and the file is read via
+    # descriptor-relative, no-follow, fstat-verified I/O (core.secure_fs).
+    # Symlinked / dangling / FIFO / special / unreadable DECISION data is
+    # never authorization. Nothing is written before every check passes.
+    if ("/" in decision_id or "\\" in decision_id or "\x00" in decision_id
+            or decision_id in (".", "..")):
         raise ValueError("decision_id does not resolve to persisted DECISION")
+    decision_rel = f"decisions/{decision_id}.json"
     try:
-        with open(decision_path, "r", encoding="utf-8") as fh:
-            decision = json.load(fh)
+        raw = secure_read_bytes_beneath(aios_dir, decision_rel)
+    except FileNotFoundError as exc:
+        raise ValueError("decision_id does not resolve to persisted DECISION") from exc
+    except (OSError, SecureWriteError) as exc:
+        raise ValueError(f"decision_id is not integrity-bound persisted DECISION: "
+                         f"unsafe or unreadable DECISION entry refused: {exc}") from exc
+    try:
+        decision = json.loads(raw.decode("utf-8"))
+        if not isinstance(decision, dict):
+            raise ValueError("DECISION is not a JSON object")
         validate_entity(decision)
         if decision.get("entity_type") != "DECISION" or decision.get("entity_id") != decision_id:
             raise ValueError("decision identity mismatch")
-        expected = os.path.abspath(os.path.join(aios_dir, _entity_relpath(decision)))
-        if os.path.normcase(os.path.abspath(decision_path)) != os.path.normcase(expected):
+        if _entity_relpath(decision).replace(os.sep, "/") != decision_rel:
             raise ValueError("DECISION is not stored at its canonical path")
         _require_committed_event(aios_dir, decision)
-    except (OSError, ValueError, TypeError) as exc:
+    except (OSError, ValueError, TypeError, UnicodeDecodeError) as exc:
         raise ValueError(f"decision_id is not integrity-bound persisted DECISION: {exc}") from exc
     # Reuse native evidence resolution at write time, not only retrieval time.
     from .verification import resolve_evidence
@@ -228,14 +252,58 @@ def persist_memory(store, record: Mapping[str, Any], *, decision_id: str,
         "execution_lineage": dict(execution_lineage) if execution_lineage else None,
     }
     # mutation_id is enforced atomically by the WAL under its cross-process lock.
-    committed, appended = store.append_namespace_once(
-        "memory", envelope, item_key="mutation_id", key_value=mutation_id,
-    )
+    with _MutationLock(aios_dir):
+        committed, appended = store._append_governed_memory(envelope, _MEMORY_WRITE_TOKEN)
     if dict(committed) != envelope:
         raise ValueError("mutation_id already belongs to a different memory mutation")
     if not appended:
         return committed
     return envelope
+
+
+def _validate_persisted_memory_envelope(aios_dir: str, envelope: Mapping[str, Any]) -> Mapping[str, Any]:
+    memory = envelope.get("memory")
+    validate_memory_record(memory)
+    if envelope.get("authority") != "AIOS_CONTROL_PLANE":
+        raise ValueError("invalid memory mutation authority")
+    decision_id = _text(envelope.get("decision_id"), "decision_id")
+    _text(envelope.get("mutation_id"), "mutation_id")
+    contract_id = _text(envelope.get("contract_id"), "contract_id")
+    permit_id = _text(envelope.get("permit_id"), "permit_id")
+    actor = _text(envelope.get("actor"), "actor")
+    if memory["predecessor"] != decision_id:
+        raise ValueError("memory predecessor does not match persisted decision_id")
+    if ("/" in decision_id or "\\" in decision_id or "\x00" in decision_id
+            or decision_id in (".", "..")):
+        raise ValueError("decision_id does not resolve to persisted DECISION")
+    authorize(aios_dir, contract_id, permit_id)
+    contract = load_contract(aios_dir, contract_id)
+    if (contract.get("actor") != actor or contract.get("scope") != "memory:write"
+            or "MEMORY_WRITE" not in contract.get("allowed_effects", [])):
+        raise ValueError("persisted memory contract does not authorize this envelope")
+    policy = resolve_policy(aios_dir, contract["policy_digest"])
+    if "MEMORY_WRITE" not in policy.get("rules", []):
+        raise ValueError("persisted memory policy does not authorize this envelope")
+    registry = CapabilityRegistry.load(aios_dir)
+    capabilities = registry.resolve_contract(contract)
+    if not any(cap.status == "ACTIVE" and "MEMORY_WRITE" in cap.permissions for cap in capabilities):
+        raise ValueError("persisted memory capability is not ACTIVE")
+    decision_rel = f"decisions/{decision_id}.json"
+    raw = secure_read_bytes_beneath(aios_dir, decision_rel)
+    decision = json.loads(raw.decode("utf-8"))
+    if (not isinstance(decision, dict) or decision.get("entity_type") != "DECISION"
+            or decision.get("entity_id") != decision_id):
+        raise ValueError("persisted DECISION identity mismatch")
+    validate_entity(decision)
+    if _entity_relpath(decision).replace(os.sep, "/") != decision_rel:
+        raise ValueError("DECISION is not stored at its canonical path")
+    _require_committed_event(aios_dir, decision)
+    from .verification import resolve_evidence
+    _, unresolved = resolve_evidence(aios_dir, memory["evidence_refs"])
+    if unresolved:
+        raise ValueError(f"persisted memory evidence refs unresolved: {unresolved}")
+    _validate_execution_lineage(envelope)
+    return memory
 
 
 def load_memory(store) -> list[Mapping[str, Any]]:
@@ -248,21 +316,11 @@ def load_memory(store) -> list[Mapping[str, Any]]:
     for envelope in state:
         if not isinstance(envelope, Mapping):
             raise ValueError("invalid memory mutation envelope")
-        memory = envelope.get("memory")
-        validate_memory_record(memory)
-        if envelope.get("authority") != "AIOS_CONTROL_PLANE":
-            raise ValueError("invalid memory mutation authority")
-        decision_id = _text(envelope.get("decision_id"), "decision_id")
         mutation_id = _text(envelope.get("mutation_id"), "mutation_id")
         if mutation_id in seen_mutation_ids:
             raise ValueError("duplicate memory mutation_id in durable history")
         seen_mutation_ids.add(mutation_id)
-        if memory["predecessor"] != decision_id:
-            raise ValueError("memory predecessor does not match persisted decision_id")
-        _text(envelope.get("contract_id"), "contract_id")
-        _text(envelope.get("permit_id"), "permit_id")
-        _text(envelope.get("actor"), "actor")
-        _validate_execution_lineage(envelope)
+        memory = _validate_persisted_memory_envelope(store.root, envelope)
         result.append(dict(memory))
     return result
 
