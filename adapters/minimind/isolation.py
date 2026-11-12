@@ -133,7 +133,7 @@ def resolve_trusted_symlinks(path: str, *, kind: str, max_hops: int = 8) -> str:
 
 
 _PYTHON_IMPORT_SUFFIXES = (".py", ".pyc", ".pyo", ".so", ".pyd", ".dll", ".zip", ".egg")
-_VERSIONED_NATIVE_LIBRARY = re.compile(r"\\.so(?:\\.\\d+)+$", re.IGNORECASE)
+_VERSIONED_NATIVE_LIBRARY = re.compile(r"\.so(?:\.\d+)+$", re.IGNORECASE)
 
 
 def _is_importable_python_code(path: str) -> bool:
@@ -144,7 +144,7 @@ def _is_importable_python_code(path: str) -> bool:
     # Native ELF shared objects may be versioned unusually or have no suffix.
     try:
         with open(path, "rb") as stream:
-            return stream.read(4) == b"\\x7fELF"
+            return stream.read(4) == b"\x7fELF"
     except OSError as exc:
         raise IsolationError(f"cannot inspect import candidate {path!r}: {exc}") from exc
 
@@ -210,7 +210,7 @@ def _tree_contains_importable_python_code(root: str) -> bool:
                     try:
                         if entry.is_dir(follow_symlinks=True):
                             pending.append(entry.path)
-                        elif entry.is_file(follow_symlinks=True) and _is_importable_python_code(entry.name):
+                        elif entry.is_file(follow_symlinks=True) and _is_importable_python_code(entry.path):
                             return True
                     except OSError as exc:
                         raise IsolationError(f"cannot inspect import-tree entry {entry.path!r}: {exc}") from exc
