@@ -450,7 +450,7 @@ def commit_batch(aios_dir, payloads):
     # Validate every destination before staging or writing any payload. This
     # prevents caller-controlled IDs from turning a state-relative path into
     # a write outside <aios_dir> (for example effects/../../authority.json).
-    prepared = [(_safe_commit_destination(aios_dir, rel_dest), rel_dest.replace("\\\\", "/"), obj)
+    prepared = [(_safe_commit_destination(aios_dir, rel_dest), rel_dest.replace("\\", "/"), obj)
                 for rel_dest, obj in payloads]
     with _MutationLock(aios_dir):
         state_layout.ensure_state_dirs(aios_dir)
