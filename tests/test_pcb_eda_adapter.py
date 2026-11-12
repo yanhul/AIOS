@@ -3,13 +3,12 @@
 # AIOS-OWNER: AIOS pcb.eda@1 adapter boundary.
 # AIOS-COVERAGE-GAP: Cover direct schematic phase dispatch independently of full PCB closure.
 # AIOS-BASELINE: Preserve governed adapter status and provenance contract.
-
-pytestmark = pytest.mark.allow_unlocked_runtime
-
 import json
 import subprocess
 
 import pytest
+
+pytestmark = pytest.mark.allow_unlocked_runtime
 
 from adapters.pcb_eda.adapter import run_kit
 from core.pcb_eda import PcbEdaRequest
