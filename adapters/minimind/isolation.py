@@ -132,12 +132,17 @@ def resolve_trusted_symlinks(path: str, *, kind: str, max_hops: int = 8) -> str:
     raise IsolationError(f"{kind}: too many symlink hops")
 
 
-def check_trusted_tree(root: str, *, kind: str) -> int:
-    """Validate a root-owned tree; allow only safe file symlinks to trusted regular files.
+def check_trusted_tree(root: str, *, kind: str, _visited: set | None = None) -> int:
+    """Validate a root-owned import tree, including the targets of internal symlinks.
 
-    Python distributions may ship a root-owned sitecustomize.py symlink. Directory
-    symlinks remain forbidden (they would make the scanned import tree incomplete).
+    Some distro packages expose importable modules through symlinked directories.
+    Their targets are recursively checked; symlink traversal is cycle-safe.
     """
+    real_root = os.path.realpath(root)
+    visited = _visited if _visited is not None else set()
+    if real_root in visited:
+        return 0
+    visited.add(real_root)
     check_trusted_path(root, kind=kind)
     count = 0
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
@@ -145,8 +150,6 @@ def check_trusted_tree(root: str, *, kind: str) -> int:
             entry = os.path.join(dirpath, name)
             st = os.lstat(entry)
             if stat.S_ISLNK(st.st_mode):
-                if name in dirnames:
-                    raise IsolationError(f"{kind}: directory symlink inside trusted tree: {entry!r}")
                 if st.st_uid != 0:
                     raise IsolationError(f"{kind}: symlink inside trusted tree is not root-owned: {entry!r}")
                 target = os.path.realpath(entry)
@@ -154,10 +157,13 @@ def check_trusted_tree(root: str, *, kind: str) -> int:
                     target_st = os.stat(entry)
                 except OSError as exc:
                     raise IsolationError(f"{kind}: broken/unreadable symlink {entry!r}") from exc
-                if not stat.S_ISREG(target_st.st_mode):
-                    raise IsolationError(f"{kind}: symlink target is not a regular file: {entry!r}")
-                check_trusted_path(target, kind=f"{kind} symlink target")
-                count += 1
+                if stat.S_ISDIR(target_st.st_mode):
+                    count += check_trusted_tree(target, kind=f"{kind} symlink directory target", _visited=visited)
+                elif stat.S_ISREG(target_st.st_mode):
+                    check_trusted_path(target, kind=f"{kind} symlink file target")
+                    count += 1
+                else:
+                    raise IsolationError(f"{kind}: symlink target is not a regular file or directory: {entry!r}")
                 continue
             if st.st_uid != 0:
                 raise IsolationError(f"{kind}: {entry!r} is not root-owned (uid {st.st_uid})")
