@@ -386,6 +386,9 @@ def reconcile(aios_dir, source_root=None):
     # ---- G: unexpected top-level entries ------------------------------------
     if os.path.isdir(aios_dir):
         for entry in sorted(os.listdir(aios_dir)):
+            if entry == ".mutation.lock" and os.path.isfile(entry_path := os.path.join(aios_dir, entry)) \
+                    and not os.path.islink(entry_path):
+                continue  # operational mutation lock (core.mutation._MutationLock)
             if entry not in _MANAGED_DIRS and entry != ".staging":
                 add("G.unexpected_entry", "UNSUPPORTED",
                     f"unrecognized entry under .aios/: {entry}")

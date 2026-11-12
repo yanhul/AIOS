@@ -44,6 +44,7 @@ from .mutation import (
     commit_batch,
     event_identity,
     _load_existing,
+    _committed_state,
     _entity_relpath,
     _require_committed_event as _require_entity_event,
     validate_entity,
@@ -307,9 +308,9 @@ def apply_verification(aios_dir, subject_type, subject_id, evidence_refs,
     record["verification_id"] = "VF-" + identity
     record["identity"] = identity
 
-    dest = os.path.join(aios_dir, _verification_relpath(record["verification_id"]))
-    if os.path.exists(dest):
-        existing = _load_existing(dest)
+    rel = _verification_relpath(record["verification_id"])
+    if _committed_state(aios_dir, rel):
+        existing = _load_existing(aios_dir, rel)
         if canonical_json(existing) == canonical_json(record):
             _require_committed_event(aios_dir, record)
             return {"outcome": outcome, "verification_id": record["verification_id"],
