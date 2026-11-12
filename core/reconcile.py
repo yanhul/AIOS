@@ -321,6 +321,46 @@ def _sweep(aios_dir, source_root, root_names, add):
             listing_cache[dirname] = names
         return listing_cache[dirname]
 
+    # ---- governed memory WAL integrity ------------------------------------
+    wal_rel = "memory/state.json.wal.jsonl"
+    try:
+        wal_raw = secure_read_bytes_beneath(aios_dir, wal_rel)
+    except FileNotFoundError:
+        wal_raw = None
+    except (OSError, SecureWriteError) as exc:
+        add("M.memory_wal.unsafe", "CORRUPTED", f"{wal_rel}: {exc}")
+        wal_raw = None
+    if wal_raw is not None:
+        try:
+            from .durable_wal import DurableTransitionLog
+            from .governed_memory import _validate_persisted_memory_envelope
+            wal = DurableTransitionLog(os.path.join(aios_dir, wal_rel), root=aios_dir)
+            replay, _ = wal._parse(wal_raw)
+            memory_items = []
+            for row in replay.records:
+                payload = row.get("payload", {})
+                if payload.get("namespace") != "memory":
+                    continue
+                if row.get("transition") == "NAMESPACE_COMMITTED":
+                    value = payload.get("value")
+                    if not isinstance(value, list):
+                        raise ValueError("memory namespace commit is not a list")
+                    memory_items = value
+                elif row.get("transition") == "NAMESPACE_APPENDED":
+                    memory_items.append(payload.get("item"))
+            seen_ids = set()
+            for item in memory_items:
+                if not isinstance(item, dict):
+                    raise ValueError("memory WAL item is not an object")
+                mutation_id = item.get("mutation_id")
+                if not isinstance(mutation_id, str) or not mutation_id or mutation_id in seen_ids:
+                    raise ValueError("missing or duplicate memory mutation_id")
+                seen_ids.add(mutation_id)
+                _validate_persisted_memory_envelope(aios_dir, item)
+        except Exception as exc:
+            add("M.memory_wal.integrity", "CORRUPTED",
+                f"{wal_rel}: memory WAL/authority validation failed: {exc}")
+
     # ---- load entities -----------------------------------------------------
     entities = {}          # (type,id) -> ent
     entity_paths = {}      # key -> relpath

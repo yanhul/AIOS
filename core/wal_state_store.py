@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .durable_wal import DurableTransitionLog
+
+_MEMORY_WRITE_TOKEN = object()
 from .secure_fs import (
     SecureWriteError, open_regular_at, read_all_fd, relative_beneath,
     require_secure_platform, secure_parent_dir_beneath, write_all_fd,
@@ -123,6 +125,8 @@ class WalStateStore:
 
     def commit_namespace(self, namespace: str, value: Any) -> None:
         namespace = self._validate_namespace(namespace)
+        if namespace == "memory":
+            raise PermissionError("memory writes require governed persist_memory")
         candidate = deepcopy(value)
         if namespace == "state" and not isinstance(candidate, Mapping):
             raise ValueError("state namespace must be a mapping")
@@ -140,9 +144,10 @@ class WalStateStore:
         the append records into the latest namespace projection.
         """
         namespace = self._validate_namespace(namespace)
+        if namespace == "memory":
+            raise PermissionError("memory writes require governed persist_memory")
         if namespace == "state":
-            raise ValueError("append is not authorized for state namespace")
-        self.wal.append(
+            raise ValueError("append is not authorized for state namespace")        self.wal.append(
             transition="NAMESPACE_APPENDED",
             payload={"namespace": namespace, "item": deepcopy(item)},
         )
@@ -162,6 +167,8 @@ class WalStateStore:
         without writing a second WAL record.
         """
         namespace = self._validate_namespace(namespace)
+        if namespace == "memory":
+            raise PermissionError("memory writes require governed persist_memory")
         if namespace == "state":
             raise ValueError("append is not authorized for state namespace")
         if not isinstance(item, Mapping):
@@ -194,6 +201,31 @@ class WalStateStore:
                 raise ValueError("append namespace projection must be a list")
             self._write_namespace_snapshot(namespace, latest)
         return deepcopy(dict(committed_item)), appended
+
+    def _append_governed_memory(self, envelope: Mapping[str, Any], token: object) -> tuple[Any, bool]:
+        if token is not _MEMORY_WRITE_TOKEN:
+            raise PermissionError("memory writes require governed persist_memory")
+        if not isinstance(envelope, Mapping):
+            raise ValueError("memory envelope must be a mapping")
+        mutation_id = envelope.get("mutation_id")
+        if not isinstance(mutation_id, str) or not mutation_id.strip():
+            raise ValueError("memory mutation_id is required")
+        record, appended = self.wal.append_once(
+            transition="NAMESPACE_APPENDED",
+            payload={"namespace": "memory", "item": deepcopy(dict(envelope))},
+            unique_path=("item", "mutation_id"), unique_value=mutation_id,
+            scope_path=("namespace",), scope_value="memory",
+        )
+        payload = record.get("payload")
+        item = payload.get("item") if isinstance(payload, Mapping) else None
+        if not isinstance(item, Mapping):
+            raise ValueError("durable memory WAL item is invalid")
+        if appended:
+            latest = self._latest("memory")
+            if not isinstance(latest, list):
+                raise ValueError("memory WAL projection must be a list")
+            self._write_namespace_snapshot("memory", latest)
+        return deepcopy(dict(item)), appended
 
     def _write_json_atomic(self, rel: str, value: Any) -> None:
         """Atomic snapshot replace, entirely descriptor-relative.

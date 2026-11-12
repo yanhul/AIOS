@@ -124,7 +124,7 @@ def test_memory_replay_rejects_duplicate_mutation_ids(tmp_path):
         store, _record(), decision_id="D-1", mutation_id="M-duplicate",
         authority="AIOS_CONTROL_PLANE", **auth,
     )
-    store.append_namespace("memory", envelope)
+    store.wal.append(transition="NAMESPACE_APPENDED", payload={"namespace": "memory", "item": envelope})
     with pytest.raises(ValueError, match="duplicate memory mutation_id"):
         load_memory(store)
 

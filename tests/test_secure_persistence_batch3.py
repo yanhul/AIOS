@@ -44,6 +44,30 @@ def _unchanged(victim):
     assert victim.read_bytes() == b"EXTERNAL-ORIGINAL\n"
 
 
+
+def test_public_store_apis_cannot_write_memory_namespace(tmp_path):
+    store = WalStateStore.for_aios_dir(str(tmp_path / "aios"))
+    with pytest.raises(PermissionError, match="governed"):
+        store.commit_namespace("memory", [])
+    with pytest.raises(PermissionError, match="governed"):
+        store.append_namespace("memory", {"mutation_id": "forged"})
+    with pytest.raises(PermissionError, match="governed"):
+        store.append_namespace_once(
+            "memory", {"mutation_id": "forged"}, item_key="mutation_id",
+            key_value="forged",
+        )
+
+
+def test_reconcile_detects_corrupt_memory_wal(tmp_path):
+    root = tmp_path / "aios"
+    root.mkdir()
+    memory = root / "memory"
+    memory.mkdir()
+    (memory / "state.json.wal.jsonl").write_text('{"not":"a committed WAL record"}\\n')
+    result = rcn.reconcile(str(root))
+    assert result["overall"] == "CORRUPTED"
+    assert any(item["check"] == "M.memory_wal.integrity" for item in result["findings"])
+
 # ------------------------------------------------------------------ WAL ----
 
 def test_wal_symlink_to_external_file_refused(env):
