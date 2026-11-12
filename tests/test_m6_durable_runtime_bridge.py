@@ -6,12 +6,15 @@
 
 import pytest
 
+from tests.retry_issuers import signed_retry_auth
+
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.durable_runtime import RuntimeSubmission
-from core.effect_authority import create_effect, dispatch, transition
+from core.effect_authority import create_effect, dispatch, issue_retry_authorization, transition
 from core.policy_registry import persist_policy
+from tests.provider_keys import signed
 from core.runtime import ProviderReceipt, execute, execute_retry_attempt, resume_attempt
 
 
@@ -35,8 +38,8 @@ class GoodAdapter:
     name = "fake-provider"
 
     def execute(self, *, contract, effect, attempt_id):
-        return ProviderReceipt(self.name, effect["effect_id"], attempt_id,
-                               "provider-op", "OBSERVED_SUCCESS", {"status": "ok"})
+        return signed(ProviderReceipt(self.name, effect["effect_id"], attempt_id,
+                               "provider-op", "OBSERVED_SUCCESS", {"status": "ok"}), effect)
 
 
 class GoodRuntime:
@@ -118,7 +121,7 @@ def test_retry_bridges_explicit_bounded_retry(tmp_path):
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test",
                         unknown_reason="timeout")
-    effect["retry_authorization"] = {"mode": "EXPLICIT", "effect_id": effect["effect_id"], "attempt": 2}
+    effect["retry_authorization"] = signed_retry_auth(str(tmp_path), effect["effect_id"], "agent:test", 2, "operator:test", "test retry")
     result = execute_retry_attempt(
         str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
         f"{effect['effect_id']}:attempt:2", 2, GoodRuntime()

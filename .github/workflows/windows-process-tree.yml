@@ -1,0 +1,43 @@
+name: Windows process-tree containment
+
+# Narrow, path-filtered job: only runs when the bounded subprocess layer or its
+# regression tests change, so it does not consume CI quota on unrelated PRs.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - adapters/bounded_process.py
+      - tests/test_audit_f05_f06_closure.py
+      - adapters/pcb_eda/adapter.py
+      - .github/workflows/windows-process-tree.yml
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      # Sparse checkout: the repository contains state files whose names are
+      # not valid on Windows (e.g. "policies/sha256:<digest>.json"). Git for
+      # Windows rejects such index entries even outside the sparse cone unless
+      # NTFS path protection is relaxed; those paths are never materialized.
+      - name: Allow sparse checkout of repo with non-NTFS paths
+        run: git config --global core.protectNTFS false
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            adapters
+            core
+            tests
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: python -m pip install pytest PyYAML
+      - name: Process-tree / bounded subprocess tests (Windows)
+        # F-05 process-tree tests + F-06 native fail-closed check. Tests that
+        # persist policy files are excluded because policy filenames contain ':'
+        # (pre-existing, not F-05/F-06).
+        run: python -m pytest -q -rs -k "(test_f05 and not durably_retained) or test_f06_native_platform_without_dirfd" tests/test_audit_f05_f06_closure.py tests/test_audit_p1_p2_hardening.py

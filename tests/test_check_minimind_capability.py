@@ -52,3 +52,22 @@ def test_capability_receipt_rejects_non_list_refs(monkeypatch, field):
 
     with pytest.raises(SystemExit, match="must be a non-empty list of strings"):
         check.main()
+
+
+@pytest.mark.parametrize(("status", "code"), [("BLOCKED", 2), ("INCONCLUSIVE", 2), ("AVAILABLE", 0)])
+def test_production_gate_fails_unless_available(monkeypatch, tmp_path, status, code):
+    _run_adapter(monkeypatch, _receipt(status=status))
+    monkeypatch.setattr(check.sys, "argv", ["check_minimind_capability.py", "--root", ".", "--require-available"])
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    assert check.main() == code
+    text = summary.read_text(encoding="utf-8")
+    assert f"**{status}**" in text and "production gate" in text and "not MiniMind runtime readiness" in text
+
+
+def test_report_mode_never_claims_readiness(monkeypatch, tmp_path):
+    _run_adapter(monkeypatch, _receipt())
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    assert check.main() == 0
+    assert "non-production readiness report" in summary.read_text(encoding="utf-8")

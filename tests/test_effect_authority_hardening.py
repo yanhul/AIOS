@@ -1,3 +1,4 @@
+from tests.provider_keys import sign_observation
 # AIOS-CONTRACT: durable external-effect retry authority
 # AIOS-REGRESSION: Prevent ambiguous UNKNOWN effects from retrying without governed authority
 # AIOS-OWNER: AIOS control-plane durable execution
@@ -8,12 +9,15 @@ import tempfile
 
 import pytest
 
+from tests.retry_issuers import signed_retry_auth
+
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.effect_authority import (
     create_effect,
     dispatch,
+    issue_retry_authorization,
     observe,
     retry_dispatch,
     transition,
@@ -27,6 +31,7 @@ from core.policy_registry import persist_policy
 def make_authorized(td):
     registry = CapabilityRegistry()
     registry.register(Capability("research_is_validation", "1", "test-fixture", "research", status="ACTIVE"))
+    registry.register(Capability("provider-a", "1", "test-fixture", "process_execution", status="ACTIVE"))
     registry.persist(td, "test-fixture")
     policy = persist_policy(td, {"policy_type": "GOVERNING_POLICY", "name": "effect-hardening"})
     contract = {
@@ -34,7 +39,7 @@ def make_authorized(td):
         "task_id": "RESEARCH_BC7",
         "scope": "research",
         "actor": "bc-controller",
-        "capabilities": ["research_is_validation@1"],
+        "capabilities": ["research_is_validation@1", "provider-a@1"],
         "input_digest": "sha256:input",
         "allowed_effects": ["process_execution"],
         "evidence_required": ["execution_receipt"],
@@ -98,10 +103,10 @@ def test_unknown_can_only_return_to_dispatch_through_bounded_retry():
         unknown(td, effect["effect_id"], "bc-controller", "provider timeout")
         with pytest.raises(TransitionError):
             dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:2", "provider-a")
-        retried = retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:2", "provider-a", 2, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":2})
+        retried = retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:2", "provider-a", 2, signed_retry_auth(td, effect["effect_id"], "bc-controller", 2, "operator:test", "test retry"))
         assert retried["state"] == "DISPATCHED"
         with pytest.raises(TransitionError):
-            retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:3", "provider-a", 3, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":3})
+            retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:3", "provider-a", 3, {"authorization_id": "RA-forged"})
 
 
 def test_observation_requires_current_attempt_and_valid_aios_evidence():
@@ -109,25 +114,14 @@ def test_observation_requires_current_attempt_and_valid_aios_evidence():
         _contract, _permit, effect = make_authorized(td)
         attempt_id = f"{effect['effect_id']}:attempt:1"
         dispatch(td, effect["effect_id"], "bc-controller", attempt_id, "provider-a")
-        evidence = EvidenceRecord(
-            evidence_id="EV-effect-1",
-            level="OBSERVED",
-            source_ref="runtime/provider-a",
-            claim="execution completed",
-            run_id="run-1",
-            provider="provider-a",
-        ).as_record()
-        observed = observe(
-            td,
-            effect["effect_id"],
-            "bc-controller",
-            "OBSERVED_SUCCESS",
-            {"attempt_id": attempt_id, "provider": "provider-a", "evidence": evidence},
-        )
+        obs = {"effect_id": effect["effect_id"], "attempt_id": attempt_id, "provider": "provider-a",
+               "provider_operation_id": "op-1", "observation": {"status": "done"}}
+        obs = sign_observation(effect, obs)
+        observed = observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS", obs)
         assert observed["state"] == "OBSERVED_SUCCESS"
+        assert observed["provider_observation"]["evidence"]["run_id"] == attempt_id
         with pytest.raises(TransitionError):
-            observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS",
-                    {"attempt_id": attempt_id, "provider": "provider-a", "evidence": evidence})
+            observe(td, effect["effect_id"], "bc-controller", "OBSERVED_SUCCESS", obs)
 
 
 def test_tampered_persisted_authority_blocks_future_transition():

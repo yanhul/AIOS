@@ -7,11 +7,14 @@
 import os
 import pytest
 
+from tests.retry_issuers import signed_retry_auth
+
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
-from core.effect_authority import create_effect, dispatch, retry_dispatch, transition
+from core.effect_authority import create_effect, dispatch, issue_retry_authorization, retry_dispatch, transition
 from core.policy_registry import persist_policy
+from tests.provider_keys import signed
 from core.runtime import ProviderReceipt, execute, execute_attempt, execute_retry_attempt
 
 
@@ -35,9 +38,9 @@ class GoodAdapter:
     name = "fake-provider"
 
     def execute(self, *, contract, effect, attempt_id):
-        return ProviderReceipt(provider=self.name, effect_id=effect["effect_id"], attempt_id=attempt_id,
+        return signed(ProviderReceipt(provider=self.name, effect_id=effect["effect_id"], attempt_id=attempt_id,
                                provider_operation_id="provider-op-1", outcome="OBSERVED_SUCCESS",
-                               observation={"status": "ok"})
+                               observation={"status": "ok"}), effect)
 
 
 class BrokenAdapter:
@@ -92,9 +95,9 @@ def test_mismatched_receipt_becomes_unknown(tmp_path):
     class BadReceipt:
         name = "fake-provider"
         def execute(self, *, contract, effect, attempt_id):
-            return ProviderReceipt(provider=self.name, effect_id=effect["effect_id"] + "-wrong",
+            return signed(ProviderReceipt(provider=self.name, effect_id=effect["effect_id"] + "-wrong",
                                    attempt_id=attempt_id, provider_operation_id="provider-op-2",
-                                   outcome="OBSERVED_SUCCESS", observation={"status": "ok"})
+                                   outcome="OBSERVED_SUCCESS", observation={"status": "ok"}), effect)
 
     result = execute(str(tmp_path), cid, pid, "op-1", "agent:test", BadReceipt())
     assert result["state"] == "UNKNOWN"
@@ -142,10 +145,9 @@ def test_retry_dispatch_requires_unknown_and_increments_attempt(tmp_path):
     first = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                      f"{effect['effect_id']}:attempt:1", "fake-provider")
     unknown_effect = transition(str(tmp_path), first["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
-    effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":effect["effect_id"], "attempt":2}
-    unknown_effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":unknown_effect["effect_id"], "attempt":2}
+    auth = signed_retry_auth(str(tmp_path), effect["effect_id"], "agent:test", 2, "operator:test", "test retry")
     retried = retry_dispatch(str(tmp_path), unknown_effect["effect_id"], "agent:test",
-                             f"{effect['effect_id']}:attempt:2", "fake-provider", 2, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":2})
+                             f"{effect['effect_id']}:attempt:2", "fake-provider", 2, auth)
     assert retried["effect_id"] == effect["effect_id"]
     assert retried["attempt"] == 2
     assert retried["state"] == "DISPATCHED"
@@ -168,7 +170,7 @@ def test_execute_retry_attempt_is_bounded_by_contract(tmp_path):
     effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
                       f"{effect['effect_id']}:attempt:1", "fake-provider")
     effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
-    effect["retry_authorization"] = {"mode":"EXPLICIT", "effect_id":effect["effect_id"], "attempt":2}
+    effect["retry_authorization"] = signed_retry_auth(str(tmp_path), effect["effect_id"], "agent:test", 2, "operator:test", "test retry")
     result = execute_retry_attempt(str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
                                    f"{effect['effect_id']}:attempt:2", 2)
     assert result["state"] == "OBSERVED_SUCCESS"

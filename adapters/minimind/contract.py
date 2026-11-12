@@ -20,6 +20,17 @@ def _require_artifact_bindings(evidence, artifacts, name):
         if evidence.get(field) != artifacts[field]:
             raise ValueError(f"evidence.{name}.{field} does not match declared artifact lineage")
 
+# Effect outcome derived from the workload terminal state (audit F-04). Only a
+# PROMOTE-eligible run is an observed success; REJECT / INCONCLUSIVE / BLOCKED
+# are authenticated non-success and never read as task success. Promotion
+# itself stays a separate AIOS decision.
+_OUTCOME_BY_TERMINAL_STATE = {"PROMOTE": "OBSERVED_SUCCESS", "REJECT": "OBSERVED_FAILURE",
+                              "INCONCLUSIVE": "OBSERVED_FAILURE", "BLOCKED": "OBSERVED_FAILURE"}
+
+def outcome_for_terminal_state(terminal_state: str) -> str:
+    if terminal_state not in _OUTCOME_BY_TERMINAL_STATE: raise ValueError("invalid terminal_state")
+    return _OUTCOME_BY_TERMINAL_STATE[terminal_state]
+
 def validate_receipt(receipt: dict) -> dict:
     """Fail closed unless lineage and every material evidence record are bound."""
     if not isinstance(receipt, dict): raise ValueError("receipt must be a dict")
@@ -41,4 +52,4 @@ def validate_receipt(receipt: dict) -> dict:
         if evaluation.get("holdout") is not True: raise ValueError("promotion requires locked holdout evidence")
     return receipt
 
-__all__ = ["MINIMIND_CAPABILITY", "validate_receipt"]
+__all__ = ["MINIMIND_CAPABILITY", "outcome_for_terminal_state", "validate_receipt"]

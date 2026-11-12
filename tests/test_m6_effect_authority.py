@@ -1,3 +1,4 @@
+from tests.provider_keys import sign_observation
 # AIOS-CONTRACT: durable external-effect retry authority
 # AIOS-REGRESSION: Prevent ambiguous UNKNOWN effects from retrying without governed authority
 # AIOS-OWNER: AIOS control-plane durable execution
@@ -6,12 +7,14 @@
 
 import pytest
 
+from tests.retry_issuers import signed_retry_auth
+
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.policy_registry import persist_policy
 
-from core.effect_authority import create_effect, dispatch, observe, retry_dispatch, unknown
+from core.effect_authority import create_effect, dispatch, issue_retry_authorization, observe, retry_dispatch, unknown
 from core.evidence import EvidenceRecord
 from core.mutation import TransitionError
 
@@ -32,22 +35,24 @@ def _effect(tmp_path):
     permit = persist_permit(str(tmp_path), contract, "agent-1")
     return create_effect(str(tmp_path), contract_identity(contract), "op-1", "agent-1", permit["permit_id"], "external_effect")
 
-def _evidence(provider="provider-1"):
+def _evidence(provider="provider-1", run_id="run-1"):
     return EvidenceRecord(
         evidence_id="EV-1",
         level="OBSERVED",
         source_ref="provider://receipt/1",
         claim="provider completed operation",
-        run_id="run-1",
+        run_id=run_id,
         provider=provider,
     ).as_record()
 
 
 def _observation(effect_id, provider="provider-1", attempt=1):
     return {
+        "effect_id": effect_id,
         "attempt_id": f"{effect_id}:attempt:{attempt}",
         "provider": provider,
-        "evidence": _evidence(provider),
+        "provider_operation_id": "op-1",
+        "observation": {"status": "ok"},
     }
 
 
@@ -56,8 +61,9 @@ def test_effect_transition_is_atomic_and_audited(tmp_path):
     assert effect["state"] == "PLANNED"
     dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:1", "provider-1")
     unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
-    retry_dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:2", "provider-1", 2, {"mode":"EXPLICIT","effect_id":effect["effect_id"],"attempt":2})
-    done = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", _observation(effect["effect_id"], attempt=2))
+    retry_dispatch(str(tmp_path), effect["effect_id"], "agent-1", f"{effect['effect_id']}:attempt:2", "provider-1", 2, signed_retry_auth(str(tmp_path), effect["effect_id"], "agent-1", 2, "operator:test", "test retry"))
+    done = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS",
+                   sign_observation(effect, _observation(effect["effect_id"], attempt=2)))
     assert done["state"] == "OBSERVED_SUCCESS"
     assert (tmp_path / "events" / ("effect-" + effect["effect_id"] + "-OBSERVED_SUCCESS.json")).exists()
 
@@ -96,7 +102,5 @@ def test_tampered_evidence_digest_is_rejected(tmp_path):
     evidence["claim"] = "tampered"
     with pytest.raises(ValueError):
         observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", {
-            "attempt_id": f"{effect['effect_id']}:attempt:1",
-            "provider": "provider-1",
-            "evidence": evidence,
+            **_observation(effect["effect_id"]), "evidence": evidence,
         })

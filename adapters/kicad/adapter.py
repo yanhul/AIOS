@@ -14,7 +14,10 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from adapters.bounded_process import OutputLimitExceeded, output_limit_error, run_bounded, timeout_error
+
 from core.runtime import ProviderReceipt
+from core.provider_authority import ProviderReceiptSigner, authenticate_receipt
 
 CAPABILITY = "kicad.eda"
 SUPPORTED_OPERATIONS = {"project_inspect", "erc_check", "drc_check"}
@@ -54,6 +57,8 @@ class KicadAdapter:
     # Deployment-bound workspace configuration is outside the immutable AIOS contract schema.
     workspace_root: str | None = None
     project_path: str | None = None
+    # Deployment-issued receipt signer; None -> receipts are non-authoritative.
+    signer: ProviderReceiptSigner | None = None
 
     def __post_init__(self) -> None:
         if self.name != CAPABILITY:
@@ -135,11 +140,11 @@ class KicadAdapter:
         if operation == "project_inspect":
             observation["project_suffix"] = project.suffix
             observation["project_size_bytes"] = project.stat().st_size
-            return ProviderReceipt(
+            return authenticate_receipt(ProviderReceipt(
                 provider=self.name, effect_id=effect_id, attempt_id=attempt_id,
                 provider_operation_id=provider_operation_id,
                 outcome="OBSERVED_SUCCESS", observation=observation,
-            )
+            ), effect, self.signer)
 
         cli = shutil.which(self.executable) if os.path.sep not in self.executable else self.executable
         if not cli or not Path(cli).is_file():
@@ -157,12 +162,16 @@ class KicadAdapter:
         command = self._command(operation, project, report)
         command[0] = cli
         try:
-            completed = subprocess.run(
-                command, capture_output=True, timeout=self.timeout_seconds,
-                check=False, shell=False, cwd=str(root),
+            completed = run_bounded(
+                command, timeout=self.timeout_seconds,
+                max_stdout_bytes=self.max_output_bytes,
+                max_stderr_bytes=self.max_output_bytes,
+                cwd=str(root),
             )
         except subprocess.TimeoutExpired as exc:
-            raise TimeoutError("KiCad CLI timed out; effect outcome requires reconciliation") from exc
+            raise timeout_error("KiCad CLI timed out; effect outcome requires reconciliation", exc) from exc
+        except OutputLimitExceeded as exc:
+            raise output_limit_error("KiCad CLI output exceeds configured limit", exc) from exc
 
         stdout = completed.stdout or b""
         stderr = completed.stderr or b""
@@ -170,6 +179,7 @@ class KicadAdapter:
             raise ValueError("KiCad CLI output exceeds configured limit")
 
         observation["process_exit_code"] = completed.returncode
+        observation["process_cleanup_status"] = (getattr(completed, "cleanup", None) or {}).get("status", "CLEANUP_UNKNOWN")
         observation["stdout_sha256"] = hashlib.sha256(stdout).hexdigest()
         observation["stderr_sha256"] = hashlib.sha256(stderr).hexdigest()
         observation["project_sha256_after"] = _sha256(project)
@@ -200,11 +210,11 @@ class KicadAdapter:
             if completed.returncode == 0 and report.is_file()
             else "OBSERVED_FAILURE"
         )
-        return ProviderReceipt(
+        return authenticate_receipt(ProviderReceipt(
             provider=self.name, effect_id=effect_id, attempt_id=attempt_id,
             provider_operation_id=provider_operation_id,
             outcome=outcome, observation=observation,
-        )
+        ), effect, self.signer)
 
 
 __all__ = ["KicadAdapter", "CAPABILITY", "SUPPORTED_OPERATIONS"]

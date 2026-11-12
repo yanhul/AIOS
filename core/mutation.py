@@ -186,8 +186,12 @@ def validate_entity(entity):
 # ---------------------------------------------------------------------------
 
 def canonical_json(obj):
-    """Deterministic JSON serialization (sorted keys, tight separators)."""
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    """Deterministic JSON serialization (sorted keys, tight separators).
+
+    Non-finite floats (NaN/Infinity) are not valid JSON and have no canonical
+    form; they are rejected (ValueError) so they can never be signed or hashed.
+    """
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
 
 
 def event_identity(event):
@@ -411,10 +415,18 @@ def _require_committed_event(aios_dir, entity):
         f"with or predates M1.5")
 
 
-def commit_batch(aios_dir, payloads):
-    """Single shared atomic commit engine under the mutation lock."""
+def commit_batch(aios_dir, payloads, precondition=None):
+    """Single shared atomic commit engine under the mutation lock.
+
+    ``precondition`` (optional callable taking ``aios_dir``) runs while the
+    lock is held and before anything is staged. Raising aborts the batch with
+    no writes, which gives callers compare-and-swap semantics for the full
+    read -> validate -> write sequence.
+    """
     with _MutationLock(aios_dir):
         state_layout.ensure_state_dirs(aios_dir)
+        if precondition is not None:
+            precondition(aios_dir)
         staging_root = os.path.join(aios_dir, ".staging")
         batch_id = uuid.uuid4().hex
         batch_dir = os.path.join(staging_root, f"batch-{batch_id}")

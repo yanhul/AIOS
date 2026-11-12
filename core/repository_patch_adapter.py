@@ -13,6 +13,7 @@ from typing import Mapping, Sequence
 from .agent_repair_worker import ProposedFile
 from .effect_authority import create_effect
 from .evidence import EvidenceRecord
+from .provider_authority import ProviderReceiptSigner, authenticate_receipt
 from .runtime import ProviderReceipt, execute
 
 
@@ -32,7 +33,9 @@ class RepositoryPatchAdapter:
     _DENIED_PREFIXES = (".git/", ".github/workflows/", ".aios/", "secrets/")
     _DENIED_FILES = frozenset({".env", ".env.local", ".env.production", "credentials.json"})
 
-    def __init__(self, repository_root: str | Path):
+    def __init__(self, repository_root: str | Path, *, signer: ProviderReceiptSigner | None = None):
+        # Deployment-issued receipt signer; None -> receipts are non-authoritative (UNKNOWN).
+        self.signer = signer
         self.root = Path(repository_root).resolve()
         if not self.root.is_dir():
             raise ValueError("repository root does not exist")
@@ -89,7 +92,7 @@ class RepositoryPatchAdapter:
             provider=self.name,
             artifact_ref=patch_digest,
         ).as_record()
-        return ProviderReceipt(
+        return authenticate_receipt(ProviderReceipt(
             provider=self.name,
             effect_id=effect_id,
             attempt_id=attempt_id,
@@ -101,7 +104,7 @@ class RepositoryPatchAdapter:
                 "base_sha": base_sha or None,
                 "evidence": evidence,
             },
-        )
+        ), effect, self.signer)
 
 
 def _sha256_text(content: str) -> str:
@@ -197,10 +200,18 @@ def apply_via_aios(
     base_sha: str,
     durable_runtime=None,
     allowed_dirty_paths: frozenset[str] = frozenset(),
+    signer: ProviderReceiptSigner | None = None,
+    provider_keyring=None,
 ) -> Mapping[str, object]:
-    """Create, dispatch and execute one repository mutation through AIOS."""
+    """Create, dispatch and execute one repository mutation through AIOS.
+
+    ``signer`` defaults to the deployment-issued ``repo_patch`` key from
+    ``AIOS_PROVIDER_SIGNING_KEYS``; without one the effect stays UNKNOWN.
+    """
     root = Path(repository_root).resolve()
-    adapter = RepositoryPatchAdapter(root)
+    if signer is None:
+        signer = ProviderReceiptSigner.from_env(RepositoryPatchAdapter.name)
+    adapter = RepositoryPatchAdapter(root, signer=signer)
     effect = create_effect(
         str(aios_dir), contract_id, logical_operation_id, actor, permit_id,
         "external_effect",
@@ -208,7 +219,7 @@ def apply_via_aios(
     adapter.register(effect["effect_id"], files, base_sha=base_sha, allowed_dirty_paths=allowed_dirty_paths)
     return execute(
         str(aios_dir), contract_id, permit_id, logical_operation_id,
-        actor, adapter, durable_runtime=durable_runtime,
+        actor, adapter, durable_runtime=durable_runtime, provider_keyring=provider_keyring,
     )
 
 
