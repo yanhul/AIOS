@@ -498,3 +498,15 @@ def test_import_tree_classifies_symlink_with_python_code_as_executable(tmp_path)
     target.chmod(0o777)
     (root / "trusted_pkg").symlink_to(target, target_is_directory=True)
     assert _tree_contains_importable_python_code(str(root))
+
+
+
+def test_import_tree_classifies_symlinked_python_code_by_import_name(tmp_path):
+    from adapters.minimind.isolation import _is_importable_python_code
+
+    data = tmp_path / "global.dat"
+    code = tmp_path / "provider.py"
+    data.write_text("resource", encoding="utf-8")
+    code.write_text("value = 1", encoding="utf-8")
+    assert not _is_importable_python_code(str(data))
+    assert _is_importable_python_code(str(code))
