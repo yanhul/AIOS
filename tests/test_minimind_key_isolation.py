@@ -175,6 +175,37 @@ def test_workload_loader_rejects_shared_key_or_directory(tmp_path):
         read_workload_key(str(key))
 
 
+@non_root_linux
+def test_workload_loader_rejects_group_writable_ancestor(tmp_path):
+    parent = tmp_path / "replaceable-parent"
+    parent.mkdir()
+    os.chmod(parent, 0o777)
+    keydir = parent / "keys"
+    keydir.mkdir(mode=0o700)
+    os.chmod(keydir, 0o700)
+    key = keydir / "ed25519.pem"
+    key.write_bytes(b"not-a-real-key")
+    os.chmod(key, 0o600)
+    with pytest.raises(IsolationError, match="ancestor.*writable"):
+        read_workload_key(str(key))
+
+
+@non_root_linux
+def test_workload_loader_rejects_symlinked_ancestor(tmp_path):
+    real_parent = tmp_path / "real-parent"
+    real_parent.mkdir()
+    keydir = real_parent / "keys"
+    keydir.mkdir(mode=0o700)
+    os.chmod(keydir, 0o700)
+    key = keydir / "ed25519.pem"
+    key.write_bytes(b"not-a-real-key")
+    os.chmod(key, 0o600)
+    alias = tmp_path / "alias"
+    alias.symlink_to(real_parent, target_is_directory=True)
+    with pytest.raises(IsolationError, match="safely open.*component"):
+        read_workload_key(str(alias / "keys" / "ed25519.pem"))
+
+
 # --- OS end-to-end: parent identity -----------------------------------------------------------
 
 @parent_only
