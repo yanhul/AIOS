@@ -27,8 +27,7 @@ def atomic_write_beneath(root: str | os.PathLike[str], raw: str, content: str) -
     if os.name != "posix" or not hasattr(os, "O_NOFOLLOW") or os.open not in os.supports_dir_fd:
         raise SecureWriteError("secure descriptor-relative writes are unsupported on this platform")
 
-    root_fd = os.open(Path(root).resolve(strict=True),
-                      os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | os.O_NOFOLLOW)
+    root_fd = _open_root_fd(root)
     parent_fd = root_fd
     opened = []
     try:
@@ -75,6 +74,8 @@ def atomic_write_beneath(root: str | os.PathLike[str], raw: str, content: str) -
 
 
 def _open_root_fd(root: str | os.PathLike[str]) -> int:
+    if os.name != "posix" or not hasattr(os, "O_NOFOLLOW") or os.open not in os.supports_dir_fd:
+        raise SecureWriteError("secure descriptor-relative operations unsupported on this platform")
     absolute = Path(os.path.abspath(os.fspath(root)))
     parent = absolute.parent.resolve(strict=True)
     parent_fd = os.open(parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
@@ -89,9 +90,9 @@ def _open_root_fd(root: str | os.PathLike[str]) -> int:
 
 
 def _parts(raw: str) -> tuple[str, ...]:
-    if not isinstance(raw, str) or not raw or "\\x00" in raw:
+    if not isinstance(raw, str) or not raw or "\x00" in raw:
         raise SecureWriteError("invalid relative path")
-    value = raw.replace("\\\\", "/")
+    value = raw.replace("\\", "/")
     p = PurePosixPath(value)
     if p.is_absolute() or any(x in ("", ".", "..") for x in value.split("/")):
         raise SecureWriteError("path must remain beneath root")
@@ -220,7 +221,10 @@ def secure_is_dir_beneath(root, relative: str) -> bool:
     parent_fd, opened = _walk_parent(root_fd, parts)
     try:
         try:
-            return stat.S_ISDIR(os.stat(parts[-1], dir_fd=parent_fd, follow_symlinks=False).st_mode)
+            mode = os.stat(parts[-1], dir_fd=parent_fd, follow_symlinks=False).st_mode
+            if stat.S_ISLNK(mode):
+                raise SecureWriteError("refusing symlink directory")
+            return stat.S_ISDIR(mode)
         except FileNotFoundError:
             return False
     finally:

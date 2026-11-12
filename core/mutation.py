@@ -327,8 +327,11 @@ def _recover_pending_unlocked(aios_dir):
             raise StateConflictError(f"unexpected staging entry: {entry!r}")
         batch_rel = f".staging/{entry}"
         journal_rel = f"{batch_rel}/{_JOURNAL_NAME}"
-        if secure_exists_beneath(aios_dir, journal_rel):
-            try:
+        try:
+            has_journal = secure_exists_beneath(aios_dir, journal_rel)
+        except (OSError, SecureWriteError) as exc:
+            raise StateConflictError(f"unsafe staging batch: {batch_rel}") from exc
+        if has_journal:
                 journal = json.loads(secure_read_bytes_beneath(aios_dir, journal_rel).decode("utf-8"))
             except (OSError, SecureWriteError, UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise StateConflictError(f"invalid or unsafe mutation journal: {journal_rel}") from exc
