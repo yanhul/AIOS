@@ -57,9 +57,16 @@ if [ -e "$BABEL_LOCALE_DATA" ]; then
     current=$(dirname -- "$current")
   done
 
-  # Secure nested data directories too; find does not follow symlinked roots,
-  # hence the explicit readlink -f above.
-  find "$BABEL_REAL" -type d -exec chown root:root {} + -exec chmod go-w {} +
+  # Secure nested data directories too. Do not chown anything: unexpected
+  # ownership is a failed fixture precondition, not something the test may conceal.
+  while IFS= read -r -d '' directory; do
+    owner=$(stat -c '%u' -- "$directory")
+    [ "$owner" = 0 ] || {
+      echo "FAIL: Babel data directory is not root-owned: $directory (uid=$owner)" >&2
+      exit 1
+    }
+    chmod go-w -- "$directory"
+  done < <(find "$BABEL_REAL" -type d -print0)
 fi
 rm -rf "$LOGS"; mkdir -p "$LOGS"; chmod 0777 "$LOGS"
 
