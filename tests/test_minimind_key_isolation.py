@@ -71,11 +71,11 @@ def test_process_capabilities_reads_inheritable_and_bounding_sets(monkeypatch):
     import io
 
     status = (
-        "CapInh:\\t0000000000000001\\n"
-        "CapPrm:\\t0000000000000000\\n"
-        "CapEff:\\t0000000000000000\\n"
-        "CapBnd:\\t00000000000000ff\\n"
-        "CapAmb:\\t0000000000000000\\n"
+        "CapInh:\t0000000000000001\n"
+        "CapPrm:\t0000000000000000\n"
+        "CapEff:\t0000000000000000\n"
+        "CapBnd:\t00000000000000ff\n"
+        "CapAmb:\t0000000000000000\n"
     )
     monkeypatch.setattr(builtins, "open", lambda *args, **kwargs: io.StringIO(status))
     caps = _process_capabilities()
