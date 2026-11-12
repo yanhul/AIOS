@@ -155,7 +155,7 @@ required = {
                "test_untrusted_receipt_chain_blocks_parent_side", "test_isolated_run_returns_only_signed_receipt_and_public_material",
                "test_parent_cannot_reach_key_via_workload_process_fds_env_or_argv", "test_receipt_command_cannot_read_private_key"],
     "agent": ["test_other_agent_cannot_read_key_or_start_workload", "test_other_agent_cannot_modify_executable_chain"],
-    "root": ["test_signer_entry_refuses_untrusted_receipt_chain", "test_receipt_command_changed_after_validation_is_blocked"],
+    "root": ["test_signer_startup_does_not_execute_pth_code", "test_signer_entry_refuses_untrusted_receipt_chain", "test_receipt_command_changed_after_validation_is_blocked"],
 }
 bad = False
 for role, names in required.items():
