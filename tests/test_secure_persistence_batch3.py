@@ -63,7 +63,7 @@ def test_reconcile_detects_corrupt_memory_wal(tmp_path):
     root.mkdir()
     memory = root / "memory"
     memory.mkdir()
-    (memory / "state.json.wal.jsonl").write_text('{"not":"a committed WAL record"}\\n')
+    (memory / "state.json.wal.jsonl").write_text('{"not":"a committed WAL record"}\n')
     result = rcn.reconcile(str(root))
     assert result["overall"] == "CORRUPTED"
     assert any(item["check"] == "M.memory_wal.integrity" for item in result["findings"])
