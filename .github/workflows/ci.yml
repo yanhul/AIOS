@@ -95,9 +95,9 @@ jobs:
           }
           trap cleanup EXIT
 
-          sudo unshare --pid --fork --mount-proc python - "$inner_pidfile" "$releasefile" "$marker" "$daemon_comm" <<'PY' &
+          sudo unshare --pid --fork --mount-proc python - "$inner_pidfile" "$releasefile" "$daemon_comm" <<'PY' &
           import os, sys, time
-          inner_pidfile, releasefile, marker, daemon_comm = sys.argv[1:]
+          inner_pidfile, releasefile, daemon_comm = sys.argv[1:]
           if os.getpid() != 1:
               raise SystemExit(f"namespace init expected PID 1, got {os.getpid()}")
           intermediate = os.fork()
@@ -138,9 +138,9 @@ jobs:
           PY
           ns_launcher=$!
 
-          python - "$inner_pidfile" "$host_pidfile" "$marker" "$daemon_comm" <<'PY'
+          python - "$inner_pidfile" "$host_pidfile" "$daemon_comm" <<'PY'
           import os, sys, time
-          inner_pidfile, host_pidfile, marker, daemon_comm = sys.argv[1:]
+          inner_pidfile, host_pidfile, daemon_comm = sys.argv[1:]
           deadline = time.monotonic() + 10
           while not os.path.exists(inner_pidfile) and time.monotonic() < deadline:
               time.sleep(0.01)
