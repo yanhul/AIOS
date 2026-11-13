@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import os
+import posixpath
+import ntpath
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -122,12 +124,18 @@ def _safe_repo_path(root: Path, raw: str) -> Path:
     if not isinstance(raw, str) or not raw.strip() or "\x00" in raw:
         raise ValueError("invalid repository patch path")
     path = raw.replace("\\", "/")
-    p = Path(path)
-    if p.is_absolute() or path.startswith("/") or ".." in p.parts:
+    drive, _ = ntpath.splitdrive(path)
+    if drive or path.startswith("/"):
         raise ValueError("repository patch path escapes root")
-    if p.name in RepositoryPatchAdapter._DENIED_FILES or any(
-        path == prefix[:-1] or path.startswith(prefix) for prefix in RepositoryPatchAdapter._DENIED_PREFIXES
-    ):
+    path = posixpath.normpath(path)
+    if path in ("", ".") or path == ".." or path.startswith("../"):
+        raise ValueError("repository patch path escapes root")
+    p = Path(path)
+    parts = tuple(part.casefold() for part in p.parts)
+    protected_dirs = {".git", ".github", ".aios", "tests", "test", "policies", "gates", "publishers"}
+    protected_files = {".env", ".env.local", ".env.production", "credentials.json", "pytest.ini", "tox.ini", "setup.cfg", "conftest.py", ".coveragerc"}
+    protected_core = "core" in parts and any(part.startswith(("policy", "gate", "publisher")) for part in parts)
+    if any(part in protected_dirs for part in parts) or p.name.casefold() in protected_files or protected_core:
         raise ValueError("repository patch path is protected")
     target = (root / p).resolve()
     try:
