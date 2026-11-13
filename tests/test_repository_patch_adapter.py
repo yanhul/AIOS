@@ -210,3 +210,21 @@ def test_worker_iterative_patches_remain_inside_aios_boundary(tmp_path):
     assert first["state"] == "OBSERVED_SUCCESS"
     assert second["state"] == "OBSERVED_SUCCESS"
     assert (repo / "module.py").read_text(encoding="utf-8") == "VALUE = 3\n"
+
+
+@pytest.mark.parametrize("path", [
+    "nested/.git/config",
+    "nested/.github/workflows/ci.yml",
+    "nested/.aios/authority.json",
+    "nested/tests/test_security.py",
+    "nested/pytest.ini",
+    "nested/core/policy_registry.py",
+    "nested/core/gatekeeper.py",
+    "nested/core/publisher.py",
+    "nested/../.github/workflows/ci.yml",
+])
+def test_adapter_rejects_protected_paths_at_any_depth(tmp_path, path):
+    base = init_repo(tmp_path)
+    adapter = RepositoryPatchAdapter(tmp_path)
+    with pytest.raises(ValueError, match="protected|escapes"):
+        adapter.register("EF-protected", (ProposedFile(path, "tampered"),), base_sha=base)
