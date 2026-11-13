@@ -112,8 +112,12 @@ jobs:
               for fd in (0, 1, 2):
                   try: os.close(fd)
                   except OSError: pass
-              with open(inner_pidfile, "w") as stream:
+              temporary_pidfile = inner_pidfile + ".tmp"
+              with open(temporary_pidfile, "w") as stream:
                   stream.write(str(os.getpid()))
+                  stream.flush()
+                  os.fsync(stream.fileno())
+              os.replace(temporary_pidfile, inner_pidfile)
               # Keep the detached daemon alive until the host has mapped its PID.
               while not os.path.exists(releasefile):
                   time.sleep(0.01)
