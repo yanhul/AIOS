@@ -108,8 +108,10 @@ jobs:
                   print("escaped_daemon_alive_after_cleanup=" + str(alive))
                   if record.get("status") == CLEANUP_CONFIRMED and alive:
                       print("F01_REPRODUCED=YES")
+                      raise SystemExit("F-01 regression: cleanup claimed CONFIRMED while escaped daemon remained alive")
                   else:
                       print("F01_REPRODUCED=NO_OR_INCONCLUSIVE")
+                      raise SystemExit("F-01 probe did not reproduce; inspect evidence before treating as resolved")
               finally:
                   if pidfile.exists():
                       try: os.kill(int(pidfile.read_text()), signal.SIGKILL)
