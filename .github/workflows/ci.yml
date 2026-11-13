@@ -83,11 +83,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          pidfile="$(mktemp)"
-          trap 'rm -f "$pidfile"' EXIT
-          sudo unshare --pid --fork --mount-proc python - "$pidfile" <<'PY'
+          inner_pidfile="$(mktemp)"
+          host_pidfile="$(mktemp)"
+          releasefile="$(mktemp)"
+          marker="aios-f01-ns-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          cleanup() {
+            touch "$releasefile" 2>/dev/null || true
+            if [ -n "${ns_launcher:-}" ]; then wait "$ns_launcher" 2>/dev/null || true; fi
+            rm -f "$inner_pidfile" "$host_pidfile" "$releasefile"
+          }
+          trap cleanup EXIT
+
+          sudo unshare --pid --fork --mount-proc python - "$inner_pidfile" "$releasefile" "$marker" <<'PY' &
           import os, sys, time
-          pidfile = sys.argv[1]
+          inner_pidfile, releasefile, marker = sys.argv[1:]
           if os.getpid() != 1:
               raise SystemExit(f"namespace init expected PID 1, got {os.getpid()}")
           intermediate = os.fork()
@@ -99,29 +108,63 @@ jobs:
               for fd in (0, 1, 2):
                   try: os.close(fd)
                   except OSError: pass
-              host_pid = None
-              with open("/proc/self/status", encoding="ascii") as status:
-                  for line in status:
-                      if line.startswith("NSpid:"):
-                          host_pid = int(line.split()[1])
-                          break
-              if host_pid is None:
-                  os._exit(91)
-              with open(pidfile, "w") as stream:
-                  stream.write(str(host_pid))
+              with open(inner_pidfile, "w") as stream:
+                  stream.write(str(os.getpid()))
+              # Keep the detached daemon alive until the host has mapped its PID.
+              while not os.path.exists(releasefile):
+                  time.sleep(0.01)
               time.sleep(60)
               os._exit(0)
           os.waitpid(intermediate, 0)
-          deadline = time.monotonic() + 5
-          while not os.path.exists(pidfile) and time.monotonic() < deadline:
+          deadline = time.monotonic() + 10
+          while not os.path.exists(inner_pidfile) and time.monotonic() < deadline:
               time.sleep(0.01)
-          if not os.path.exists(pidfile):
-              raise SystemExit("namespace descendant pidfile missing")
-          print("PID_NAMESPACE_INIT=1")
-          print("DETACHED_DESCENDANT_CREATED=YES")
-          # Exiting PID 1 must make the kernel terminate every process in this namespace.
+          if not os.path.exists(inner_pidfile):
+              raise SystemExit("namespace descendant inner PID file missing")
+          print("PID_NAMESPACE_INIT=1", flush=True)
+          print("DETACHED_DESCENDANT_CREATED=YES", flush=True)
+          # Hold PID 1 open until the host maps the exact process.
+          while not os.path.exists(releasefile):
+              time.sleep(0.01)
+          # PID 1 exits; the kernel must terminate all remaining namespace tasks.
           PY
-          host_pid="$(cat "$pidfile")"
+          ns_launcher=$!
+
+          python - "$inner_pidfile" "$host_pidfile" "$marker" <<'PY'
+          import os, sys, time
+          inner_pidfile, host_pidfile, marker = sys.argv[1:]
+          deadline = time.monotonic() + 10
+          while not os.path.exists(inner_pidfile) and time.monotonic() < deadline:
+              time.sleep(0.01)
+          if not os.path.exists(inner_pidfile):
+              raise SystemExit("namespace descendant inner PID file missing")
+          inner_pid = int(open(inner_pidfile).read().strip())
+          while time.monotonic() < deadline:
+              for entry in os.scandir("/proc"):
+                  if not entry.name.isdigit():
+                      continue
+                  pid = int(entry.name)
+                  try:
+                      status = open(f"/proc/{pid}/status", encoding="ascii").read()
+                      nspid_line = next(line for line in status.splitlines() if line.startswith("NSpid:"))
+                      nspids = [int(value) for value in nspid_line.split()[1:]]
+                      cmdline = open(f"/proc/{pid}/cmdline", "rb").read()
+                  except (OSError, StopIteration, ValueError):
+                      continue
+                  if len(nspids) > 1 and nspids[-1] == inner_pid and marker.encode() in cmdline:
+                      with open(host_pidfile, "w") as stream:
+                          stream.write(str(pid))
+                      print(f"NAMESPACE_INNER_PID={inner_pid}")
+                      print(f"NAMESPACE_HOST_PID={pid}")
+                      raise SystemExit(0)
+              time.sleep(0.02)
+          raise SystemExit("could not map namespace PID to host PID via host /proc NSpid")
+          PY
+
+          host_pid="$(cat "$host_pidfile")"
+          touch "$releasefile"
+          wait "$ns_launcher"
+          ns_launcher=""
           for _ in $(seq 1 100); do
             if [ ! -r "/proc/$host_pid/stat" ]; then
               echo "NAMESPACE_DESCENDANT_TERMINATED=YES"
