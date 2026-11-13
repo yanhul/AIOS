@@ -44,6 +44,9 @@ from adapters.minimind.isolation import (
 
 SUDO = "/usr/bin/sudo"
 _ENV = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
+MAX_REQUEST_BYTES = 128 * 1024
+MAX_RECEIPT_BYTES = 256 * 1024
+MAX_RECEIPT_STDERR_BYTES = 64 * 1024
 
 
 def verify_signer_code() -> int:
@@ -76,16 +79,24 @@ def run_receipt_command(config: dict, raw: bytes, timeout: float) -> bytes:
         raise IsolationError("signer has no usable sudo rule for the receipt runner")
     check_sudo_rules(listing.stdout.decode("utf-8", "replace"), workload_user=config["runner_user"],
                      launcher=runner["receipt_launcher"])
-    done = subprocess.run([SUDO, "-n", "-u", config["runner_user"], "--", runner["receipt_launcher"]],
-                          input=raw, capture_output=True, timeout=timeout, check=False, close_fds=True,
-                          env=dict(_ENV))
+    # The receipt runner is workload code and is not trusted with the signer's key.
+    # Enforce both stream caps while it is running; checking len(stdout) after
+    # subprocess.run(capture_output=True) would already have allowed unbounded
+    # memory growth inside this key-owning signer process.
+    from adapters.bounded_process import run_bounded
+
+    done = run_bounded(
+        [SUDO, "-n", "-u", config["runner_user"], "--", runner["receipt_launcher"]],
+        input=raw,
+        timeout=timeout,
+        max_stdout_bytes=MAX_RECEIPT_BYTES,
+        max_stderr_bytes=MAX_RECEIPT_STDERR_BYTES,
+        cwd="/",
+        env=dict(_ENV),
+    )
     if done.returncode != 0:
         raise RuntimeError(f"receipt command exited {done.returncode}")
     return done.stdout
-
-
-MAX_REQUEST_BYTES = 128 * 1024
-MAX_RECEIPT_BYTES = 256 * 1024
 
 
 def _fail(message: str) -> int:
