@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import hashlib
 import os
+import posixpath
+import ntpath
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -79,6 +81,7 @@ class AgentRepairWorker:
         self.actor = actor
         self.durable_runtime = durable_runtime
         self._owned_dirty_paths: set[str] = set()
+        self._mutation_unknown = False
         if not self.root.is_dir():
             raise RepairWorkerError(f"repository root does not exist: {self.root}")
         if timeout_seconds <= 0:
@@ -94,14 +97,18 @@ class AgentRepairWorker:
         if "\x00" in raw:
             raise RepairWorkerError("patch path contains NUL")
         path = raw.replace("\\", "/")
+        drive, _ = ntpath.splitdrive(path)
+        if drive or path.startswith("/"):
+            raise RepairWorkerError(f"patch path escapes repository: {raw!r}")
+        path = posixpath.normpath(path)
+        if path in ("", ".") or path == ".." or path.startswith("../"):
+            raise RepairWorkerError(f"patch path escapes repository: {raw!r}")
         normalized = Path(path)
-        if path.startswith("/") or path.startswith("../") or "/../" in path:
-            raise RepairWorkerError(f"patch path escapes repository: {raw!r}")
-        if normalized.is_absolute() or ".." in normalized.parts:
-            raise RepairWorkerError(f"patch path escapes repository: {raw!r}")
-        if normalized.name in self._DENIED_FILES or any(
-            path == prefix.rstrip("/") or path.startswith(prefix) for prefix in self._DENIED_PREFIXES
-        ):
+        parts = tuple(part.casefold() for part in normalized.parts)
+        protected_dirs = {".git", ".github", ".aios", "tests", "test", "policies", "gates", "publishers"}
+        protected_files = {".env", ".env.local", ".env.production", "credentials.json", "pytest.ini", "tox.ini", "setup.cfg", "conftest.py", ".coveragerc"}
+        protected_core = "core" in parts and any(part.startswith(("policy", "gate", "publisher")) for part in parts)
+        if any(part in protected_dirs for part in parts) or normalized.name.casefold() in protected_files or protected_core:
             raise RepairWorkerError(f"patch path is protected: {raw!r}")
         target = (self.root / normalized).resolve()
         try:
@@ -217,9 +224,14 @@ class AgentRepairWorker:
                 f"AIOS mutation failed: {type(exc).__name__}: {exc}"
             ) from exc
         self._owned_dirty_paths.update(paths)
+        if isinstance(result, Mapping) and result.get("state") == "UNKNOWN":
+            self._mutation_unknown = True
+            raise RepairWorkerError("mutation outcome is UNKNOWN; testing/publishing is forbidden pending reconciliation")
         return result
 
     def test(self, commands: Sequence[Sequence[str]] | None = None) -> WorkerEvidence:
+        if self._mutation_unknown:
+            raise RepairWorkerError("mutation outcome is UNKNOWN; testing/publishing is forbidden pending reconciliation")
         selected = tuple(tuple(c) for c in (commands or self.allowed_test_commands))
         if not selected:
             raise RepairWorkerError("no trusted test command configured")
