@@ -62,6 +62,11 @@ jobs:
               echo "PRIVILEGED_PID_NAMESPACE=AVAILABLE"
             else
               echo "PRIVILEGED_PID_NAMESPACE=BLOCKED"
+            if sudo unshare --pid --fork -- true; then
+              echo "SUDO_PID_NAMESPACE=AVAILABLE"
+            else
+              echo "SUDO_PID_NAMESPACE=BLOCKED"
+            fi
             fi
           else
             echo "UNSHARE_BINARY=MISSING"
