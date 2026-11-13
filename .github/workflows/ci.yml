@@ -87,6 +87,7 @@ jobs:
           host_pidfile="$(mktemp)"
           releasefile="$(mktemp)"
           marker="aios-f01-ns-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          daemon_comm="aios-f01d"
           cleanup() {
             touch "$releasefile" 2>/dev/null || true
             if [ -n "${ns_launcher:-}" ]; then wait "$ns_launcher" 2>/dev/null || true; fi
@@ -94,9 +95,9 @@ jobs:
           }
           trap cleanup EXIT
 
-          sudo unshare --pid --fork --mount-proc python - "$inner_pidfile" "$releasefile" "$marker" <<'PY' &
+          sudo unshare --pid --fork --mount-proc python - "$inner_pidfile" "$releasefile" "$marker" "$daemon_comm" <<'PY' &
           import os, sys, time
-          inner_pidfile, releasefile, marker = sys.argv[1:]
+          inner_pidfile, releasefile, marker, daemon_comm = sys.argv[1:]
           if os.getpid() != 1:
               raise SystemExit(f"namespace init expected PID 1, got {os.getpid()}")
           intermediate = os.fork()
@@ -105,6 +106,9 @@ jobs:
               daemon = os.fork()
               if daemon > 0:
                   os._exit(0)
+              import ctypes
+              if ctypes.CDLL(None).prctl(15, daemon_comm.encode(), 0, 0, 0) != 0:
+                  raise OSError("prctl(PR_SET_NAME) failed")
               for fd in (0, 1, 2):
                   try: os.close(fd)
                   except OSError: pass
@@ -130,9 +134,9 @@ jobs:
           PY
           ns_launcher=$!
 
-          python - "$inner_pidfile" "$host_pidfile" "$marker" <<'PY'
+          python - "$inner_pidfile" "$host_pidfile" "$marker" "$daemon_comm" <<'PY'
           import os, sys, time
-          inner_pidfile, host_pidfile, marker = sys.argv[1:]
+          inner_pidfile, host_pidfile, marker, daemon_comm = sys.argv[1:]
           deadline = time.monotonic() + 10
           while not os.path.exists(inner_pidfile) and time.monotonic() < deadline:
               time.sleep(0.01)
@@ -145,20 +149,18 @@ jobs:
                       continue
                   pid = int(entry.name)
                   try:
-                      status = open(f"/proc/{pid}/status", encoding="ascii").read()
-                      nspid_line = next(line for line in status.splitlines() if line.startswith("NSpid:"))
-                      nspids = [int(value) for value in nspid_line.split()[1:]]
-                      cmdline = open(f"/proc/{pid}/cmdline", "rb").read()
-                  except (OSError, StopIteration, ValueError):
+                      comm = open(f"/proc/{pid}/comm", encoding="ascii").read().strip()
+                  except OSError:
                       continue
-                  if len(nspids) > 1 and nspids[-1] == inner_pid and marker.encode() in cmdline:
+                  # Match a unique process name; host procfs may hide ancestor NSpid levels.
+                  if comm == daemon_comm:
                       with open(host_pidfile, "w") as stream:
                           stream.write(str(pid))
                       print(f"NAMESPACE_INNER_PID={inner_pid}")
                       print(f"NAMESPACE_HOST_PID={pid}")
                       raise SystemExit(0)
               time.sleep(0.02)
-          raise SystemExit("could not map namespace PID to host PID via host /proc NSpid")
+          raise SystemExit("could not find uniquely named namespace daemon in host /proc")
           PY
 
           host_pid="$(cat "$host_pidfile")"
