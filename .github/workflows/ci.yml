@@ -51,6 +51,21 @@ jobs:
               echo "$f: ABSENT"
             fi
           done
+          echo "=== PID namespace capability probes ==="
+          if command -v unshare >/dev/null 2>&1; then
+            if unshare --user --map-root-user --pid --fork -- true; then
+              echo "USER_PID_NAMESPACE=AVAILABLE"
+            else
+              echo "USER_PID_NAMESPACE=BLOCKED"
+            fi
+            if unshare --pid --fork -- true; then
+              echo "PRIVILEGED_PID_NAMESPACE=AVAILABLE"
+            else
+              echo "PRIVILEGED_PID_NAMESPACE=BLOCKED"
+            fi
+          else
+            echo "UNSHARE_BINARY=MISSING"
+          fi
           probe="/sys/fs/cgroup/aios-f01-probe-$GITHUB_RUN_ID"
           if mkdir "$probe" 2>/tmp/aios-cgroup-mkdir.err; then
             echo "DELEGATED_CHILD_CGROUP_CREATE=YES"
