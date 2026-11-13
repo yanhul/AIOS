@@ -83,15 +83,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          inner_pidfile="$(mktemp)"
-          host_pidfile="$(mktemp)"
-          releasefile="$(mktemp)"
-          marker="aios-f01-ns-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          tmpdir="$(mktemp -d)"
+          inner_pidfile="$tmpdir/inner.pid"
+          host_pidfile="$tmpdir/host.pid"
+          releasefile="$tmpdir/release"
           daemon_comm="aios-f01d"
           cleanup() {
             touch "$releasefile" 2>/dev/null || true
             if [ -n "${ns_launcher:-}" ]; then wait "$ns_launcher" 2>/dev/null || true; fi
-            rm -f "$inner_pidfile" "$host_pidfile" "$releasefile"
+            rm -rf "$tmpdir"
           }
           trap cleanup EXIT
 
