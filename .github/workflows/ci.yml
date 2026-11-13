@@ -22,6 +22,99 @@ concurrency:
 # Stable check names for branch protection: "full-suite" and "minimind-key-isolation".
 # No path filters: every PR update runs the full suite (security-relevant changes cannot be skipped).
 jobs:
+  posix-cgroup-f01-probe:
+    name: posix-cgroup-f01-probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Report cgroup v2 delegation and attempt a disposable child cgroup
+        shell: bash
+        run: |
+          set -eu
+          echo "=== cgroup filesystem ==="
+          stat -fc 'filesystem=%T' /sys/fs/cgroup || true
+          echo "=== current cgroup ==="
+          cat /proc/self/cgroup
+          echo "=== cgroup2 mounts ==="
+          grep ' - cgroup2 ' /proc/self/mountinfo || true
+          echo "=== cgroup root controls ==="
+          ls -ld /sys/fs/cgroup
+          for f in cgroup.controllers cgroup.subtree_control cgroup.events cgroup.procs cgroup.kill; do
+            if [ -e "/sys/fs/cgroup/$f" ]; then
+              printf '%s: ' "$f"
+              if [ -r "/sys/fs/cgroup/$f" ]; then cat "/sys/fs/cgroup/$f" 2>/dev/null || true; else echo UNREADABLE; fi
+            else
+              echo "$f: ABSENT"
+            fi
+          done
+          probe="/sys/fs/cgroup/aios-f01-probe-$GITHUB_RUN_ID"
+          if mkdir "$probe" 2>/tmp/aios-cgroup-mkdir.err; then
+            echo "DELEGATED_CHILD_CGROUP_CREATE=YES"
+            rmdir "$probe"
+          else
+            echo "DELEGATED_CHILD_CGROUP_CREATE=NO"
+            cat /tmp/aios-cgroup-mkdir.err
+          fi
+      - name: Reproduce escaped setsid-fork daemon against current cleanup
+        run: |
+          python - <<'PY'
+          import os, signal, subprocess, sys, tempfile, time
+          from pathlib import Path
+          from adapters.bounded_process import _posix_cleanup, CLEANUP_CONFIRMED
+
+          with tempfile.TemporaryDirectory() as td:
+              pidfile = Path(td) / "daemon.pid"
+              code = r"""
+          import os, sys, time
+          pidfile = sys.argv[1]
+          intermediate = os.fork()
+          if intermediate == 0:
+              os.setsid()
+              daemon = os.fork()
+              if daemon > 0:
+                  os._exit(0)
+              for fd in (0, 1, 2):
+                  try: os.close(fd)
+                  except OSError: pass
+              with open(pidfile, "w") as f:
+                  f.write(str(os.getpid()))
+              time.sleep(90)
+              os._exit(0)
+          os.waitpid(intermediate, 0)
+          """
+              proc = subprocess.Popen([sys.executable, "-c", code, str(pidfile)],
+                                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                       stderr=subprocess.DEVNULL, start_new_session=True)
+              try:
+                  proc.wait(timeout=5)
+                  deadline = time.monotonic() + 5
+                  while not pidfile.exists() and time.monotonic() < deadline:
+                      time.sleep(0.02)
+                  if not pidfile.exists():
+                      raise SystemExit("REPRODUCTION_INCONCLUSIVE: daemon pidfile missing")
+                  daemon_pid = int(pidfile.read_text())
+                  record = _posix_cleanup(proc, 0.5)
+                  try:
+                      os.kill(daemon_pid, 0)
+                      alive = True
+                  except ProcessLookupError:
+                      alive = False
+                  print("cleanup_status=" + str(record.get("status")))
+                  print("escaped_daemon_pid=" + str(daemon_pid))
+                  print("escaped_daemon_alive_after_cleanup=" + str(alive))
+                  if record.get("status") == CLEANUP_CONFIRMED and alive:
+                      print("F01_REPRODUCED=YES")
+                  else:
+                      print("F01_REPRODUCED=NO_OR_INCONCLUSIVE")
+              finally:
+                  if pidfile.exists():
+                      try: os.kill(int(pidfile.read_text()), signal.SIGKILL)
+                      except (OSError, ValueError): pass
+          PY
   full-suite:
     name: full-suite
     runs-on: ubuntu-latest
