@@ -18,9 +18,9 @@ def fixture_bundle(tmp_path):
     state = tmp_path / "state"
     state.mkdir()
     registry = CapabilityRegistry()
-    registry.register(Capability("repo_patch", "1", "issuer", "external_effect", status="ACTIVE"))
-    registry.persist(state, actor="issuer")
-    policy = {"policy_type": "GOVERNING_POLICY", "name": "fixture", "allowed_effects": ["external_effect"]}
+    registry.register(Capability("repo_patch", "1", "yanhul/aios-authority-store", "external_effect", permissions=("repository_patch",), environments=("github-actions",), verification_methods=("independent_full_suite",), evidence_requirements=("OBSERVED_SUCCESS",), status="ACTIVE"))
+    registry.persist(state, actor="yanhul/aios-authority-store")
+    policy = {"policy_type": "GOVERNING_POLICY", "name": "fixture", "issuer": "yanhul/aios-authority-store", "repository": "yanhul/AIOS", "source_run_id": 123, "base_sha": "a" * 40, "allowed_effects": ["external_effect"], "allowed_capabilities": ["repo_patch@1"], "denied_paths": [".github/workflows/", ".aios/", "secrets/"], "max_attempts": 3, "require_observed_success": True}
     digest = persist_policy(state, policy)
     contract = {
         "contract_type": CONTRACT_TYPE, "task_id": "ci-repair-123",
