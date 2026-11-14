@@ -222,9 +222,9 @@ class AgentRepairWorker:
     ) -> WorkerEvidence:
         if self._mutation_unknown:
             raise RepairWorkerError("mutation outcome is UNKNOWN; further mutation/testing/publishing is forbidden pending reconciliation")
-        self._require_no_durable_unknown()
         owned = frozenset(set(allowed_dirty_paths) | self._owned_dirty_paths)
         self._require_base(base_sha, allowed_dirty_paths=owned)
+        self._require_no_durable_unknown()
         if not files:
             raise RepairWorkerError("repair proposal contains no files")
         proposed = tuple(files)
@@ -259,11 +259,11 @@ class AgentRepairWorker:
         """Perform one repository mutation through the AIOS runtime boundary."""
         if self._mutation_unknown:
             raise RepairWorkerError("mutation outcome is UNKNOWN; further mutation/testing/publishing is forbidden pending reconciliation")
-        self._require_no_durable_unknown()
         if not all((self.aios_dir, self.contract_id, self.permit_id, self.actor)):
             raise RepairWorkerError("AIOS mutation context is not configured")
         owned = frozenset(set(allowed_dirty_paths) | self._owned_dirty_paths)
         self._require_base(base_sha, allowed_dirty_paths=owned)
+        self._require_no_durable_unknown()
         if not files:
             raise RepairWorkerError("repair proposal contains no files")
         proposed = tuple(files)
