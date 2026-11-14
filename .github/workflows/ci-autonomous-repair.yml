@@ -236,6 +236,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           TRY_REPAIR_WORKER_URL: ${{ vars.TRY_REPAIR_PROVIDER_URL || secrets.TRY_REPAIR_PROVIDER_URL }}
           TRY_PROVIDER_TOKEN: ${{ secrets.TRY_REPAIR_PROVIDER_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           export AIOS_REPAIR_RUN_ID="$RUN_ID"
           PYTHONPATH=. python scripts/ci_repair_propose.py
@@ -343,6 +344,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           TRY_REPAIR_WORKER_URL: ${{ vars.TRY_REPAIR_PROVIDER_URL || secrets.TRY_REPAIR_PROVIDER_URL }}
           TRY_PROVIDER_TOKEN: ${{ secrets.TRY_REPAIR_PROVIDER_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           export AIOS_REPAIR_RUN_ID="$RUN_ID"
           PYTHONPATH=. python scripts/ci_repair_propose.py
