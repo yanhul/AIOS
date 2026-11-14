@@ -253,3 +253,10 @@ def test_adapter_rejects_symlinked_final_and_parent_components(tmp_path):
     for path in ("alias.py", "alias_dir/new_module.py"):
         with pytest.raises(ValueError, match="symlink"):
             adapter.register("EF-symlink-" + path.replace("/", "-"), (ProposedFile(path, "tampered"),), base_sha=base)
+
+@pytest.mark.parametrize("path", ["tests./test_security.py", "nested/CON.txt", "nested/LPT1.log"])
+def test_adapter_rejects_windows_normalization_aliases(tmp_path, path):
+    base = init_repo(tmp_path)
+    adapter = RepositoryPatchAdapter(tmp_path)
+    with pytest.raises(ValueError, match="protected"):
+        adapter.register("EF-windows-alias", (ProposedFile(path, "tampered"),), base_sha=base)
