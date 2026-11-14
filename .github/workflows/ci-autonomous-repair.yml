@@ -15,6 +15,15 @@ on:
         description: "Exact failed CI head branch"
         required: true
         type: string
+  workflow_run:
+    workflows: ["CI", "G4A CI"]
+    types: [completed]
+    branches: [main, "aios/autorepair/**"]
+  push:
+    branches: ["aios/autorepair/g4a-live"]
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches: [main]
 
 permissions: {}
 
