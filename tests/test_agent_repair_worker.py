@@ -254,3 +254,61 @@ def test_worker_rejects_windows_normalization_aliases(tmp_path, path):
     worker = AgentRepairWorker(tmp_path, FakeAuthority())
     with pytest.raises(RepairWorkerError, match="protected"):
         worker.apply(base_sha=base, files=(ProposedFile(path, "tampered"),))
+
+
+def test_new_worker_instance_blocks_on_durable_unknown_effect(tmp_path):
+    from core.authority import persist_contract, persist_permit
+    from core.capabilities import Capability, CapabilityRegistry
+    from core.contract import CONTRACT_TYPE
+    from core.effect_authority import create_effect, dispatch, unknown
+    from core.policy_registry import persist_policy
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    base = init_repo(repo)
+    aios = tmp_path / "aios"
+    aios.mkdir()
+    registry = CapabilityRegistry()
+    registry.register(Capability(
+        "repo_patch", "1", "AIOS", "external_effect",
+        inputs=("patch",), outputs=("observation",), status="ACTIVE",
+    ))
+    registry.persist(aios, actor="test-suite")
+    policy_digest = persist_policy(aios, {
+        "policy_type": "GOVERNING_POLICY", "task": "repair",
+        "allowed_effects": ["external_effect"],
+    })
+    contract = {
+        "contract_type": CONTRACT_TYPE, "task_id": "durable-unknown-recovery",
+        "scope": "repository", "actor": "repair-worker",
+        "capabilities": ["repo_patch@1"], "input_digest": "sha256:test",
+        "allowed_effects": ["external_effect"], "evidence_required": ["OBSERVED"],
+        "max_attempts": 2,
+        "terminal_states": ["OBSERVED_SUCCESS", "OBSERVED_FAILURE"],
+        "policy_digest": policy_digest,
+    }
+    stored = persist_contract(aios, contract)
+    permit = persist_permit(aios, stored, issuer="test-authority")
+    effect = create_effect(
+        aios, stored["contract_id"], "lost-receipt-after-dispatch",
+        "repair-worker", permit["permit_id"], "external_effect",
+    )
+    dispatched = dispatch(
+        aios, effect["effect_id"], "repair-worker",
+        f"{effect['effect_id']}:attempt:1", "repo_patch",
+    )
+    unknown(aios, dispatched["effect_id"], "repair-worker", "simulated lost receipt")
+
+    # A fresh process/worker has no in-memory _mutation_unknown flag.
+    restarted = AgentRepairWorker(
+        repo, FakeAuthority(),
+        allowed_test_commands=(("python", "-c", "assert True"),),
+        aios_dir=str(aios), contract_id=stored["contract_id"],
+        permit_id=permit["permit_id"], actor="repair-worker",
+    )
+    with pytest.raises(RepairWorkerError, match="durable mutation outcome is unresolved"):
+        restarted.test()
+    with pytest.raises(RepairWorkerError, match="durable mutation outcome is unresolved"):
+        restarted.apply(
+            base_sha=base, files=(ProposedFile("module.py", "VALUE = 9\\n"),)
+        )
