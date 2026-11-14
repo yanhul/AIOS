@@ -6,10 +6,11 @@ import os
 import posixpath
 import ntpath
 import subprocess
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Protocol, Sequence
+
+from .safe_repo_write import atomic_write_beneath
 
 
 class RepairWorkerError(RuntimeError):
@@ -86,6 +87,28 @@ class AgentRepairWorker:
             raise RepairWorkerError(f"repository root does not exist: {self.root}")
         if timeout_seconds <= 0:
             raise RepairWorkerError("timeout_seconds must be positive")
+
+    def _require_no_durable_unknown(self) -> None:
+        if not all((self.aios_dir, self.contract_id, self.actor)):
+            return
+        from .effect_authority import list_unresolved_effects
+
+        try:
+            unresolved = list_unresolved_effects(
+                self.aios_dir, self.contract_id, self.actor
+            )
+        except Exception as exc:
+            raise RepairWorkerError(
+                f"durable mutation reconciliation failed; worker blocked: {type(exc).__name__}: {exc}"
+            ) from exc
+        if unresolved:
+            refs = ", ".join(
+                f"{item.get('effect_id')}={item.get('state')}" for item in unresolved
+            )
+            raise RepairWorkerError(
+                "durable mutation outcome is unresolved; further mutation/testing/publishing "
+                f"is forbidden pending reconciliation: {refs}"
+            )
 
     @staticmethod
     def _sha256_text(content: str) -> str:
@@ -190,17 +213,8 @@ class AgentRepairWorker:
             )
 
     def _atomic_write(self, target: Path, content: str) -> None:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp_name = tempfile.mkstemp(prefix=f".{target.name}.repair-", dir=target.parent)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
-                fh.write(content)
-                fh.flush()
-                os.fsync(fh.fileno())
-            os.replace(tmp_name, target)
-        finally:
-            if os.path.exists(tmp_name):
-                os.unlink(tmp_name)
+        relative = target.relative_to(self.root).as_posix()
+        atomic_write_beneath(self.root, relative, content)
 
     def apply(
         self, *, base_sha: str, files: Sequence[ProposedFile],
@@ -208,6 +222,7 @@ class AgentRepairWorker:
     ) -> WorkerEvidence:
         if self._mutation_unknown:
             raise RepairWorkerError("mutation outcome is UNKNOWN; further mutation/testing/publishing is forbidden pending reconciliation")
+        self._require_no_durable_unknown()
         owned = frozenset(set(allowed_dirty_paths) | self._owned_dirty_paths)
         self._require_base(base_sha, allowed_dirty_paths=owned)
         if not files:
@@ -244,6 +259,7 @@ class AgentRepairWorker:
         """Perform one repository mutation through the AIOS runtime boundary."""
         if self._mutation_unknown:
             raise RepairWorkerError("mutation outcome is UNKNOWN; further mutation/testing/publishing is forbidden pending reconciliation")
+        self._require_no_durable_unknown()
         if not all((self.aios_dir, self.contract_id, self.permit_id, self.actor)):
             raise RepairWorkerError("AIOS mutation context is not configured")
         owned = frozenset(set(allowed_dirty_paths) | self._owned_dirty_paths)
@@ -292,6 +308,7 @@ class AgentRepairWorker:
         return result
 
     def test(self, commands: Sequence[Sequence[str]] | None = None) -> WorkerEvidence:
+        self._require_no_durable_unknown()
         if self._mutation_unknown:
             raise RepairWorkerError("mutation outcome is UNKNOWN; testing/publishing is forbidden pending reconciliation")
         selected = tuple(tuple(c) for c in (commands or self.allowed_test_commands))
