@@ -99,6 +99,11 @@ jobs:
           set -euo pipefail
           gh run view "$CI_RUN_ID" --repo "${{ github.repository }}" --log-failed > "$RUNNER_TEMP/ci-failure.log"
           test -s "$RUNNER_TEMP/ci-failure.log" || { echo "BLOCKED: failed CI log is empty"; exit 1; }
+      - name: Block until external AIOS authority issuer is provisioned
+        run: |
+          echo "BLOCKED: aios-authority-store is NOT READY / NOT VERIFIED; no external issuer or signed authority bundle is provisioned."
+          echo "No TRY request will be sent and no repair mutation is authorized."
+          exit 1
       - name: Dispatch bounded proposal request to TRY
         env:
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
@@ -231,6 +236,10 @@ jobs:
           set -euo pipefail
           gh run view "$RUN_ID" --repo "${{ github.repository }}" --log-failed > "$RUNNER_TEMP/ci-failure.log"
           test -s "$RUNNER_TEMP/ci-failure.log" || { echo "BLOCKED: failed CI log is empty"; exit 1; }
+      - name: Block until external AIOS authority issuer is provisioned
+        run: |
+          echo "BLOCKED: external AIOS authority issuer/store is not provisioned."
+          exit 1
       - name: Dispatch bounded proposal request to TRY
         env:
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
@@ -343,6 +352,10 @@ jobs:
           set -euo pipefail
           gh run view "$RUN_ID" --repo "${{ github.repository }}" --log-failed > "$RUNNER_TEMP/ci-failure.log"
           test -s "$RUNNER_TEMP/ci-failure.log" || { echo "BLOCKED: failed CI log is empty"; exit 1; }
+      - name: Block until external AIOS authority issuer is provisioned
+        run: |
+          echo "BLOCKED: external AIOS authority issuer/store is not provisioned."
+          exit 1
       - name: Dispatch bounded proposal request to TRY
         env:
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
