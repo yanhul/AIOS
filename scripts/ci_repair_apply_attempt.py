@@ -90,7 +90,8 @@ def main() -> int:
     tested_content_sha256 = content_sha256()
 
     result = {
-        "schema": 3, "run_id": run_id, "base_sha": base,\n        "content_sha256": tested_content_sha256,
+        "schema": 3, "run_id": run_id, "base_sha": base,
+        "content_sha256": tested_content_sha256,
         "attempts": [p["attempt"] for p in proposals],
         "applied": applied,
         "test": {
