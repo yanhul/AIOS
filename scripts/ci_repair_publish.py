@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import tempfile
+import stat
 from pathlib import Path
 
 from core.agent_repair_worker import AgentRepairWorker, ProposedFile
@@ -20,12 +21,21 @@ def git(*args: str) -> str:
     return p.stdout.strip()
 
 
-def content_sha256() -> str:
-    patch = subprocess.run(
-        ["git", "diff", "--binary", "HEAD", "--"],
-        text=False, capture_output=True, check=True,
-    ).stdout
-    return hashlib.sha256(patch).hexdigest()
+def content_sha256(paths) -> str:
+    digest = hashlib.sha256()
+    for raw in sorted(set(paths)):
+        path = Path(raw)
+        if path.is_symlink() or not path.is_file():
+            raise SystemExit(f"BLOCKED: repair source path is not a regular file: {raw}")
+        data = path.read_bytes()
+        mode = stat.S_IMODE(path.stat().st_mode)
+        name = raw.encode("utf-8")
+        digest.update(len(name).to_bytes(8, "big"))
+        digest.update(name)
+        digest.update(mode.to_bytes(4, "big"))
+        digest.update(len(data).to_bytes(8, "big"))
+        digest.update(data)
+    return digest.hexdigest()
 
 
 def verify_pass_artifact(obj: dict, *, run_id: int, base_sha: str, pass_attempt: int) -> str:
@@ -116,12 +126,12 @@ def main() -> int:
     # Artifacts are hints only. Recreate the exact source patch, compare its
     # digest with the tree that produced PASS, then run the trusted test suite
     # again at the publish boundary.
-    before_retest = content_sha256()
+    before_retest = content_sha256(expected)
     require_matching_source_digest(expected_digest, before_retest)
     retest = worker.test()
     if retest.status != "PASS":
         raise SystemExit(f"BLOCKED: publish-boundary re-test did not PASS: {retest.status}")
-    after_retest = content_sha256()
+    after_retest = content_sha256(expected)
     require_matching_source_digest(expected_digest, after_retest)
 
     actual = set(git("diff", "--name-only").splitlines())
