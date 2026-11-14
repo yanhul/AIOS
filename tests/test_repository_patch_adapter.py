@@ -228,3 +228,28 @@ def test_adapter_rejects_protected_paths_at_any_depth(tmp_path, path):
     adapter = RepositoryPatchAdapter(tmp_path)
     with pytest.raises(ValueError, match="protected|escapes"):
         adapter.register("EF-protected", (ProposedFile(path, "tampered"),), base_sha=base)
+
+
+@pytest.mark.parametrize("path", [
+    r"C:\\outside.py",
+    r"C:relative.py",
+    r"\\server\\share\\payload.py",
+    "module.py:alternate-stream",
+    "pyproject.toml",
+    "nested/test_runner.py",
+])
+def test_adapter_rejects_windows_aliases_and_test_harness_paths(tmp_path, path):
+    base = init_repo(tmp_path)
+    adapter = RepositoryPatchAdapter(tmp_path)
+    with pytest.raises(ValueError, match="escapes|protected"):
+        adapter.register("EF-protected-alias", (ProposedFile(path, "tampered"),), base_sha=base)
+
+
+def test_adapter_rejects_symlinked_final_and_parent_components(tmp_path):
+    base = init_repo(tmp_path)
+    adapter = RepositoryPatchAdapter(tmp_path)
+    (tmp_path / "alias.py").symlink_to(tmp_path / "module.py")
+    (tmp_path / "alias_dir").symlink_to(tmp_path, target_is_directory=True)
+    for path in ("alias.py", "alias_dir/new_module.py"):
+        with pytest.raises(ValueError, match="symlink"):
+            adapter.register("EF-symlink-" + path.replace("/", "-"), (ProposedFile(path, "tampered"),), base_sha=base)
