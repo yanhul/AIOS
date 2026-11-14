@@ -140,6 +140,7 @@ def _safe_repo_path(root: Path, raw: str) -> Path:
         ".env", ".env.local", ".env.production", "credentials.json",
         "pytest.ini", "pytest.toml", "tox.ini", "tox.toml", "setup.cfg",
         "pyproject.toml", "conftest.py", ".coveragerc", "noxfile.py",
+        "setup.py", "sitecustomize.py", "usercustomize.py", "makefile",
     }
     protected_core = "core" in parts and any(
         part.startswith(("policy", "gate", "publisher")) for part in parts
@@ -159,6 +160,7 @@ def _safe_repo_path(root: Path, raw: str) -> Path:
         any(part in protected_dirs for part in parts)
         or p.name.casefold() in protected_files
         or p.name.casefold().startswith(".env")
+        or p.name.casefold().endswith(".pth")
         or protected_core
         or test_harness_file
         or windows_alias
