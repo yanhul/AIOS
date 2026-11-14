@@ -134,6 +134,7 @@ class AgentRepairWorker:
         if (
             any(part in protected_dirs for part in parts)
             or normalized.name.casefold() in protected_files
+            or normalized.name.casefold().startswith(".env")
             or protected_core
             or test_harness_file
             or windows_alias
