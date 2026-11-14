@@ -105,18 +105,48 @@ class AgentRepairWorker:
             raise RepairWorkerError(f"patch path escapes repository: {raw!r}")
         normalized = Path(path)
         parts = tuple(part.casefold() for part in normalized.parts)
-        protected_dirs = {".git", ".github", ".aios", "tests", "test", "policies", "gates", "publishers"}
-        protected_files = {".env", ".env.local", ".env.production", "credentials.json", "pytest.ini", "tox.ini", "setup.cfg", "conftest.py", ".coveragerc"}
-        protected_core = "core" in parts and any(part.startswith(("policy", "gate", "publisher")) for part in parts)
-        if any(part in protected_dirs for part in parts) or normalized.name.casefold() in protected_files or protected_core:
+        protected_dirs = {
+            ".git", ".github", ".aios", "tests", "test", "policies",
+            "policy", "gates", "gate", "publishers", "publisher",
+        }
+        protected_files = {
+            ".env", ".env.local", ".env.production", "credentials.json",
+            "pytest.ini", "pytest.toml", "tox.ini", "tox.toml", "setup.cfg",
+            "pyproject.toml", "conftest.py", ".coveragerc", "noxfile.py",
+        }
+        protected_core = "core" in parts and any(
+            part.startswith(("policy", "gate", "publisher")) for part in parts
+        )
+        test_harness_file = (
+            normalized.name.casefold().startswith("test_")
+            or normalized.name.casefold().endswith("_test.py")
+        )
+        if (
+            any(part in protected_dirs for part in parts)
+            or normalized.name.casefold() in protected_files
+            or protected_core
+            or test_harness_file
+            or any(":" in part for part in parts)
+        ):
             raise RepairWorkerError(f"patch path is protected: {raw!r}")
-        target = (self.root / normalized).resolve()
+
+        # Inspect each existing component without resolving away symlink identity.
+        # Re-check at mutation time in _safe_path; never follow a repository symlink.
+        target = self.root
+        for part in normalized.parts:
+            target = target / part
+            try:
+                mode = target.lstat().st_mode
+            except FileNotFoundError:
+                continue
+            if target.is_symlink():
+                raise RepairWorkerError(f"refusing symlink path component: {raw!r}")
+            if target != self.root / normalized and not target.is_dir():
+                raise RepairWorkerError(f"non-directory path component: {raw!r}")
         try:
             target.relative_to(self.root)
         except ValueError as exc:
             raise RepairWorkerError(f"patch path escapes repository: {raw!r}") from exc
-        if target.exists() and target.is_symlink():
-            raise RepairWorkerError(f"refusing to overwrite symlink: {raw!r}")
         return target
 
     def _git(self, *args: str) -> str:
@@ -206,6 +236,9 @@ class AgentRepairWorker:
 
         from .repository_patch_adapter import apply_via_aios
 
+        # From the dispatch boundary onward, an exception or malformed result
+        # may mean the provider committed an effect but its receipt was lost.
+        # Fail closed until an explicit reconciliation clears this instance.
         try:
             result = apply_via_aios(
                 aios_dir=self.aios_dir,
@@ -220,13 +253,17 @@ class AgentRepairWorker:
                 allowed_dirty_paths=owned,
             )
         except Exception as exc:
+            self._mutation_unknown = True
             raise RepairWorkerError(
-                f"AIOS mutation failed: {type(exc).__name__}: {exc}"
+                f"AIOS mutation outcome is UNKNOWN after dispatch: {type(exc).__name__}: {exc}"
             ) from exc
         self._owned_dirty_paths.update(paths)
-        if isinstance(result, Mapping) and result.get("state") == "UNKNOWN":
+        if not isinstance(result, Mapping) or result.get("state") != "OBSERVED_SUCCESS":
             self._mutation_unknown = True
-            raise RepairWorkerError("mutation outcome is UNKNOWN; testing/publishing is forbidden pending reconciliation")
+            state = result.get("state") if isinstance(result, Mapping) else "INVALID_RESULT"
+            raise RepairWorkerError(
+                f"mutation outcome is not verified success ({state}); testing/publishing is forbidden pending reconciliation"
+            )
         return result
 
     def test(self, commands: Sequence[Sequence[str]] | None = None) -> WorkerEvidence:
