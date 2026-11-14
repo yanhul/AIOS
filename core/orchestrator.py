@@ -1,7 +1,7 @@
 """Central governed execution bridge."""
 from __future__ import annotations
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Callable, Mapping
 from .authority import authorize, load_contract
 from .durable_loop import Executor, LoopPolicy, StateStore, run_durable_loop
@@ -51,18 +51,21 @@ def run_governed_execution(*, executor: GovernedRuntimeExecutor, store: StateSto
         if state.get("contract_id") != executor.contract_id: raise ValueError("persisted contract binding does not match execution context")
         if state.get("permit_id") != executor.permit_id: raise ValueError("persisted permit binding does not match execution context")
         authorize(executor.aios_dir, executor.contract_id, executor.permit_id)
+        # Preserve the caller's resume guard as well as the authority binding.
+        # Replacing it silently would discard a policy-level safety predicate.
+        if policy.resume_validator is not None:
+            policy.resume_validator(deepcopy(state))
 
-    bound_policy = LoopPolicy(
-        max_steps=policy.max_steps,
-        terminal_evaluator=policy.terminal_evaluator,
-        action_authorizer=policy.action_authorizer,
+    # dataclasses.replace preserves every current and future LoopPolicy
+    # field. Only authority-owned bindings are overridden; the caller's
+    # resume validator is wrapped above rather than discarded.
+    bound_policy = replace(
+        policy,
         resume_validator=validate_resume,
         policy_digest=contract["policy_digest"],
         terminal_states=governing_terminal_states,
-        budget_exhaustion_state=policy.budget_exhaustion_state,
-        failure_state=policy.failure_state,
-        blocked_continuation=policy.blocked_continuation,
     )
+
     loaded = store.load()
     if loaded is None:
         store.save({"contract_id": executor.contract_id, "permit_id": executor.permit_id, "policy_digest": bound_policy.policy_digest})

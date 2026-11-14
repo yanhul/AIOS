@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import os
+import posixpath
+import ntpath
 import subprocess
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -15,6 +16,7 @@ from .effect_authority import create_effect
 from .evidence import EvidenceRecord
 from .provider_authority import ProviderReceiptSigner, authenticate_receipt
 from .runtime import ProviderReceipt, execute
+from .safe_repo_write import atomic_write_beneath
 
 
 @dataclass(frozen=True)
@@ -73,7 +75,7 @@ class RepositoryPatchAdapter:
         changed = []
         for item in files:
             target = _safe_repo_path(self.root, item.path)
-            _atomic_write(target, item.content)
+            _atomic_write(self.root, target, item.content)
             changed.append({
                 "path": item.path,
                 "content_sha256": _sha256_text(item.content),
@@ -122,20 +124,68 @@ def _safe_repo_path(root: Path, raw: str) -> Path:
     if not isinstance(raw, str) or not raw.strip() or "\x00" in raw:
         raise ValueError("invalid repository patch path")
     path = raw.replace("\\", "/")
-    p = Path(path)
-    if p.is_absolute() or path.startswith("/") or ".." in p.parts:
+    drive, _ = ntpath.splitdrive(path)
+    if drive or path.startswith("/"):
         raise ValueError("repository patch path escapes root")
-    if p.name in RepositoryPatchAdapter._DENIED_FILES or any(
-        path == prefix[:-1] or path.startswith(prefix) for prefix in RepositoryPatchAdapter._DENIED_PREFIXES
+    path = posixpath.normpath(path)
+    if path in ("", ".") or path == ".." or path.startswith("../"):
+        raise ValueError("repository patch path escapes root")
+    p = Path(path)
+    parts = tuple(part.casefold() for part in p.parts)
+    protected_dirs = {
+        ".git", ".github", ".aios", "tests", "test", "policies",
+        "policy", "gates", "gate", "publishers", "publisher",
+    }
+    protected_files = {
+        ".env", ".env.local", ".env.production", "credentials.json",
+        "pytest.ini", "pytest.toml", "tox.ini", "tox.toml", "setup.cfg",
+        "pyproject.toml", "conftest.py", ".coveragerc", "noxfile.py",
+        "setup.py", "sitecustomize.py", "usercustomize.py", "makefile",
+    }
+    protected_core = "core" in parts and any(
+        part.startswith(("policy", "gate", "publisher")) for part in parts
+    )
+    reserved_windows_names = {
+        "con", "prn", "aux", "nul",
+        *(f"com{i}" for i in range(1, 10)),
+        *(f"lpt{i}" for i in range(1, 10)),
+    }
+    windows_alias = any(
+        part.endswith((" ", "."))
+        or part.split(".", 1)[0].casefold() in reserved_windows_names
+        for part in p.parts
+    )
+    test_harness_file = p.name.casefold().startswith("test_") or p.name.casefold().endswith("_test.py")
+    if (
+        any(part in protected_dirs for part in parts)
+        or p.name.casefold() in protected_files
+        or p.name.casefold().startswith(".env")
+        or p.name.casefold().endswith(".pth")
+        or protected_core
+        or test_harness_file
+        or windows_alias
+        or any(":" in part for part in parts)
     ):
         raise ValueError("repository patch path is protected")
-    target = (root / p).resolve()
+
+    # lstat each existing component so resolve() cannot erase symlink identity.
+    target = root
+    for part in p.parts:
+        target = target / part
+        try:
+            target.lstat()
+        except FileNotFoundError:
+            continue
+        if target.is_symlink():
+            raise ValueError("refusing symlink path component")
+        if target != root / p and not target.is_dir():
+            raise ValueError("non-directory repository path component")
+    if target.exists() and target.is_dir():
+        raise ValueError("repository patch target is a directory")
     try:
         target.relative_to(root)
     except ValueError as exc:
         raise ValueError("repository patch path escapes root") from exc
-    if target.exists() and target.is_symlink():
-        raise ValueError("refusing to overwrite symlink")
     return target
 
 
@@ -174,18 +224,9 @@ def _require_clean_base(root: Path, base_sha: str, *, allowed_dirty_paths: froze
         )
 
 
-def _atomic_write(target: Path, content: str) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(prefix=f".{target.name}.repair-", dir=target.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
-            fh.write(content)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp_name, target)
-    finally:
-        if os.path.exists(tmp_name):
-            os.unlink(tmp_name)
+def _atomic_write(root: Path, target: Path, content: str) -> None:
+    relative = target.relative_to(root).as_posix()
+    atomic_write_beneath(root, relative, content)
 
 
 def apply_via_aios(

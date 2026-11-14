@@ -839,7 +839,43 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation, *, provid
     return _commit_transition(aios_dir, current, actor, outcome, {"provider_observation": record})
 
 
-__all__ = ["STATES", "create_effect", "transition", "dispatch", "retry_dispatch", "unknown", "observe",
+
+def list_unresolved_effects(aios_dir, contract_id, actor):
+    """Return validated DISPATCHED/UNKNOWN effects for one worker authority scope.
+
+    The effect files are the durable source of truth; callers must not rely on
+    process-local flags to decide whether mutation/testing can continue.
+    """
+    _validate_strings(("actor", actor))
+    if contract_id is not None:
+        _validate_strings(("contract_id", contract_id))
+    recover_pending(aios_dir)
+    directory = os.path.join(aios_dir, "effects")
+    if not os.path.exists(directory):
+        return ()
+    if not os.path.isdir(directory):
+        raise TransitionError("effect store is not a directory; worker remains blocked")
+    unresolved = []
+    for name in sorted(os.listdir(directory)):
+        if not name.endswith(".json"):
+            continue
+        path = os.path.join(directory, name)
+        try:
+            raw = _load(path)
+        except (OSError, ValueError) as exc:
+            raise TransitionError(f"cannot reconcile persisted effect {name}: {exc}") from exc
+        if not isinstance(raw, dict):
+            raise TransitionError(f"persisted effect is malformed: {name}")
+        if raw.get("actor") != actor or (contract_id is not None and raw.get("contract_id") != contract_id):
+            continue
+        effect_id = raw.get("effect_id")
+        current, _contract = _load_owned_effect(aios_dir, effect_id, actor, "worker reconciliation")
+        if current.get("state") in ("DISPATCHED", "UNKNOWN"):
+            unresolved.append(current)
+    return tuple(unresolved)
+
+
+__all__ = ["STATES", "create_effect", "list_unresolved_effects", "transition", "dispatch", "retry_dispatch", "unknown", "observe",
            "issue_retry_authorization", "observation_digest", "mint_observation_evidence",
            "RetryIssuerKeyring", "ProviderKeyring", "ProviderAuthenticationError", "provider_receipt_body",
            "provider_receipt_signature", "PROVIDER_RECEIPT_SCOPE", "RETRY_AUTH_DIR", "RETRY_APPROVE_SCOPE", "RETRY_KEYRING_ENV"]

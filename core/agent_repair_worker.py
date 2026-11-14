@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import hashlib
 import os
+import posixpath
+import ntpath
 import subprocess
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Protocol, Sequence
+
+from .safe_repo_write import atomic_write_beneath
 
 
 class RepairWorkerError(RuntimeError):
@@ -79,10 +82,33 @@ class AgentRepairWorker:
         self.actor = actor
         self.durable_runtime = durable_runtime
         self._owned_dirty_paths: set[str] = set()
+        self._mutation_unknown = False
         if not self.root.is_dir():
             raise RepairWorkerError(f"repository root does not exist: {self.root}")
         if timeout_seconds <= 0:
             raise RepairWorkerError("timeout_seconds must be positive")
+
+    def _require_no_durable_unknown(self) -> None:
+        if not all((self.aios_dir, self.contract_id, self.actor)):
+            return
+        from .effect_authority import list_unresolved_effects
+
+        try:
+            unresolved = list_unresolved_effects(
+                self.aios_dir, None, self.actor
+            )
+        except Exception as exc:
+            raise RepairWorkerError(
+                f"durable mutation reconciliation failed; worker blocked: {type(exc).__name__}: {exc}"
+            ) from exc
+        if unresolved:
+            refs = ", ".join(
+                f"{item.get('effect_id')}={item.get('state')}" for item in unresolved
+            )
+            raise RepairWorkerError(
+                "durable mutation outcome is unresolved; further mutation/testing/publishing "
+                f"is forbidden pending reconciliation: {refs}"
+            )
 
     @staticmethod
     def _sha256_text(content: str) -> str:
@@ -94,22 +120,72 @@ class AgentRepairWorker:
         if "\x00" in raw:
             raise RepairWorkerError("patch path contains NUL")
         path = raw.replace("\\", "/")
+        drive, _ = ntpath.splitdrive(path)
+        if drive or path.startswith("/"):
+            raise RepairWorkerError(f"patch path escapes repository: {raw!r}")
+        path = posixpath.normpath(path)
+        if path in ("", ".") or path == ".." or path.startswith("../"):
+            raise RepairWorkerError(f"patch path escapes repository: {raw!r}")
         normalized = Path(path)
-        if path.startswith("/") or path.startswith("../") or "/../" in path:
-            raise RepairWorkerError(f"patch path escapes repository: {raw!r}")
-        if normalized.is_absolute() or ".." in normalized.parts:
-            raise RepairWorkerError(f"patch path escapes repository: {raw!r}")
-        if normalized.name in self._DENIED_FILES or any(
-            path == prefix.rstrip("/") or path.startswith(prefix) for prefix in self._DENIED_PREFIXES
+        parts = tuple(part.casefold() for part in normalized.parts)
+        protected_dirs = {
+            ".git", ".github", ".aios", "tests", "test", "policies",
+            "policy", "gates", "gate", "publishers", "publisher",
+        }
+        protected_files = {
+            ".env", ".env.local", ".env.production", "credentials.json",
+            "pytest.ini", "pytest.toml", "tox.ini", "tox.toml", "setup.cfg",
+            "pyproject.toml", "conftest.py", ".coveragerc", "noxfile.py",
+            "setup.py", "sitecustomize.py", "usercustomize.py", "makefile",
+        }
+        protected_core = "core" in parts and any(
+            part.startswith(("policy", "gate", "publisher")) for part in parts
+        )
+        reserved_windows_names = {
+            "con", "prn", "aux", "nul",
+            *(f"com{i}" for i in range(1, 10)),
+            *(f"lpt{i}" for i in range(1, 10)),
+        }
+        windows_alias = any(
+            part.endswith((" ", "."))
+            or part.split(".", 1)[0].casefold() in reserved_windows_names
+            for part in normalized.parts
+        )
+        test_harness_file = (
+            normalized.name.casefold().startswith("test_")
+            or normalized.name.casefold().endswith("_test.py")
+        )
+        if (
+            any(part in protected_dirs for part in parts)
+            or normalized.name.casefold() in protected_files
+            or normalized.name.casefold().startswith(".env")
+            or normalized.name.casefold().endswith(".pth")
+            or protected_core
+            or test_harness_file
+            or windows_alias
+            or any(":" in part for part in parts)
         ):
             raise RepairWorkerError(f"patch path is protected: {raw!r}")
-        target = (self.root / normalized).resolve()
+
+        # Inspect each existing component without resolving away symlink identity.
+        # Re-check at mutation time in _safe_path; never follow a repository symlink.
+        target = self.root
+        for part in normalized.parts:
+            target = target / part
+            try:
+                mode = target.lstat().st_mode
+            except FileNotFoundError:
+                continue
+            if target.is_symlink():
+                raise RepairWorkerError(f"refusing symlink path component: {raw!r}")
+            if target != self.root / normalized and not target.is_dir():
+                raise RepairWorkerError(f"non-directory path component: {raw!r}")
+        if target.exists() and target.is_dir():
+            raise RepairWorkerError(f"patch target is a directory: {raw!r}")
         try:
             target.relative_to(self.root)
         except ValueError as exc:
             raise RepairWorkerError(f"patch path escapes repository: {raw!r}") from exc
-        if target.exists() and target.is_symlink():
-            raise RepairWorkerError(f"refusing to overwrite symlink: {raw!r}")
         return target
 
     def _git(self, *args: str) -> str:
@@ -139,24 +215,18 @@ class AgentRepairWorker:
             )
 
     def _atomic_write(self, target: Path, content: str) -> None:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp_name = tempfile.mkstemp(prefix=f".{target.name}.repair-", dir=target.parent)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
-                fh.write(content)
-                fh.flush()
-                os.fsync(fh.fileno())
-            os.replace(tmp_name, target)
-        finally:
-            if os.path.exists(tmp_name):
-                os.unlink(tmp_name)
+        relative = target.relative_to(self.root).as_posix()
+        atomic_write_beneath(self.root, relative, content)
 
     def apply(
         self, *, base_sha: str, files: Sequence[ProposedFile],
         allowed_dirty_paths: frozenset[str] = frozenset(),
     ) -> WorkerEvidence:
+        if self._mutation_unknown:
+            raise RepairWorkerError("mutation outcome is UNKNOWN; further mutation/testing/publishing is forbidden pending reconciliation")
         owned = frozenset(set(allowed_dirty_paths) | self._owned_dirty_paths)
         self._require_base(base_sha, allowed_dirty_paths=owned)
+        self._require_no_durable_unknown()
         if not files:
             raise RepairWorkerError("repair proposal contains no files")
         proposed = tuple(files)
@@ -168,11 +238,18 @@ class AgentRepairWorker:
         if not isinstance(permit_id, str) or not permit_id.strip():
             raise RepairWorkerError("authority returned no permit")
         changed = []
-        for item, target in zip(proposed, targets):
-            if not isinstance(item.content, str):
-                raise RepairWorkerError(f"patch content must be text: {item.path!r}")
-            self._atomic_write(target, item.content)
-            changed.append({"path": item.path, "content_sha256": self._sha256_text(item.content)})
+        self._mutation_unknown = True
+        try:
+            for item, target in zip(proposed, targets):
+                if not isinstance(item.content, str):
+                    raise RepairWorkerError(f"patch content must be text: {item.path!r}")
+                self._atomic_write(target, item.content)
+                changed.append({"path": item.path, "content_sha256": self._sha256_text(item.content)})
+        except Exception as exc:
+            raise RepairWorkerError(
+                f"patch mutation outcome is UNKNOWN after partial-write boundary: {type(exc).__name__}: {exc}"
+            ) from exc
+        self._mutation_unknown = False
         return WorkerEvidence("APPLY_PATCH", "APPLIED",
                               (f"repair:base:{base_sha}", f"repair:permit:{permit_id}"),
                               {"paths": changed, "permit_id": permit_id})
@@ -182,10 +259,13 @@ class AgentRepairWorker:
         logical_operation_id: str, allowed_dirty_paths: frozenset[str] = frozenset(),
     ) -> Mapping[str, object]:
         """Perform one repository mutation through the AIOS runtime boundary."""
+        if self._mutation_unknown:
+            raise RepairWorkerError("mutation outcome is UNKNOWN; further mutation/testing/publishing is forbidden pending reconciliation")
         if not all((self.aios_dir, self.contract_id, self.permit_id, self.actor)):
             raise RepairWorkerError("AIOS mutation context is not configured")
         owned = frozenset(set(allowed_dirty_paths) | self._owned_dirty_paths)
         self._require_base(base_sha, allowed_dirty_paths=owned)
+        self._require_no_durable_unknown()
         if not files:
             raise RepairWorkerError("repair proposal contains no files")
         proposed = tuple(files)
@@ -199,6 +279,9 @@ class AgentRepairWorker:
 
         from .repository_patch_adapter import apply_via_aios
 
+        # From the dispatch boundary onward, an exception or malformed result
+        # may mean the provider committed an effect but its receipt was lost.
+        # Fail closed until an explicit reconciliation clears this instance.
         try:
             result = apply_via_aios(
                 aios_dir=self.aios_dir,
@@ -213,13 +296,23 @@ class AgentRepairWorker:
                 allowed_dirty_paths=owned,
             )
         except Exception as exc:
+            self._mutation_unknown = True
             raise RepairWorkerError(
-                f"AIOS mutation failed: {type(exc).__name__}: {exc}"
+                f"AIOS mutation outcome is UNKNOWN after dispatch: {type(exc).__name__}: {exc}"
             ) from exc
         self._owned_dirty_paths.update(paths)
+        if not isinstance(result, Mapping) or result.get("state") != "OBSERVED_SUCCESS":
+            self._mutation_unknown = True
+            state = result.get("state") if isinstance(result, Mapping) else "INVALID_RESULT"
+            raise RepairWorkerError(
+                f"mutation outcome is not verified success ({state}); testing/publishing is forbidden pending reconciliation"
+            )
         return result
 
     def test(self, commands: Sequence[Sequence[str]] | None = None) -> WorkerEvidence:
+        self._require_no_durable_unknown()
+        if self._mutation_unknown:
+            raise RepairWorkerError("mutation outcome is UNKNOWN; testing/publishing is forbidden pending reconciliation")
         selected = tuple(tuple(c) for c in (commands or self.allowed_test_commands))
         if not selected:
             raise RepairWorkerError("no trusted test command configured")
