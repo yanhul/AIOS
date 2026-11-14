@@ -79,14 +79,26 @@ jobs:
             done
             [ "$conclusion" = "failure" ] || { echo "BLOCKED: latest CI for $SHA did not fail"; exit 1; }
           fi
+          [ -n "$ci_run_id" ] || { echo "BLOCKED: no source CI run ID"; exit 1; }
           echo "CI_RUN_ID=$ci_run_id" >> "$GITHUB_ENV"
+      - name: Verify exact failed CI run binding
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TRIGGER_RUN_ID: ${{ env.RUN_ID }}
+          EXPECTED_SHA: ${{ env.BASE_SHA }}
+          EXPECTED_BRANCH: ${{ env.SOURCE_BRANCH }}
+        run: python scripts/ci_repair_validate_run.py
       - env:
           SHA: ${{ env.BASE_SHA }}
         run: git fetch --no-tags --depth=1 origin "$SHA"
       - name: Capture failed CI evidence
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run view "$CI_RUN_ID" --repo "${{ github.repository }}" --log-failed > "$RUNNER_TEMP/ci-failure.log" || true
+        run: |
+          set -euo pipefail
+          gh run view "$CI_RUN_ID" --repo "${{ github.repository }}" --log-failed > "$RUNNER_TEMP/ci-failure.log"
+          test -s "$RUNNER_TEMP/ci-failure.log" || { echo "BLOCKED: failed CI log is empty"; exit 1; }
       - name: Dispatch bounded proposal request to TRY
         env:
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
@@ -95,6 +107,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           TRY_REPAIR_WORKER_URL: ${{ vars.TRY_REPAIR_PROVIDER_URL || secrets.TRY_REPAIR_PROVIDER_URL }}
           TRY_PROVIDER_TOKEN: ${{ secrets.TRY_REPAIR_PROVIDER_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           export AIOS_REPAIR_RUN_ID="$CI_RUN_ID"
           PYTHONPATH=. python scripts/ci_repair_propose.py
@@ -210,7 +223,10 @@ jobs:
           path: prior
       - env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run view "$RUN_ID" --repo "${{ github.repository }}" --log-failed > "$RUNNER_TEMP/ci-failure.log" || true
+        run: |
+          set -euo pipefail
+          gh run view "$RUN_ID" --repo "${{ github.repository }}" --log-failed > "$RUNNER_TEMP/ci-failure.log"
+          test -s "$RUNNER_TEMP/ci-failure.log" || { echo "BLOCKED: failed CI log is empty"; exit 1; }
       - name: Dispatch bounded proposal request to TRY
         env:
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
@@ -314,7 +330,10 @@ jobs:
           path: prior
       - env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run view "$RUN_ID" --repo "${{ github.repository }}" --log-failed > "$RUNNER_TEMP/ci-failure.log" || true
+        run: |
+          set -euo pipefail
+          gh run view "$RUN_ID" --repo "${{ github.repository }}" --log-failed > "$RUNNER_TEMP/ci-failure.log"
+          test -s "$RUNNER_TEMP/ci-failure.log" || { echo "BLOCKED: failed CI log is empty"; exit 1; }
       - name: Dispatch bounded proposal request to TRY
         env:
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
