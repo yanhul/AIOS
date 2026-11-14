@@ -141,6 +141,9 @@ def _safe_repo_path(root: Path, raw: str) -> Path:
         "pytest.ini", "pytest.toml", "tox.ini", "tox.toml", "setup.cfg",
         "pyproject.toml", "conftest.py", ".coveragerc", "noxfile.py",
     }
+    protected_core = "core" in parts and any(
+        part.startswith(("policy", "gate", "publisher")) for part in parts
+    )
     test_harness_file = p.name.casefold().startswith("test_") or p.name.casefold().endswith("_test.py")
     if (
         any(part in protected_dirs for part in parts)
@@ -163,6 +166,8 @@ def _safe_repo_path(root: Path, raw: str) -> Path:
             raise ValueError("refusing symlink path component")
         if target != root / p and not target.is_dir():
             raise ValueError("non-directory repository path component")
+    if target.exists() and target.is_dir():
+        raise ValueError("repository patch target is a directory")
     try:
         target.relative_to(root)
     except ValueError as exc:
