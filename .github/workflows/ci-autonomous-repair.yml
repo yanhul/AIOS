@@ -20,7 +20,7 @@ on:
     types: [completed]
     branches: [main, "aios/autorepair/**", "security/phase1-aud"]
   push:
-    branches: ["aios/autorepair/g4a-live"]
+    branches: ["aios/autorepair/g4a-live-controlled"]
   pull_request_target:
     types: [opened, synchronize, reopened]
     branches: [main]
@@ -40,7 +40,7 @@ jobs:
   propose1:
     if: >-
       ${{ (github.event_name == 'workflow_dispatch' ||
-           (github.event_name == 'push' && github.ref_name == 'aios/autorepair/g4a-live') ||
+           (github.event_name == 'push' && github.ref_name == 'aios/autorepair/g4a-live-controlled' && github.event.head_commit.message == 'test: trigger controlled G4A failure') ||
            (github.event.workflow_run.conclusion == 'failure' &&
             github.event.workflow_run.head_repository.full_name == github.repository &&
             (github.event.workflow_run.head_branch == 'main' ||
@@ -75,7 +75,7 @@ jobs:
             ci_run_id=""
             conclusion=""
             workflow_name="CI"
-            if [ "$EVENT" = "push" ] && [ "${{ github.ref_name }}" = "aios/autorepair/g4a-live" ]; then
+            if [ "$EVENT" = "push" ] && [ "${{ github.ref_name }}" = "aios/autorepair/g4a-live-controlled" ]; then
               workflow_name="G4A CI"
             fi
             for i in $(seq 1 60); do
@@ -453,6 +453,7 @@ jobs:
           case "$SOURCE_BRANCH" in
             main) pr_base="main" ;;
             security/phase1-aud) pr_base="security/phase1-aud" ;;
+            aios/autorepair/g4a-live-controlled) pr_base="security/phase1-aud" ;;
             *) pr_base="" ;;
           esac
           if [ -n "$pr_base" ]; then
@@ -479,5 +480,5 @@ jobs:
             }
           done
           case "$SOURCE_BRANCH" in
-            main|security/phase1-aud) gh pr ready "$branch" --repo "${{ github.repository }}" ;;
+            main|security/phase1-aud|aios/autorepair/g4a-live-controlled) gh pr ready "$branch" --repo "${{ github.repository }}" ;;
           esac
