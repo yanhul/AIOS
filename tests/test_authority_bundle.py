@@ -43,7 +43,7 @@ def fixture_bundle(tmp_path):
                        "head_sha": "a" * 40, "head_branch": "main"},
         "target": {"base_sha": "a" * 40}, "issued_at": 1000, "expires_at": 2000,
         "authority_records": {
-            "capability_registry": {"schema_version": 1, **registry.snapshot()},
+            "capability_registry": {"schema_version": 1, "persisted_by": "yanhul/aios-authority-store", **registry.snapshot()},
             "policy": policy_record, "contract": contract_record, "permit": permit,
         },
     }
@@ -182,8 +182,8 @@ def test_importer_rechecks_conflicts_inside_mutation_lock(tmp_path, monkeypatch)
     state = tmp_path / "consumer-state"
     state.mkdir()
 
-    import core.authority_bundle as authority_bundle
-    real_commit_batch = authority_bundle.commit_batch
+    import core.mutation as mutation
+    real_commit_batch = mutation.commit_batch
     injected = {}
 
     def race_injecting_commit_batch(root, pending, precondition=None):
@@ -194,7 +194,7 @@ def test_importer_rechecks_conflicts_inside_mutation_lock(tmp_path, monkeypatch)
         injected["path"] = target
         return real_commit_batch(root, pending, precondition=precondition)
 
-    monkeypatch.setattr(authority_bundle, "commit_batch", race_injecting_commit_batch)
+    monkeypatch.setattr(mutation, "commit_batch", race_injecting_commit_batch)
     with pytest.raises(AuthorityBundleError, match="conflicting existing"):
         import_verified_authority_bundle(
             envelope, aios_dir=state, trust_anchor_path=trust,
