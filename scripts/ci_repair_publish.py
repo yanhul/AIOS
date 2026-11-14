@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -17,6 +18,14 @@ from core.policy_registry import persist_policy
 def git(*args: str) -> str:
     p = subprocess.run(["git", *args], text=True, capture_output=True, check=True)
     return p.stdout.strip()
+
+
+def content_sha256() -> str:
+    patch = subprocess.run(
+        ["git", "diff", "--binary", "HEAD", "--"],
+        text=False, capture_output=True, check=True,
+    ).stdout
+    return hashlib.sha256(patch).hexdigest()
 
 
 def authority(root: Path, actor: str, run_id: int):
@@ -44,7 +53,7 @@ def authority(root: Path, actor: str, run_id: int):
 def main() -> int:
     base = os.environ["AIOS_REPAIR_SHA"]
     run_id = int(os.environ["AIOS_REPAIR_RUN_ID"])
-    pass_attempt = int(os.environ["AIOS_REPAIR_PASS_ATTEMPT"])
+    pass_attempt = int(os.environ["AIOS_REPAIR_PASS_ATTEMPT"])\n    expected_digest = os.environ["AIOS_REPAIR_EXPECTED_CONTENT_SHA256"]
     if git("rev-parse", "HEAD") != base:
         raise SystemExit("stale repair publish base")
 
@@ -81,6 +90,19 @@ def main() -> int:
                 allowed_dirty_paths=owned,
             )
             owned = frozenset(set(owned) | {x.path for x in files})
+
+    # Artifacts are hints only. Recreate the exact source patch, compare its
+    # digest with the tree that produced PASS, then run the trusted test suite
+    # again at the publish boundary.
+    before_retest = content_sha256()
+    if before_retest != expected_digest:
+        raise SystemExit("BLOCKED: publish source tree differs from tested content_sha256")
+    retest = worker.test()
+    if retest.status != "PASS":
+        raise SystemExit(f"BLOCKED: publish-boundary re-test did not PASS: {retest.status}")
+    after_retest = content_sha256()
+    if after_retest != expected_digest:
+        raise SystemExit("BLOCKED: source tree changed during publish-boundary re-test")
 
     actual = set(git("diff", "--name-only").splitlines())
     if actual != expected:
