@@ -192,7 +192,8 @@ def test_worker_rejects_symlinked_final_and_parent_components(tmp_path):
     (tmp_path / "alias_dir").symlink_to(tmp_path, target_is_directory=True)
     for path in ("alias.py", "alias_dir/new_module.py"):
         with pytest.raises(RepairWorkerError, match="symlink"):
-            worker.apply(base_sha=base, files=(ProposedFile(path, "tampered"),))
+            worker.apply(base_sha=base, files=(ProposedFile(path, "tampered"),),
+                         allowed_dirty_paths=frozenset({"alias.py", "alias_dir"}))
 
 
 def test_worker_unknown_exception_after_dispatch_blocks_tests(tmp_path, monkeypatch):
