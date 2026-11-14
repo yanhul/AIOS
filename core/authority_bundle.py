@@ -293,10 +293,30 @@ def import_verified_authority_bundle(
             if canonical_json(existing) != canonical_json(record):
                 raise AuthorityBundleError(f"conflicting existing AIOS authority record: {relative}")
 
+    # Re-check every destination while commit_batch holds AIOS's mutation lock.
+    # The earlier preflight is only an early diagnostic; this locked check closes
+    # the TOCTOU window between inspection and the atomic write.
+    def _locked_precondition(locked_root: str) -> None:
+        locked_base = Path(locked_root)
+        for relative, record in entries:
+            target = locked_base / relative
+            if not target.exists():
+                continue
+            try:
+                existing = json.loads(target.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise AuthorityBundleError(
+                    f"existing AIOS authority record is unreadable: {relative}"
+                ) from exc
+            if canonical_json(existing) != canonical_json(record):
+                raise AuthorityBundleError(
+                    f"conflicting existing AIOS authority record: {relative}"
+                )
+
     # One AIOS transaction prevents a partially imported capability/policy/contract/permit set.
     pending = [(relative, record) for relative, record in entries if not (root / relative).exists()]
     if pending:
-        commit_batch(str(root), pending)
+        commit_batch(str(root), pending, precondition=_locked_precondition)
 
     # Independent readback through normal AIOS authority loaders and authorization.
     try:
