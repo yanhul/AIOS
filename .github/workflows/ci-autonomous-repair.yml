@@ -413,8 +413,8 @@ jobs:
               raise SystemExit("BLOCKED: no run/base-bound PASS evidence")
           pass_attempt, result_path = max(candidates, key=lambda item: item[0])
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
-              fh.write(f"AIOS_REPAIR_PASS_ATTEMPT={pass_attempt}\\n")
-              fh.write(f"AIOS_REPAIR_RESULT_PATH={result_path}\\n")
+              fh.write(f"AIOS_REPAIR_PASS_ATTEMPT={pass_attempt}\n")
+              fh.write(f"AIOS_REPAIR_RESULT_PATH={result_path}\n")
           PY
       - name: Re-apply cumulative proposals through trusted AIOS publisher
         working-directory: target
