@@ -41,6 +41,11 @@ def verify_pass_artifact(obj: dict, *, run_id: int, base_sha: str, pass_attempt:
     return digest
 
 
+def require_matching_source_digest(expected: str, actual: str) -> None:
+    if actual != expected:
+        raise SystemExit("BLOCKED: publish source tree differs from tested content_sha256")
+
+
 def authority(root: Path, actor: str, run_id: int):
     registry = CapabilityRegistry()
     registry.register(Capability("repo_patch", "1", "AIOS", "external_effect",
@@ -112,14 +117,12 @@ def main() -> int:
     # digest with the tree that produced PASS, then run the trusted test suite
     # again at the publish boundary.
     before_retest = content_sha256()
-    if before_retest != expected_digest:
-        raise SystemExit("BLOCKED: publish source tree differs from tested content_sha256")
+    require_matching_source_digest(expected_digest, before_retest)
     retest = worker.test()
     if retest.status != "PASS":
         raise SystemExit(f"BLOCKED: publish-boundary re-test did not PASS: {retest.status}")
     after_retest = content_sha256()
-    if after_retest != expected_digest:
-        raise SystemExit("BLOCKED: source tree changed during publish-boundary re-test")
+    require_matching_source_digest(expected_digest, after_retest)
 
     actual = set(git("diff", "--name-only").splitlines())
     if actual != expected:
