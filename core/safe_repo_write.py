@@ -65,7 +65,7 @@ def atomic_write_beneath(root: str | os.PathLike[str], relative_path: str, conte
                 stream.write(data)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(
+            os.rename(
                 temp_name, leaf, src_dir_fd=parent_fd, dst_dir_fd=parent_fd
             )
             temp_name = None
