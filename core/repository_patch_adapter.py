@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import os
+import posixpath
+import ntpath
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -122,20 +124,54 @@ def _safe_repo_path(root: Path, raw: str) -> Path:
     if not isinstance(raw, str) or not raw.strip() or "\x00" in raw:
         raise ValueError("invalid repository patch path")
     path = raw.replace("\\", "/")
-    p = Path(path)
-    if p.is_absolute() or path.startswith("/") or ".." in p.parts:
+    drive, _ = ntpath.splitdrive(path)
+    if drive or path.startswith("/"):
         raise ValueError("repository patch path escapes root")
-    if p.name in RepositoryPatchAdapter._DENIED_FILES or any(
-        path == prefix[:-1] or path.startswith(prefix) for prefix in RepositoryPatchAdapter._DENIED_PREFIXES
+    path = posixpath.normpath(path)
+    if path in ("", ".") or path == ".." or path.startswith("../"):
+        raise ValueError("repository patch path escapes root")
+    p = Path(path)
+    parts = tuple(part.casefold() for part in p.parts)
+    protected_dirs = {
+        ".git", ".github", ".aios", "tests", "test", "policies",
+        "policy", "gates", "gate", "publishers", "publisher",
+    }
+    protected_files = {
+        ".env", ".env.local", ".env.production", "credentials.json",
+        "pytest.ini", "pytest.toml", "tox.ini", "tox.toml", "setup.cfg",
+        "pyproject.toml", "conftest.py", ".coveragerc", "noxfile.py",
+    }
+    protected_core = "core" in parts and any(
+        part.startswith(("policy", "gate", "publisher")) for part in parts
+    )
+    test_harness_file = p.name.casefold().startswith("test_") or p.name.casefold().endswith("_test.py")
+    if (
+        any(part in protected_dirs for part in parts)
+        or p.name.casefold() in protected_files
+        or protected_core
+        or test_harness_file
+        or any(":" in part for part in parts)
     ):
         raise ValueError("repository patch path is protected")
-    target = (root / p).resolve()
+
+    # lstat each existing component so resolve() cannot erase symlink identity.
+    target = root
+    for part in p.parts:
+        target = target / part
+        try:
+            target.lstat()
+        except FileNotFoundError:
+            continue
+        if target.is_symlink():
+            raise ValueError("refusing symlink path component")
+        if target != root / p and not target.is_dir():
+            raise ValueError("non-directory repository path component")
+    if target.exists() and target.is_dir():
+        raise ValueError("repository patch target is a directory")
     try:
         target.relative_to(root)
     except ValueError as exc:
         raise ValueError("repository patch path escapes root") from exc
-    if target.exists() and target.is_symlink():
-        raise ValueError("refusing to overwrite symlink")
     return target
 
 
