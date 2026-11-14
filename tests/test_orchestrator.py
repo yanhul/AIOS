@@ -245,3 +245,42 @@ def test_governed_binding_preserves_every_loop_policy_guard(monkeypatch):
     assert bound.continue_contract_builder is continue_contract_builder
     assert bound.state_patch_validator is state_patch_validator
     assert ("custom_resume", "c1") in calls
+
+def test_governed_binding_preserves_all_current_and_future_policy_fields(monkeypatch):
+    from dataclasses import fields
+
+    calls = []
+    _patch_authority(monkeypatch, calls)
+    captured = {}
+
+    def capture_loop(executor, store, bound_policy):
+        captured["policy"] = bound_policy
+        return {"status": "CAPTURED"}
+
+    monkeypatch.setattr("core.orchestrator.run_durable_loop", capture_loop)
+    executor = GovernedRuntimeExecutor(
+        aios_dir="/tmp/aios", contract_id="c1", permit_id="p1", actor="agent",
+        adapter=FakeAdapter(), observer=lambda state: None,
+        decider=lambda observation, state: {"logical_operation_id": "op"},
+        verifier=lambda result, state: result,
+    )
+    custom_resume = lambda state: None
+    policy = make_policy(resume_validator=custom_resume)
+    result = run_governed_execution(
+        executor=executor, store=MemoryStateStore(), policy=policy,
+    )
+    bound = captured["policy"]
+
+    assert result["status"] == "CAPTURED"
+    assert {field.name for field in fields(LoopPolicy)} == {
+        field.name for field in fields(type(bound))
+    }
+    for field in fields(LoopPolicy):
+        if field.name == "resume_validator":
+            assert bound.resume_validator is not custom_resume
+        elif field.name == "policy_digest":
+            assert bound.policy_digest == GOVERNING_CONTRACT["policy_digest"]
+        elif field.name == "terminal_states":
+            assert bound.terminal_states == frozenset(GOVERNING_CONTRACT["terminal_states"])
+        else:
+            assert getattr(bound, field.name) is getattr(policy, field.name), field.name
