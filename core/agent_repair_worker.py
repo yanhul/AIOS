@@ -212,6 +212,14 @@ class AgentRepairWorker:
                 durable_runtime=self.durable_runtime,
                 allowed_dirty_paths=owned,
             )
+            # A provider may mutate the disposable worktree and still return
+            # UNKNOWN when its receipt is not authenticated. Never let callers
+            # mistake that local mutation for an authorized/observed effect.
+            if not isinstance(result, Mapping) or result.get("state") != "OBSERVED_SUCCESS":
+                state = result.get("state") if isinstance(result, Mapping) else None
+                raise RepairWorkerError(
+                    f"AIOS mutation did not reach OBSERVED_SUCCESS (state={state!r})"
+                )
         except Exception as exc:
             raise RepairWorkerError(
                 f"AIOS mutation failed: {type(exc).__name__}: {exc}"
