@@ -246,3 +246,10 @@ def test_worker_partial_local_mutation_freezes_all_followup_actions(tmp_path, mo
         worker.test()
     with pytest.raises(RepairWorkerError, match="UNKNOWN"):
         worker.apply(base_sha=base, files=(ProposedFile("module.py", "VALUE = 4\\n"),))
+
+@pytest.mark.parametrize("path", ["tests./test_security.py", "nested/CON.txt", "nested/LPT1.log"])
+def test_worker_rejects_windows_normalization_aliases(tmp_path, path):
+    base = init_repo(tmp_path)
+    worker = AgentRepairWorker(tmp_path, FakeAuthority())
+    with pytest.raises(RepairWorkerError, match="protected"):
+        worker.apply(base_sha=base, files=(ProposedFile(path, "tampered"),))
