@@ -194,6 +194,8 @@ class AgentRepairWorker:
         self, *, base_sha: str, files: Sequence[ProposedFile],
         allowed_dirty_paths: frozenset[str] = frozenset(),
     ) -> WorkerEvidence:
+        if self._mutation_unknown:
+            raise RepairWorkerError("mutation outcome is UNKNOWN; further mutation/testing/publishing is forbidden pending reconciliation")
         owned = frozenset(set(allowed_dirty_paths) | self._owned_dirty_paths)
         self._require_base(base_sha, allowed_dirty_paths=owned)
         if not files:
@@ -207,11 +209,18 @@ class AgentRepairWorker:
         if not isinstance(permit_id, str) or not permit_id.strip():
             raise RepairWorkerError("authority returned no permit")
         changed = []
-        for item, target in zip(proposed, targets):
-            if not isinstance(item.content, str):
-                raise RepairWorkerError(f"patch content must be text: {item.path!r}")
-            self._atomic_write(target, item.content)
-            changed.append({"path": item.path, "content_sha256": self._sha256_text(item.content)})
+        self._mutation_unknown = True
+        try:
+            for item, target in zip(proposed, targets):
+                if not isinstance(item.content, str):
+                    raise RepairWorkerError(f"patch content must be text: {item.path!r}")
+                self._atomic_write(target, item.content)
+                changed.append({"path": item.path, "content_sha256": self._sha256_text(item.content)})
+        except Exception as exc:
+            raise RepairWorkerError(
+                f"patch mutation outcome is UNKNOWN after partial-write boundary: {type(exc).__name__}: {exc}"
+            ) from exc
+        self._mutation_unknown = False
         return WorkerEvidence("APPLY_PATCH", "APPLIED",
                               (f"repair:base:{base_sha}", f"repair:permit:{permit_id}"),
                               {"paths": changed, "permit_id": permit_id})
@@ -221,6 +230,8 @@ class AgentRepairWorker:
         logical_operation_id: str, allowed_dirty_paths: frozenset[str] = frozenset(),
     ) -> Mapping[str, object]:
         """Perform one repository mutation through the AIOS runtime boundary."""
+        if self._mutation_unknown:
+            raise RepairWorkerError("mutation outcome is UNKNOWN; further mutation/testing/publishing is forbidden pending reconciliation")
         if not all((self.aios_dir, self.contract_id, self.permit_id, self.actor)):
             raise RepairWorkerError("AIOS mutation context is not configured")
         owned = frozenset(set(allowed_dirty_paths) | self._owned_dirty_paths)
