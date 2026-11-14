@@ -32,7 +32,27 @@ def atomic_write_beneath(root: str | os.PathLike[str], relative_path: str, conte
     if not isinstance(content, str):
         raise TypeError("repository content must be text")
 
-    root_fd = os.open(os.fspath(root), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    # Resolve the root itself component-by-component from / and retain its
+    # directory descriptor. This prevents a swapped root/ancestor path from
+    # redirecting the later relative operations.
+    absolute_root = os.path.abspath(os.fspath(root))
+    root_parts = Path(absolute_root).parts[1:]
+    anchor_fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    root_fd = anchor_fd
+    root_chain = []
+    try:
+        for component in root_parts:
+            next_fd = os.open(
+                component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                dir_fd=root_fd,
+            )
+            root_chain.append(next_fd)
+            root_fd = next_fd
+    except Exception:
+        for fd in reversed(root_chain):
+            os.close(fd)
+        os.close(anchor_fd)
+        raise
     parent_fd = root_fd
     owned_fds = []
     temp_name = None
@@ -79,4 +99,6 @@ def atomic_write_beneath(root: str | os.PathLike[str], relative_path: str, conte
     finally:
         for fd in reversed(owned_fds):
             os.close(fd)
-        os.close(root_fd)
+        for fd in reversed(root_chain):
+            os.close(fd)
+        os.close(anchor_fd)
