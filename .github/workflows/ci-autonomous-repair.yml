@@ -181,7 +181,11 @@ jobs:
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/p1/repair-proposal-1.json
+          AIOS_PROVIDER_SIGNING_KEYS: ${{ secrets.AIOS_PROVIDER_SIGNING_KEYS }}
+          AIOS_PROVIDER_KEYRING: ${{ secrets.AIOS_PROVIDER_KEYRING }}
         run: |
+          test -n "$AIOS_PROVIDER_SIGNING_KEYS" || { echo "BLOCKED: AIOS_PROVIDER_SIGNING_KEYS is not provisioned"; exit 1; }
+          test -n "$AIOS_PROVIDER_KEYRING" || { echo "BLOCKED: AIOS_PROVIDER_KEYRING is not provisioned"; exit 1; }
           python "${{ github.workspace }}/trusted/scripts/ci_repair_apply_attempt.py"
           status="$(python -c 'import json; print(json.load(open("repair-result.json"))["test"]["status"])')"
           echo "status=$status" >> "$GITHUB_OUTPUT"
@@ -299,7 +303,11 @@ jobs:
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/p1/repair-proposal-1.json,${{ github.workspace }}/p2/repair-proposal-2.json
+          AIOS_PROVIDER_SIGNING_KEYS: ${{ secrets.AIOS_PROVIDER_SIGNING_KEYS }}
+          AIOS_PROVIDER_KEYRING: ${{ secrets.AIOS_PROVIDER_KEYRING }}
         run: |
+          test -n "$AIOS_PROVIDER_SIGNING_KEYS" || { echo "BLOCKED: AIOS_PROVIDER_SIGNING_KEYS is not provisioned"; exit 1; }
+          test -n "$AIOS_PROVIDER_KEYRING" || { echo "BLOCKED: AIOS_PROVIDER_KEYRING is not provisioned"; exit 1; }
           python "${{ github.workspace }}/trusted/scripts/ci_repair_apply_attempt.py"
           status="$(python -c 'import json; print(json.load(open("repair-result.json"))["test"]["status"])')"
           echo "status=$status" >> "$GITHUB_OUTPUT"
@@ -411,7 +419,11 @@ jobs:
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/p1/repair-proposal-1.json,${{ github.workspace }}/p2/repair-proposal-2.json,${{ github.workspace }}/p3/repair-proposal-3.json
+          AIOS_PROVIDER_SIGNING_KEYS: ${{ secrets.AIOS_PROVIDER_SIGNING_KEYS }}
+          AIOS_PROVIDER_KEYRING: ${{ secrets.AIOS_PROVIDER_KEYRING }}
         run: |
+          test -n "$AIOS_PROVIDER_SIGNING_KEYS" || { echo "BLOCKED: AIOS_PROVIDER_SIGNING_KEYS is not provisioned"; exit 1; }
+          test -n "$AIOS_PROVIDER_KEYRING" || { echo "BLOCKED: AIOS_PROVIDER_KEYRING is not provisioned"; exit 1; }
           python "${{ github.workspace }}/trusted/scripts/ci_repair_apply_attempt.py"
           status="$(python -c 'import json; print(json.load(open("repair-result.json"))["test"]["status"])')"
           echo "status=$status" >> "$GITHUB_OUTPUT"
@@ -499,7 +511,12 @@ jobs:
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_SOURCE_BRANCH: ${{ env.SOURCE_BRANCH }}
           AIOS_REPAIR_PROPOSALS_DIR: ${{ github.workspace }}/proposals
-        run: python "${{ github.workspace }}/trusted/scripts/ci_repair_publish.py"
+          AIOS_PROVIDER_SIGNING_KEYS: ${{ secrets.AIOS_PROVIDER_SIGNING_KEYS }}
+          AIOS_PROVIDER_KEYRING: ${{ secrets.AIOS_PROVIDER_KEYRING }}
+        run: |
+          test -n "$AIOS_PROVIDER_SIGNING_KEYS" || { echo "BLOCKED: AIOS_PROVIDER_SIGNING_KEYS is not provisioned"; exit 1; }
+          test -n "$AIOS_PROVIDER_KEYRING" || { echo "BLOCKED: AIOS_PROVIDER_KEYRING is not provisioned"; exit 1; }
+          python "${{ github.workspace }}/trusted/scripts/ci_repair_publish.py"
       - name: Push repair branch and open PR
         working-directory: target
         env:
