@@ -169,3 +169,40 @@ def test_importer_rejects_untrusted_bundle_before_writing(tmp_path):
         )
     assert not (state / "authority").exists()
     assert not (state / "capabilities").exists()
+
+
+def test_importer_rechecks_conflicts_inside_mutation_lock(tmp_path, monkeypatch):
+    envelope, public, kid = fixture_bundle(tmp_path)
+    trust = tmp_path / "trust.json"
+    trust.write_text(json.dumps({"schema_version": 1, "issuers": {
+        "yanhul/aios-authority-store": {
+            "status": "ACTIVE", "key_id": kid, "public_key_hex": public
+        }
+    }}), encoding="utf-8")
+    state = tmp_path / "consumer-state"
+    state.mkdir()
+
+    import core.authority_bundle as authority_bundle
+    real_commit_batch = authority_bundle.commit_batch
+    injected = {}
+
+    def race_injecting_commit_batch(root, pending, precondition=None):
+        relative, _record = pending[0]
+        target = state / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps({"conflict": True}), encoding="utf-8")
+        injected["path"] = target
+        return real_commit_batch(root, pending, precondition=precondition)
+
+    monkeypatch.setattr(authority_bundle, "commit_batch", race_injecting_commit_batch)
+    with pytest.raises(AuthorityBundleError, match="conflicting existing"):
+        import_verified_authority_bundle(
+            envelope, aios_dir=state, trust_anchor_path=trust,
+            trusted_issuer="yanhul/aios-authority-store",
+            expected_repository="yanhul/AIOS", expected_run_id=123,
+            expected_base_sha="a" * 40, expected_source_branch="main",
+            expected_store_commit="b" * 40, now=1500,
+        )
+
+    assert injected["path"].read_text(encoding="utf-8") == json.dumps({"conflict": True})
+    assert not (state / "authority").exists()
