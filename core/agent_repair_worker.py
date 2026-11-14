@@ -117,6 +117,16 @@ class AgentRepairWorker:
         protected_core = "core" in parts and any(
             part.startswith(("policy", "gate", "publisher")) for part in parts
         )
+        reserved_windows_names = {
+            "con", "prn", "aux", "nul",
+            *(f"com{i}" for i in range(1, 10)),
+            *(f"lpt{i}" for i in range(1, 10)),
+        }
+        windows_alias = any(
+            part.endswith((" ", "."))
+            or part.split(".", 1)[0].casefold() in reserved_windows_names
+            for part in normalized.parts
+        )
         test_harness_file = (
             normalized.name.casefold().startswith("test_")
             or normalized.name.casefold().endswith("_test.py")
@@ -126,6 +136,7 @@ class AgentRepairWorker:
             or normalized.name.casefold() in protected_files
             or protected_core
             or test_harness_file
+            or windows_alias
             or any(":" in part for part in parts)
         ):
             raise RepairWorkerError(f"patch path is protected: {raw!r}")
