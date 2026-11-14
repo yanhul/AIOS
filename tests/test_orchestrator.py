@@ -176,3 +176,72 @@ def test_custom_terminal_states_are_preserved_and_enforced(monkeypatch):
     )
     result = run_governed_execution(executor=executor, store=MemoryStateStore(), policy=policy)
     assert result["status"] == "PROMOTE"
+
+
+def test_governed_binding_preserves_every_loop_policy_guard(monkeypatch):
+    from core.acceptance import AcceptancePredicate
+    from core.fix_protocol import FixPlan
+
+    calls = []
+    _patch_authority(monkeypatch, calls)
+    custom_resume = lambda state: calls.append(("custom_resume", state["contract_id"]))
+    receipt_validator = lambda receipt, state: None
+    state_patch_validator = lambda before, patch, after: None
+    blocked_continuation = lambda result, state: None
+    continue_contract_builder = lambda state: {"contract_id": state["contract_id"]}
+    predicate = AcceptancePredicate("accept-1", "result.ok", "eq", True)
+    fix_plan = FixPlan(
+        violated_invariant="invariant", lifecycle="lifecycle",
+        broken_boundary="boundary", root_cause="cause",
+        proposed_fix="fix", regression_proof="regression",
+        runtime_proof="runtime", terminal_condition="PASS",
+    )
+    policy = make_policy(
+        resume_validator=custom_resume,
+        require_execution_receipt=True,
+        execution_receipt_validator=receipt_validator,
+        fix_plan=fix_plan,
+        fix_success_state="PASS",
+        blocked_continuation=blocked_continuation,
+        acceptance_predicates=(predicate,),
+        continue_contract_builder=continue_contract_builder,
+        state_patch_validator=state_patch_validator,
+    )
+    captured = {}
+
+    def capture_loop(executor, store, bound_policy):
+        captured["policy"] = bound_policy
+        bound_policy.resume_validator({
+            "contract_id": "c1", "permit_id": "p1",
+        })
+        return {"status": "CAPTURED"}
+
+    monkeypatch.setattr("core.orchestrator.run_durable_loop", capture_loop)
+    executor = GovernedRuntimeExecutor(
+        aios_dir="/tmp/aios", contract_id="c1", permit_id="p1", actor="agent",
+        adapter=FakeAdapter(), observer=lambda state: None,
+        decider=lambda observation, state: {"logical_operation_id": "op"},
+        verifier=lambda result, state: result,
+    )
+    result = run_governed_execution(
+        executor=executor, store=MemoryStateStore(), policy=policy,
+    )
+    bound = captured["policy"]
+
+    assert result["status"] == "CAPTURED"
+    assert bound.max_steps == policy.max_steps
+    assert bound.terminal_evaluator is policy.terminal_evaluator
+    assert bound.action_authorizer is policy.action_authorizer
+    assert bound.policy_digest == policy.policy_digest
+    assert bound.terminal_states == policy.terminal_states
+    assert bound.budget_exhaustion_state == policy.budget_exhaustion_state
+    assert bound.failure_state == policy.failure_state
+    assert bound.require_execution_receipt is True
+    assert bound.execution_receipt_validator is receipt_validator
+    assert bound.fix_plan is fix_plan
+    assert bound.fix_success_state == "PASS"
+    assert bound.blocked_continuation is blocked_continuation
+    assert bound.acceptance_predicates is policy.acceptance_predicates
+    assert bound.continue_contract_builder is continue_contract_builder
+    assert bound.state_patch_validator is state_patch_validator
+    assert ("custom_resume", "c1") in calls
