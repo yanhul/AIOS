@@ -203,3 +203,113 @@ _HEX40 = re.compile(r"[0-9a-f]{40}")
 
 
 __all__ = ["AuthorityBundleError", "BUNDLE_TYPE", "key_id_for", "load_trust_anchor", "verify_authority_bundle"]
+
+
+def import_verified_authority_bundle(
+    envelope: dict[str, Any],
+    *,
+    aios_dir: str | Path,
+    trust_anchor_path: str | Path,
+    trusted_issuer: str,
+    expected_repository: str,
+    expected_run_id: int,
+    expected_base_sha: str,
+    expected_source_branch: str,
+    expected_store_commit: str,
+    now: int | None = None,
+) -> dict[str, Any]:
+    """Verify then atomically materialize the exact signed records into AIOS state.
+
+    No record is written until signature, scope, registry, policy, contract and
+    permit have passed preflight. Existing conflicting identities fail closed.
+    """
+    from .authority import authorize, load_contract, load_permit
+    from .capabilities import CapabilityRegistry
+    from .contract import contract_identity, issue_permit
+    from .mutation import commit_batch
+    from .policy_registry import POLICIES_DIR
+    import os
+
+    public_key = load_trust_anchor(trust_anchor_path, trusted_issuer)
+    payload = verify_authority_bundle(
+        envelope,
+        trusted_issuer=trusted_issuer,
+        trusted_public_key_hex=public_key,
+        expected_repository=expected_repository,
+        expected_run_id=expected_run_id,
+        expected_base_sha=expected_base_sha,
+        expected_source_branch=expected_source_branch,
+        expected_store_commit=expected_store_commit,
+        now=now,
+    )
+    records = payload["authority_records"]
+    registry_record = records["capability_registry"]
+    policy_record = records["policy"]
+    contract = records["contract"]
+    permit = records["permit"]
+
+    # Validate using AIOS's own parsers and identity functions before any write.
+    registry_path = Path(aios_dir) / "capabilities" / "capability_registry.json"
+    registry = CapabilityRegistry()
+    if registry_record.get("schema_version") != 1 or registry_record.get("persisted_by") != trusted_issuer:
+        raise AuthorityBundleError("capability registry provenance/schema mismatch")
+    if not isinstance(registry_record.get("capabilities"), list) or not isinstance(registry_record.get("edges"), list):
+        raise AuthorityBundleError("capability registry collections malformed")
+    from .capabilities import Capability, CapabilityEdge
+    for raw in registry_record["capabilities"]:
+        registry.register(Capability.from_dict(raw))
+    for raw in registry_record["edges"]:
+        registry.add_edge(CapabilityEdge.from_dict(raw))
+    if registry.snapshot() != {"capabilities": registry_record["capabilities"], "edges": registry_record["edges"]}:
+        raise AuthorityBundleError("capability registry is not canonical")
+    if policy_record.get("policy_digest") != contract.get("policy_digest"):
+        raise AuthorityBundleError("policy/contract digest binding mismatch")
+    policy_body = dict(policy_record)
+    policy_body.pop("policy_digest", None)
+    if policy_digest(policy_body) != contract["policy_digest"]:
+        raise AuthorityBundleError("policy digest does not match AIOS canonical policy")
+    validate_contract(contract)
+    if issue_permit(contract, trusted_issuer) != permit:
+        raise AuthorityBundleError("permit is not the deterministic AIOS-issued permit for this contract")
+
+    cid = contract_identity(contract)
+    pid = permit["permit_id"]
+    root = Path(aios_dir)
+    entries = [
+        ("capabilities/capability_registry.json", registry_record),
+        (f"{POLICIES_DIR}/{contract['policy_digest']}.json", policy_record),
+        (f"authority/contracts/{cid}.json", {**contract, "record_type": "EXECUTION_CONTRACT", "contract_id": cid}),
+        (f"authority/permits/{pid}.json", permit),
+    ]
+    for relative, record in entries:
+        target = root / relative
+        if target.exists():
+            try:
+                existing = json.loads(target.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise AuthorityBundleError(f"existing AIOS authority record is unreadable: {relative}") from exc
+            if canonical_json(existing) != canonical_json(record):
+                raise AuthorityBundleError(f"conflicting existing AIOS authority record: {relative}")
+
+    # One AIOS transaction prevents a partially imported capability/policy/contract/permit set.
+    pending = [(relative, record) for relative, record in entries if not (root / relative).exists()]
+    if pending:
+        commit_batch(str(root), pending)
+
+    # Independent readback through normal AIOS authority loaders and authorization.
+    try:
+        loaded_contract = load_contract(str(root), cid)
+        loaded_permit = load_permit(str(root), pid)
+        authorize(str(root), cid, pid)
+    except Exception as exc:
+        raise AuthorityBundleError(f"AIOS post-commit authority readback failed: {exc}") from exc
+    if canonical_json(loaded_contract) != canonical_json(contract) or canonical_json(loaded_permit) != canonical_json(permit):
+        raise AuthorityBundleError("AIOS post-commit readback differs from signed authority bundle")
+    return {
+        "state": "AUTHORITY_IMPORTED_AND_READ_BACK",
+        "contract_id": cid,
+        "permit_id": pid,
+        "policy_digest": contract["policy_digest"],
+        "capability_registry_path": str(registry_path),
+        "store_commit": expected_store_commit,
+    }
