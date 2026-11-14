@@ -312,3 +312,18 @@ def test_new_worker_instance_blocks_on_durable_unknown_effect(tmp_path):
         restarted.apply(
             base_sha=base, files=(ProposedFile("module.py", "VALUE = 9\\n"),)
         )
+
+    # Rotate to a newly issued contract/permit for the same actor. The
+    # unresolved effect from the old contract must still freeze this worker.
+    rotated_contract = dict(contract)
+    rotated_contract["task_id"] = "durable-unknown-recovery-rotated"
+    rotated_stored = persist_contract(aios, rotated_contract)
+    rotated_permit = persist_permit(aios, rotated_stored, issuer="test-authority")
+    rotated_worker = AgentRepairWorker(
+        repo, FakeAuthority(),
+        allowed_test_commands=(("python", "-c", "assert True"),),
+        aios_dir=str(aios), contract_id=rotated_stored["contract_id"],
+        permit_id=rotated_permit["permit_id"], actor="repair-worker",
+    )
+    with pytest.raises(RepairWorkerError, match="durable mutation outcome is unresolved"):
+        rotated_worker.test()
