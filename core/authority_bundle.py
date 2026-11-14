@@ -124,7 +124,7 @@ def verify_authority_bundle(
         raise AuthorityBundleError("target binding schema mismatch")
     if target["base_sha"] != expected_base_sha:
         raise AuthorityBundleError("immutable target/store commit binding mismatch")
-    if not _HEX64.fullmatch(expected_base_sha) or not _HEX40.fullmatch(expected_store_commit):
+    if not isinstance(expected_base_sha, str) or not _HEX40.fullmatch(expected_base_sha) or not isinstance(expected_store_commit, str) or not _HEX40.fullmatch(expected_store_commit):
         raise AuthorityBundleError("expected commit SHA is malformed")
     if not isinstance(payload["issued_at"], int) or not isinstance(payload["expires_at"], int):
         raise AuthorityBundleError("bundle validity timestamps must be integer epoch seconds")
