@@ -11,7 +11,7 @@ import stat
 from pathlib import Path
 
 
-_REQUIRED_DIR_FD = (os.open, os.mkdir, os.stat, os.unlink, os.replace)
+_REQUIRED_DIR_FD = (os.open, os.mkdir, os.stat, os.unlink, os.rename)
 _SUPPORTED = (
     os.name == "posix"
     and hasattr(os, "O_NOFOLLOW")
