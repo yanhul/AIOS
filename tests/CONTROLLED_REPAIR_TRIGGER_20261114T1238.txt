@@ -1,2 +1,3 @@
 Controlled autonomous-repair retest marker.
 This file exists only to trigger the bounded G4A repair test.
+Retest after TRY provider URL variable/secret fallback.
