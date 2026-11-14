@@ -215,3 +215,34 @@ def test_worker_unknown_exception_after_dispatch_blocks_tests(tmp_path, monkeypa
         )
     with pytest.raises(RepairWorkerError, match="UNKNOWN"):
         worker.test()
+
+
+def test_worker_partial_local_mutation_freezes_all_followup_actions(tmp_path, monkeypatch):
+    base = init_repo(tmp_path)
+    worker = AgentRepairWorker(
+        tmp_path, FakeAuthority(),
+        allowed_test_commands=(("python", "-c", "raise SystemExit(99)"),),
+    )
+    real_write = worker._atomic_write
+    calls = 0
+
+    def fail_after_first(target, content):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return real_write(target, content)
+        raise OSError("simulated second-file write failure")
+
+    monkeypatch.setattr(worker, "_atomic_write", fail_after_first)
+    with pytest.raises(RepairWorkerError, match="UNKNOWN"):
+        worker.apply(
+            base_sha=base,
+            files=(
+                ProposedFile("module.py", "VALUE = 2\\n"),
+                ProposedFile("second.py", "VALUE = 3\\n"),
+            ),
+        )
+    with pytest.raises(RepairWorkerError, match="UNKNOWN"):
+        worker.test()
+    with pytest.raises(RepairWorkerError, match="UNKNOWN"):
+        worker.apply(base_sha=base, files=(ProposedFile("module.py", "VALUE = 4\\n"),))
