@@ -79,25 +79,17 @@ def require_exact_publish_scope(expected, *, unstaged, staged, untracked) -> Non
 
 
 def authority(root: Path, actor: str, run_id: int):
-    registry = CapabilityRegistry()
-    registry.register(Capability("repo_patch", "1", "AIOS", "external_effect",
-                                 inputs=("patch",), outputs=("observation",), status="ACTIVE"))
-    registry.persist(root, actor=actor)
-    policy_digest = persist_policy(root, {
-        "policy_type": "GOVERNING_POLICY", "task": "ci-repair",
-        "allowed_effects": ["external_effect"],
-    })
-    contract = {
-        "contract_type": CONTRACT_TYPE, "task_id": f"ci-repair-publish-{run_id}",
-        "scope": "repository", "actor": actor, "capabilities": ["repo_patch@1"],
-        "input_digest": "sha256:ci-failure", "allowed_effects": ["external_effect"],
-        "evidence_required": ["OBSERVED"], "max_attempts": 2,
-        "terminal_states": ["OBSERVED_SUCCESS", "OBSERVED_FAILURE"],
-        "policy_digest": policy_digest,
-    }
-    stored = persist_contract(root, contract)
-    permit = persist_permit(root, stored, issuer="ci-repair-authority")
-    return stored["contract_id"], permit["permit_id"]
+    """Do not mint local authority for a privileged repository mutation.
+
+    The separately governed aios-authority-store currently declares itself
+    NOT READY / NOT VERIFIED and has no provisioned issuer. Until a verified
+    external contract/permit/attestation bundle is integrated, repair must
+    stop here rather than self-promote repo_patch@1 or self-issue a permit.
+    """
+    raise SystemExit(
+        "BLOCKED: external AIOS authority issuer/store is not provisioned; "
+        "ephemeral self-issued capability, policy, contract, and permit are forbidden"
+    )
 
 
 def main() -> int:
