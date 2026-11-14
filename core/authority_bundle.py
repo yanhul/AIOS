@@ -9,6 +9,7 @@ import hashlib
 import json
 import re
 import time
+from pathlib import Path
 from typing import Any
 
 from cryptography.exceptions import InvalidSignature
@@ -36,6 +37,23 @@ def key_id_for(public_key_hex: str) -> str:
 
 def _signed_bytes(payload: dict[str, Any]) -> bytes:
     return canonical_json(payload).encode("utf-8")
+
+
+def load_trust_anchor(path: str | Path, issuer: str) -> str:
+    """Load a committed, explicit trust anchor; UNPROVISIONED never verifies."""
+    try:
+        spec = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise AuthorityBundleError("authority trust-anchor file is unavailable or malformed") from exc
+    if not isinstance(spec, dict) or spec.get("schema_version") != 1:
+        raise AuthorityBundleError("authority trust-anchor schema mismatch")
+    entry = (spec.get("issuers") or {}).get(issuer)
+    if not isinstance(entry, dict) or entry.get("status") != "ACTIVE":
+        raise AuthorityBundleError("external authority issuer is not provisioned/ACTIVE")
+    public_key = entry.get("public_key_hex")
+    if entry.get("key_id") != key_id_for(public_key):
+        raise AuthorityBundleError("committed authority trust-anchor key ID mismatch")
+    return public_key
 
 
 def verify_authority_bundle(
@@ -96,6 +114,12 @@ def verify_authority_bundle(
         raise AuthorityBundleError("source workflow is not approved")
     if run["event"] not in {"push", "pull_request", "workflow_dispatch"}:
         raise AuthorityBundleError("source event is not eligible")
+    branch = run["head_branch"]
+    if branch != "main" and not (
+        isinstance(branch, str) and branch.startswith("aios/autorepair/")
+        and len(branch) > len("aios/autorepair/")
+    ):
+        raise AuthorityBundleError("source branch is outside the issuer allowlist")
     if not isinstance(target, dict) or set(target) != {"base_sha"}:
         raise AuthorityBundleError("target binding schema mismatch")
     if target["base_sha"] != expected_base_sha:
@@ -145,4 +169,4 @@ def verify_authority_bundle(
 _HEX40 = re.compile(r"[0-9a-f]{40}")
 
 
-__all__ = ["AuthorityBundleError", "BUNDLE_TYPE", "key_id_for", "verify_authority_bundle"]
+__all__ = ["AuthorityBundleError", "BUNDLE_TYPE", "key_id_for", "load_trust_anchor", "verify_authority_bundle"]
