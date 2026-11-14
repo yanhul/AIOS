@@ -76,10 +76,14 @@ def atomic_write_beneath(root: str | os.PathLike[str], relative_path: str, conte
         if current is not None and not stat.S_ISREG(current.st_mode):
             raise OSError("refusing to replace a non-regular repository target")
 
+        # Preserve the existing file's permission bits (including executable
+        # bits). New files retain the restrictive 0o600 default.
+        target_mode = stat.S_IMODE(current.st_mode) if current is not None else 0o600
         temp_name = f".{leaf}.repair-{secrets.token_hex(12)}"
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
         temp_fd = os.open(temp_name, flags, 0o600, dir_fd=parent_fd)
         try:
+            os.fchmod(temp_fd, target_mode)
             data = content.encode("utf-8")
             with os.fdopen(temp_fd, "wb") as stream:
                 stream.write(data)
