@@ -35,3 +35,14 @@ def test_atomic_write_replaces_neither_nor_follows_symlink_target(tmp_path):
 def test_atomic_write_rejects_traversal(tmp_path):
     with pytest.raises(ValueError, match="unsafe"):
         atomic_write_beneath(tmp_path, "../outside.txt", "nope")
+
+@pytest.mark.skipif(os.name != "posix", reason="dirfd/O_NOFOLLOW writer is POSIX-only")
+def test_atomic_write_preserves_existing_permission_bits(tmp_path):
+    target = tmp_path / "run_tool.sh"
+    target.write_text("#!/bin/sh\\nexit 0\\n", encoding="utf-8")
+    target.chmod(0o751)
+
+    atomic_write_beneath(tmp_path, "run_tool.sh", "#!/bin/sh\\necho repaired\\n")
+
+    assert target.read_text(encoding="utf-8") == "#!/bin/sh\\necho repaired\\n"
+    assert target.stat().st_mode & 0o777 == 0o751
