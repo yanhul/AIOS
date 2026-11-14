@@ -32,7 +32,7 @@ def validate_run(payload: dict, *, repository: str, run_id: int,
         raise ValueError("source run head SHA mismatch")
     if payload.get("head_branch") != expected_branch:
         raise ValueError("source run head branch mismatch")
-    if expected_branch != "main" and not expected_branch.startswith("aios/autorepair/"):
+    if expected_branch != "main" and not (expected_branch.startswith("aios/autorepair/") and len(expected_branch) > len("aios/autorepair/")):
         raise ValueError("source branch is outside the repair allowlist")
     if payload.get("path") not in ALLOWED_WORKFLOWS:
         raise ValueError("source workflow path is not an approved CI workflow")
