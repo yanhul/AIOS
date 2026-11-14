@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.ci_repair_publish import require_matching_source_digest, verify_pass_artifact
+from scripts.ci_repair_publish import (
+    require_exact_publish_scope, require_matching_source_digest, verify_pass_artifact,
+)
 
 
 def _pass_artifact(digest: str) -> dict:
@@ -41,3 +43,22 @@ def test_publish_rejects_unbound_or_non_pass_artifact():
     artifact["test"]["status"] = "FAIL"
     with pytest.raises(SystemExit, match="does not report PASS"):
         verify_pass_artifact(artifact, run_id=77, base_sha="a" * 40, pass_attempt=1)
+
+
+def test_publish_blocks_pre_staged_unrelated_file():
+    with pytest.raises(SystemExit, match="index/worktree scope mismatch"):
+        require_exact_publish_scope(
+            {"src/fix.py"}, unstaged=set(),
+            staged={"src/fix.py", "unrelated/secret.txt"}, untracked=set(),
+        )
+
+
+def test_publish_requires_exact_staged_set_and_clean_worktree():
+    require_exact_publish_scope(
+        {"src/fix.py"}, unstaged=set(), staged={"src/fix.py"}, untracked=set(),
+    )
+    with pytest.raises(SystemExit, match="index/worktree scope mismatch"):
+        require_exact_publish_scope(
+            {"src/fix.py"}, unstaged={"src/extra.py"},
+            staged={"src/fix.py"}, untracked=set(),
+        )
