@@ -222,6 +222,7 @@ def test_worker_iterative_patches_remain_inside_aios_boundary(tmp_path):
     "nested/core/gatekeeper.py",
     "nested/core/publisher.py",
     "nested/../.github/workflows/ci.yml",
+    ".env.development", ".env.test", ".env.staging", "config/.env.production.local",
 ])
 def test_adapter_rejects_protected_paths_at_any_depth(tmp_path, path):
     base = init_repo(tmp_path)
