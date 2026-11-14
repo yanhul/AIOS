@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "issuers": {
+    "yanhul/aios-authority-store": {
+      "status": "UNPROVISIONED",
+      "algorithm": "Ed25519",
+      "key_id": null,
+      "public_key_hex": null
+    }
+  }
+}
