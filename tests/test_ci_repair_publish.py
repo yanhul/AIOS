@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.ci_repair_publish import verify_pass_artifact
+from scripts.ci_repair_publish import require_matching_source_digest, verify_pass_artifact
 
 
 def _pass_artifact(digest: str) -> dict:
@@ -28,7 +28,7 @@ def test_publish_rejects_pass_artifact_when_recreated_source_tree_changed():
     )
     assert selected_digest == tested_digest
     with pytest.raises(SystemExit, match="source tree differs"):
-        verify_recreated_source_tree(selected_digest, changed_source_digest)
+        require_matching_source_digest(selected_digest, changed_source_digest)
 
 
 def verify_recreated_source_tree(expected: str, actual: str) -> None:
