@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import time
 from typing import Any
 
 from cryptography.exceptions import InvalidSignature
@@ -47,6 +48,7 @@ def verify_authority_bundle(
     expected_base_sha: str,
     expected_source_branch: str,
     expected_store_commit: str,
+    now: int | None = None,
 ) -> dict[str, Any]:
     """Verify signature, authority semantics, and immutable source/store bindings."""
     if not isinstance(envelope, dict) or set(envelope) != {"payload", "signature"}:
@@ -94,16 +96,19 @@ def verify_authority_bundle(
         raise AuthorityBundleError("source workflow is not approved")
     if run["event"] not in {"push", "pull_request", "workflow_dispatch"}:
         raise AuthorityBundleError("source event is not eligible")
-    if not isinstance(target, dict) or set(target) != {"base_sha", "store_commit"}:
+    if not isinstance(target, dict) or set(target) != {"base_sha"}:
         raise AuthorityBundleError("target binding schema mismatch")
-    if target["base_sha"] != expected_base_sha or target["store_commit"] != expected_store_commit:
+    if target["base_sha"] != expected_base_sha:
         raise AuthorityBundleError("immutable target/store commit binding mismatch")
     if not _HEX64.fullmatch(expected_base_sha) or not _HEX40.fullmatch(expected_store_commit):
         raise AuthorityBundleError("expected commit SHA is malformed")
     if not isinstance(payload["issued_at"], int) or not isinstance(payload["expires_at"], int):
         raise AuthorityBundleError("bundle validity timestamps must be integer epoch seconds")
-    if payload["expires_at"] <= payload["issued_at"]:
-        raise AuthorityBundleError("bundle validity interval is invalid")
+    current = int(time.time()) if now is None else now
+    if payload["expires_at"] <= payload["issued_at"] or current < payload["issued_at"] or current >= payload["expires_at"]:
+        raise AuthorityBundleError("bundle is not currently valid or validity interval is invalid")
+    if not isinstance(expected_store_commit, str) or not _HEX40.fullmatch(expected_store_commit):
+        raise AuthorityBundleError("expected immutable store commit SHA is malformed")
 
     records = payload["authority_records"]
     if not isinstance(records, dict) or set(records) != {"capability_registry", "policy", "contract", "permit"}:
