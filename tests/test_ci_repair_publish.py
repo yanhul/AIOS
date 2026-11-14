@@ -31,11 +31,6 @@ def test_publish_rejects_pass_artifact_when_recreated_source_tree_changed():
         require_matching_source_digest(selected_digest, changed_source_digest)
 
 
-def verify_recreated_source_tree(expected: str, actual: str) -> None:
-    if actual != expected:
-        raise SystemExit("BLOCKED: publish source tree differs from tested content_sha256")
-
-
 def test_publish_rejects_unbound_or_non_pass_artifact():
     artifact = _pass_artifact("1" * 64)
     artifact["base_sha"] = "b" * 40
