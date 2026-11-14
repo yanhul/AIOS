@@ -7,7 +7,6 @@ import os
 import posixpath
 import ntpath
 import subprocess
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -17,6 +16,7 @@ from .effect_authority import create_effect
 from .evidence import EvidenceRecord
 from .provider_authority import ProviderReceiptSigner, authenticate_receipt
 from .runtime import ProviderReceipt, execute
+from .safe_repo_write import atomic_write_beneath
 
 
 @dataclass(frozen=True)
@@ -75,7 +75,7 @@ class RepositoryPatchAdapter:
         changed = []
         for item in files:
             target = _safe_repo_path(self.root, item.path)
-            _atomic_write(target, item.content)
+            _atomic_write(self.root, target, item.content)
             changed.append({
                 "path": item.path,
                 "content_sha256": _sha256_text(item.content),
@@ -222,18 +222,9 @@ def _require_clean_base(root: Path, base_sha: str, *, allowed_dirty_paths: froze
         )
 
 
-def _atomic_write(target: Path, content: str) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(prefix=f".{target.name}.repair-", dir=target.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
-            fh.write(content)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp_name, target)
-    finally:
-        if os.path.exists(tmp_name):
-            os.unlink(tmp_name)
+def _atomic_write(root: Path, target: Path, content: str) -> None:
+    relative = target.relative_to(root).as_posix()
+    atomic_write_beneath(root, relative, content)
 
 
 def apply_via_aios(
