@@ -151,18 +151,51 @@ def verify_authority_bundle(
     digest = policy_body.pop("policy_digest", None)
     if digest != contract["policy_digest"] or policy_digest(policy_body) != digest:
         raise AuthorityBundleError("governing policy content digest mismatch")
+    if (
+        policy_body.get("policy_type") != "GOVERNING_POLICY"
+        or policy_body.get("issuer") != trusted_issuer
+        or policy_body.get("repository") != expected_repository
+        or policy_body.get("source_run_id") != expected_run_id
+        or policy_body.get("base_sha") != expected_base_sha
+        or policy_body.get("allowed_effects") != ["external_effect"]
+        or policy_body.get("allowed_capabilities") != ["repo_patch@1"]
+        or policy_body.get("max_attempts") != 3
+        or policy_body.get("require_observed_success") is not True
+        or not isinstance(policy_body.get("denied_paths"), list)
+        or not {".github/workflows/", ".aios/", "secrets/"}.issubset(set(policy_body["denied_paths"]))
+    ):
+        raise AuthorityBundleError("governing policy exceeds or mismatches the approved issuer scope")
+    if (
+        contract.get("actor") != "ci-repair-worker"
+        or contract.get("scope") != "repository"
+        or contract.get("capabilities") != ["repo_patch@1"]
+        or contract.get("allowed_effects") != ["external_effect"]
+        or contract.get("max_attempts") != 3
+        or "OBSERVED" not in contract.get("evidence_required", [])
+    ):
+        raise AuthorityBundleError("execution contract exceeds the approved repair scope")
+    if permit.get("issuer") != trusted_issuer:
+        raise AuthorityBundleError("permit issuer identity does not match signed bundle issuer")
     if not isinstance(registry, dict) or registry.get("schema_version") != 1:
         raise AuthorityBundleError("capability registry schema mismatch")
+    if registry.get("persisted_by") != trusted_issuer:
+        raise AuthorityBundleError("capability registry persistence issuer mismatch")
     caps = registry.get("capabilities")
-    if not isinstance(caps, list):
-        raise AuthorityBundleError("capability registry capabilities missing")
-    active = [
-        c for c in caps if isinstance(c, dict)
-        and c.get("capability_id") == "repo_patch" and c.get("version") == "1"
-        and c.get("status") == "ACTIVE"
-    ]
-    if len(active) != 1 or "repo_patch@1" not in contract["capabilities"]:
-        raise AuthorityBundleError("issuer did not authorize exactly the required repo_patch@1 capability")
+    if not isinstance(caps, list) or len(caps) != 1 or not isinstance(caps[0], dict):
+        raise AuthorityBundleError("capability registry must contain exactly one scoped capability")
+    capability = caps[0]
+    if (
+        capability.get("capability_id") != "repo_patch"
+        or capability.get("version") != "1"
+        or capability.get("owner") != trusted_issuer
+        or capability.get("kind") != "external_effect"
+        or capability.get("status") != "ACTIVE"
+        or capability.get("permissions") != ["repository_patch"]
+        or capability.get("environments") != ["github-actions"]
+        or capability.get("verification_methods") != ["independent_full_suite"]
+        or capability.get("evidence_requirements") != ["OBSERVED_SUCCESS"]
+    ):
+        raise AuthorityBundleError("issuer did not authorize the exact approved repo_patch@1 capability")
     return payload
 
 
