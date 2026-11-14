@@ -42,7 +42,7 @@ def fixture_bundle(tmp_path):
                        "head_sha": "a" * 40, "head_branch": "main"},
         "target": {"base_sha": "a" * 40}, "issued_at": 1000, "expires_at": 2000,
         "authority_records": {
-            "capability_registry": registry.snapshot(),
+            "capability_registry": {"schema_version": 1, **registry.snapshot()},
             "policy": policy_record, "contract": contract_record, "permit": permit,
         },
     }
