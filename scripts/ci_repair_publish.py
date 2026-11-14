@@ -14,6 +14,7 @@ from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import CONTRACT_TYPE
 from core.policy_registry import persist_policy
+from scripts.ci_repair_test_hygiene import restore_test_generated_artifacts
 
 
 def git(*args: str) -> str:
@@ -143,6 +144,8 @@ def main() -> int:
     before_retest = content_sha256(expected)
     require_matching_source_digest(expected_digest, before_retest)
     retest = worker.test()
+    restored_test_artifacts = restore_test_generated_artifacts(git)
+    print(json.dumps({"restored_test_generated_artifacts": list(restored_test_artifacts)}))
     if retest.status != "PASS":
         raise SystemExit(f"BLOCKED: publish-boundary re-test did not PASS: {retest.status}")
     after_retest = content_sha256(expected)
