@@ -51,6 +51,10 @@ def run_governed_execution(*, executor: GovernedRuntimeExecutor, store: StateSto
         if state.get("contract_id") != executor.contract_id: raise ValueError("persisted contract binding does not match execution context")
         if state.get("permit_id") != executor.permit_id: raise ValueError("persisted permit binding does not match execution context")
         authorize(executor.aios_dir, executor.contract_id, executor.permit_id)
+        # Preserve the caller's resume guard as well as the authority binding.
+        # Replacing it silently would discard a policy-level safety predicate.
+        if policy.resume_validator is not None:
+            policy.resume_validator(deepcopy(state))
 
     bound_policy = LoopPolicy(
         max_steps=policy.max_steps,
