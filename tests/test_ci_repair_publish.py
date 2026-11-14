@@ -62,3 +62,18 @@ def test_publish_requires_exact_staged_set_and_clean_worktree():
             {"src/fix.py"}, unstaged={"src/extra.py"},
             staged={"src/fix.py"}, untracked=set(),
         )
+
+
+
+def test_autonomous_repair_workflow_is_wired_to_ci_and_exact_head_gates():
+    from pathlib import Path
+
+    workflow = (Path(__file__).parents[1] / ".github" / "workflows" /
+                "ci-autonomous-repair.yml").read_text(encoding="utf-8")
+    assert 'workflows: ["CI", "G4A CI"]' in workflow
+    assert "workflow_run:" in workflow
+    assert "types: [completed]" in workflow
+    assert "pushed_sha" in workflow
+    assert 'select(.headSha == $sha)' in workflow
+    assert 'gh pr ready "$branch"' in workflow
+    assert 'gh pr create --draft' in workflow
