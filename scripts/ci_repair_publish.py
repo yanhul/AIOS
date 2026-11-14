@@ -81,7 +81,8 @@ def authority(root: Path, actor: str, run_id: int):
 def main() -> int:
     base = os.environ["AIOS_REPAIR_SHA"]
     run_id = int(os.environ["AIOS_REPAIR_RUN_ID"])
-    pass_attempt = int(os.environ["AIOS_REPAIR_PASS_ATTEMPT"])\n    result_path = Path(os.environ["AIOS_REPAIR_RESULT_PATH"])
+    pass_attempt = int(os.environ["AIOS_REPAIR_PASS_ATTEMPT"])
+    result_path = Path(os.environ["AIOS_REPAIR_RESULT_PATH"])
     result_obj = json.loads(result_path.read_text(encoding="utf-8"))
     expected_digest = verify_pass_artifact(
         result_obj, run_id=run_id, base_sha=base, pass_attempt=pass_attempt,
