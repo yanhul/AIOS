@@ -5,7 +5,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from core.authority_bundle import (
-    AuthorityBundleError, key_id_for, load_trust_anchor, verify_authority_bundle,\n    import_verified_authority_bundle,
+    AuthorityBundleError, key_id_for, load_trust_anchor, verify_authority_bundle,
+    import_verified_authority_bundle,
 )
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
