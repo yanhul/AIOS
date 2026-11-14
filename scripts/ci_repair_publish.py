@@ -4,9 +4,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import tempfile
-import stat
 from pathlib import Path
 
 from core.agent_repair_worker import AgentRepairWorker, ProposedFile
@@ -42,10 +42,20 @@ def content_sha256(paths) -> str:
 def verify_pass_artifact(obj: dict, *, run_id: int, base_sha: str, pass_attempt: int) -> str:
     if obj.get("schema") != 3 or obj.get("run_id") != run_id or obj.get("base_sha") != base_sha:
         raise SystemExit("BLOCKED: repair result artifact is not bound to this run/base")
-    if obj.get("test", {}).get("status") != "PASS":
+    if type(pass_attempt) is not int or pass_attempt not in (1, 2, 3):
+        raise SystemExit("BLOCKED: selected repair attempt is outside the allowed range")
+    attempts = obj.get("attempts")
+    if (not isinstance(attempts, list) or
+            any(type(x) is not int for x in attempts) or
+            attempts != list(range(1, pass_attempt + 1))):
+        raise SystemExit("BLOCKED: repair result artifact attempt sequence does not match selected attempt")
+    test = obj.get("test")
+    if not isinstance(test, dict) or test.get("status") != "PASS":
         raise SystemExit("BLOCKED: repair result artifact does not report PASS")
-    if not obj.get("attempts") or max(obj["attempts"]) != pass_attempt:
-        raise SystemExit("BLOCKED: repair result artifact attempt does not match selected attempt")
+    evidence = test.get("evidence_refs")
+    if (not isinstance(evidence, list) or not evidence or
+            any(not isinstance(x, str) or not x.strip() for x in evidence)):
+        raise SystemExit("BLOCKED: repair result artifact has no valid test evidence references")
     digest = obj.get("content_sha256")
     if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
         raise SystemExit("BLOCKED: repair result artifact has invalid content_sha256")
@@ -138,9 +148,7 @@ def main() -> int:
             )
             owned = frozenset(set(owned) | {x.path for x in files})
 
-    # Artifacts are hints only. Recreate the exact source patch, compare its
-    # digest with the tree that produced PASS, then run the trusted test suite
-    # again at the publish boundary.
+    # Recreate the source patch, bind it to the PASS digest, then retest at publish.
     before_retest = content_sha256(expected)
     require_matching_source_digest(expected_digest, before_retest)
     retest = worker.test()
@@ -151,7 +159,6 @@ def main() -> int:
     after_retest = content_sha256(expected)
     require_matching_source_digest(expected_digest, after_retest)
 
-    # Never inherit caller/runner staged content: it is outside the tested digest.
     initial_staged = set(git("diff", "--cached", "--name-only").splitlines())
     if initial_staged:
         raise SystemExit(f"BLOCKED: pre-existing staged paths: {sorted(initial_staged)}")
