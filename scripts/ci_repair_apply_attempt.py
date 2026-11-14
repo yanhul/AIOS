@@ -1,22 +1,43 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
 import tempfile
+import stat
 
 from core.agent_repair_worker import AgentRepairWorker, ProposedFile
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import CONTRACT_TYPE
 from core.policy_registry import persist_policy
+from scripts.ci_repair_test_hygiene import restore_test_generated_artifacts
 
 
 def git(*args: str) -> str:
     p = subprocess.run(["git", *args], text=True, capture_output=True, check=True)
     return p.stdout.strip()
+
+
+def content_sha256(paths) -> str:
+    # Include newly-created files too; git diff alone omits untracked paths.
+    digest = hashlib.sha256()
+    for raw in sorted(set(paths)):
+        path = Path(raw)
+        if path.is_symlink() or not path.is_file():
+            raise SystemExit(f"BLOCKED: repair source path is not a regular file: {raw}")
+        data = path.read_bytes()
+        mode = stat.S_IMODE(path.stat().st_mode)
+        name = raw.encode("utf-8")
+        digest.update(len(name).to_bytes(8, "big"))
+        digest.update(name)
+        digest.update(mode.to_bytes(4, "big"))
+        digest.update(len(data).to_bytes(8, "big"))
+        digest.update(data)
+    return digest.hexdigest()
 
 
 def authority(root: Path, actor: str, run_id: int):
@@ -76,9 +97,13 @@ def main() -> int:
             applied.append({"attempt": proposal["attempt"], "result": dict(result)})
             owned = frozenset(set(owned) | {x.path for x in files})
         tested = worker.test()
+    restored_test_artifacts = restore_test_generated_artifacts(git)
+    tested_content_sha256 = content_sha256(x["path"] for proposal in proposals for x in proposal["files"])
 
     result = {
-        "schema": 2, "run_id": run_id, "base_sha": base,
+        "schema": 3, "run_id": run_id, "base_sha": base,
+        "content_sha256": tested_content_sha256,
+        "restored_test_generated_artifacts": list(restored_test_artifacts),
         "attempts": [p["attempt"] for p in proposals],
         "applied": applied,
         "test": {
