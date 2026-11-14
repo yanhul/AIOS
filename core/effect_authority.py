@@ -846,7 +846,9 @@ def list_unresolved_effects(aios_dir, contract_id, actor):
     The effect files are the durable source of truth; callers must not rely on
     process-local flags to decide whether mutation/testing can continue.
     """
-    _validate_strings(("contract_id", contract_id), ("actor", actor))
+    _validate_strings(("actor", actor))
+    if contract_id is not None:
+        _validate_strings(("contract_id", contract_id))
     recover_pending(aios_dir)
     directory = os.path.join(aios_dir, "effects")
     if not os.path.exists(directory):
@@ -864,7 +866,7 @@ def list_unresolved_effects(aios_dir, contract_id, actor):
             raise TransitionError(f"cannot reconcile persisted effect {name}: {exc}") from exc
         if not isinstance(raw, dict):
             raise TransitionError(f"persisted effect is malformed: {name}")
-        if raw.get("contract_id") != contract_id or raw.get("actor") != actor:
+        if raw.get("actor") != actor or (contract_id is not None and raw.get("contract_id") != contract_id):
             continue
         effect_id = raw.get("effect_id")
         current, _contract = _load_owned_effect(aios_dir, effect_id, actor, "worker reconciliation")
