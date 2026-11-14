@@ -28,6 +28,19 @@ def content_sha256() -> str:
     return hashlib.sha256(patch).hexdigest()
 
 
+def verify_pass_artifact(obj: dict, *, run_id: int, base_sha: str, pass_attempt: int) -> str:
+    if obj.get("schema") != 3 or obj.get("run_id") != run_id or obj.get("base_sha") != base_sha:
+        raise SystemExit("BLOCKED: repair result artifact is not bound to this run/base")
+    if obj.get("test", {}).get("status") != "PASS":
+        raise SystemExit("BLOCKED: repair result artifact does not report PASS")
+    if not obj.get("attempts") or max(obj["attempts"]) != pass_attempt:
+        raise SystemExit("BLOCKED: repair result artifact attempt does not match selected attempt")
+    digest = obj.get("content_sha256")
+    if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+        raise SystemExit("BLOCKED: repair result artifact has invalid content_sha256")
+    return digest
+
+
 def authority(root: Path, actor: str, run_id: int):
     registry = CapabilityRegistry()
     registry.register(Capability("repo_patch", "1", "AIOS", "external_effect",
@@ -53,7 +66,11 @@ def authority(root: Path, actor: str, run_id: int):
 def main() -> int:
     base = os.environ["AIOS_REPAIR_SHA"]
     run_id = int(os.environ["AIOS_REPAIR_RUN_ID"])
-    pass_attempt = int(os.environ["AIOS_REPAIR_PASS_ATTEMPT"])\n    expected_digest = os.environ["AIOS_REPAIR_EXPECTED_CONTENT_SHA256"]
+    pass_attempt = int(os.environ["AIOS_REPAIR_PASS_ATTEMPT"])\n    result_path = Path(os.environ["AIOS_REPAIR_RESULT_PATH"])
+    result_obj = json.loads(result_path.read_text(encoding="utf-8"))
+    expected_digest = verify_pass_artifact(
+        result_obj, run_id=run_id, base_sha=base, pass_attempt=pass_attempt,
+    )
     if git("rev-parse", "HEAD") != base:
         raise SystemExit("stale repair publish base")
 
