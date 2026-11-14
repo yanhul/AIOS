@@ -396,10 +396,10 @@ jobs:
                   and isinstance(obj.get("content_sha256"), str)
                   and len(obj["content_sha256"]) == 64
                   and obj.get("attempts")):
-                  candidates.append((max(obj["attempts"]), obj["content_sha256"]))
+                  candidates.append((max(obj["attempts"]), obj["content_sha256"], path))
           if not candidates:
               raise SystemExit("BLOCKED: no schema-3 PASS result bound to this run/base/source digest")
-          attempt, digest=max(candidates, key=lambda item:item[0])
+          attempt, digest, result_path=max(candidates, key=lambda item:item[0])
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
               fh.write(f"AIOS_REPAIR_PASS_ATTEMPT={attempt}\n")
               fh.write(f"AIOS_REPAIR_EXPECTED_CONTENT_SHA256={digest}\n")
@@ -412,7 +412,7 @@ jobs:
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_SOURCE_BRANCH: ${{ env.SOURCE_BRANCH }}
           AIOS_REPAIR_PROPOSALS_DIR: ${{ github.workspace }}/proposals
-          AIOS_REPAIR_EXPECTED_CONTENT_SHA256: ${{ env.AIOS_REPAIR_EXPECTED_CONTENT_SHA256 }}
+          AIOS_REPAIR_EXPECTED_CONTENT_SHA256: ${{ env.AIOS_REPAIR_EXPECTED_CONTENT_SHA256 }}\n          AIOS_REPAIR_RESULT_PATH: ${{ env.AIOS_REPAIR_RESULT_PATH }}
         run: python "${{ github.workspace }}/trusted/scripts/ci_repair_publish.py"
       - name: Push repair branch and open PR
         working-directory: target
