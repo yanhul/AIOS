@@ -134,7 +134,7 @@ def main() -> int:
         worker = AgentRepairWorker(
             Path("."), object(),
             allowed_test_commands=(("python", "-m", "pytest", "-q"),),
-            timeout_seconds=900, aios_dir=aios,
+            timeout_seconds=1800, aios_dir=aios,
             contract_id=contract_id, permit_id=permit_id, actor="ci-repair-publisher",
         )
         owned = frozenset()
