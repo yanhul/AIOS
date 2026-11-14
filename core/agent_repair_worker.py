@@ -143,6 +143,8 @@ class AgentRepairWorker:
                 raise RepairWorkerError(f"refusing symlink path component: {raw!r}")
             if target != self.root / normalized and not target.is_dir():
                 raise RepairWorkerError(f"non-directory path component: {raw!r}")
+        if target.exists() and target.is_dir():
+            raise RepairWorkerError(f"patch target is a directory: {raw!r}")
         try:
             target.relative_to(self.root)
         except ValueError as exc:
