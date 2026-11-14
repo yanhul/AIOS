@@ -158,6 +158,7 @@ def _safe_repo_path(root: Path, raw: str) -> Path:
     if (
         any(part in protected_dirs for part in parts)
         or p.name.casefold() in protected_files
+        or p.name.casefold().startswith(".env")
         or protected_core
         or test_harness_file
         or windows_alias
