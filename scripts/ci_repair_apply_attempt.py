@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,16 @@ from core.policy_registry import persist_policy
 def git(*args: str) -> str:
     p = subprocess.run(["git", *args], text=True, capture_output=True, check=True)
     return p.stdout.strip()
+
+
+def content_sha256() -> str:
+    # Hash the exact patch payload relative to the immutable checkout, not the
+    # repair-result artifact or other generated files.
+    patch = subprocess.run(
+        ["git", "diff", "--binary", "HEAD", "--"],
+        text=False, capture_output=True, check=True,
+    ).stdout
+    return hashlib.sha256(patch).hexdigest()
 
 
 def authority(root: Path, actor: str, run_id: int):
@@ -76,9 +87,10 @@ def main() -> int:
             applied.append({"attempt": proposal["attempt"], "result": dict(result)})
             owned = frozenset(set(owned) | {x.path for x in files})
         tested = worker.test()
+    tested_content_sha256 = content_sha256()
 
     result = {
-        "schema": 2, "run_id": run_id, "base_sha": base,
+        "schema": 3, "run_id": run_id, "base_sha": base,\n        "content_sha256": tested_content_sha256,
         "attempts": [p["attempt"] for p in proposals],
         "applied": applied,
         "test": {
