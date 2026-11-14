@@ -95,7 +95,7 @@ class AgentRepairWorker:
 
         try:
             unresolved = list_unresolved_effects(
-                self.aios_dir, self.contract_id, self.actor
+                self.aios_dir, None, self.actor
             )
         except Exception as exc:
             raise RepairWorkerError(
