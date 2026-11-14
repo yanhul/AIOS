@@ -24,6 +24,7 @@ from adapters.minimind.isolation import (
     read_workload_key,
     resolve_trusted_symlinks,
     validate_receipt_command,
+    _process_capabilities,
 )
 from adapters.minimind.runner import MiniMindAdapter
 
@@ -63,6 +64,49 @@ def _effect():
 parent_only = pytest.mark.skipif(ROLE != "parent", reason="OS isolation e2e not provisioned (parent role): UNKNOWN")
 agent_only = pytest.mark.skipif(ROLE != "agent", reason="OS isolation e2e not provisioned (agent role): UNKNOWN")
 non_root_linux = pytest.mark.skipif(not LINUX or ROOT, reason="workload loader checks need a non-root Linux UID")
+
+
+def test_process_capabilities_reads_inheritable_and_bounding_sets(monkeypatch):
+    import builtins
+    import io
+
+    status = (
+        "CapInh:\t0000000000000001\n"
+        "CapPrm:\t0000000000000000\n"
+        "CapEff:\t0000000000000000\n"
+        "CapBnd:\t00000000000000ff\n"
+        "CapAmb:\t0000000000000000\n"
+    )
+    monkeypatch.setattr(builtins, "open", lambda *args, **kwargs: io.StringIO(status))
+    caps = _process_capabilities()
+    assert caps == {
+        "CapEff": 0,
+        "CapPrm": 0,
+        "CapInh": 1,
+        "CapAmb": 0,
+        "CapBnd": 255,
+    }
+
+
+@pytest.mark.skipif(not LINUX, reason="Linux capability gate")
+def test_verify_blocks_parent_with_inheritable_capabilities(monkeypatch):
+    from types import SimpleNamespace
+    import adapters.minimind.isolation as isolation
+
+    monkeypatch.setattr(isolation.os, "getuid", lambda: 1000)
+    monkeypatch.setattr(isolation.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(isolation.os, "getgid", lambda: 1000)
+    monkeypatch.setattr(isolation.os, "getegid", lambda: 1000)
+    monkeypatch.setattr(isolation.os, "getgroups", lambda: [1000])
+    monkeypatch.setattr(isolation.pwd if hasattr(isolation, "pwd") else __import__("pwd"),
+                        "getpwnam", lambda _name: SimpleNamespace(pw_uid=2000, pw_gid=2000))
+    monkeypatch.setattr(isolation, "_process_capabilities", lambda: {
+        "CapEff": 0, "CapPrm": 0, "CapInh": 1, "CapAmb": 0, "CapBnd": 255,
+    })
+    boundary = WorkloadIsolation(workload_user="aios-minimind",
+                                 launcher="/not-reached", key_path="/not-reached")
+    with pytest.raises(IsolationError, match="holds Linux capabilities"):
+        boundary.verify()
 
 
 # --- 6. missing isolation blocks execution (always run) -------------------------------------
@@ -173,6 +217,37 @@ def test_workload_loader_rejects_shared_key_or_directory(tmp_path):
     os.chmod(keydir, 0o750)
     with pytest.raises(IsolationError, match="key directory"):
         read_workload_key(str(key))
+
+
+@non_root_linux
+def test_workload_loader_rejects_group_writable_ancestor(tmp_path):
+    parent = tmp_path / "replaceable-parent"
+    parent.mkdir()
+    os.chmod(parent, 0o777)
+    keydir = parent / "keys"
+    keydir.mkdir(mode=0o700)
+    os.chmod(keydir, 0o700)
+    key = keydir / "ed25519.pem"
+    key.write_bytes(b"not-a-real-key")
+    os.chmod(key, 0o600)
+    with pytest.raises(IsolationError, match="ancestor.*writable"):
+        read_workload_key(str(key))
+
+
+@non_root_linux
+def test_workload_loader_rejects_symlinked_ancestor(tmp_path):
+    real_parent = tmp_path / "real-parent"
+    real_parent.mkdir()
+    keydir = real_parent / "keys"
+    keydir.mkdir(mode=0o700)
+    os.chmod(keydir, 0o700)
+    key = keydir / "ed25519.pem"
+    key.write_bytes(b"not-a-real-key")
+    os.chmod(key, 0o600)
+    alias = tmp_path / "alias"
+    alias.symlink_to(real_parent, target_is_directory=True)
+    with pytest.raises(IsolationError, match="safely open.*component"):
+        read_workload_key(str(alias / "keys" / "ed25519.pem"))
 
 
 # --- OS end-to-end: parent identity -----------------------------------------------------------
@@ -370,9 +445,45 @@ root_only = pytest.mark.skipif(ROLE != "root", reason="OS isolation e2e not prov
 
 def _run_entry(fx, lib, config):
     request = json.dumps({"contract": _contract(), "effect": _effect(), "attempt_id": "a-root"}).encode()
-    return subprocess.run(["/usr/bin/sudo", "-n", "-u", fx["workload_user"], "/usr/bin/python3", "-I", "-B",
+    return subprocess.run(["/usr/bin/sudo", "-n", "-u", fx["workload_user"], "/usr/bin/python3", "-I", "-S", "-B",
                            f"{lib}/adapters/minimind/workload_entry.py", config],
                           input=request, capture_output=True, timeout=60, check=False, cwd="/")
+
+
+@root_only
+def test_signer_startup_does_not_execute_pth_code():
+    """A root-owned executable .pth fixture must remain inert under the production -S launch."""
+    import tempfile
+
+    site_dir = "/usr/lib/python3/dist-packages"
+    if not os.path.isdir(site_dir):
+        pytest.skip("system dist-packages directory is absent")
+    marker = os.path.join(tempfile.gettempdir(), f"aios-pth-executed-{os.getpid()}")
+    pth = os.path.join(site_dir, f"aios-hostile-{os.getpid()}.pth")
+    with open(pth, "w", encoding="utf-8") as fh:
+        fh.write("import pathlib; pathlib.Path(" + repr(marker) + ").write_text('executed')")
+    os.chmod(pth, 0o644)
+    try:
+        fx = _fixture()
+        # Positive control: normal isolated Python startup processes system .pth files.
+        probe = subprocess.run(
+            ["/usr/bin/sudo", "-n", "-u", fx["runner_user"], "/usr/bin/python3", "-I", "-B", "-c", "pass"],
+            stdin=subprocess.DEVNULL, capture_output=True, timeout=20, check=False,
+        )
+        assert probe.returncode == 0, probe.stderr.decode("utf-8", "replace")
+        assert os.path.exists(marker), "positive control: executable .pth fixture did not run"
+        os.unlink(marker)
+
+        # The signer and its receipt runner both use -S; the fixture must stay inert.
+        done = _run_entry(fx, fx["lib"], fx["config"])
+        assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
+        assert not os.path.exists(marker), "executable .pth code ran during isolated signer execution"
+    finally:
+        for path in (pth, marker):
+            try:
+                os.unlink(path)
+            except FileNotFoundError:
+                pass
 
 
 @root_only
@@ -411,3 +522,263 @@ def test_receipt_command_changed_after_validation_is_blocked():
         validate_receipt_command(cfg, signer_uid=signer_uid)
     done = _run_entry(fx, fx["lib"], config)
     assert done.returncode == 3 and b"changed" in done.stderr and done.stdout == b""
+
+
+
+def test_signer_package_import_does_not_execute_contract_or_provider(tmp_path):
+    """Importing the signer isolation submodule must not initialize workload modules."""
+    import shutil
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    fake = tmp_path / "fake-import-root"
+    (fake / "adapters" / "minimind").mkdir(parents=True)
+    (fake / "core").mkdir()
+    shutil.copyfile(repo / "adapters" / "minimind" / "__init__.py",
+                    fake / "adapters" / "minimind" / "__init__.py")
+    shutil.copyfile(repo / "adapters" / "minimind" / "isolation.py",
+                    fake / "adapters" / "minimind" / "isolation.py")
+    marker = tmp_path / "unexpected-import"
+    payload = f"from pathlib import Path; Path({str(marker)!r}).write_text('executed')\n"
+    (fake / "adapters" / "minimind" / "contract.py").write_text(payload, encoding="utf-8")
+    (fake / "adapters" / "minimind" / "runner.py").write_text(
+        payload + "import core.provider_ed25519\n", encoding="utf-8")
+    (fake / "core" / "__init__.py").write_text("", encoding="utf-8")
+    (fake / "core" / "provider_ed25519.py").write_text(payload, encoding="utf-8")
+    script = (
+        "import sys\n"
+        "sys.path.insert(0, sys.argv[1])\n"
+        "import adapters.minimind.isolation\n"
+        "assert 'adapters.minimind.contract' not in sys.modules\n"
+        "assert 'adapters.minimind.runner' not in sys.modules\n"
+        "assert 'core.provider_ed25519' not in sys.modules\n"
+    )
+    done = subprocess.run([sys.executable, "-I", "-S", "-c", script, str(fake)],
+                          capture_output=True, text=True, timeout=20, check=False)
+    assert done.returncode == 0, done.stderr
+    assert not marker.exists(), "package initialization executed workload/provider code"
+
+
+def test_import_tree_classifies_writable_data_symlink_as_non_code(tmp_path):
+    from adapters.minimind.isolation import _tree_contains_importable_python_code
+
+    root = tmp_path / "import-root"
+    target = tmp_path / "locale-data"
+    root.mkdir()
+    target.mkdir()
+    (target / "README.txt").write_text("data only", encoding="utf-8")
+    target.chmod(0o777)
+    (root / "locale-data").symlink_to(target, target_is_directory=True)
+    assert not _tree_contains_importable_python_code(str(root))
+
+
+def test_import_tree_classifies_symlink_with_python_code_as_executable(tmp_path):
+    from adapters.minimind.isolation import _tree_contains_importable_python_code
+
+    root = tmp_path / "import-root"
+    target = tmp_path / "module-data"
+    root.mkdir()
+    target.mkdir()
+    (target / "injected.py").write_text("payload = True\\n", encoding="utf-8")
+    target.chmod(0o777)
+    (root / "trusted_pkg").symlink_to(target, target_is_directory=True)
+    assert _tree_contains_importable_python_code(str(root))
+
+
+
+def test_import_tree_classifies_symlinked_python_code_by_import_name(tmp_path):
+    from adapters.minimind.isolation import _is_importable_python_code
+
+    data = tmp_path / "global.dat"
+    code = tmp_path / "provider.py"
+    data.write_text("resource", encoding="utf-8")
+    code.write_text("value = 1", encoding="utf-8")
+    assert not _is_importable_python_code(str(data))
+    assert _is_importable_python_code(str(code))
+
+
+
+def test_symlink_data_tree_rejects_writable_directory_before_code_is_added(tmp_path, monkeypatch):
+    """A data-only target must not be writable when it is reachable from an import root."""
+    import adapters.minimind.isolation as isolation
+
+    root = tmp_path / "import-root"
+    target = tmp_path / "locale-data"
+    root.mkdir()
+    target.mkdir()
+    (target / "README.txt").write_text("data only", encoding="utf-8")
+    target.chmod(0o777)
+
+    def check_path(path, *, kind, executable=False, setuid=False):
+        st = os.lstat(path)
+        if st.st_mode & 0o022:
+            raise IsolationError(f"{kind}: writable directory")
+
+    monkeypatch.setattr(isolation, "check_trusted_path", check_path)
+    with pytest.raises(IsolationError, match="writable directory"):
+        isolation._check_trusted_import_directories(str(target), kind="test import root")
+
+
+def test_symlink_data_tree_rejects_writable_nested_directory(tmp_path, monkeypatch):
+    """A protected root does not make a writable nested directory safe."""
+    import adapters.minimind.isolation as isolation
+
+    target = tmp_path / "locale-data"
+    nested = target / "nested"
+    nested.mkdir(parents=True)
+    nested.chmod(0o777)
+
+    def check_path(path, *, kind, executable=False, setuid=False):
+        st = os.lstat(path)
+        if st.st_mode & 0o022:
+            raise IsolationError(f"{kind}: writable directory")
+
+    monkeypatch.setattr(isolation, "check_trusted_path", check_path)
+    with pytest.raises(IsolationError, match="writable directory"):
+        isolation._check_trusted_import_directories(str(target), kind="test import root")
+
+
+def test_check_trusted_tree_rejects_writable_symlink_data_target(tmp_path, monkeypatch):
+    """The production tree walker must enforce directory immutability before import."""
+    import stat
+    from types import SimpleNamespace
+    import adapters.minimind.isolation as isolation
+
+    root = tmp_path / "import-root"
+    target = tmp_path / "locale-data"
+    root.mkdir()
+    target.mkdir()
+    (target / "README.txt").write_text("data only", encoding="utf-8")
+    target.chmod(0o777)
+    (root / "locale-data").symlink_to(target, target_is_directory=True)
+
+    real_lstat = os.lstat
+    def root_owned_symlink(path):
+        st = real_lstat(path)
+        if stat.S_ISLNK(st.st_mode):
+            return SimpleNamespace(st_uid=0, st_mode=st.st_mode)
+        return st
+
+    def check_path(path, *, kind, executable=False, setuid=False):
+        st = real_lstat(path)
+        if st.st_mode & 0o022:
+            raise IsolationError(f"{kind}: writable directory")
+
+    monkeypatch.setattr(isolation.os, "lstat", root_owned_symlink)
+    monkeypatch.setattr(isolation, "check_trusted_path", check_path)
+    with pytest.raises(IsolationError, match="writable directory"):
+        isolation.check_trusted_tree(str(root), kind="test import root")
+
+
+def test_import_tree_classifies_versioned_and_suffixless_elf_native_code(tmp_path):
+    from adapters.minimind.isolation import _is_importable_python_code
+
+    versioned = tmp_path / "libssl.so.3"
+    suffixless = tmp_path / "native_payload"
+    versioned.write_bytes(b"not-elf-but-versioned")
+    suffixless.write_bytes(b"\x7fELF" + b"\x00" * 32)
+    assert _is_importable_python_code(str(versioned))
+    assert _is_importable_python_code(str(suffixless))
+    alias = tmp_path / "native_resource"
+    alias.symlink_to(suffixless)
+    assert _is_importable_python_code(str(alias)), "ELF symlink aliases must not be treated as data"
+
+
+
+@root_only
+def test_signer_shell_launcher_emits_verifiable_ed25519_envelope():
+    """Exercise the installed shell launcher and verify its real Ed25519 output."""
+    from core.provider_ed25519 import ProviderPublicKeyring, ed25519_payload
+
+    fx = _fixture()
+    request = json.dumps({
+        "contract": _contract(),
+        "effect": _effect(),
+        "attempt_id": "a-launcher-e2e",
+    }).encode()
+    done = subprocess.run(
+        ["/usr/bin/sudo", "-n", "-u", fx["workload_user"], fx["launcher"]],
+        input=request, capture_output=True, timeout=60, check=False, cwd="/",
+    )
+    assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
+    envelope = json.loads(done.stdout.decode("utf-8"))
+    auth = envelope["authentication"]
+    receipt = envelope["minimind_receipt"]
+    assert isinstance(receipt, dict), "launcher must return the workload receipt"
+    assert receipt["task_id"] == _contract()["task_id"]
+    assert receipt["capability"] == "minimind.learning@1"
+    assert auth["key_id"] == fx["key_id"]
+    ring = ProviderPublicKeyring({
+        "minimind": {
+            "key_id": fx["key_id"],
+            "public_key": fx["public_key"],
+            "revoked": False,
+        }
+    })
+    # The signer signs the exact observation object {"minimind_receipt": receipt};
+    # the launcher envelope exposes that receipt under its protocol field, not
+    # as a top-level "observation" field.
+    payload = ed25519_payload(
+        key_id=auth["key_id"],
+        receipt_id=auth["receipt_id"],
+        effect_id="EF-iso-1",
+        contract_id="C-iso-1",
+        permit_id="P-iso-1",
+        attempt_id="a-launcher-e2e",
+        provider="minimind",
+        provider_operation_id=envelope["provider_operation_id"],
+        outcome=envelope["outcome"],
+        observation={"minimind_receipt": receipt},
+        issued_at=auth["issued_at"],
+        expires_at=auth["expires_at"],
+    )
+    ring.verify("minimind", auth["key_id"], auth["signature"], payload)
+    assert "PRIVATE KEY" not in done.stdout.decode("utf-8")
+
+
+
+def test_check_trusted_tree_fails_closed_on_walk_errors(tmp_path, monkeypatch):
+    """A partial os.walk result must never be accepted as a trusted import tree."""
+    import adapters.minimind.isolation as isolation
+
+    root = tmp_path / "import-root"
+    root.mkdir()
+    monkeypatch.setattr(isolation, "check_trusted_path", lambda *args, **kwargs: None)
+
+    def failing_walk(path, *, followlinks, onerror):
+        assert followlinks is False
+        onerror(PermissionError("permission denied while scanning nested directory"))
+        return iter(())
+
+    monkeypatch.setattr(isolation.os, "walk", failing_walk)
+    with pytest.raises(IsolationError, match="cannot traverse trusted tree"):
+        isolation.check_trusted_tree(str(root), kind="test import tree")
+
+
+
+def test_receipt_launcher_requires_isolated_python_flags(tmp_path):
+    from adapters.minimind.isolation import parse_receipt_launcher
+
+    launcher = tmp_path / "receipt-launcher"
+    launcher.write_text(
+        "#!/bin/sh\nexec /usr/bin/python3 -I -S -B /opt/aios/receipt.py\n",
+        encoding="utf-8",
+    )
+    assert parse_receipt_launcher(str(launcher)) == {
+        "interpreter": "/usr/bin/python3",
+        "script": "/opt/aios/receipt.py",
+    }
+
+    launcher.write_text(
+        "#!/bin/sh\nexec /usr/bin/python3 -S /opt/aios/receipt.py\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(IsolationError, match="exactly -I -S -B"):
+        parse_receipt_launcher(str(launcher))
+
+    launcher.write_text(
+        "#!/bin/sh\nexec /usr/bin/python3 -I -S -B /opt/aios/receipt.py --unsafe\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(IsolationError, match="exactly -I -S -B"):
+        parse_receipt_launcher(str(launcher))

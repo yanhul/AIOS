@@ -195,8 +195,12 @@ def _posix_cleanup(proc: subprocess.Popen, grace: float) -> dict:
             survivors = _live_members(table, pgid, tracked)
             record["survivors"] = survivors
             if not survivors and record["direct_child_exited"]:
-                record["status"] = CLEANUP_CONFIRMED
-                record["verified_scope"] = "process_group+ppid_tree(zombies excluded)"
+                # A one-time /proc ancestry snapshot cannot see a daemon that
+                # forked, called setsid(), and was reparented before this scan.
+                # The process group and observed descendants are gone, but that
+                # is not proof that the entire workload is gone.
+                record["status"] = CLEANUP_UNKNOWN
+                record["verified_scope"] = "process_group+ppid_snapshot; escaped_orphan_descendants_unverifiable"
                 return record
         else:
             try:
@@ -522,7 +526,21 @@ def _supervise(proc, job, command, input, timeout, max_stdout_bytes, max_stderr_
     result = subprocess.CompletedProcess(list(command), proc.returncode,
                                          bytes(buffers["stdout"]), bytes(buffers["stderr"]))
     result.cleanup = cleanup  # type: ignore[attr-defined]
-    if cleanup["status"] != CLEANUP_CONFIRMED:
+    # On POSIX, a clean direct-child exit plus closed pipes and an empty
+    # process-group/observed-descendant scope is enough to return the provider
+    # result, but must remain explicitly UNKNOWN: escaped, reparented daemons
+    # cannot be ruled out without OS-level containment. Failed cleanup or a
+    # still-open pipe remains fail-closed. Windows Job Objects can still prove
+    # full containment and report CLEANUP_CONFIRMED.
+    posix_scope_only = (
+        os.name != "nt"
+        and cleanup["status"] == CLEANUP_UNKNOWN
+        and isinstance(cleanup.get("verified_scope"), str)
+        and cleanup["verified_scope"].startswith("process_group")
+        and cleanup.get("pipes_closed") is True
+        and cleanup.get("direct_child_exited") is True
+    )
+    if cleanup["status"] != CLEANUP_CONFIRMED and not posix_scope_only:
         raise ProcessCleanupError(cleanup, result)
     return result
 

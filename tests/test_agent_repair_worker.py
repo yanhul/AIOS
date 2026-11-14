@@ -131,3 +131,87 @@ def test_worker_full_repair_path(tmp_path):
     assert proposal.root_cause
     assert applied.status == "APPLIED"
     assert tested.status == "PASS"
+
+
+@pytest.mark.parametrize("path", [
+    "nested/.git/config",
+    "nested/.github/workflows/ci.yml",
+    "nested/.aios/authority.json",
+    "nested/tests/test_security.py",
+    "nested/pytest.ini",
+    "nested/core/policy_registry.py",
+    "nested/core/gatekeeper.py",
+    "nested/core/publisher.py",
+    "nested/../.github/workflows/ci.yml",
+])
+def test_worker_rejects_protected_paths_at_any_depth(tmp_path, path):
+    base = init_repo(tmp_path)
+    worker = AgentRepairWorker(tmp_path, FakeAuthority())
+    with pytest.raises(RepairWorkerError, match="protected|escapes"):
+        worker.apply(base_sha=base, files=(ProposedFile(path, "tampered"),))
+
+
+def test_worker_unknown_mutation_blocks_followup_tests(tmp_path, monkeypatch):
+    base = init_repo(tmp_path)
+    worker = AgentRepairWorker(
+        tmp_path, FakeAuthority(),
+        allowed_test_commands=(( "python", "-c", "raise SystemExit(99)"),),
+        aios_dir=str(tmp_path / "aios"),
+        contract_id="contract", permit_id="permit", actor="repair-worker",
+    )
+    import core.repository_patch_adapter as patch_adapter
+    monkeypatch.setattr(patch_adapter, "apply_via_aios", lambda **kwargs: {"state": "UNKNOWN"})
+    with pytest.raises(RepairWorkerError, match="UNKNOWN"):
+        worker.apply_via_aios(
+            base_sha=base, files=(ProposedFile("module.py", "VALUE = 2\\n"),),
+            logical_operation_id="unknown-mutation",
+        )
+    with pytest.raises(RepairWorkerError, match="UNKNOWN"):
+        worker.test()
+
+
+@pytest.mark.parametrize("path", [
+    r"C:\\outside.py",
+    r"C:relative.py",
+    r"\\server\\share\\payload.py",
+    "module.py:alternate-stream",
+    "pyproject.toml",
+    "nested/test_runner.py",
+])
+def test_worker_rejects_windows_aliases_and_test_harness_paths(tmp_path, path):
+    base = init_repo(tmp_path)
+    worker = AgentRepairWorker(tmp_path, FakeAuthority())
+    with pytest.raises(RepairWorkerError, match="escapes|protected"):
+        worker.apply(base_sha=base, files=(ProposedFile(path, "tampered"),))
+
+
+def test_worker_rejects_symlinked_final_and_parent_components(tmp_path):
+    base = init_repo(tmp_path)
+    worker = AgentRepairWorker(tmp_path, FakeAuthority())
+    (tmp_path / "alias.py").symlink_to(tmp_path / "module.py")
+    (tmp_path / "alias_dir").symlink_to(tmp_path, target_is_directory=True)
+    for path in ("alias.py", "alias_dir/new_module.py"):
+        with pytest.raises(RepairWorkerError, match="symlink"):
+            worker.apply(base_sha=base, files=(ProposedFile(path, "tampered"),),
+                         allowed_dirty_paths=frozenset({"alias.py", "alias_dir"}))
+
+
+def test_worker_unknown_exception_after_dispatch_blocks_tests(tmp_path, monkeypatch):
+    base = init_repo(tmp_path)
+    worker = AgentRepairWorker(
+        tmp_path, FakeAuthority(),
+        allowed_test_commands=(("python", "-c", "raise SystemExit(99)"),),
+        aios_dir=str(tmp_path / "aios"), contract_id="contract",
+        permit_id="permit", actor="repair-worker",
+    )
+    import core.repository_patch_adapter as patch_adapter
+    def lost_receipt(**kwargs):
+        raise TimeoutError("provider response lost after dispatch")
+    monkeypatch.setattr(patch_adapter, "apply_via_aios", lost_receipt)
+    with pytest.raises(RepairWorkerError, match="UNKNOWN"):
+        worker.apply_via_aios(
+            base_sha=base, files=(ProposedFile("module.py", "VALUE = 2\\n"),),
+            logical_operation_id="lost-receipt",
+        )
+    with pytest.raises(RepairWorkerError, match="UNKNOWN"):
+        worker.test()
