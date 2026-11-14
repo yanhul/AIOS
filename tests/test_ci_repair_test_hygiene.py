@@ -98,8 +98,30 @@ def test_pass_artifact_rejects_non_pass_and_wrong_attempt():
     with pytest.raises(SystemExit, match="does not report PASS"):
         verify_pass_artifact(obj, run_id=42, base_sha="a" * 40, pass_attempt=1)
     obj["test"]["status"] = "PASS"
-    with pytest.raises(SystemExit, match="attempt does not match"):
+    with pytest.raises(SystemExit, match="attempt sequence"):
         verify_pass_artifact(obj, run_id=42, base_sha="a" * 40, pass_attempt=2)
+
+
+def test_pass_artifact_rejects_invalid_attempt_sequences():
+    base = {
+        "schema": 3, "run_id": 42, "base_sha": "a" * 40,
+        "attempts": [1, 2], "content_sha256": "b" * 64,
+        "test": {"status": "PASS", "evidence_refs": ["pytest://pass"]},
+    }
+    for attempts in ([2, 2], [1, "2"], [], [1, 3]):
+        obj = {**base, "attempts": attempts}
+        with pytest.raises(SystemExit, match="attempt sequence"):
+            verify_pass_artifact(obj, run_id=42, base_sha="a" * 40, pass_attempt=2)
+
+
+def test_pass_artifact_rejects_missing_evidence_refs():
+    obj = {
+        "schema": 3, "run_id": 42, "base_sha": "a" * 40,
+        "attempts": [1], "content_sha256": "b" * 64,
+        "test": {"status": "PASS", "evidence_refs": []},
+    }
+    with pytest.raises(SystemExit, match="no valid test evidence"):
+        verify_pass_artifact(obj, run_id=42, base_sha="a" * 40, pass_attempt=1)
 
 
 def test_pass_artifact_rejects_malformed_digest():
