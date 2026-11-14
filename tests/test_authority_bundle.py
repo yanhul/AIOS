@@ -5,7 +5,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from core.authority_bundle import (
-    AuthorityBundleError, key_id_for, load_trust_anchor, verify_authority_bundle,
+    AuthorityBundleError, key_id_for, load_trust_anchor, verify_authority_bundle,\n    import_verified_authority_bundle,
 )
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
@@ -122,3 +122,49 @@ def test_active_trust_anchor_must_pin_matching_key(tmp_path):
         "yanhul/aios-authority-store": {"status": "ACTIVE", "key_id": kid, "public_key_hex": public}
     }}))
     assert load_trust_anchor(path, "yanhul/aios-authority-store") == public
+
+
+def test_importer_atomically_materializes_and_reads_back_aios_authority(tmp_path):
+    envelope, public, kid = fixture_bundle(tmp_path)
+    trust = tmp_path / "trust.json"
+    trust.write_text(json.dumps({"schema_version": 1, "issuers": {
+        "yanhul/aios-authority-store": {
+            "status": "ACTIVE", "key_id": kid, "public_key_hex": public
+        }
+    }}), encoding="utf-8")
+    state = tmp_path / "consumer-state"
+    state.mkdir()
+    result = import_verified_authority_bundle(
+        envelope, aios_dir=state, trust_anchor_path=trust,
+        trusted_issuer="yanhul/aios-authority-store",
+        expected_repository="yanhul/AIOS", expected_run_id=123,
+        expected_base_sha="a" * 40, expected_source_branch="main",
+        expected_store_commit="b" * 40, now=1500,
+    )
+    assert result["state"] == "AUTHORITY_IMPORTED_AND_READ_BACK"
+    from core.authority import authorize, load_contract, load_permit
+    authorize(str(state), result["contract_id"], result["permit_id"])
+    assert load_contract(str(state), result["contract_id"]) == envelope["payload"]["authority_records"]["contract"]
+    assert load_permit(str(state), result["permit_id"]) == envelope["payload"]["authority_records"]["permit"]
+
+
+def test_importer_rejects_untrusted_bundle_before_writing(tmp_path):
+    envelope, public, kid = fixture_bundle(tmp_path)
+    trust = tmp_path / "trust.json"
+    trust.write_text(json.dumps({"schema_version": 1, "issuers": {
+        "yanhul/aios-authority-store": {
+            "status": "UNPROVISIONED", "key_id": kid, "public_key_hex": public
+        }
+    }}), encoding="utf-8")
+    state = tmp_path / "consumer-state"
+    state.mkdir()
+    with pytest.raises(AuthorityBundleError, match="not provisioned"):
+        import_verified_authority_bundle(
+            envelope, aios_dir=state, trust_anchor_path=trust,
+            trusted_issuer="yanhul/aios-authority-store",
+            expected_repository="yanhul/AIOS", expected_run_id=123,
+            expected_base_sha="a" * 40, expected_source_branch="main",
+            expected_store_commit="b" * 40, now=1500,
+        )
+    assert not (state / "authority").exists()
+    assert not (state / "capabilities").exists()
