@@ -56,6 +56,17 @@ def require_matching_source_digest(expected: str, actual: str) -> None:
         raise SystemExit("BLOCKED: publish source tree differs from tested content_sha256")
 
 
+def require_exact_publish_scope(expected, *, unstaged, staged, untracked) -> None:
+    expected = set(expected)
+    unstaged, staged, untracked = set(unstaged), set(staged), set(untracked)
+    if unstaged or untracked or staged != expected:
+        raise SystemExit(
+            "BLOCKED: publish index/worktree scope mismatch; "
+            f"unstaged={sorted(unstaged)} staged={sorted(staged)} "
+            f"untracked={sorted(untracked)} expected={sorted(expected)}"
+        )
+
+
 def authority(root: Path, actor: str, run_id: int):
     registry = CapabilityRegistry()
     registry.register(Capability("repo_patch", "1", "AIOS", "external_effect",
@@ -137,9 +148,14 @@ def main() -> int:
     after_retest = content_sha256(expected)
     require_matching_source_digest(expected_digest, after_retest)
 
-    actual = set(git("diff", "--name-only").splitlines()) | set(git("ls-files", "--others", "--exclude-standard").splitlines())
-    if actual != expected:
-        raise SystemExit(f"mutation scope mismatch: actual={sorted(actual)} expected={sorted(expected)}")
+    # Never inherit caller/runner staged content: it is outside the tested digest.
+    initial_staged = set(git("diff", "--cached", "--name-only").splitlines())
+    if initial_staged:
+        raise SystemExit(f"BLOCKED: pre-existing staged paths: {sorted(initial_staged)}")
+    unstaged = set(git("diff", "--name-only").splitlines())
+    untracked = set(git("ls-files", "--others", "--exclude-standard").splitlines())
+    if unstaged | untracked != expected:
+        raise SystemExit(f"BLOCKED: mutation scope mismatch: actual={sorted(unstaged | untracked)} expected={sorted(expected)}")
 
     source_branch = os.environ.get("AIOS_REPAIR_SOURCE_BRANCH", "main")
     marker = git("show", "-s", "--format=%B", base)
@@ -163,6 +179,12 @@ def main() -> int:
     git("config", "user.email", "aios-repair-worker@users.noreply.github.com")
     git("switch", "-c", branch)
     git("add", "--", *sorted(expected))
+    require_exact_publish_scope(
+        expected,
+        unstaged=git("diff", "--name-only").splitlines(),
+        staged=git("diff", "--cached", "--name-only").splitlines(),
+        untracked=git("ls-files", "--others", "--exclude-standard").splitlines(),
+    )
     git("commit", "-m", f"fix: autonomous repair for CI run {run_id}", "-m", f"AIOS-REPAIR-CYCLE: {cycle}")
     print(branch)
     return 0
