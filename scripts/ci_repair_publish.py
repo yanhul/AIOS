@@ -110,7 +110,9 @@ def main() -> int:
         aios.mkdir()
         contract_id, permit_id = authority(aios, "ci-repair-publisher", run_id)
         worker = AgentRepairWorker(
-            Path("."), object(), aios_dir=aios,
+            Path("."), object(),
+            allowed_test_commands=(("python", "-m", "pytest", "-q"),),
+            timeout_seconds=900, aios_dir=aios,
             contract_id=contract_id, permit_id=permit_id, actor="ci-repair-publisher",
         )
         owned = frozenset()
