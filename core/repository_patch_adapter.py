@@ -144,12 +144,23 @@ def _safe_repo_path(root: Path, raw: str) -> Path:
     protected_core = "core" in parts and any(
         part.startswith(("policy", "gate", "publisher")) for part in parts
     )
+    reserved_windows_names = {
+        "con", "prn", "aux", "nul",
+        *(f"com{i}" for i in range(1, 10)),
+        *(f"lpt{i}" for i in range(1, 10)),
+    }
+    windows_alias = any(
+        part.endswith((" ", "."))
+        or part.split(".", 1)[0].casefold() in reserved_windows_names
+        for part in p.parts
+    )
     test_harness_file = p.name.casefold().startswith("test_") or p.name.casefold().endswith("_test.py")
     if (
         any(part in protected_dirs for part in parts)
         or p.name.casefold() in protected_files
         or protected_core
         or test_harness_file
+        or windows_alias
         or any(":" in part for part in parts)
     ):
         raise ValueError("repository patch path is protected")
