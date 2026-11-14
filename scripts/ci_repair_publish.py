@@ -134,7 +134,7 @@ def main() -> int:
     after_retest = content_sha256(expected)
     require_matching_source_digest(expected_digest, after_retest)
 
-    actual = set(git("diff", "--name-only").splitlines())
+    actual = set(git("diff", "--name-only").splitlines()) | set(git("ls-files", "--others", "--exclude-standard").splitlines())
     if actual != expected:
         raise SystemExit(f"mutation scope mismatch: actual={sorted(actual)} expected={sorted(expected)}")
 
