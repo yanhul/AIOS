@@ -16,6 +16,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from .contract import validate_contract, verify_permit
+from .attestation import verify_attestation
 from .mutation import canonical_json
 from .policy_registry import policy_digest
 
@@ -290,9 +291,10 @@ def verify_authority_bundle(
     expected_base_sha: str,
     expected_source_branch: str,
     expected_store_commit: str,
+    attestation_secret: str,
     now: int | None = None,
 ) -> dict[str, Any]:
-    """Verify signature, authority semantics, and immutable source/store bindings."""
+    """Verify signature, HMAC permit attestation, authority semantics and source/store bindings."""
     if not isinstance(envelope, dict) or set(envelope) != {"payload", "signature"}:
         raise AuthorityBundleError("bundle envelope schema mismatch")
     payload, signature = envelope["payload"], envelope["signature"]
@@ -382,16 +384,17 @@ def verify_authority_bundle(
     if payload["expires_at"] <= payload["issued_at"] or current < payload["issued_at"] or current >= payload["expires_at"]:
         raise AuthorityBundleError("bundle is not currently valid or validity interval is invalid")
     records = payload["authority_records"]
-    if not isinstance(records, dict) or set(records) != {"capability_registry", "policy", "contract", "permit"}:
+    if not isinstance(records, dict) or set(records) != {"capability_registry", "policy", "contract", "permit", "attestation"}:
         raise AuthorityBundleError("authority records schema mismatch")
-    contract, permit, policy, registry = (
-        records["contract"], records["permit"], records["policy"], records["capability_registry"]
+    contract, permit, policy, registry, attestation = (
+        records["contract"], records["permit"], records["policy"], records["capability_registry"], records["attestation"]
     )
     try:
         validate_contract(contract)
         verify_permit(contract, permit)
+        verify_attestation(contract, permit, attestation, attestation_secret)
     except (TypeError, ValueError, KeyError) as exc:
-        raise AuthorityBundleError(f"contract/permit validation failed: {exc}") from exc
+        raise AuthorityBundleError(f"contract/permit/attestation validation failed: {exc}") from exc
     if not isinstance(policy, dict):
         raise AuthorityBundleError("governing policy must be an object")
     policy_body = dict(policy)
@@ -469,6 +472,7 @@ def import_verified_authority_bundle(
     expected_receipt_commit: str,
     expected_receipt_path: str,
     github_token: str,
+    attestation_secret: str,
     now: int | None = None,
 ) -> dict[str, Any]:
     """Verify then atomically materialize the exact signed records into AIOS state.
@@ -476,7 +480,7 @@ def import_verified_authority_bundle(
     No record is written until signature, scope, registry, policy, contract and
     permit have passed preflight. Existing conflicting identities fail closed.
     """
-    from .authority import authorize, load_contract, load_permit
+    from .authority import authorize, load_contract, load_permit, load_attestation
     from .capabilities import CapabilityRegistry
     from .contract import contract_identity, issue_permit
     from .mutation import commit_batch
@@ -493,6 +497,7 @@ def import_verified_authority_bundle(
         expected_base_sha=expected_base_sha,
         expected_source_branch=expected_source_branch,
         expected_store_commit=expected_store_commit,
+        attestation_secret=attestation_secret,
         now=now,
     )
     expected_path = f"authority/issued/{expected_run_id}-{expected_base_sha}.json"
@@ -526,6 +531,7 @@ def import_verified_authority_bundle(
     policy_record = records["policy"]
     contract = records["contract"]
     permit = records["permit"]
+    attestation = records["attestation"]
 
     # Validate using AIOS's own parsers and identity functions before any write.
     registry_path = Path(aios_dir) / "capabilities" / "capability_registry.json"
@@ -559,6 +565,7 @@ def import_verified_authority_bundle(
         (f"{POLICIES_DIR}/{contract['policy_digest']}.json", policy_record),
         (f"authority/contracts/{cid}.json", {**contract, "record_type": "EXECUTION_CONTRACT", "contract_id": cid}),
         (f"authority/permits/{pid}.json", permit),
+        (f"authority/attestations/{pid}.json", attestation),
     ]
     for relative, record in entries:
         target = root / relative
@@ -600,9 +607,13 @@ def import_verified_authority_bundle(
         loaded_contract = load_contract(str(root), cid)
         loaded_permit = load_permit(str(root), pid)
         authorize(str(root), cid, pid)
+        loaded_attestation = load_attestation(str(root), pid)
+        verify_attestation(loaded_contract, loaded_permit, loaded_attestation, attestation_secret)
     except Exception as exc:
         raise AuthorityBundleError(f"AIOS post-commit authority readback failed: {exc}") from exc
-    if canonical_json(loaded_contract) != canonical_json(contract) or canonical_json(loaded_permit) != canonical_json(permit):
+    if (canonical_json(loaded_contract) != canonical_json(contract)
+            or canonical_json(loaded_permit) != canonical_json(permit)
+            or canonical_json(loaded_attestation) != canonical_json(attestation)):
         raise AuthorityBundleError("AIOS post-commit readback differs from signed authority bundle")
     return {
         "state": "AUTHORITY_IMPORTED_AND_READ_BACK",
