@@ -9,7 +9,7 @@ from core.authority_bundle import AuthorityBundleError, verify_immutable_store_o
 
 
 def git_blob_sha(content: bytes) -> str:
-    return hashlib.sha1(b"blob " + str(len(content)).encode() + b"\\0" + content).hexdigest()
+    return hashlib.sha1(b"blob " + str(len(content)).encode() + b"\0" + content).hexdigest()
 
 
 class Response:
