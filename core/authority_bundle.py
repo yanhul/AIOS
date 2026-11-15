@@ -167,6 +167,113 @@ def verify_immutable_store_object(
     }
 
 
+
+def verify_issuer_receipt(
+    *,
+    trusted_issuer: str,
+    trusted_public_key_hex: str,
+    repository: str,
+    bundle_commit: str,
+    bundle_path: str,
+    bundle_blob_sha: str,
+    receipt_commit: str,
+    receipt_path: str,
+    github_token: str,
+) -> dict[str, str]:
+    """Verify the issuer-signed post-commit receipt and its immutable Git object."""
+    import base64
+    import urllib.error
+    import urllib.request
+
+    for name, value in (("bundle commit", bundle_commit), ("receipt commit", receipt_commit),
+                        ("bundle blob", bundle_blob_sha)):
+        if not isinstance(value, str) or not _HEX40.fullmatch(value):
+            raise AuthorityBundleError(f"{name} SHA is malformed")
+    expected_receipt_path = bundle_path.replace("authority/issued/", "authority/receipts/", 1)
+    if receipt_path != expected_receipt_path or not receipt_path.endswith(".json"):
+        raise AuthorityBundleError("issuer receipt path does not match the issued bundle identity")
+    if not isinstance(github_token, str) or not github_token.strip():
+        raise AuthorityBundleError("GitHub read token is required for issuer receipt verification")
+
+    def get_json(url: str) -> dict[str, Any]:
+        request = urllib.request.Request(url, headers={
+            "Authorization": f"Bearer {github_token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        })
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                value = json.loads(response.read())
+        except (OSError, ValueError, urllib.error.URLError) as exc:
+            raise AuthorityBundleError("GitHub issuer receipt evidence could not be fetched") from exc
+        if not isinstance(value, dict):
+            raise AuthorityBundleError("GitHub issuer receipt response is malformed")
+        return value
+
+    root = f"https://api.github.com/repos/{repository}"
+    commit = get_json(f"{root}/git/commits/{receipt_commit}")
+    parents = commit.get("parents")
+    tree_sha = (commit.get("tree") or {}).get("sha")
+    if not isinstance(parents, list) or len(parents) != 1 or (parents[0] or {}).get("sha") != bundle_commit:
+        raise AuthorityBundleError("issuer receipt commit is not a direct child of the bundle commit")
+    comparison = get_json(f"{root}/compare/{bundle_commit}...{receipt_commit}")
+    files = comparison.get("files")
+    if (comparison.get("status") != "ahead" or comparison.get("ahead_by") != 1
+            or comparison.get("total_commits") != 1 or not isinstance(files, list) or len(files) != 1
+            or not isinstance(files[0], dict) or files[0].get("filename") != receipt_path
+            or files[0].get("status") != "added"):
+        raise AuthorityBundleError("receipt commit must add only the exact signed issuer receipt")
+    if not isinstance(tree_sha, str) or not _HEX40.fullmatch(tree_sha):
+        raise AuthorityBundleError("issuer receipt tree SHA is malformed")
+    tree = get_json(f"{root}/git/trees/{tree_sha}?recursive=1")
+    if tree.get("truncated") is True or not isinstance(tree.get("tree"), list):
+        raise AuthorityBundleError("issuer receipt tree is truncated or malformed")
+    matches = [entry for entry in tree["tree"] if isinstance(entry, dict) and entry.get("path") == receipt_path]
+    if len(matches) != 1 or matches[0].get("type") != "blob":
+        raise AuthorityBundleError("exact immutable issuer receipt path is missing or ambiguous")
+    blob_sha = matches[0].get("sha")
+    if not isinstance(blob_sha, str) or not _HEX40.fullmatch(blob_sha):
+        raise AuthorityBundleError("issuer receipt blob SHA is malformed")
+    blob = get_json(f"{root}/git/blobs/{blob_sha}")
+    if blob.get("encoding") != "base64" or not isinstance(blob.get("content"), str):
+        raise AuthorityBundleError("issuer receipt blob encoding is unsupported")
+    try:
+        content = base64.b64decode("".join(blob["content"].split()), validate=True)
+        receipt = json.loads(content)
+    except (ValueError, TypeError, UnicodeDecodeError) as exc:
+        raise AuthorityBundleError("issuer receipt blob is malformed") from exc
+    actual_sha = hashlib.sha1(b"blob " + str(len(content)).encode("ascii") + b"\\0" + content).hexdigest()
+    if actual_sha != blob_sha:
+        raise AuthorityBundleError("issuer receipt blob hash mismatch")
+    if not isinstance(receipt, dict) or set(receipt) != {"payload", "signature"}:
+        raise AuthorityBundleError("issuer receipt envelope schema mismatch")
+    payload, signature = receipt["payload"], receipt["signature"]
+    required = {"receipt_type", "schema_version", "issuer", "repository", "bundle_commit",
+                "bundle_path", "bundle_blob_sha", "signed_store_parent", "source_run_id",
+                "source_target_sha", "issuer_workflow_run_id"}
+    if not isinstance(payload, dict) or set(payload) != required:
+        raise AuthorityBundleError("issuer receipt payload schema mismatch")
+    if (payload["receipt_type"] != "AIOS_AUTHORITY_ISSUANCE_RECEIPT" or payload["schema_version"] != 1
+            or payload["issuer"] != trusted_issuer or payload["repository"] != repository
+            or payload["bundle_commit"] != bundle_commit or payload["bundle_path"] != bundle_path
+            or payload["bundle_blob_sha"] != bundle_blob_sha
+            or not isinstance(payload["signed_store_parent"], str)
+            or not _HEX40.fullmatch(payload["signed_store_parent"])):
+        raise AuthorityBundleError("issuer receipt is misbound to the immutable bundle")
+    if (not isinstance(signature, dict) or set(signature) != {"algorithm", "key_id", "value"}
+            or signature["algorithm"] != BUNDLE_ALGORITHM
+            or signature["key_id"] != key_id_for(trusted_public_key_hex)
+            or not isinstance(signature["value"], str) or not _HEX128.fullmatch(signature["value"])):
+        raise AuthorityBundleError("issuer receipt signature metadata is invalid")
+    try:
+        Ed25519PublicKey.from_public_bytes(bytes.fromhex(trusted_public_key_hex)).verify(
+            bytes.fromhex(signature["value"]), _signed_bytes(payload))
+    except (InvalidSignature, ValueError) as exc:
+        raise AuthorityBundleError("issuer receipt signature verification failed") from exc
+    return {"receipt_commit": receipt_commit, "receipt_path": receipt_path,
+            "receipt_blob_sha": blob_sha, "bundle_commit": bundle_commit,
+            "bundle_blob_sha": bundle_blob_sha}
+
 def verify_authority_bundle(
     envelope: dict[str, Any],
     *,
@@ -336,7 +443,7 @@ def verify_authority_bundle(
 _HEX40 = re.compile(r"[0-9a-f]{40}")
 
 
-__all__ = ["AuthorityBundleError", "BUNDLE_TYPE", "key_id_for", "load_trust_anchor", "verify_authority_bundle", "verify_immutable_store_object"]
+__all__ = ["AuthorityBundleError", "BUNDLE_TYPE", "key_id_for", "load_trust_anchor", "verify_authority_bundle", "verify_immutable_store_object", "verify_issuer_receipt"]
 
 
 def import_verified_authority_bundle(
@@ -353,6 +460,8 @@ def import_verified_authority_bundle(
     expected_store_repository: str,
     expected_bundle_commit: str,
     expected_bundle_path: str,
+    expected_receipt_commit: str,
+    expected_receipt_path: str,
     github_token: str,
     now: int | None = None,
 ) -> dict[str, Any]:
@@ -389,6 +498,17 @@ def import_verified_authority_bundle(
         bundle_commit=expected_bundle_commit,
         signed_store_parent=expected_store_commit,
         bundle_path=expected_bundle_path,
+        github_token=github_token,
+    )
+    receipt_proof = verify_issuer_receipt(
+        trusted_issuer=trusted_issuer,
+        trusted_public_key_hex=public_key,
+        repository=expected_store_repository,
+        bundle_commit=store_proof["bundle_commit"],
+        bundle_path=store_proof["bundle_path"],
+        bundle_blob_sha=store_proof["bundle_blob_sha"],
+        receipt_commit=expected_receipt_commit,
+        receipt_path=expected_receipt_path,
         github_token=github_token,
     )
 
@@ -485,4 +605,7 @@ def import_verified_authority_bundle(
         "bundle_commit": store_proof["bundle_commit"],
         "bundle_path": store_proof["bundle_path"],
         "bundle_blob_sha": store_proof["bundle_blob_sha"],
+        "receipt_commit": receipt_proof["receipt_commit"],
+        "receipt_path": receipt_proof["receipt_path"],
+        "receipt_blob_sha": receipt_proof["receipt_blob_sha"],
     }
