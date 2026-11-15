@@ -37,6 +37,10 @@ def fixture():
         f"https://api.github.com/repos/yanhul/aios-authority-store/git/commits/{commit_sha}": {
             "parents": [{"sha": parent_sha}], "tree": {"sha": "e" * 40}
         },
+        f"https://api.github.com/repos/yanhul/aios-authority-store/compare/{parent_sha}...{commit_sha}": {
+            "status": "ahead", "ahead_by": 1, "total_commits": 1,
+            "files": [{"filename": path, "status": "added"}]
+        },
         f"https://api.github.com/repos/yanhul/aios-authority-store/git/trees/{'e' * 40}?recursive=1": {
             "truncated": False, "tree": [{"path": path, "type": "blob", "sha": blob_sha}]
         },
@@ -92,4 +96,22 @@ def test_rejects_missing_exact_bundle_path():
     tree_key = next(k for k in responses if "/git/trees/" in k)
     responses[tree_key]["tree"][0]["path"] = "authority/issued/other.json"
     with pytest.raises(AuthorityBundleError, match="path is missing"):
+        run(envelope, commit, parent, path, responses)
+
+
+
+def test_rejects_storage_commit_with_extra_changes():
+    envelope, commit, parent, path, responses = fixture()
+    compare_key = next(k for k in responses if "/compare/" in k)
+    responses[compare_key]["files"].append({"filename": "README.md", "status": "modified"})
+    with pytest.raises(AuthorityBundleError, match="only the exact issued bundle"):
+        run(envelope, commit, parent, path, responses)
+
+
+def test_rejects_multi_commit_storage_history():
+    envelope, commit, parent, path, responses = fixture()
+    compare_key = next(k for k in responses if "/compare/" in k)
+    responses[compare_key]["ahead_by"] = 2
+    responses[compare_key]["total_commits"] = 2
+    with pytest.raises(AuthorityBundleError, match="only the exact issued bundle"):
         run(envelope, commit, parent, path, responses)
