@@ -79,14 +79,14 @@ def test_verifies_actual_commit_parent_path_and_blob():
 
 
 def test_rejects_non_child_commit():
-    envelope, commit, parent, path, responses = fixture()
+    envelope, commit, parent, path, _blob_sha, responses = fixture()
     responses[next(k for k in responses if "/git/commits/" in k)]["parents"] = [{"sha": "f" * 40}]
     with pytest.raises(AuthorityBundleError, match="direct child"):
         run(envelope, commit, parent, path, responses)
 
 
 def test_rejects_replaced_blob_content():
-    envelope, commit, parent, path, responses = fixture()
+    envelope, commit, parent, path, _blob_sha, responses = fixture()
     blob_key = next(k for k in responses if "/git/blobs/" in k)
     responses[blob_key]["content"] = base64.b64encode(b'{"tampered":true}').decode()
     with pytest.raises(AuthorityBundleError, match="blob hash mismatch"):
@@ -94,7 +94,7 @@ def test_rejects_replaced_blob_content():
 
 
 def test_rejects_missing_exact_bundle_path():
-    envelope, commit, parent, path, responses = fixture()
+    envelope, commit, parent, path, _blob_sha, responses = fixture()
     tree_key = next(k for k in responses if "/git/trees/" in k)
     responses[tree_key]["tree"][0]["path"] = "authority/issued/other.json"
     with pytest.raises(AuthorityBundleError, match="path is missing"):
@@ -103,7 +103,7 @@ def test_rejects_missing_exact_bundle_path():
 
 
 def test_rejects_storage_commit_with_extra_changes():
-    envelope, commit, parent, path, responses = fixture()
+    envelope, commit, parent, path, _blob_sha, responses = fixture()
     compare_key = next(k for k in responses if "/compare/" in k)
     responses[compare_key]["files"].append({"filename": "README.md", "status": "modified"})
     with pytest.raises(AuthorityBundleError, match="only the exact issued bundle"):
@@ -111,7 +111,7 @@ def test_rejects_storage_commit_with_extra_changes():
 
 
 def test_rejects_multi_commit_storage_history():
-    envelope, commit, parent, path, responses = fixture()
+    envelope, commit, parent, path, _blob_sha, responses = fixture()
     compare_key = next(k for k in responses if "/compare/" in k)
     responses[compare_key]["ahead_by"] = 2
     responses[compare_key]["total_commits"] = 2
