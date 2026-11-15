@@ -163,6 +163,7 @@ def test_importer_atomically_materializes_and_reads_back_aios_authority(tmp_path
         expected_repository="yanhul/AIOS", expected_run_id=123,
         expected_base_sha="a" * 40, expected_source_branch="main",
         expected_store_commit="b" * 40,
+        expected_store_repository="yanhul/aios-authority-store",
         expected_bundle_commit="c" * 40,
         expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
         github_token="test-token", now=1500,
@@ -191,6 +192,7 @@ def test_importer_rejects_untrusted_bundle_before_writing(tmp_path):
             expected_repository="yanhul/AIOS", expected_run_id=123,
             expected_base_sha="a" * 40, expected_source_branch="main",
             expected_store_commit="b" * 40,
+            expected_store_repository="yanhul/aios-authority-store",
             expected_bundle_commit="c" * 40,
             expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
             github_token="test-token", now=1500,
@@ -209,6 +211,13 @@ def test_importer_rechecks_conflicts_inside_mutation_lock(tmp_path, monkeypatch)
     }}), encoding="utf-8")
     state = tmp_path / "consumer-state"
     state.mkdir()
+
+    import core.authority_bundle as bundle_module
+    monkeypatch.setattr(bundle_module, "verify_immutable_store_object", lambda *args, **kwargs: {
+        "repository": "yanhul/aios-authority-store", "signed_store_parent": "b" * 40,
+        "bundle_commit": "c" * 40, "bundle_path": "authority/issued/123-" + "a" * 40 + ".json",
+        "bundle_blob_sha": "d" * 40,
+    })
 
     import core.mutation as mutation
     real_commit_batch = mutation.commit_batch
@@ -230,6 +239,7 @@ def test_importer_rechecks_conflicts_inside_mutation_lock(tmp_path, monkeypatch)
             expected_repository="yanhul/AIOS", expected_run_id=123,
             expected_base_sha="a" * 40, expected_source_branch="main",
             expected_store_commit="b" * 40,
+            expected_store_repository="yanhul/aios-authority-store",
             expected_bundle_commit="c" * 40,
             expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
             github_token="test-token", now=1500,
