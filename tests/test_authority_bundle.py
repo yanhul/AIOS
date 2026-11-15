@@ -259,7 +259,7 @@ def test_importer_rechecks_conflicts_inside_mutation_lock(tmp_path, monkeypatch)
             expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
             expected_receipt_commit="e" * 40,
             expected_receipt_path="authority/receipts/123-" + "a" * 40 + ".json",
-            github_token="test-token", now=1500,
+            github_token="test-token", attestation_secret="test-secret", now=1500,
         )
 
     assert injected["path"].read_text(encoding="utf-8") == json.dumps({"conflict": True})
