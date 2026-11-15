@@ -42,6 +42,7 @@ def fixture_bundle(tmp_path):
                        "event": "push", "conclusion": "failure",
                        "head_sha": "a" * 40, "head_branch": "main"},
         "target": {"base_sha": "a" * 40},
+        "store_commit": "b" * 40,
         "approval": {"pr_number": 42, "pr_url": "https://github.com/yanhul/AIOS/pull/42",
                      "head_sha": "a" * 40, "base_branch": "main",
                      "reviewer": "independent-reviewer", "review_state": "APPROVED",
@@ -96,6 +97,16 @@ def test_wrong_run_sha_and_store_commit_are_rejected(tmp_path):
         verify(envelope, public, expected_base_sha="c" * 40)
     with pytest.raises(AuthorityBundleError, match="store commit SHA"):
         verify(envelope, public, expected_store_commit="not-a-commit")
+    with pytest.raises(AuthorityBundleError, match="does not match expected"):
+        verify(envelope, public, expected_store_commit="c" * 40)
+
+
+
+def test_signed_store_commit_tampering_is_rejected(tmp_path):
+    envelope, public, _ = fixture_bundle(tmp_path)
+    envelope["payload"]["store_commit"] = "c" * 40
+    with pytest.raises(AuthorityBundleError, match="signature"):
+        verify(envelope, public)
 
 
 def test_expired_bundle_is_rejected(tmp_path):
