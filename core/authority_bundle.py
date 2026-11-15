@@ -131,7 +131,7 @@ def verify_immutable_store_object(
         content = base64.b64decode("".join(blob["content"].split()), validate=True)
     except (ValueError, TypeError) as exc:
         raise AuthorityBundleError("GitHub immutable bundle blob is malformed") from exc
-    actual_blob_sha = hashlib.sha1(b"blob " + str(len(content)).encode("ascii") + b"\\0" + content).hexdigest()
+    actual_blob_sha = hashlib.sha1(b"blob " + str(len(content)).encode("ascii") + b"\0" + content).hexdigest()
     if actual_blob_sha != blob_sha:
         raise AuthorityBundleError("GitHub immutable bundle blob hash mismatch")
     try:
@@ -332,6 +332,9 @@ def import_verified_authority_bundle(
     expected_base_sha: str,
     expected_source_branch: str,
     expected_store_commit: str,
+    expected_bundle_commit: str,
+    expected_bundle_path: str,
+    github_token: str,
     now: int | None = None,
 ) -> dict[str, Any]:
     """Verify then atomically materialize the exact signed records into AIOS state.
@@ -358,6 +361,18 @@ def import_verified_authority_bundle(
         expected_store_commit=expected_store_commit,
         now=now,
     )
+    expected_path = f"authority/issued/{expected_run_id}-{expected_base_sha}.json"
+    if expected_bundle_path != expected_path:
+        raise AuthorityBundleError("immutable bundle path does not match the expected run and source SHA")
+    store_proof = verify_immutable_store_object(
+        envelope,
+        repository="yanhul/aios-authority-store",
+        bundle_commit=expected_bundle_commit,
+        signed_store_parent=expected_store_commit,
+        bundle_path=expected_bundle_path,
+        github_token=github_token,
+    )
+
     records = payload["authority_records"]
     registry_record = records["capability_registry"]
     policy_record = records["policy"]
@@ -447,5 +462,8 @@ def import_verified_authority_bundle(
         "permit_id": pid,
         "policy_digest": contract["policy_digest"],
         "capability_registry_path": str(registry_path),
-        "store_commit": expected_store_commit,
+        "signed_store_parent": store_proof["signed_store_parent"],
+        "bundle_commit": store_proof["bundle_commit"],
+        "bundle_path": store_proof["bundle_path"],
+        "bundle_blob_sha": store_proof["bundle_blob_sha"],
     }
