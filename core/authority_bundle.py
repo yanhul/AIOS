@@ -606,7 +606,7 @@ def import_verified_authority_bundle(
     try:
         loaded_contract = load_contract(str(root), cid)
         loaded_permit = load_permit(str(root), pid)
-        authorize(str(root), cid, pid)
+        authorize(str(root), cid, pid, attestation_secret=attestation_secret, require_attestation=True)
         loaded_attestation = load_attestation(str(root), pid)
         verify_attestation(loaded_contract, loaded_permit, loaded_attestation, attestation_secret)
     except Exception as exc:
