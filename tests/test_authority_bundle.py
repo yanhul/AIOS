@@ -190,7 +190,10 @@ def test_importer_rejects_untrusted_bundle_before_writing(tmp_path):
             trusted_issuer="yanhul/aios-authority-store",
             expected_repository="yanhul/AIOS", expected_run_id=123,
             expected_base_sha="a" * 40, expected_source_branch="main",
-            expected_store_commit="b" * 40, now=1500,
+            expected_store_commit="b" * 40,
+            expected_bundle_commit="c" * 40,
+            expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
+            github_token="test-token", now=1500,
         )
     assert not (state / "authority").exists()
     assert not (state / "capabilities").exists()
@@ -226,7 +229,10 @@ def test_importer_rechecks_conflicts_inside_mutation_lock(tmp_path, monkeypatch)
             trusted_issuer="yanhul/aios-authority-store",
             expected_repository="yanhul/AIOS", expected_run_id=123,
             expected_base_sha="a" * 40, expected_source_branch="main",
-            expected_store_commit="b" * 40, now=1500,
+            expected_store_commit="b" * 40,
+            expected_bundle_commit="c" * 40,
+            expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
+            github_token="test-token", now=1500,
         )
 
     assert injected["path"].read_text(encoding="utf-8") == json.dumps({"conflict": True})
