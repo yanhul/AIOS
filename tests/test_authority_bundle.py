@@ -157,6 +157,10 @@ def test_importer_atomically_materializes_and_reads_back_aios_authority(tmp_path
         "bundle_commit": "c" * 40, "bundle_path": "authority/issued/123-" + "a" * 40 + ".json",
         "bundle_blob_sha": "d" * 40,
     })
+    monkeypatch.setattr(bundle_module, "verify_issuer_receipt", lambda **kwargs: {
+        "receipt_commit": "e" * 40, "receipt_path": "authority/receipts/123-" + "a" * 40 + ".json",
+        "receipt_blob_sha": "f" * 40, "bundle_commit": "c" * 40, "bundle_blob_sha": "d" * 40,
+    })
     result = import_verified_authority_bundle(
         envelope, aios_dir=state, trust_anchor_path=trust,
         trusted_issuer="yanhul/aios-authority-store",
@@ -166,6 +170,8 @@ def test_importer_atomically_materializes_and_reads_back_aios_authority(tmp_path
         expected_store_repository="yanhul/aios-authority-store",
         expected_bundle_commit="c" * 40,
         expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
+        expected_receipt_commit="e" * 40,
+        expected_receipt_path="authority/receipts/123-" + "a" * 40 + ".json",
         github_token="test-token", now=1500,
     )
     assert result["state"] == "AUTHORITY_IMPORTED_AND_READ_BACK"
@@ -195,6 +201,8 @@ def test_importer_rejects_untrusted_bundle_before_writing(tmp_path):
             expected_store_repository="yanhul/aios-authority-store",
             expected_bundle_commit="c" * 40,
             expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
+            expected_receipt_commit="e" * 40,
+            expected_receipt_path="authority/receipts/123-" + "a" * 40 + ".json",
             github_token="test-token", now=1500,
         )
     assert not (state / "authority").exists()
@@ -217,6 +225,10 @@ def test_importer_rechecks_conflicts_inside_mutation_lock(tmp_path, monkeypatch)
         "repository": "yanhul/aios-authority-store", "signed_store_parent": "b" * 40,
         "bundle_commit": "c" * 40, "bundle_path": "authority/issued/123-" + "a" * 40 + ".json",
         "bundle_blob_sha": "d" * 40,
+    })
+    monkeypatch.setattr(bundle_module, "verify_issuer_receipt", lambda **kwargs: {
+        "receipt_commit": "e" * 40, "receipt_path": "authority/receipts/123-" + "a" * 40 + ".json",
+        "receipt_blob_sha": "f" * 40, "bundle_commit": "c" * 40, "bundle_blob_sha": "d" * 40,
     })
 
     import core.mutation as mutation
@@ -242,6 +254,8 @@ def test_importer_rechecks_conflicts_inside_mutation_lock(tmp_path, monkeypatch)
             expected_store_repository="yanhul/aios-authority-store",
             expected_bundle_commit="c" * 40,
             expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
+            expected_receipt_commit="e" * 40,
+            expected_receipt_path="authority/receipts/123-" + "a" * 40 + ".json",
             github_token="test-token", now=1500,
         )
 
