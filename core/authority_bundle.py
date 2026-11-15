@@ -92,7 +92,7 @@ def verify_authority_bundle(
 
     required = {
         "bundle_type", "schema_version", "issuer", "repository", "source_run",
-        "target", "approval", "issued_at", "expires_at", "authority_records",
+        "target", "store_commit", "approval", "issued_at", "expires_at", "authority_records",
     }
     if set(payload) != required:
         raise AuthorityBundleError("authority payload schema mismatch")
@@ -148,14 +148,15 @@ def verify_authority_bundle(
         raise AuthorityBundleError("expected source base commit SHA is malformed")
     if not isinstance(expected_store_commit, str) or not _HEX40.fullmatch(expected_store_commit):
         raise AuthorityBundleError("expected immutable store commit SHA is malformed")
+    if not isinstance(payload["store_commit"], str) or not _HEX40.fullmatch(payload["store_commit"]):
+        raise AuthorityBundleError("signed immutable store commit SHA is malformed")
+    if payload["store_commit"] != expected_store_commit:
+        raise AuthorityBundleError("signed store commit does not match expected immutable store commit")
     if not isinstance(payload["issued_at"], int) or not isinstance(payload["expires_at"], int):
         raise AuthorityBundleError("bundle validity timestamps must be integer epoch seconds")
     current = int(time.time()) if now is None else now
     if payload["expires_at"] <= payload["issued_at"] or current < payload["issued_at"] or current >= payload["expires_at"]:
         raise AuthorityBundleError("bundle is not currently valid or validity interval is invalid")
-    if not isinstance(expected_store_commit, str) or not _HEX40.fullmatch(expected_store_commit):
-        raise AuthorityBundleError("expected immutable store commit SHA is malformed")
-
     records = payload["authority_records"]
     if not isinstance(records, dict) or set(records) != {"capability_registry", "policy", "contract", "permit"}:
         raise AuthorityBundleError("authority records schema mismatch")
