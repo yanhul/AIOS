@@ -44,7 +44,7 @@ def fixture():
             "encoding": "base64", "content": base64.b64encode(content).decode()
         },
     }
-    return envelope, commit_sha, parent_sha, path, responses
+    return envelope, commit_sha, parent_sha, path, blob_sha, responses
 
 
 def run(envelope, commit, parent, path, responses):
@@ -61,14 +61,14 @@ def run(envelope, commit, parent, path, responses):
 
 
 def test_verifies_actual_commit_parent_path_and_blob():
-    envelope, commit, parent, path, responses = fixture()
+    envelope, commit, parent, path, blob_sha, responses = fixture()
     proof = run(envelope, commit, parent, path, responses)
     assert proof == {
         "repository": "yanhul/aios-authority-store",
         "signed_store_parent": parent,
         "bundle_commit": commit,
         "bundle_path": path,
-        "bundle_blob_sha": next(iter(responses.values()))["parents"][0]["sha"] if False else proof["bundle_blob_sha"],
+        "bundle_blob_sha": blob_sha,
     }
 
 
