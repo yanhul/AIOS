@@ -128,7 +128,7 @@ def verify_immutable_store_object(
     if blob.get("encoding") != "base64" or not isinstance(blob.get("content"), str):
         raise AuthorityBundleError("GitHub immutable bundle blob encoding is unsupported")
     try:
-        content = base64.b64decode(blob["content"], validate=True)
+        content = base64.b64decode("".join(blob["content"].split()), validate=True)
     except (ValueError, TypeError) as exc:
         raise AuthorityBundleError("GitHub immutable bundle blob is malformed") from exc
     actual_blob_sha = hashlib.sha1(b"blob " + str(len(content)).encode("ascii") + b"\\0" + content).hexdigest()
