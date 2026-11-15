@@ -245,7 +245,7 @@ def verify_issuer_receipt(
         receipt = json.loads(content)
     except (ValueError, TypeError, UnicodeDecodeError) as exc:
         raise AuthorityBundleError("issuer receipt blob is malformed") from exc
-    actual_sha = hashlib.sha1(b"blob " + str(len(content)).encode("ascii") + b"\\0" + content).hexdigest()
+    actual_sha = hashlib.sha1(b"blob " + str(len(content)).encode("ascii") + b"\0" + content).hexdigest()
     if actual_sha != blob_sha:
         raise AuthorityBundleError("issuer receipt blob hash mismatch")
     if not isinstance(receipt, dict) or set(receipt) != {"payload", "signature"}:
