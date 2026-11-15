@@ -4,8 +4,10 @@ import json
 from unittest.mock import patch
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from core.authority_bundle import AuthorityBundleError, verify_immutable_store_object
+from core.authority_bundle import AuthorityBundleError, verify_immutable_store_object, verify_issuer_receipt
 
 
 def git_blob_sha(content: bytes) -> str:
@@ -115,3 +117,71 @@ def test_rejects_multi_commit_storage_history():
     responses[compare_key]["total_commits"] = 2
     with pytest.raises(AuthorityBundleError, match="only the exact issued bundle"):
         run(envelope, commit, parent, path, responses)
+
+
+def test_verifies_issuer_signed_post_commit_receipt():
+    private = Ed25519PrivateKey.generate()
+    public = private.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw).hex()
+    bundle_commit, parent = "c" * 40, "b" * 40
+    bundle_path = "authority/issued/712345-" + "a" * 40 + ".json"
+    receipt_path = "authority/receipts/712345-" + "a" * 40 + ".json"
+    receipt_commit, tree_sha = "d" * 40, "e" * 40
+    bundle_blob_sha = "f" * 40
+    payload = {
+        "receipt_type": "AIOS_AUTHORITY_ISSUANCE_RECEIPT",
+        "schema_version": 1,
+        "issuer": "yanhul/aios-authority-store",
+        "repository": "yanhul/aios-authority-store",
+        "bundle_commit": bundle_commit,
+        "bundle_path": bundle_path,
+        "bundle_blob_sha": bundle_blob_sha,
+        "signed_store_parent": parent,
+        "source_run_id": 712345,
+        "source_target_sha": "a" * 40,
+        "issuer_workflow_run_id": 987654,
+    }
+    signed = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False).encode()
+    envelope = {"payload": payload, "signature": {
+        "algorithm": "Ed25519",
+        "key_id": "ed25519:" + hashlib.sha256(bytes.fromhex(public)).hexdigest()[:32],
+        "value": private.sign(signed).hex(),
+    }}
+    content = (json.dumps(envelope, sort_keys=True, indent=2) + "\\n").encode()
+    receipt_blob_sha = git_blob_sha(content)
+    root = "https://api.github.com/repos/yanhul/aios-authority-store"
+    responses = {
+        f"{root}/git/commits/{receipt_commit}": {
+            "parents": [{"sha": bundle_commit}], "tree": {"sha": tree_sha}
+        },
+        f"{root}/compare/{bundle_commit}...{receipt_commit}": {
+            "status": "ahead", "ahead_by": 1, "total_commits": 1,
+            "files": [{"filename": receipt_path, "status": "added"}]
+        },
+        f"{root}/git/trees/{tree_sha}?recursive=1": {
+            "truncated": False, "tree": [{"path": receipt_path, "type": "blob", "sha": receipt_blob_sha}]
+        },
+        f"{root}/git/blobs/{receipt_blob_sha}": {
+            "encoding": "base64", "content": base64.b64encode(content).decode()
+        },
+    }
+    def fake_urlopen(request, timeout=20):
+        assert request.get_header("Authorization") == "Bearer test-token"
+        return Response(responses[request.full_url])
+    with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        proof = verify_issuer_receipt(
+            trusted_issuer="yanhul/aios-authority-store",
+            trusted_public_key_hex=public,
+            repository="yanhul/aios-authority-store",
+            bundle_commit=bundle_commit,
+            bundle_path=bundle_path,
+            bundle_blob_sha=bundle_blob_sha,
+            expected_store_parent=parent,
+            expected_source_run_id=712345,
+            expected_source_target_sha="a" * 40,
+            receipt_commit=receipt_commit,
+            receipt_path=receipt_path,
+            github_token="test-token",
+        )
+    assert proof["receipt_commit"] == receipt_commit
+    assert proof["bundle_blob_sha"] == bundle_blob_sha
+
