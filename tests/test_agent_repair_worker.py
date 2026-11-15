@@ -131,3 +131,32 @@ def test_worker_full_repair_path(tmp_path):
     assert proposal.root_cause
     assert applied.status == "APPLIED"
     assert tested.status == "PASS"
+
+
+
+def test_worker_rejects_unknown_aios_mutation_result(tmp_path, monkeypatch):
+    base = init_repo(tmp_path)
+    aios = tmp_path / "aios"
+    aios.mkdir()
+    worker = AgentRepairWorker(
+        tmp_path, object(),
+        aios_dir=aios,
+        contract_id="contract",
+        permit_id="permit",
+        actor="repair-worker",
+    )
+
+    def unauthenticated_mutation(**kwargs):
+        return {"state": "UNKNOWN", "unknown_reason": "missing provider signature"}
+
+    monkeypatch.setattr(
+        "core.repository_patch_adapter.apply_via_aios",
+        unauthenticated_mutation,
+    )
+
+    with pytest.raises(RepairWorkerError, match="did not reach OBSERVED_SUCCESS"):
+        worker.apply_via_aios(
+            base_sha=base,
+            files=(ProposedFile("module.py", "VALUE = 2\\n"),),
+            logical_operation_id="unknown-mutation",
+        )

@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
 import tempfile
+import stat
 
 from core.agent_repair_worker import AgentRepairWorker, ProposedFile
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import CONTRACT_TYPE
 from core.policy_registry import persist_policy
+from scripts.ci_repair_test_hygiene import restore_test_generated_artifacts
 
 
 def git(*args: str) -> str:
@@ -19,26 +22,36 @@ def git(*args: str) -> str:
     return p.stdout.strip()
 
 
+def content_sha256(paths) -> str:
+    # Include newly-created files too; git diff alone omits untracked paths.
+    digest = hashlib.sha256()
+    for raw in sorted(set(paths)):
+        path = Path(raw)
+        if path.is_symlink() or not path.is_file():
+            raise SystemExit(f"BLOCKED: repair source path is not a regular file: {raw}")
+        data = path.read_bytes()
+        mode = stat.S_IMODE(path.stat().st_mode)
+        name = raw.encode("utf-8")
+        digest.update(len(name).to_bytes(8, "big"))
+        digest.update(name)
+        digest.update(mode.to_bytes(4, "big"))
+        digest.update(len(data).to_bytes(8, "big"))
+        digest.update(data)
+    return digest.hexdigest()
+
+
 def authority(root: Path, actor: str, run_id: int):
-    registry = CapabilityRegistry()
-    registry.register(Capability("repo_patch", "1", "AIOS", "external_effect",
-                                 inputs=("patch",), outputs=("observation",), status="ACTIVE"))
-    registry.persist(root, actor=actor)
-    policy_digest = persist_policy(root, {
-        "policy_type": "GOVERNING_POLICY", "task": "ci-repair",
-        "allowed_effects": ["external_effect"],
-    })
-    contract = {
-        "contract_type": CONTRACT_TYPE, "task_id": f"ci-repair-{actor}-{run_id}",
-        "scope": "repository", "actor": actor, "capabilities": ["repo_patch@1"],
-        "input_digest": "sha256:ci-failure", "allowed_effects": ["external_effect"],
-        "evidence_required": ["OBSERVED"], "max_attempts": 2,
-        "terminal_states": ["OBSERVED_SUCCESS", "OBSERVED_FAILURE"],
-        "policy_digest": policy_digest,
-    }
-    stored = persist_contract(root, contract)
-    permit = persist_permit(root, stored, issuer="ci-repair-authority")
-    return stored["contract_id"], permit["permit_id"]
+    """Do not mint local authority for a privileged repository mutation.
+
+    The separately governed aios-authority-store currently declares itself
+    NOT READY / NOT VERIFIED and has no provisioned issuer. Until a verified
+    external contract/permit/attestation bundle is integrated, repair must
+    stop here rather than self-promote repo_patch@1 or self-issue a permit.
+    """
+    raise SystemExit(
+        "BLOCKED: external AIOS authority issuer/store is not provisioned; "
+        "ephemeral self-issued capability, policy, contract, and permit are forbidden"
+    )
 
 
 def main() -> int:
@@ -61,7 +74,7 @@ def main() -> int:
         worker = AgentRepairWorker(
             Path("."), object(),
             allowed_test_commands=(("python", "-m", "pytest", "-q"),),
-            timeout_seconds=900, aios_dir=aios,
+            timeout_seconds=1800, aios_dir=aios,
             contract_id=contract_id, permit_id=permit_id, actor="ci-repair-worker",
         )
         applied = []
@@ -76,9 +89,13 @@ def main() -> int:
             applied.append({"attempt": proposal["attempt"], "result": dict(result)})
             owned = frozenset(set(owned) | {x.path for x in files})
         tested = worker.test()
+    restored_test_artifacts = restore_test_generated_artifacts(git)
+    tested_content_sha256 = content_sha256(x["path"] for proposal in proposals for x in proposal["files"])
 
     result = {
-        "schema": 2, "run_id": run_id, "base_sha": base,
+        "schema": 3, "run_id": run_id, "base_sha": base,
+        "content_sha256": tested_content_sha256,
+        "restored_test_generated_artifacts": list(restored_test_artifacts),
         "attempts": [p["attempt"] for p in proposals],
         "applied": applied,
         "test": {
