@@ -141,7 +141,7 @@ def test_active_trust_anchor_must_pin_matching_key(tmp_path):
     assert load_trust_anchor(path, "yanhul/aios-authority-store") == public
 
 
-def test_importer_atomically_materializes_and_reads_back_aios_authority(tmp_path):
+def test_importer_atomically_materializes_and_reads_back_aios_authority(tmp_path, monkeypatch):
     envelope, public, kid = fixture_bundle(tmp_path)
     trust = tmp_path / "trust.json"
     trust.write_text(json.dumps({"schema_version": 1, "issuers": {
@@ -151,12 +151,21 @@ def test_importer_atomically_materializes_and_reads_back_aios_authority(tmp_path
     }}), encoding="utf-8")
     state = tmp_path / "consumer-state"
     state.mkdir()
+    import core.authority_bundle as bundle_module
+    monkeypatch.setattr(bundle_module, "verify_immutable_store_object", lambda *args, **kwargs: {
+        "repository": "yanhul/aios-authority-store", "signed_store_parent": "b" * 40,
+        "bundle_commit": "c" * 40, "bundle_path": "authority/issued/123-" + "a" * 40 + ".json",
+        "bundle_blob_sha": "d" * 40,
+    })
     result = import_verified_authority_bundle(
         envelope, aios_dir=state, trust_anchor_path=trust,
         trusted_issuer="yanhul/aios-authority-store",
         expected_repository="yanhul/AIOS", expected_run_id=123,
         expected_base_sha="a" * 40, expected_source_branch="main",
-        expected_store_commit="b" * 40, now=1500,
+        expected_store_commit="b" * 40,
+        expected_bundle_commit="c" * 40,
+        expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
+        github_token="test-token", now=1500,
     )
     assert result["state"] == "AUTHORITY_IMPORTED_AND_READ_BACK"
     from core.authority import authorize, load_contract, load_permit
