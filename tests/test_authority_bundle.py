@@ -41,7 +41,12 @@ def fixture_bundle(tmp_path):
         "source_run": {"id": 123, "workflow_path": ".github/workflows/ci.yml",
                        "event": "push", "conclusion": "failure",
                        "head_sha": "a" * 40, "head_branch": "main"},
-        "target": {"base_sha": "a" * 40}, "issued_at": 1000, "expires_at": 2000,
+        "target": {"base_sha": "a" * 40},
+        "approval": {"pr_number": 42, "pr_url": "https://github.com/yanhul/AIOS/pull/42",
+                     "head_sha": "a" * 40, "base_branch": "main",
+                     "reviewer": "independent-reviewer", "review_state": "APPROVED",
+                     "review_id": 9, "review_submitted_at": "2026-11-14T10:00:00Z"},
+        "issued_at": 1000, "expires_at": 2000,
         "authority_records": {
             "capability_registry": {"schema_version": 1, "persisted_by": "yanhul/aios-authority-store", **registry.snapshot()},
             "policy": policy_record, "contract": contract_record, "permit": permit,
