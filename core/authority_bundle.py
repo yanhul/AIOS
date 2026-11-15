@@ -332,6 +332,7 @@ def import_verified_authority_bundle(
     expected_base_sha: str,
     expected_source_branch: str,
     expected_store_commit: str,
+    expected_store_repository: str,
     expected_bundle_commit: str,
     expected_bundle_path: str,
     github_token: str,
@@ -366,7 +367,7 @@ def import_verified_authority_bundle(
         raise AuthorityBundleError("immutable bundle path does not match the expected run and source SHA")
     store_proof = verify_immutable_store_object(
         envelope,
-        repository="yanhul/aios-authority-store",
+        repository=expected_store_repository,
         bundle_commit=expected_bundle_commit,
         signed_store_parent=expected_store_commit,
         bundle_path=expected_bundle_path,
