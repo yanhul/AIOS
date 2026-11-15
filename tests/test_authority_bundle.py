@@ -179,7 +179,7 @@ def test_importer_atomically_materializes_and_reads_back_aios_authority(tmp_path
     )
     assert result["state"] == "AUTHORITY_IMPORTED_AND_READ_BACK"
     from core.authority import authorize, load_contract, load_permit
-    authorize(str(state), result["contract_id"], result["permit_id"])
+    authorize(str(state), result["contract_id"], result["permit_id"], attestation_secret="test-secret", require_attestation=True)
     assert load_contract(str(state), result["contract_id"]) == envelope["payload"]["authority_records"]["contract"]
     assert load_permit(str(state), result["permit_id"]) == envelope["payload"]["authority_records"]["permit"]
 
