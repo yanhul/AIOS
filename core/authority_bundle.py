@@ -56,6 +56,99 @@ def load_trust_anchor(path: str | Path, issuer: str) -> str:
     return public_key
 
 
+
+def verify_immutable_store_object(
+    envelope: dict[str, Any],
+    *,
+    repository: str,
+    bundle_commit: str,
+    signed_store_parent: str,
+    bundle_path: str,
+    github_token: str,
+) -> dict[str, str]:
+    """Verify a bundle against the actual GitHub commit, tree, and blob objects.
+
+    The signed parent SHA comes from the verified envelope. The bundle commit
+    and path are locators only: their relationship and contents are fetched
+    independently from GitHub's Git database API.
+    """
+    import base64
+    import urllib.error
+    import urllib.request
+
+    if not isinstance(repository, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise AuthorityBundleError("store repository identifier is malformed")
+    if not isinstance(bundle_commit, str) or not _HEX40.fullmatch(bundle_commit):
+        raise AuthorityBundleError("bundle-containing commit SHA is malformed")
+    if not isinstance(signed_store_parent, str) or not _HEX40.fullmatch(signed_store_parent):
+        raise AuthorityBundleError("signed store parent SHA is malformed")
+    if not isinstance(bundle_path, str) or not bundle_path.startswith("authority/issued/") or ".." in bundle_path.split("/"):
+        raise AuthorityBundleError("immutable bundle path is outside the issued-bundle namespace")
+    if not isinstance(github_token, str) or not github_token.strip():
+        raise AuthorityBundleError("GitHub read token is required for immutable store verification")
+
+    def get_json(url: str) -> dict[str, Any]:
+        request = urllib.request.Request(
+            url,
+            headers={
+                "Authorization": f"Bearer {github_token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                value = json.loads(response.read())
+        except (OSError, ValueError, urllib.error.URLError) as exc:
+            raise AuthorityBundleError("GitHub immutable store evidence could not be fetched") from exc
+        if not isinstance(value, dict):
+            raise AuthorityBundleError("GitHub immutable store response is malformed")
+        return value
+
+    root = f"https://api.github.com/repos/{repository}"
+    commit = get_json(f"{root}/git/commits/{bundle_commit}")
+    parents = commit.get("parents")
+    tree_sha = (commit.get("tree") or {}).get("sha")
+    if not isinstance(parents, list) or len(parents) != 1 or (parents[0] or {}).get("sha") != signed_store_parent:
+        raise AuthorityBundleError("bundle commit is not a direct child of the signed store parent")
+    if not isinstance(tree_sha, str) or not _HEX40.fullmatch(tree_sha):
+        raise AuthorityBundleError("bundle commit tree SHA is malformed")
+
+    tree = get_json(f"{root}/git/trees/{tree_sha}?recursive=1")
+    if tree.get("truncated") is True or not isinstance(tree.get("tree"), list):
+        raise AuthorityBundleError("GitHub bundle tree is truncated or malformed")
+    matches = [entry for entry in tree["tree"] if isinstance(entry, dict) and entry.get("path") == bundle_path]
+    if len(matches) != 1 or matches[0].get("type") != "blob":
+        raise AuthorityBundleError("exact immutable bundle path is missing or ambiguous")
+    blob_sha = matches[0].get("sha")
+    if not isinstance(blob_sha, str) or not _HEX40.fullmatch(blob_sha):
+        raise AuthorityBundleError("immutable bundle blob SHA is malformed")
+
+    blob = get_json(f"{root}/git/blobs/{blob_sha}")
+    if blob.get("encoding") != "base64" or not isinstance(blob.get("content"), str):
+        raise AuthorityBundleError("GitHub immutable bundle blob encoding is unsupported")
+    try:
+        content = base64.b64decode(blob["content"], validate=True)
+    except (ValueError, TypeError) as exc:
+        raise AuthorityBundleError("GitHub immutable bundle blob is malformed") from exc
+    actual_blob_sha = hashlib.sha1(b"blob " + str(len(content)).encode("ascii") + b"\\0" + content).hexdigest()
+    if actual_blob_sha != blob_sha:
+        raise AuthorityBundleError("GitHub immutable bundle blob hash mismatch")
+    try:
+        stored_envelope = json.loads(content)
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise AuthorityBundleError("stored immutable bundle is not valid JSON") from exc
+    if stored_envelope != envelope:
+        raise AuthorityBundleError("stored immutable bundle content differs from the verified envelope")
+    return {
+        "repository": repository,
+        "signed_store_parent": signed_store_parent,
+        "bundle_commit": bundle_commit,
+        "bundle_path": bundle_path,
+        "bundle_blob_sha": blob_sha,
+    }
+
+
 def verify_authority_bundle(
     envelope: dict[str, Any],
     *,
@@ -225,7 +318,7 @@ def verify_authority_bundle(
 _HEX40 = re.compile(r"[0-9a-f]{40}")
 
 
-__all__ = ["AuthorityBundleError", "BUNDLE_TYPE", "key_id_for", "load_trust_anchor", "verify_authority_bundle"]
+__all__ = ["AuthorityBundleError", "BUNDLE_TYPE", "key_id_for", "load_trust_anchor", "verify_authority_bundle", "verify_immutable_store_object"]
 
 
 def import_verified_authority_bundle(
