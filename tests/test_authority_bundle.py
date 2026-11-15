@@ -4,6 +4,7 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from core.attestation import issue_attestation
 from core.authority_bundle import (
     AuthorityBundleError, key_id_for, load_trust_anchor, verify_authority_bundle,
     import_verified_authority_bundle,
@@ -51,6 +52,7 @@ def fixture_bundle(tmp_path):
         "authority_records": {
             "capability_registry": {"schema_version": 1, "persisted_by": "yanhul/aios-authority-store", **registry.snapshot()},
             "policy": policy_record, "contract": contract_record, "permit": permit,
+            "attestation": issue_attestation(contract_record, permit, "test-secret"),
         },
     }
     private = Ed25519PrivateKey.generate()
@@ -70,7 +72,8 @@ def verify(envelope, public, **overrides):
         trusted_issuer="yanhul/aios-authority-store",
         trusted_public_key_hex=public, expected_repository="yanhul/AIOS",
         expected_run_id=123, expected_base_sha="a" * 40,
-        expected_source_branch="main", expected_store_commit="b" * 40, now=1500,
+        expected_source_branch="main", expected_store_commit="b" * 40,
+        attestation_secret="test-secret", now=1500,
     )
     args.update(overrides)
     return verify_authority_bundle(envelope, **args)
@@ -172,7 +175,7 @@ def test_importer_atomically_materializes_and_reads_back_aios_authority(tmp_path
         expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
         expected_receipt_commit="e" * 40,
         expected_receipt_path="authority/receipts/123-" + "a" * 40 + ".json",
-        github_token="test-token", now=1500,
+        github_token="test-token", attestation_secret="test-secret", now=1500,
     )
     assert result["state"] == "AUTHORITY_IMPORTED_AND_READ_BACK"
     from core.authority import authorize, load_contract, load_permit
@@ -203,7 +206,7 @@ def test_importer_rejects_untrusted_bundle_before_writing(tmp_path):
             expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
             expected_receipt_commit="e" * 40,
             expected_receipt_path="authority/receipts/123-" + "a" * 40 + ".json",
-            github_token="test-token", now=1500,
+            github_token="test-token", attestation_secret="test-secret", now=1500,
         )
     assert not (state / "authority").exists()
     assert not (state / "capabilities").exists()
@@ -261,3 +264,32 @@ def test_importer_rechecks_conflicts_inside_mutation_lock(tmp_path, monkeypatch)
 
     assert injected["path"].read_text(encoding="utf-8") == json.dumps({"conflict": True})
     assert not (state / "authority").exists()
+
+
+def test_wrong_hmac_secret_and_attestation_tampering_are_rejected(tmp_path):
+    envelope, public, _ = fixture_bundle(tmp_path)
+    with pytest.raises(AuthorityBundleError, match="attestation validation failed"):
+        verify_authority_bundle(
+            envelope, trusted_issuer="yanhul/aios-authority-store",
+            trusted_public_key_hex=public, expected_repository="yanhul/AIOS",
+            expected_run_id=123, expected_base_sha="a" * 40,
+            expected_source_branch="main", expected_store_commit="b" * 40,
+            attestation_secret="wrong-secret", now=1500,
+        )
+    forged = json.loads(json.dumps(envelope))
+    forged["payload"]["authority_records"]["attestation"]["signature"] = "0" * 64
+    private = Ed25519PrivateKey.generate()
+    # Re-sign the altered payload to isolate the HMAC check from Ed25519 rejection.
+    forged_public = private.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    ).hex()
+    forged["signature"] = {"algorithm": "Ed25519", "key_id": key_id_for(forged_public),
+                           "value": private.sign(canonical_json(forged["payload"]).encode()).hex()}
+    with pytest.raises(AuthorityBundleError, match="attestation validation failed"):
+        verify_authority_bundle(
+            forged, trusted_issuer="yanhul/aios-authority-store",
+            trusted_public_key_hex=forged_public, expected_repository="yanhul/AIOS",
+            expected_run_id=123, expected_base_sha="a" * 40,
+            expected_source_branch="main", expected_store_commit="b" * 40,
+            attestation_secret="test-secret", now=1500,
+        )
