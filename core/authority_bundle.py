@@ -114,6 +114,24 @@ def verify_immutable_store_object(
     if not isinstance(tree_sha, str) or not _HEX40.fullmatch(tree_sha):
         raise AuthorityBundleError("bundle commit tree SHA is malformed")
 
+    # The issuer storage commit must be a single-purpose commit: exactly one
+    # direct child of the signed parent, adding only this immutable bundle.
+    # This prevents piggybacking workflow/policy/source changes into the
+    # commit that is being accepted as the storage event.
+    comparison = get_json(f"{root}/compare/{signed_store_parent}...{bundle_commit}")
+    changed_files = comparison.get("files")
+    if (
+        comparison.get("status") != "ahead"
+        or comparison.get("ahead_by") != 1
+        or comparison.get("total_commits") != 1
+        or not isinstance(changed_files, list)
+        or len(changed_files) != 1
+        or not isinstance(changed_files[0], dict)
+        or changed_files[0].get("filename") != bundle_path
+        or changed_files[0].get("status") != "added"
+    ):
+        raise AuthorityBundleError("bundle commit must add only the exact issued bundle to the signed parent")
+
     tree = get_json(f"{root}/git/trees/{tree_sha}?recursive=1")
     if tree.get("truncated") is True or not isinstance(tree.get("tree"), list):
         raise AuthorityBundleError("GitHub bundle tree is truncated or malformed")
