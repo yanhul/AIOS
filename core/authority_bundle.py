@@ -176,6 +176,9 @@ def verify_issuer_receipt(
     bundle_commit: str,
     bundle_path: str,
     bundle_blob_sha: str,
+    expected_store_parent: str,
+    expected_source_run_id: int,
+    expected_source_target_sha: str,
     receipt_commit: str,
     receipt_path: str,
     github_token: str,
@@ -257,9 +260,12 @@ def verify_issuer_receipt(
             or payload["issuer"] != trusted_issuer or payload["repository"] != repository
             or payload["bundle_commit"] != bundle_commit or payload["bundle_path"] != bundle_path
             or payload["bundle_blob_sha"] != bundle_blob_sha
-            or not isinstance(payload["signed_store_parent"], str)
-            or not _HEX40.fullmatch(payload["signed_store_parent"])):
-        raise AuthorityBundleError("issuer receipt is misbound to the immutable bundle")
+            or payload["signed_store_parent"] != expected_store_parent
+            or payload["source_run_id"] != expected_source_run_id
+            or payload["source_target_sha"] != expected_source_target_sha
+            or type(payload["issuer_workflow_run_id"]) is not int
+            or payload["issuer_workflow_run_id"] < 1):
+        raise AuthorityBundleError("issuer receipt is misbound to the immutable bundle/source run")
     if (not isinstance(signature, dict) or set(signature) != {"algorithm", "key_id", "value"}
             or signature["algorithm"] != BUNDLE_ALGORITHM
             or signature["key_id"] != key_id_for(trusted_public_key_hex)
@@ -507,6 +513,9 @@ def import_verified_authority_bundle(
         bundle_commit=store_proof["bundle_commit"],
         bundle_path=store_proof["bundle_path"],
         bundle_blob_sha=store_proof["bundle_blob_sha"],
+        expected_store_parent=expected_store_commit,
+        expected_source_run_id=expected_run_id,
+        expected_source_target_sha=expected_base_sha,
         receipt_commit=expected_receipt_commit,
         receipt_path=expected_receipt_path,
         github_token=github_token,
