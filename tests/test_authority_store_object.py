@@ -146,7 +146,7 @@ def test_verifies_issuer_signed_post_commit_receipt():
         "key_id": "ed25519:" + hashlib.sha256(bytes.fromhex(public)).hexdigest()[:32],
         "value": private.sign(signed).hex(),
     }}
-    content = (json.dumps(envelope, sort_keys=True, indent=2) + "\\n").encode()
+    content = (json.dumps(envelope, sort_keys=True, indent=2) + "\n").encode()
     receipt_blob_sha = git_blob_sha(content)
     root = "https://api.github.com/repos/yanhul/aios-authority-store"
     responses = {
