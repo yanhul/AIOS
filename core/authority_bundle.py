@@ -92,7 +92,7 @@ def verify_authority_bundle(
 
     required = {
         "bundle_type", "schema_version", "issuer", "repository", "source_run",
-        "target", "issued_at", "expires_at", "authority_records",
+        "target", "approval", "issued_at", "expires_at", "authority_records",
     }
     if set(payload) != required:
         raise AuthorityBundleError("authority payload schema mismatch")
@@ -120,6 +120,26 @@ def verify_authority_bundle(
         and len(branch) > len("aios/autorepair/")
     ):
         raise AuthorityBundleError("source branch is outside the issuer allowlist")
+    approval = payload["approval"]
+    if not isinstance(approval, dict) or set(approval) != {
+        "pr_number", "pr_url", "head_sha", "base_branch", "reviewer",
+        "review_state", "review_id", "review_submitted_at",
+    }:
+        raise AuthorityBundleError("independent PR approval schema mismatch")
+    if (
+        type(approval["pr_number"]) is not int or approval["pr_number"] < 1
+        or approval["head_sha"] != run["head_sha"]
+        or approval["head_sha"] != expected_base_sha
+        or approval["base_branch"] != "main"
+        or not isinstance(approval["reviewer"], str)
+        or not approval["reviewer"].strip()
+        or approval["reviewer"].lower() == "yanhul"
+        or approval["review_state"] != "APPROVED"
+        or type(approval["review_id"]) is not int or approval["review_id"] < 1
+        or not isinstance(approval["review_submitted_at"], str)
+        or not approval["review_submitted_at"]
+    ):
+        raise AuthorityBundleError("independent PR approval is missing, stale, or misbound")
     if not isinstance(target, dict) or set(target) != {"base_sha"}:
         raise AuthorityBundleError("target binding schema mismatch")
     if target["base_sha"] != expected_base_sha:
