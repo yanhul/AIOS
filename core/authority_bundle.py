@@ -16,6 +16,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from .contract import validate_contract, verify_permit
+from .attestation import verify_attestation
 from .mutation import canonical_json
 from .policy_registry import policy_digest
 
@@ -56,6 +57,332 @@ def load_trust_anchor(path: str | Path, issuer: str) -> str:
     return public_key
 
 
+
+class _SameHostHTTPSRedirectHandler(__import__("urllib.request", fromlist=["HTTPRedirectHandler"]).HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        from urllib.parse import urlsplit
+        source, target = urlsplit(req.full_url), urlsplit(newurl)
+        if (source.scheme != "https" or target.scheme != "https"
+                or source.hostname != "api.github.com"
+                or target.hostname != source.hostname or target.port not in (None, 443)):
+            raise AuthorityBundleError("blocked cross-host or insecure GitHub API redirect")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _github_api_json(url: str, token: str) -> Any:
+    import urllib.error
+    import urllib.request
+    from urllib.parse import urlsplit
+
+    parsed = urlsplit(url)
+    if parsed.scheme != "https" or parsed.hostname != "api.github.com" or parsed.port not in (None, 443):
+        raise AuthorityBundleError("GitHub API URL is outside the pinned HTTPS host")
+    if not isinstance(token, str) or not token.strip():
+        raise AuthorityBundleError("GitHub API read token is required")
+    request = urllib.request.Request(
+        url,
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                 "X-GitHub-Api-Version": "2022-11-28"},
+    )
+    opener = urllib.request.build_opener(_SameHostHTTPSRedirectHandler())
+    try:
+        with opener.open(request, timeout=20) as response:
+            value = json.loads(response.read())
+    except (OSError, ValueError, urllib.error.URLError) as exc:
+        raise AuthorityBundleError("GitHub source/store evidence could not be fetched safely") from exc
+    return value
+
+
+def _verify_live_source_evidence(payload: dict[str, Any], token: str) -> None:
+    """Independently bind the signed run/PR/review claims to current GitHub API data."""
+    run_claim = payload["source_run"]
+    approval = payload["approval"]
+    run_id = run_claim["id"]
+    run = _github_api_json(f"https://api.github.com/repos/yanhul/AIOS/actions/runs/{run_id}", token)
+    if not isinstance(run, dict):
+        raise AuthorityBundleError("GitHub source run response is malformed")
+    if (
+        run.get("id") != run_id or run.get("status") != "completed"
+        or run.get("conclusion") != "failure"
+        or (run.get("repository") or {}).get("full_name", "").lower() != "yanhul/aios"
+        or (run.get("head_repository") or {}).get("full_name", "").lower() != "yanhul/aios"
+        or run.get("head_sha") != run_claim["head_sha"]
+        or run.get("head_branch") != run_claim["head_branch"]
+        or run.get("path") != run_claim["workflow_path"]
+        or run.get("event") != run_claim["event"]
+    ):
+        raise AuthorityBundleError("live GitHub source run does not match the signed run claim")
+    pr_number = approval["pr_number"]
+    pr = _github_api_json(f"https://api.github.com/repos/yanhul/AIOS/pulls/{pr_number}", token)
+    if not isinstance(pr, dict):
+        raise AuthorityBundleError("GitHub source PR response is malformed")
+    base, head = pr.get("base") or {}, pr.get("head") or {}
+    if (
+        pr.get("number") != pr_number or pr.get("state") != "open" or pr.get("draft") is not False
+        or (base.get("repo") or {}).get("full_name", "").lower() != "yanhul/aios"
+        or base.get("ref") != "main"
+        or (head.get("repo") or {}).get("full_name", "").lower() != "yanhul/aios"
+        or head.get("sha") != run_claim["head_sha"]
+        or head.get("ref") != run_claim["head_branch"]
+    ):
+        raise AuthorityBundleError("live GitHub source PR does not match the signed source binding")
+    reviews: list[dict[str, Any]] = []
+    page = 1
+    while True:
+        batch = _github_api_json(
+            f"https://api.github.com/repos/yanhul/AIOS/pulls/{pr_number}/reviews?per_page=100&page={page}",
+            token,
+        )
+        if not isinstance(batch, list) or any(not isinstance(item, dict) for item in batch):
+            raise AuthorityBundleError("GitHub PR reviews response is malformed")
+        reviews.extend(batch)
+        if len(batch) < 100:
+            break
+        page += 1
+    reviewer = approval["reviewer"].lower()
+    author = (pr.get("user") or {}).get("login", "").lower()
+    actor = (run.get("actor") or {}).get("login", "").lower()
+    if reviewer in {"yanhul", "simple8x"} or reviewer in {author, actor}:
+        raise AuthorityBundleError("signed PR reviewer is not independent of the source owner/actor")
+    latest = {}
+    for review in reviews:
+        login = (review.get("user") or {}).get("login", "").lower()
+        submitted = review.get("submitted_at")
+        if login and submitted and (login not in latest or submitted > latest[login].get("submitted_at", "")):
+            latest[login] = review
+    if any(item.get("state") == "CHANGES_REQUESTED" for item in latest.values()):
+        raise AuthorityBundleError("live source PR has an outstanding change-request veto")
+    current = latest.get(reviewer)
+    if (
+        current is None or current.get("state") != "APPROVED"
+        or current.get("commit_id") != run_claim["head_sha"]
+        or current.get("id") != approval["review_id"]
+        or current.get("submitted_at") != approval["review_submitted_at"]
+    ):
+        raise AuthorityBundleError("live independent approval is missing, stale, vetoed, or bound to another SHA")
+
+
+def verify_immutable_store_object(
+    envelope: dict[str, Any],
+    *,
+    repository: str,
+    bundle_commit: str,
+    signed_store_parent: str,
+    bundle_path: str,
+    github_token: str,
+) -> dict[str, str]:
+    """Verify a bundle against the actual GitHub commit, tree, and blob objects.
+
+    The signed parent SHA comes from the verified envelope. The bundle commit
+    and path are locators only: their relationship and contents are fetched
+    independently from GitHub's Git database API.
+    """
+    import base64
+    import urllib.error
+    import urllib.request
+
+    if not isinstance(repository, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise AuthorityBundleError("store repository identifier is malformed")
+    if not isinstance(bundle_commit, str) or not _HEX40.fullmatch(bundle_commit):
+        raise AuthorityBundleError("bundle-containing commit SHA is malformed")
+    if not isinstance(signed_store_parent, str) or not _HEX40.fullmatch(signed_store_parent):
+        raise AuthorityBundleError("signed store parent SHA is malformed")
+    if not isinstance(bundle_path, str) or not bundle_path.startswith("authority/issued/") or ".." in bundle_path.split("/"):
+        raise AuthorityBundleError("immutable bundle path is outside the issued-bundle namespace")
+    if not isinstance(github_token, str) or not github_token.strip():
+        raise AuthorityBundleError("GitHub read token is required for immutable store verification")
+
+    def get_json(url: str) -> dict[str, Any]:
+        value = _github_api_json(url, github_token)
+        if not isinstance(value, dict):
+            raise AuthorityBundleError("GitHub immutable store response is malformed")
+        return value
+
+    root = f"https://api.github.com/repos/{repository}"
+    commit = get_json(f"{root}/git/commits/{bundle_commit}")
+    parents = commit.get("parents")
+    tree_sha = (commit.get("tree") or {}).get("sha")
+    if not isinstance(parents, list) or len(parents) != 1 or (parents[0] or {}).get("sha") != signed_store_parent:
+        raise AuthorityBundleError("bundle commit is not a direct child of the signed store parent")
+    if not isinstance(tree_sha, str) or not _HEX40.fullmatch(tree_sha):
+        raise AuthorityBundleError("bundle commit tree SHA is malformed")
+
+    # The issuer storage commit must be a single-purpose commit: exactly one
+    # direct child of the signed parent, adding only this immutable bundle.
+    # This prevents piggybacking workflow/policy/source changes into the
+    # commit that is being accepted as the storage event.
+    comparison = get_json(f"{root}/compare/{signed_store_parent}...{bundle_commit}")
+    changed_files = comparison.get("files")
+    if (
+        comparison.get("status") != "ahead"
+        or comparison.get("ahead_by") != 1
+        or comparison.get("total_commits") != 1
+        or not isinstance(changed_files, list)
+        or len(changed_files) != 1
+        or not isinstance(changed_files[0], dict)
+        or changed_files[0].get("filename") != bundle_path
+        or changed_files[0].get("status") != "added"
+    ):
+        raise AuthorityBundleError("bundle commit must add only the exact issued bundle to the signed parent")
+
+    tree = get_json(f"{root}/git/trees/{tree_sha}?recursive=1")
+    if tree.get("truncated") is True or not isinstance(tree.get("tree"), list):
+        raise AuthorityBundleError("GitHub bundle tree is truncated or malformed")
+    matches = [entry for entry in tree["tree"] if isinstance(entry, dict) and entry.get("path") == bundle_path]
+    if len(matches) != 1 or matches[0].get("type") != "blob":
+        raise AuthorityBundleError("exact immutable bundle path is missing or ambiguous")
+    blob_sha = matches[0].get("sha")
+    if not isinstance(blob_sha, str) or not _HEX40.fullmatch(blob_sha):
+        raise AuthorityBundleError("immutable bundle blob SHA is malformed")
+
+    blob = get_json(f"{root}/git/blobs/{blob_sha}")
+    if blob.get("encoding") != "base64" or not isinstance(blob.get("content"), str):
+        raise AuthorityBundleError("GitHub immutable bundle blob encoding is unsupported")
+    try:
+        content = base64.b64decode("".join(blob["content"].split()), validate=True)
+    except (ValueError, TypeError) as exc:
+        raise AuthorityBundleError("GitHub immutable bundle blob is malformed") from exc
+    actual_blob_sha = hashlib.sha1(b"blob " + str(len(content)).encode("ascii") + b"\0" + content).hexdigest()
+    if actual_blob_sha != blob_sha:
+        raise AuthorityBundleError("GitHub immutable bundle blob hash mismatch")
+    try:
+        stored_envelope = json.loads(content)
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise AuthorityBundleError("stored immutable bundle is not valid JSON") from exc
+    if stored_envelope != envelope:
+        raise AuthorityBundleError("stored immutable bundle content differs from the verified envelope")
+    return {
+        "repository": repository,
+        "signed_store_parent": signed_store_parent,
+        "bundle_commit": bundle_commit,
+        "bundle_path": bundle_path,
+        "bundle_blob_sha": blob_sha,
+    }
+
+
+
+def verify_issuer_receipt(
+    *,
+    trusted_issuer: str,
+    trusted_public_key_hex: str,
+    repository: str,
+    bundle_commit: str,
+    bundle_path: str,
+    bundle_blob_sha: str,
+    expected_store_parent: str,
+    expected_source_run_id: int,
+    expected_source_target_sha: str,
+    receipt_commit: str,
+    receipt_path: str,
+    github_token: str,
+) -> dict[str, str]:
+    """Verify the issuer-signed post-commit receipt and its immutable Git object."""
+    import base64
+    import urllib.error
+    import urllib.request
+
+    for name, value in (("bundle commit", bundle_commit), ("receipt commit", receipt_commit),
+                        ("bundle blob", bundle_blob_sha)):
+        if not isinstance(value, str) or not _HEX40.fullmatch(value):
+            raise AuthorityBundleError(f"{name} SHA is malformed")
+    expected_receipt_path = bundle_path.replace("authority/issued/", "authority/receipts/", 1)
+    if receipt_path != expected_receipt_path or not receipt_path.endswith(".json"):
+        raise AuthorityBundleError("issuer receipt path does not match the issued bundle identity")
+    if not isinstance(github_token, str) or not github_token.strip():
+        raise AuthorityBundleError("GitHub read token is required for issuer receipt verification")
+
+    def get_json(url: str) -> dict[str, Any]:
+        value = _github_api_json(url, github_token)
+        if not isinstance(value, dict):
+            raise AuthorityBundleError("GitHub issuer receipt response is malformed")
+        return value
+
+    root = f"https://api.github.com/repos/{repository}"
+    commit = get_json(f"{root}/git/commits/{receipt_commit}")
+    parents = commit.get("parents")
+    tree_sha = (commit.get("tree") or {}).get("sha")
+    if not isinstance(parents, list) or len(parents) != 1 or (parents[0] or {}).get("sha") != bundle_commit:
+        raise AuthorityBundleError("issuer receipt commit is not a direct child of the bundle commit")
+    comparison = get_json(f"{root}/compare/{bundle_commit}...{receipt_commit}")
+    files = comparison.get("files")
+    if (comparison.get("status") != "ahead" or comparison.get("ahead_by") != 1
+            or comparison.get("total_commits") != 1 or not isinstance(files, list) or len(files) != 1
+            or not isinstance(files[0], dict) or files[0].get("filename") != receipt_path
+            or files[0].get("status") != "added"):
+        raise AuthorityBundleError("receipt commit must add only the exact signed issuer receipt")
+    if not isinstance(tree_sha, str) or not _HEX40.fullmatch(tree_sha):
+        raise AuthorityBundleError("issuer receipt tree SHA is malformed")
+    tree = get_json(f"{root}/git/trees/{tree_sha}?recursive=1")
+    if tree.get("truncated") is True or not isinstance(tree.get("tree"), list):
+        raise AuthorityBundleError("issuer receipt tree is truncated or malformed")
+    matches = [entry for entry in tree["tree"] if isinstance(entry, dict) and entry.get("path") == receipt_path]
+    if len(matches) != 1 or matches[0].get("type") != "blob":
+        raise AuthorityBundleError("exact immutable issuer receipt path is missing or ambiguous")
+    blob_sha = matches[0].get("sha")
+    if not isinstance(blob_sha, str) or not _HEX40.fullmatch(blob_sha):
+        raise AuthorityBundleError("issuer receipt blob SHA is malformed")
+    blob = get_json(f"{root}/git/blobs/{blob_sha}")
+    if blob.get("encoding") != "base64" or not isinstance(blob.get("content"), str):
+        raise AuthorityBundleError("issuer receipt blob encoding is unsupported")
+    try:
+        content = base64.b64decode("".join(blob["content"].split()), validate=True)
+        receipt = json.loads(content)
+    except (ValueError, TypeError, UnicodeDecodeError) as exc:
+        raise AuthorityBundleError("issuer receipt blob is malformed") from exc
+    actual_sha = hashlib.sha1(b"blob " + str(len(content)).encode("ascii") + b"\0" + content).hexdigest()
+    if actual_sha != blob_sha:
+        raise AuthorityBundleError("issuer receipt blob hash mismatch")
+    if not isinstance(receipt, dict) or set(receipt) != {"payload", "signature"}:
+        raise AuthorityBundleError("issuer receipt envelope schema mismatch")
+    payload, signature = receipt["payload"], receipt["signature"]
+    required = {"receipt_type", "schema_version", "issuer", "repository", "bundle_commit",
+                "bundle_path", "bundle_blob_sha", "signed_store_parent", "source_run_id",
+                "source_target_sha", "issuer_workflow_run_id"}
+    if not isinstance(payload, dict) or set(payload) != required:
+        raise AuthorityBundleError("issuer receipt payload schema mismatch")
+    if (payload["receipt_type"] != "AIOS_AUTHORITY_ISSUANCE_RECEIPT" or payload["schema_version"] != 1
+            or payload["issuer"] != trusted_issuer or payload["repository"] != repository
+            or payload["bundle_commit"] != bundle_commit or payload["bundle_path"] != bundle_path
+            or payload["bundle_blob_sha"] != bundle_blob_sha
+            or payload["signed_store_parent"] != expected_store_parent
+            or payload["source_run_id"] != expected_source_run_id
+            or payload["source_target_sha"] != expected_source_target_sha
+            or type(payload["issuer_workflow_run_id"]) is not int
+            or payload["issuer_workflow_run_id"] < 1):
+        raise AuthorityBundleError("issuer receipt is misbound to the immutable bundle/source run")
+
+    # The receipt's workflow_run_id is a claim until independently resolved via
+    # the Actions API. The run is still in_progress while this workflow performs
+    # its own readback/import, so success is not yet knowable at this point.
+    issuer_run = _github_api_json(
+        f"https://api.github.com/repos/{repository}/actions/runs/{payload['issuer_workflow_run_id']}",
+        github_token,
+    )
+    if not isinstance(issuer_run, dict) or (
+        issuer_run.get("id") != payload["issuer_workflow_run_id"]
+        or issuer_run.get("status") not in {"in_progress", "completed"}
+        or (issuer_run.get("status") == "completed" and issuer_run.get("conclusion") != "success")
+        or (issuer_run.get("repository") or {}).get("full_name", "").lower() != repository.lower()
+        or issuer_run.get("head_sha") != expected_store_parent
+        or issuer_run.get("head_branch") != "main"
+        or issuer_run.get("path") != ".github/workflows/issue-authority.yml"
+        or issuer_run.get("event") != "workflow_dispatch"
+    ):
+        raise AuthorityBundleError("issuer receipt workflow run does not match a real authorized store issuance run")
+    if (not isinstance(signature, dict) or set(signature) != {"algorithm", "key_id", "value"}
+            or signature["algorithm"] != BUNDLE_ALGORITHM
+            or signature["key_id"] != key_id_for(trusted_public_key_hex)
+            or not isinstance(signature["value"], str) or not _HEX128.fullmatch(signature["value"])):
+        raise AuthorityBundleError("issuer receipt signature metadata is invalid")
+    try:
+        Ed25519PublicKey.from_public_bytes(bytes.fromhex(trusted_public_key_hex)).verify(
+            bytes.fromhex(signature["value"]), _signed_bytes(payload))
+    except (InvalidSignature, ValueError) as exc:
+        raise AuthorityBundleError("issuer receipt signature verification failed") from exc
+    return {"receipt_commit": receipt_commit, "receipt_path": receipt_path,
+            "receipt_blob_sha": blob_sha, "bundle_commit": bundle_commit,
+            "bundle_blob_sha": bundle_blob_sha}
+
 def verify_authority_bundle(
     envelope: dict[str, Any],
     *,
@@ -66,9 +393,10 @@ def verify_authority_bundle(
     expected_base_sha: str,
     expected_source_branch: str,
     expected_store_commit: str,
+    attestation_secret: str,
     now: int | None = None,
 ) -> dict[str, Any]:
-    """Verify signature, authority semantics, and immutable source/store bindings."""
+    """Verify signature, HMAC permit attestation, authority semantics and source/store bindings."""
     if not isinstance(envelope, dict) or set(envelope) != {"payload", "signature"}:
         raise AuthorityBundleError("bundle envelope schema mismatch")
     payload, signature = envelope["payload"], envelope["signature"]
@@ -158,16 +486,17 @@ def verify_authority_bundle(
     if payload["expires_at"] <= payload["issued_at"] or current < payload["issued_at"] or current >= payload["expires_at"]:
         raise AuthorityBundleError("bundle is not currently valid or validity interval is invalid")
     records = payload["authority_records"]
-    if not isinstance(records, dict) or set(records) != {"capability_registry", "policy", "contract", "permit"}:
+    if not isinstance(records, dict) or set(records) != {"capability_registry", "policy", "contract", "permit", "attestation"}:
         raise AuthorityBundleError("authority records schema mismatch")
-    contract, permit, policy, registry = (
-        records["contract"], records["permit"], records["policy"], records["capability_registry"]
+    contract, permit, policy, registry, attestation = (
+        records["contract"], records["permit"], records["policy"], records["capability_registry"], records["attestation"]
     )
     try:
         validate_contract(contract)
         verify_permit(contract, permit)
+        verify_attestation(contract, permit, attestation, attestation_secret)
     except (TypeError, ValueError, KeyError) as exc:
-        raise AuthorityBundleError(f"contract/permit validation failed: {exc}") from exc
+        raise AuthorityBundleError(f"contract/permit/attestation validation failed: {exc}") from exc
     if not isinstance(policy, dict):
         raise AuthorityBundleError("governing policy must be an object")
     policy_body = dict(policy)
@@ -225,7 +554,7 @@ def verify_authority_bundle(
 _HEX40 = re.compile(r"[0-9a-f]{40}")
 
 
-__all__ = ["AuthorityBundleError", "BUNDLE_TYPE", "key_id_for", "load_trust_anchor", "verify_authority_bundle"]
+__all__ = ["AuthorityBundleError", "BUNDLE_TYPE", "key_id_for", "load_trust_anchor", "verify_authority_bundle", "verify_immutable_store_object", "verify_issuer_receipt"]
 
 
 def import_verified_authority_bundle(
@@ -239,6 +568,14 @@ def import_verified_authority_bundle(
     expected_base_sha: str,
     expected_source_branch: str,
     expected_store_commit: str,
+    expected_store_repository: str,
+    expected_bundle_commit: str,
+    expected_bundle_path: str,
+    expected_receipt_commit: str,
+    expected_receipt_path: str,
+    github_token: str,
+    source_github_token: str,
+    attestation_secret: str,
     now: int | None = None,
 ) -> dict[str, Any]:
     """Verify then atomically materialize the exact signed records into AIOS state.
@@ -246,7 +583,7 @@ def import_verified_authority_bundle(
     No record is written until signature, scope, registry, policy, contract and
     permit have passed preflight. Existing conflicting identities fail closed.
     """
-    from .authority import authorize, load_contract, load_permit
+    from .authority import authorize, load_contract, load_permit, load_attestation
     from .capabilities import CapabilityRegistry
     from .contract import contract_identity, issue_permit
     from .mutation import commit_batch
@@ -263,13 +600,43 @@ def import_verified_authority_bundle(
         expected_base_sha=expected_base_sha,
         expected_source_branch=expected_source_branch,
         expected_store_commit=expected_store_commit,
+        attestation_secret=attestation_secret,
         now=now,
     )
+    expected_path = f"authority/issued/{expected_run_id}-{expected_base_sha}.json"
+    if expected_bundle_path != expected_path:
+        raise AuthorityBundleError("immutable bundle path does not match the expected run and source SHA")
+    store_proof = verify_immutable_store_object(
+        envelope,
+        repository=expected_store_repository,
+        bundle_commit=expected_bundle_commit,
+        signed_store_parent=expected_store_commit,
+        bundle_path=expected_bundle_path,
+        github_token=github_token,
+    )
+    receipt_proof = verify_issuer_receipt(
+        trusted_issuer=trusted_issuer,
+        trusted_public_key_hex=public_key,
+        repository=expected_store_repository,
+        bundle_commit=store_proof["bundle_commit"],
+        bundle_path=store_proof["bundle_path"],
+        bundle_blob_sha=store_proof["bundle_blob_sha"],
+        expected_store_parent=expected_store_commit,
+        expected_source_run_id=expected_run_id,
+        expected_source_target_sha=expected_base_sha,
+        receipt_commit=expected_receipt_commit,
+        receipt_path=expected_receipt_path,
+        github_token=github_token,
+    )
+
+    _verify_live_source_evidence(payload, source_github_token)
+
     records = payload["authority_records"]
     registry_record = records["capability_registry"]
     policy_record = records["policy"]
     contract = records["contract"]
     permit = records["permit"]
+    attestation = records["attestation"]
 
     # Validate using AIOS's own parsers and identity functions before any write.
     registry_path = Path(aios_dir) / "capabilities" / "capability_registry.json"
@@ -303,6 +670,7 @@ def import_verified_authority_bundle(
         (f"{POLICIES_DIR}/{contract['policy_digest']}.json", policy_record),
         (f"authority/contracts/{cid}.json", {**contract, "record_type": "EXECUTION_CONTRACT", "contract_id": cid}),
         (f"authority/permits/{pid}.json", permit),
+        (f"authority/attestations/{pid}.json", attestation),
     ]
     for relative, record in entries:
         target = root / relative
@@ -334,25 +702,42 @@ def import_verified_authority_bundle(
                     f"conflicting existing AIOS authority record: {relative}"
                 )
 
+    # Verify the materialized files while the mutation lock is still held.
+    # A failed readback durably switches the batch journal to rollback mode.
+    def _post_commit_readback(_locked_root: str) -> None:
+        try:
+            loaded_contract = load_contract(str(root), cid)
+            loaded_permit = load_permit(str(root), pid)
+            authorize(str(root), cid, pid, attestation_secret=attestation_secret, require_attestation=True)
+            loaded_attestation = load_attestation(str(root), pid)
+            verify_attestation(loaded_contract, loaded_permit, loaded_attestation, attestation_secret)
+        except Exception as exc:
+            raise AuthorityBundleError(f"AIOS post-commit authority readback failed: {exc}") from exc
+        if (canonical_json(loaded_contract) != canonical_json(contract)
+                or canonical_json(loaded_permit) != canonical_json(permit)
+                or canonical_json(loaded_attestation) != canonical_json(attestation)):
+            raise AuthorityBundleError("AIOS post-commit readback differs from signed authority bundle")
+
     # One AIOS transaction prevents a partially imported capability/policy/contract/permit set.
     pending = [(relative, record) for relative, record in entries if not (root / relative).exists()]
     if pending:
-        commit_batch(str(root), pending, precondition=_locked_precondition)
-
-    # Independent readback through normal AIOS authority loaders and authorization.
-    try:
-        loaded_contract = load_contract(str(root), cid)
-        loaded_permit = load_permit(str(root), pid)
-        authorize(str(root), cid, pid)
-    except Exception as exc:
-        raise AuthorityBundleError(f"AIOS post-commit authority readback failed: {exc}") from exc
-    if canonical_json(loaded_contract) != canonical_json(contract) or canonical_json(loaded_permit) != canonical_json(permit):
-        raise AuthorityBundleError("AIOS post-commit readback differs from signed authority bundle")
+        commit_batch(
+            str(root), pending, precondition=_locked_precondition,
+            postcondition=_post_commit_readback,
+        )
+    else:
+        _post_commit_readback(str(root))
     return {
         "state": "AUTHORITY_IMPORTED_AND_READ_BACK",
         "contract_id": cid,
         "permit_id": pid,
         "policy_digest": contract["policy_digest"],
         "capability_registry_path": str(registry_path),
-        "store_commit": expected_store_commit,
+        "signed_store_parent": store_proof["signed_store_parent"],
+        "bundle_commit": store_proof["bundle_commit"],
+        "bundle_path": store_proof["bundle_path"],
+        "bundle_blob_sha": store_proof["bundle_blob_sha"],
+        "receipt_commit": receipt_proof["receipt_commit"],
+        "receipt_path": receipt_proof["receipt_path"],
+        "receipt_blob_sha": receipt_proof["receipt_blob_sha"],
     }

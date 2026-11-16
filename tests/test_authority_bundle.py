@@ -4,6 +4,7 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from core.attestation import issue_attestation
 from core.authority_bundle import (
     AuthorityBundleError, key_id_for, load_trust_anchor, verify_authority_bundle,
     import_verified_authority_bundle,
@@ -11,7 +12,7 @@ from core.authority_bundle import (
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import CONTRACT_TYPE
-from core.mutation import canonical_json
+from core.mutation import canonical_json, TransitionError
 from core.policy_registry import persist_policy
 
 
@@ -51,6 +52,7 @@ def fixture_bundle(tmp_path):
         "authority_records": {
             "capability_registry": {"schema_version": 1, "persisted_by": "yanhul/aios-authority-store", **registry.snapshot()},
             "policy": policy_record, "contract": contract_record, "permit": permit,
+            "attestation": issue_attestation(contract_record, permit, "test-secret"),
         },
     }
     private = Ed25519PrivateKey.generate()
@@ -70,7 +72,8 @@ def verify(envelope, public, **overrides):
         trusted_issuer="yanhul/aios-authority-store",
         trusted_public_key_hex=public, expected_repository="yanhul/AIOS",
         expected_run_id=123, expected_base_sha="a" * 40,
-        expected_source_branch="main", expected_store_commit="b" * 40, now=1500,
+        expected_source_branch="main", expected_store_commit="b" * 40,
+        attestation_secret="test-secret", now=1500,
     )
     args.update(overrides)
     return verify_authority_bundle(envelope, **args)
@@ -141,7 +144,7 @@ def test_active_trust_anchor_must_pin_matching_key(tmp_path):
     assert load_trust_anchor(path, "yanhul/aios-authority-store") == public
 
 
-def test_importer_atomically_materializes_and_reads_back_aios_authority(tmp_path):
+def test_importer_atomically_materializes_and_reads_back_aios_authority(tmp_path, monkeypatch):
     envelope, public, kid = fixture_bundle(tmp_path)
     trust = tmp_path / "trust.json"
     trust.write_text(json.dumps({"schema_version": 1, "issuers": {
@@ -151,16 +154,37 @@ def test_importer_atomically_materializes_and_reads_back_aios_authority(tmp_path
     }}), encoding="utf-8")
     state = tmp_path / "consumer-state"
     state.mkdir()
+    import core.authority_bundle as bundle_module
+    monkeypatch.setattr(bundle_module, "verify_immutable_store_object", lambda *args, **kwargs: {
+        "repository": "yanhul/aios-authority-store", "signed_store_parent": "b" * 40,
+        "bundle_commit": "c" * 40, "bundle_path": "authority/issued/123-" + "a" * 40 + ".json",
+        "bundle_blob_sha": "d" * 40,
+    })
+    monkeypatch.setattr(bundle_module, "verify_issuer_receipt", lambda **kwargs: {
+        "receipt_commit": "e" * 40, "receipt_path": "authority/receipts/123-" + "a" * 40 + ".json",
+        "receipt_blob_sha": "f" * 40, "bundle_commit": "c" * 40, "bundle_blob_sha": "d" * 40,
+    })
+    monkeypatch.setattr(bundle_module, "_verify_live_source_evidence", lambda *_args: None)
     result = import_verified_authority_bundle(
         envelope, aios_dir=state, trust_anchor_path=trust,
         trusted_issuer="yanhul/aios-authority-store",
         expected_repository="yanhul/AIOS", expected_run_id=123,
         expected_base_sha="a" * 40, expected_source_branch="main",
-        expected_store_commit="b" * 40, now=1500,
+        expected_store_commit="b" * 40,
+        expected_store_repository="yanhul/aios-authority-store",
+        expected_bundle_commit="c" * 40,
+        expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
+        expected_receipt_commit="e" * 40,
+        expected_receipt_path="authority/receipts/123-" + "a" * 40 + ".json",
+        github_token="test-token", source_github_token="test-source-token", attestation_secret="test-secret", now=1500,
     )
     assert result["state"] == "AUTHORITY_IMPORTED_AND_READ_BACK"
     from core.authority import authorize, load_contract, load_permit
-    authorize(str(state), result["contract_id"], result["permit_id"])
+    with pytest.raises(TransitionError, match="attestation secret is required"):
+        authorize(str(state), result["contract_id"], result["permit_id"])
+    with pytest.raises(TransitionError, match="attestation secret is required"):
+        authorize(str(state), result["contract_id"], result["permit_id"], require_attestation=False)
+    authorize(str(state), result["contract_id"], result["permit_id"], attestation_secret="test-secret", require_attestation=True)
     assert load_contract(str(state), result["contract_id"]) == envelope["payload"]["authority_records"]["contract"]
     assert load_permit(str(state), result["permit_id"]) == envelope["payload"]["authority_records"]["permit"]
 
@@ -181,7 +205,13 @@ def test_importer_rejects_untrusted_bundle_before_writing(tmp_path):
             trusted_issuer="yanhul/aios-authority-store",
             expected_repository="yanhul/AIOS", expected_run_id=123,
             expected_base_sha="a" * 40, expected_source_branch="main",
-            expected_store_commit="b" * 40, now=1500,
+            expected_store_commit="b" * 40,
+            expected_store_repository="yanhul/aios-authority-store",
+            expected_bundle_commit="c" * 40,
+            expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
+            expected_receipt_commit="e" * 40,
+            expected_receipt_path="authority/receipts/123-" + "a" * 40 + ".json",
+            github_token="test-token", source_github_token="test-source-token", attestation_secret="test-secret", now=1500,
         )
     assert not (state / "authority").exists()
     assert not (state / "capabilities").exists()
@@ -198,17 +228,29 @@ def test_importer_rechecks_conflicts_inside_mutation_lock(tmp_path, monkeypatch)
     state = tmp_path / "consumer-state"
     state.mkdir()
 
+    import core.authority_bundle as bundle_module
+    monkeypatch.setattr(bundle_module, "verify_immutable_store_object", lambda *args, **kwargs: {
+        "repository": "yanhul/aios-authority-store", "signed_store_parent": "b" * 40,
+        "bundle_commit": "c" * 40, "bundle_path": "authority/issued/123-" + "a" * 40 + ".json",
+        "bundle_blob_sha": "d" * 40,
+    })
+    monkeypatch.setattr(bundle_module, "verify_issuer_receipt", lambda **kwargs: {
+        "receipt_commit": "e" * 40, "receipt_path": "authority/receipts/123-" + "a" * 40 + ".json",
+        "receipt_blob_sha": "f" * 40, "bundle_commit": "c" * 40, "bundle_blob_sha": "d" * 40,
+    })
+    monkeypatch.setattr(bundle_module, "_verify_live_source_evidence", lambda *_args: None)
+
     import core.mutation as mutation
     real_commit_batch = mutation.commit_batch
     injected = {}
 
-    def race_injecting_commit_batch(root, pending, precondition=None):
+    def race_injecting_commit_batch(root, pending, precondition=None, postcondition=None):
         relative, _record = pending[0]
         target = state / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps({"conflict": True}), encoding="utf-8")
         injected["path"] = target
-        return real_commit_batch(root, pending, precondition=precondition)
+        return real_commit_batch(root, pending, precondition=precondition, postcondition=postcondition)
 
     monkeypatch.setattr(mutation, "commit_batch", race_injecting_commit_batch)
     with pytest.raises(AuthorityBundleError, match="conflicting existing"):
@@ -217,8 +259,152 @@ def test_importer_rechecks_conflicts_inside_mutation_lock(tmp_path, monkeypatch)
             trusted_issuer="yanhul/aios-authority-store",
             expected_repository="yanhul/AIOS", expected_run_id=123,
             expected_base_sha="a" * 40, expected_source_branch="main",
-            expected_store_commit="b" * 40, now=1500,
+            expected_store_commit="b" * 40,
+            expected_store_repository="yanhul/aios-authority-store",
+            expected_bundle_commit="c" * 40,
+            expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
+            expected_receipt_commit="e" * 40,
+            expected_receipt_path="authority/receipts/123-" + "a" * 40 + ".json",
+            github_token="test-token", source_github_token="test-source-token", attestation_secret="test-secret", now=1500,
         )
 
     assert injected["path"].read_text(encoding="utf-8") == json.dumps({"conflict": True})
     assert not (state / "authority").exists()
+
+
+
+def test_importer_rolls_back_new_records_when_post_commit_readback_fails(tmp_path, monkeypatch):
+    envelope, public, kid = fixture_bundle(tmp_path)
+    trust = tmp_path / "trust.json"
+    trust.write_text(json.dumps({"schema_version": 1, "issuers": {
+        "yanhul/aios-authority-store": {"status": "ACTIVE", "key_id": kid, "public_key_hex": public}
+    }}), encoding="utf-8")
+    state = tmp_path / "consumer-state"
+    state.mkdir()
+    import core.authority_bundle as bundle_module
+    import core.authority as authority_module
+    monkeypatch.setattr(bundle_module, "verify_immutable_store_object", lambda *args, **kwargs: {
+        "repository": "yanhul/aios-authority-store", "signed_store_parent": "b" * 40,
+        "bundle_commit": "c" * 40, "bundle_path": "authority/issued/123-" + "a" * 40 + ".json",
+        "bundle_blob_sha": "d" * 40,
+    })
+    monkeypatch.setattr(bundle_module, "verify_issuer_receipt", lambda **kwargs: {
+        "receipt_commit": "e" * 40, "receipt_path": "authority/receipts/123-" + "a" * 40 + ".json",
+        "receipt_blob_sha": "f" * 40, "bundle_commit": "c" * 40, "bundle_blob_sha": "d" * 40,
+    })
+    monkeypatch.setattr(bundle_module, "_verify_live_source_evidence", lambda *_args: None)
+
+    def fail_readback(*_args, **_kwargs):
+        raise RuntimeError("injected readback failure")
+
+    monkeypatch.setattr(authority_module, "authorize", fail_readback)
+    with pytest.raises(AuthorityBundleError, match="post-commit authority readback failed"):
+        import_verified_authority_bundle(
+            envelope, aios_dir=state, trust_anchor_path=trust,
+            trusted_issuer="yanhul/aios-authority-store",
+            expected_repository="yanhul/AIOS", expected_run_id=123,
+            expected_base_sha="a" * 40, expected_source_branch="main",
+            expected_store_commit="b" * 40,
+            expected_store_repository="yanhul/aios-authority-store",
+            expected_bundle_commit="c" * 40,
+            expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
+            expected_receipt_commit="e" * 40,
+            expected_receipt_path="authority/receipts/123-" + "a" * 40 + ".json",
+            github_token="test-token", source_github_token="test-source-token",
+            attestation_secret="test-secret", now=1500,
+        )
+
+    assert not list((state / "authority").rglob("*.json"))
+    assert not list((state / "policies").rglob("*.json"))
+    assert not list((state / "capabilities").rglob("*.json"))
+    staging = state / ".staging"
+    assert not staging.exists() or not list(staging.iterdir())
+
+def test_wrong_hmac_secret_and_attestation_tampering_are_rejected(tmp_path):
+    envelope, public, _ = fixture_bundle(tmp_path)
+    with pytest.raises(AuthorityBundleError, match="attestation validation failed"):
+        verify_authority_bundle(
+            envelope, trusted_issuer="yanhul/aios-authority-store",
+            trusted_public_key_hex=public, expected_repository="yanhul/AIOS",
+            expected_run_id=123, expected_base_sha="a" * 40,
+            expected_source_branch="main", expected_store_commit="b" * 40,
+            attestation_secret="wrong-secret", now=1500,
+        )
+    forged = json.loads(json.dumps(envelope))
+    forged["payload"]["authority_records"]["attestation"]["signature"] = "0" * 64
+    private = Ed25519PrivateKey.generate()
+    # Re-sign the altered payload to isolate the HMAC check from Ed25519 rejection.
+    forged_public = private.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    ).hex()
+    forged["signature"] = {"algorithm": "Ed25519", "key_id": key_id_for(forged_public),
+                           "value": private.sign(canonical_json(forged["payload"]).encode()).hex()}
+    with pytest.raises(AuthorityBundleError, match="attestation validation failed"):
+        verify_authority_bundle(
+            forged, trusted_issuer="yanhul/aios-authority-store",
+            trusted_public_key_hex=forged_public, expected_repository="yanhul/AIOS",
+            expected_run_id=123, expected_base_sha="a" * 40,
+            expected_source_branch="main", expected_store_commit="b" * 40,
+            attestation_secret="test-secret", now=1500,
+        )
+
+
+def test_importer_rechecks_live_source_run_pr_and_independent_review(monkeypatch):
+    import core.authority_bundle as bundle_module
+    payload = {
+        "source_run": {
+            "id": 123, "workflow_path": ".github/workflows/ci.yml", "event": "push",
+            "conclusion": "failure", "head_sha": "a" * 40, "head_branch": "fix/repair",
+        },
+        "approval": {
+            "pr_number": 42, "reviewer": "independent-reviewer", "review_id": 9,
+            "review_submitted_at": "2026-11-14T10:00:00Z",
+        },
+    }
+    run = {
+        "id": 123, "status": "completed", "conclusion": "failure",
+        "repository": {"full_name": "yanhul/AIOS"},
+        "head_repository": {"full_name": "yanhul/AIOS"},
+        "head_sha": "a" * 40, "head_branch": "fix/repair",
+        "path": ".github/workflows/ci.yml", "event": "push",
+        "actor": {"login": "yanhul"},
+    }
+    pr = {
+        "number": 42, "state": "open", "draft": False,
+        "base": {"ref": "main", "repo": {"full_name": "yanhul/AIOS"}},
+        "head": {"ref": "fix/repair", "sha": "a" * 40, "repo": {"full_name": "yanhul/AIOS"}},
+        "user": {"login": "yanhul"},
+    }
+    review = {
+        "id": 9, "state": "APPROVED", "commit_id": "a" * 40,
+        "submitted_at": "2026-11-14T10:00:00Z", "user": {"login": "independent-reviewer"},
+    }
+    responses = iter([run, pr, [review]])
+    monkeypatch.setattr(bundle_module, "_github_api_json", lambda _url, _token: next(responses))
+    bundle_module._verify_live_source_evidence(payload, "read-only-token")
+
+    payload["approval"]["reviewer"] = "simple8x"
+    responses = iter([run, pr, [{**review, "user": {"login": "simple8x"}}]])
+    monkeypatch.setattr(bundle_module, "_github_api_json", lambda _url, _token: next(responses))
+    with pytest.raises(AuthorityBundleError, match="not independent"):
+        bundle_module._verify_live_source_evidence(payload, "read-only-token")
+
+    payload["approval"]["reviewer"] = "independent-reviewer"
+    veto_review = {**review, "id": 10, "state": "CHANGES_REQUESTED",
+                   "submitted_at": "2026-11-14T11:00:00Z",
+                   "user": {"login": "second-reviewer"}}
+    responses = iter([run, pr, [review, veto_review]])
+    monkeypatch.setattr(bundle_module, "_github_api_json", lambda _url, _token: next(responses))
+    with pytest.raises(AuthorityBundleError, match="outstanding change-request veto"):
+        bundle_module._verify_live_source_evidence(payload, "read-only-token")
+
+
+def test_github_redirect_handler_rejects_cross_host_and_http():
+    import urllib.request
+    from core.authority_bundle import _SameHostHTTPSRedirectHandler
+    handler = _SameHostHTTPSRedirectHandler()
+    request = urllib.request.Request("https://api.github.com/repos/yanhul/AIOS")
+    with pytest.raises(AuthorityBundleError, match="cross-host"):
+        handler.redirect_request(request, None, 302, "Found", {}, "https://attacker.example/steal")
+    with pytest.raises(AuthorityBundleError, match="cross-host"):
+        handler.redirect_request(request, None, 302, "Found", {}, "http://api.github.com/steal")
