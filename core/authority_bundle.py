@@ -702,24 +702,31 @@ def import_verified_authority_bundle(
                     f"conflicting existing AIOS authority record: {relative}"
                 )
 
+    # Verify the materialized files while the mutation lock is still held.
+    # A failed readback durably switches the batch journal to rollback mode.
+    def _post_commit_readback(_locked_root: str) -> None:
+        try:
+            loaded_contract = load_contract(str(root), cid)
+            loaded_permit = load_permit(str(root), pid)
+            authorize(str(root), cid, pid, attestation_secret=attestation_secret, require_attestation=True)
+            loaded_attestation = load_attestation(str(root), pid)
+            verify_attestation(loaded_contract, loaded_permit, loaded_attestation, attestation_secret)
+        except Exception as exc:
+            raise AuthorityBundleError(f"AIOS post-commit authority readback failed: {exc}") from exc
+        if (canonical_json(loaded_contract) != canonical_json(contract)
+                or canonical_json(loaded_permit) != canonical_json(permit)
+                or canonical_json(loaded_attestation) != canonical_json(attestation)):
+            raise AuthorityBundleError("AIOS post-commit readback differs from signed authority bundle")
+
     # One AIOS transaction prevents a partially imported capability/policy/contract/permit set.
     pending = [(relative, record) for relative, record in entries if not (root / relative).exists()]
     if pending:
-        commit_batch(str(root), pending, precondition=_locked_precondition)
-
-    # Independent readback through normal AIOS authority loaders and authorization.
-    try:
-        loaded_contract = load_contract(str(root), cid)
-        loaded_permit = load_permit(str(root), pid)
-        authorize(str(root), cid, pid, attestation_secret=attestation_secret, require_attestation=True)
-        loaded_attestation = load_attestation(str(root), pid)
-        verify_attestation(loaded_contract, loaded_permit, loaded_attestation, attestation_secret)
-    except Exception as exc:
-        raise AuthorityBundleError(f"AIOS post-commit authority readback failed: {exc}") from exc
-    if (canonical_json(loaded_contract) != canonical_json(contract)
-            or canonical_json(loaded_permit) != canonical_json(permit)
-            or canonical_json(loaded_attestation) != canonical_json(attestation)):
-        raise AuthorityBundleError("AIOS post-commit readback differs from signed authority bundle")
+        commit_batch(
+            str(root), pending, precondition=_locked_precondition,
+            postcondition=_post_commit_readback,
+        )
+    else:
+        _post_commit_readback(str(root))
     return {
         "state": "AUTHORITY_IMPORTED_AND_READ_BACK",
         "contract_id": cid,
