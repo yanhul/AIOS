@@ -244,13 +244,13 @@ def test_importer_rechecks_conflicts_inside_mutation_lock(tmp_path, monkeypatch)
     real_commit_batch = mutation.commit_batch
     injected = {}
 
-    def race_injecting_commit_batch(root, pending, precondition=None):
+    def race_injecting_commit_batch(root, pending, precondition=None, postcondition=None):
         relative, _record = pending[0]
         target = state / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps({"conflict": True}), encoding="utf-8")
         injected["path"] = target
-        return real_commit_batch(root, pending, precondition=precondition)
+        return real_commit_batch(root, pending, precondition=precondition, postcondition=postcondition)
 
     monkeypatch.setattr(mutation, "commit_batch", race_injecting_commit_batch)
     with pytest.raises(AuthorityBundleError, match="conflicting existing"):
@@ -271,6 +271,54 @@ def test_importer_rechecks_conflicts_inside_mutation_lock(tmp_path, monkeypatch)
     assert injected["path"].read_text(encoding="utf-8") == json.dumps({"conflict": True})
     assert not (state / "authority").exists()
 
+
+
+def test_importer_rolls_back_new_records_when_post_commit_readback_fails(tmp_path, monkeypatch):
+    envelope, public, kid = fixture_bundle(tmp_path)
+    trust = tmp_path / "trust.json"
+    trust.write_text(json.dumps({"schema_version": 1, "issuers": {
+        "yanhul/aios-authority-store": {"status": "ACTIVE", "key_id": kid, "public_key_hex": public}
+    }}), encoding="utf-8")
+    state = tmp_path / "consumer-state"
+    state.mkdir()
+    import core.authority_bundle as bundle_module
+    import core.authority as authority_module
+    monkeypatch.setattr(bundle_module, "verify_immutable_store_object", lambda *args, **kwargs: {
+        "repository": "yanhul/aios-authority-store", "signed_store_parent": "b" * 40,
+        "bundle_commit": "c" * 40, "bundle_path": "authority/issued/123-" + "a" * 40 + ".json",
+        "bundle_blob_sha": "d" * 40,
+    })
+    monkeypatch.setattr(bundle_module, "verify_issuer_receipt", lambda **kwargs: {
+        "receipt_commit": "e" * 40, "receipt_path": "authority/receipts/123-" + "a" * 40 + ".json",
+        "receipt_blob_sha": "f" * 40, "bundle_commit": "c" * 40, "bundle_blob_sha": "d" * 40,
+    })
+    monkeypatch.setattr(bundle_module, "_verify_live_source_evidence", lambda *_args: None)
+
+    def fail_readback(*_args, **_kwargs):
+        raise RuntimeError("injected readback failure")
+
+    monkeypatch.setattr(authority_module, "authorize", fail_readback)
+    with pytest.raises(AuthorityBundleError, match="post-commit authority readback failed"):
+        import_verified_authority_bundle(
+            envelope, aios_dir=state, trust_anchor_path=trust,
+            trusted_issuer="yanhul/aios-authority-store",
+            expected_repository="yanhul/AIOS", expected_run_id=123,
+            expected_base_sha="a" * 40, expected_source_branch="main",
+            expected_store_commit="b" * 40,
+            expected_store_repository="yanhul/aios-authority-store",
+            expected_bundle_commit="c" * 40,
+            expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
+            expected_receipt_commit="e" * 40,
+            expected_receipt_path="authority/receipts/123-" + "a" * 40 + ".json",
+            github_token="test-token", source_github_token="test-source-token",
+            attestation_secret="test-secret", now=1500,
+        )
+
+    assert not (state / "authority").exists()
+    assert not (state / "policies").exists()
+    assert not (state / "capabilities").exists()
+    staging = state / ".staging"
+    assert not staging.exists() or not list(staging.iterdir())
 
 def test_wrong_hmac_secret_and_attestation_tampering_are_rejected(tmp_path):
     envelope, public, _ = fixture_bundle(tmp_path)
