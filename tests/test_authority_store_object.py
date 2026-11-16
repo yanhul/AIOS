@@ -54,11 +54,8 @@ def fixture():
 
 
 def run(envelope, commit, parent, path, responses):
-    def fake_urlopen(request, timeout=20):
-        assert request.get_header("Authorization") == "Bearer test-token"
-        return Response(responses[request.full_url])
-
-    with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+    with patch("core.authority_bundle._github_api_json",
+               side_effect=lambda url, token: responses[url] if token == "test-token" else None):
         return verify_immutable_store_object(
             envelope, repository="yanhul/aios-authority-store",
             bundle_commit=commit, signed_store_parent=parent,
@@ -164,10 +161,8 @@ def test_verifies_issuer_signed_post_commit_receipt():
             "encoding": "base64", "content": base64.b64encode(content).decode()
         },
     }
-    def fake_urlopen(request, timeout=20):
-        assert request.get_header("Authorization") == "Bearer test-token"
-        return Response(responses[request.full_url])
-    with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+    with patch("core.authority_bundle._github_api_json",
+               side_effect=lambda url, token: responses[url] if token == "test-token" else None):
         proof = verify_issuer_receipt(
             trusted_issuer="yanhul/aios-authority-store",
             trusted_public_key_hex=public,
