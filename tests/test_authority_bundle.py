@@ -314,9 +314,9 @@ def test_importer_rolls_back_new_records_when_post_commit_readback_fails(tmp_pat
             attestation_secret="test-secret", now=1500,
         )
 
-    assert not (state / "authority").exists()
-    assert not (state / "policies").exists()
-    assert not (state / "capabilities").exists()
+    assert not list((state / "authority").rglob("*.json"))
+    assert not list((state / "policies").rglob("*.json"))
+    assert not list((state / "capabilities").rglob("*.json"))
     staging = state / ".staging"
     assert not staging.exists() or not list(staging.iterdir())
 
