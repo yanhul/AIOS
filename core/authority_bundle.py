@@ -150,6 +150,8 @@ def _verify_live_source_evidence(payload: dict[str, Any], token: str) -> None:
         submitted = review.get("submitted_at")
         if login and submitted and (login not in latest or submitted > latest[login].get("submitted_at", "")):
             latest[login] = review
+    if any(item.get("state") == "CHANGES_REQUESTED" for item in latest.values()):
+        raise AuthorityBundleError("live source PR has an outstanding change-request veto")
     current = latest.get(reviewer)
     if (
         current is None or current.get("state") != "APPROVED"
