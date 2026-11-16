@@ -236,6 +236,7 @@ def test_importer_rechecks_conflicts_inside_mutation_lock(tmp_path, monkeypatch)
         "receipt_commit": "e" * 40, "receipt_path": "authority/receipts/123-" + "a" * 40 + ".json",
         "receipt_blob_sha": "f" * 40, "bundle_commit": "c" * 40, "bundle_blob_sha": "d" * 40,
     })
+    monkeypatch.setattr(bundle_module, "_verify_live_source_evidence", lambda *_args: None)
 
     import core.mutation as mutation
     real_commit_batch = mutation.commit_batch
@@ -336,6 +337,15 @@ def test_importer_rechecks_live_source_run_pr_and_independent_review(monkeypatch
     responses = iter([run, pr, [{**review, "user": {"login": "simple8x"}}]])
     monkeypatch.setattr(bundle_module, "_github_api_json", lambda _url, _token: next(responses))
     with pytest.raises(AuthorityBundleError, match="not independent"):
+        bundle_module._verify_live_source_evidence(payload, "read-only-token")
+
+    payload["approval"]["reviewer"] = "independent-reviewer"
+    veto_review = {**review, "id": 10, "state": "CHANGES_REQUESTED",
+                   "submitted_at": "2026-11-14T11:00:00Z",
+                   "user": {"login": "second-reviewer"}}
+    responses = iter([run, pr, [review, veto_review]])
+    monkeypatch.setattr(bundle_module, "_github_api_json", lambda _url, _token: next(responses))
+    with pytest.raises(AuthorityBundleError, match="outstanding change-request veto"):
         bundle_module._verify_live_source_evidence(payload, "read-only-token")
 
 
