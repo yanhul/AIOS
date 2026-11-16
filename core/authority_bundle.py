@@ -191,19 +191,7 @@ def verify_immutable_store_object(
         raise AuthorityBundleError("GitHub read token is required for immutable store verification")
 
     def get_json(url: str) -> dict[str, Any]:
-        request = urllib.request.Request(
-            url,
-            headers={
-                "Authorization": f"Bearer {github_token}",
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=20) as response:
-                value = json.loads(response.read())
-        except (OSError, ValueError, urllib.error.URLError) as exc:
-            raise AuthorityBundleError("GitHub immutable store evidence could not be fetched") from exc
+        value = _github_api_json(url, github_token)
         if not isinstance(value, dict):
             raise AuthorityBundleError("GitHub immutable store response is malformed")
         return value
@@ -302,16 +290,7 @@ def verify_issuer_receipt(
         raise AuthorityBundleError("GitHub read token is required for issuer receipt verification")
 
     def get_json(url: str) -> dict[str, Any]:
-        request = urllib.request.Request(url, headers={
-            "Authorization": f"Bearer {github_token}",
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-        })
-        try:
-            with urllib.request.urlopen(request, timeout=20) as response:
-                value = json.loads(response.read())
-        except (OSError, ValueError, urllib.error.URLError) as exc:
-            raise AuthorityBundleError("GitHub issuer receipt evidence could not be fetched") from exc
+        value = _github_api_json(url, github_token)
         if not isinstance(value, dict):
             raise AuthorityBundleError("GitHub issuer receipt response is malformed")
         return value
