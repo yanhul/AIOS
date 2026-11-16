@@ -56,7 +56,7 @@ def load_permit(aios_dir,permit_id):
  _require_id(permit_id,"permit_id"); return _load(_path(aios_dir,PERMITS_DIR,permit_id))
 def load_attestation(aios_dir,permit_id):
  _require_id(permit_id,"permit_id"); return _load(_path(aios_dir,ATTESTATIONS_DIR,permit_id))
-def authorize(aios_dir,contract_id,permit_id,attestation_secret=None,require_attestation=False):
+def authorize(aios_dir,contract_id,permit_id,attestation_secret=None,require_attestation=True):
  contract=load_contract(aios_dir,contract_id); _resolve_capabilities(aios_dir,contract); _resolve_policy(aios_dir,contract); permit=load_permit(aios_dir,permit_id); verify_permit(contract,permit)
  if require_attestation:
   if not isinstance(attestation_secret,str) or not attestation_secret: raise TransitionError("attestation secret is required for this authority")
