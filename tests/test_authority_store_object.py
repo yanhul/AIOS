@@ -160,6 +160,12 @@ def test_verifies_issuer_signed_post_commit_receipt():
         f"{root}/git/blobs/{receipt_blob_sha}": {
             "encoding": "base64", "content": base64.b64encode(content).decode()
         },
+        f"{root}/actions/runs/987654": {
+            "id": 987654, "status": "in_progress", "conclusion": None,
+            "repository": {"full_name": "yanhul/aios-authority-store"},
+            "head_sha": parent, "head_branch": "main",
+            "path": ".github/workflows/issue-authority.yml", "event": "workflow_dispatch",
+        },
     }
     with patch("core.authority_bundle._github_api_json",
                side_effect=lambda url, token: responses[url] if token == "test-token" else None):
