@@ -350,6 +350,25 @@ def verify_issuer_receipt(
             or type(payload["issuer_workflow_run_id"]) is not int
             or payload["issuer_workflow_run_id"] < 1):
         raise AuthorityBundleError("issuer receipt is misbound to the immutable bundle/source run")
+
+    # The receipt's workflow_run_id is a claim until independently resolved via
+    # the Actions API. The run is still in_progress while this workflow performs
+    # its own readback/import, so success is not yet knowable at this point.
+    issuer_run = _github_api_json(
+        f"https://api.github.com/repos/{repository}/actions/runs/{payload['issuer_workflow_run_id']}",
+        github_token,
+    )
+    if not isinstance(issuer_run, dict) or (
+        issuer_run.get("id") != payload["issuer_workflow_run_id"]
+        or issuer_run.get("status") not in {"in_progress", "completed"}
+        or (issuer_run.get("status") == "completed" and issuer_run.get("conclusion") != "success")
+        or (issuer_run.get("repository") or {}).get("full_name", "").lower() != repository.lower()
+        or issuer_run.get("head_sha") != expected_store_parent
+        or issuer_run.get("head_branch") != "main"
+        or issuer_run.get("path") != ".github/workflows/issue-authority.yml"
+        or issuer_run.get("event") != "workflow_dispatch"
+    ):
+        raise AuthorityBundleError("issuer receipt workflow run does not match a real authorized store issuance run")
     if (not isinstance(signature, dict) or set(signature) != {"algorithm", "key_id", "value"}
             or signature["algorithm"] != BUNDLE_ALGORITHM
             or signature["key_id"] != key_id_for(trusted_public_key_hex)
