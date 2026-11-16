@@ -12,7 +12,7 @@ from core.authority_bundle import (
 from core.authority import persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import CONTRACT_TYPE
-from core.mutation import canonical_json
+from core.mutation import canonical_json, TransitionError
 from core.policy_registry import persist_policy
 
 
@@ -164,6 +164,7 @@ def test_importer_atomically_materializes_and_reads_back_aios_authority(tmp_path
         "receipt_commit": "e" * 40, "receipt_path": "authority/receipts/123-" + "a" * 40 + ".json",
         "receipt_blob_sha": "f" * 40, "bundle_commit": "c" * 40, "bundle_blob_sha": "d" * 40,
     })
+    monkeypatch.setattr(bundle_module, "_verify_live_source_evidence", lambda *_args: None)
     result = import_verified_authority_bundle(
         envelope, aios_dir=state, trust_anchor_path=trust,
         trusted_issuer="yanhul/aios-authority-store",
@@ -175,10 +176,12 @@ def test_importer_atomically_materializes_and_reads_back_aios_authority(tmp_path
         expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
         expected_receipt_commit="e" * 40,
         expected_receipt_path="authority/receipts/123-" + "a" * 40 + ".json",
-        github_token="test-token", attestation_secret="test-secret", now=1500,
+        github_token="test-token", source_github_token="test-source-token", attestation_secret="test-secret", now=1500,
     )
     assert result["state"] == "AUTHORITY_IMPORTED_AND_READ_BACK"
     from core.authority import authorize, load_contract, load_permit
+    with pytest.raises(TransitionError, match="attestation secret is required"):
+        authorize(str(state), result["contract_id"], result["permit_id"])
     authorize(str(state), result["contract_id"], result["permit_id"], attestation_secret="test-secret", require_attestation=True)
     assert load_contract(str(state), result["contract_id"]) == envelope["payload"]["authority_records"]["contract"]
     assert load_permit(str(state), result["permit_id"]) == envelope["payload"]["authority_records"]["permit"]
@@ -206,7 +209,7 @@ def test_importer_rejects_untrusted_bundle_before_writing(tmp_path):
             expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
             expected_receipt_commit="e" * 40,
             expected_receipt_path="authority/receipts/123-" + "a" * 40 + ".json",
-            github_token="test-token", attestation_secret="test-secret", now=1500,
+            github_token="test-token", source_github_token="test-source-token", attestation_secret="test-secret", now=1500,
         )
     assert not (state / "authority").exists()
     assert not (state / "capabilities").exists()
@@ -259,7 +262,7 @@ def test_importer_rechecks_conflicts_inside_mutation_lock(tmp_path, monkeypatch)
             expected_bundle_path="authority/issued/123-" + "a" * 40 + ".json",
             expected_receipt_commit="e" * 40,
             expected_receipt_path="authority/receipts/123-" + "a" * 40 + ".json",
-            github_token="test-token", attestation_secret="test-secret", now=1500,
+            github_token="test-token", source_github_token="test-source-token", attestation_secret="test-secret", now=1500,
         )
 
     assert injected["path"].read_text(encoding="utf-8") == json.dumps({"conflict": True})
@@ -293,3 +296,55 @@ def test_wrong_hmac_secret_and_attestation_tampering_are_rejected(tmp_path):
             expected_source_branch="main", expected_store_commit="b" * 40,
             attestation_secret="test-secret", now=1500,
         )
+
+
+def test_importer_rechecks_live_source_run_pr_and_independent_review(monkeypatch):
+    import core.authority_bundle as bundle_module
+    payload = {
+        "source_run": {
+            "id": 123, "workflow_path": ".github/workflows/ci.yml", "event": "push",
+            "conclusion": "failure", "head_sha": "a" * 40, "head_branch": "fix/repair",
+        },
+        "approval": {
+            "pr_number": 42, "reviewer": "independent-reviewer", "review_id": 9,
+            "review_submitted_at": "2026-11-14T10:00:00Z",
+        },
+    }
+    run = {
+        "id": 123, "status": "completed", "conclusion": "failure",
+        "repository": {"full_name": "yanhul/AIOS"},
+        "head_repository": {"full_name": "yanhul/AIOS"},
+        "head_sha": "a" * 40, "head_branch": "fix/repair",
+        "path": ".github/workflows/ci.yml", "event": "push",
+        "actor": {"login": "yanhul"},
+    }
+    pr = {
+        "number": 42, "state": "open", "draft": False,
+        "base": {"ref": "main", "repo": {"full_name": "yanhul/AIOS"}},
+        "head": {"ref": "fix/repair", "sha": "a" * 40, "repo": {"full_name": "yanhul/AIOS"}},
+        "user": {"login": "yanhul"},
+    }
+    review = {
+        "id": 9, "state": "APPROVED", "commit_id": "a" * 40,
+        "submitted_at": "2026-11-14T10:00:00Z", "user": {"login": "independent-reviewer"},
+    }
+    responses = iter([run, pr, [review]])
+    monkeypatch.setattr(bundle_module, "_github_api_json", lambda _url, _token: next(responses))
+    bundle_module._verify_live_source_evidence(payload, "read-only-token")
+
+    payload["approval"]["reviewer"] = "simple8x"
+    responses = iter([run, pr, [{**review, "user": {"login": "simple8x"}}]])
+    monkeypatch.setattr(bundle_module, "_github_api_json", lambda _url, _token: next(responses))
+    with pytest.raises(AuthorityBundleError, match="not independent"):
+        bundle_module._verify_live_source_evidence(payload, "read-only-token")
+
+
+def test_github_redirect_handler_rejects_cross_host_and_http():
+    import urllib.request
+    from core.authority_bundle import _SameHostHTTPSRedirectHandler
+    handler = _SameHostHTTPSRedirectHandler()
+    request = urllib.request.Request("https://api.github.com/repos/yanhul/AIOS")
+    with pytest.raises(AuthorityBundleError, match="cross-host"):
+        handler.redirect_request(request, None, 302, "Found", {}, "https://attacker.example/steal")
+    with pytest.raises(AuthorityBundleError, match="cross-host"):
+        handler.redirect_request(request, None, 302, "Found", {}, "http://api.github.com/steal")
