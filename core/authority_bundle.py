@@ -58,6 +58,108 @@ def load_trust_anchor(path: str | Path, issuer: str) -> str:
 
 
 
+class _SameHostHTTPSRedirectHandler(__import__("urllib.request", fromlist=["HTTPRedirectHandler"]).HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        from urllib.parse import urlsplit
+        source, target = urlsplit(req.full_url), urlsplit(newurl)
+        if (source.scheme != "https" or target.scheme != "https"
+                or source.hostname != "api.github.com"
+                or target.hostname != source.hostname or target.port not in (None, 443)):
+            raise AuthorityBundleError("blocked cross-host or insecure GitHub API redirect")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _github_api_json(url: str, token: str) -> Any:
+    import urllib.error
+    import urllib.request
+    from urllib.parse import urlsplit
+
+    parsed = urlsplit(url)
+    if parsed.scheme != "https" or parsed.hostname != "api.github.com" or parsed.port not in (None, 443):
+        raise AuthorityBundleError("GitHub API URL is outside the pinned HTTPS host")
+    if not isinstance(token, str) or not token.strip():
+        raise AuthorityBundleError("GitHub API read token is required")
+    request = urllib.request.Request(
+        url,
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                 "X-GitHub-Api-Version": "2022-11-28"},
+    )
+    opener = urllib.request.build_opener(_SameHostHTTPSRedirectHandler())
+    try:
+        with opener.open(request, timeout=20) as response:
+            value = json.loads(response.read())
+    except (OSError, ValueError, urllib.error.URLError) as exc:
+        raise AuthorityBundleError("GitHub source/store evidence could not be fetched safely") from exc
+    return value
+
+
+def _verify_live_source_evidence(payload: dict[str, Any], token: str) -> None:
+    """Independently bind the signed run/PR/review claims to current GitHub API data."""
+    run_claim = payload["source_run"]
+    approval = payload["approval"]
+    run_id = run_claim["id"]
+    run = _github_api_json(f"https://api.github.com/repos/yanhul/AIOS/actions/runs/{run_id}", token)
+    if not isinstance(run, dict):
+        raise AuthorityBundleError("GitHub source run response is malformed")
+    if (
+        run.get("id") != run_id or run.get("status") != "completed"
+        or run.get("conclusion") != "failure"
+        or (run.get("repository") or {}).get("full_name", "").lower() != "yanhul/aios"
+        or (run.get("head_repository") or {}).get("full_name", "").lower() != "yanhul/aios"
+        or run.get("head_sha") != run_claim["head_sha"]
+        or run.get("head_branch") != run_claim["head_branch"]
+        or run.get("path") != run_claim["workflow_path"]
+        or run.get("event") != run_claim["event"]
+    ):
+        raise AuthorityBundleError("live GitHub source run does not match the signed run claim")
+    pr_number = approval["pr_number"]
+    pr = _github_api_json(f"https://api.github.com/repos/yanhul/AIOS/pulls/{pr_number}", token)
+    if not isinstance(pr, dict):
+        raise AuthorityBundleError("GitHub source PR response is malformed")
+    base, head = pr.get("base") or {}, pr.get("head") or {}
+    if (
+        pr.get("number") != pr_number or pr.get("state") != "open" or pr.get("draft") is not False
+        or (base.get("repo") or {}).get("full_name", "").lower() != "yanhul/aios"
+        or base.get("ref") != "main"
+        or (head.get("repo") or {}).get("full_name", "").lower() != "yanhul/aios"
+        or head.get("sha") != run_claim["head_sha"]
+        or head.get("ref") != run_claim["head_branch"]
+    ):
+        raise AuthorityBundleError("live GitHub source PR does not match the signed source binding")
+    reviews: list[dict[str, Any]] = []
+    page = 1
+    while True:
+        batch = _github_api_json(
+            f"https://api.github.com/repos/yanhul/AIOS/pulls/{pr_number}/reviews?per_page=100&page={page}",
+            token,
+        )
+        if not isinstance(batch, list) or any(not isinstance(item, dict) for item in batch):
+            raise AuthorityBundleError("GitHub PR reviews response is malformed")
+        reviews.extend(batch)
+        if len(batch) < 100:
+            break
+        page += 1
+    reviewer = approval["reviewer"].lower()
+    author = (pr.get("user") or {}).get("login", "").lower()
+    actor = (run.get("actor") or {}).get("login", "").lower()
+    if reviewer in {"yanhul", "simple8x"} or reviewer in {author, actor}:
+        raise AuthorityBundleError("signed PR reviewer is not independent of the source owner/actor")
+    latest = {}
+    for review in reviews:
+        login = (review.get("user") or {}).get("login", "").lower()
+        submitted = review.get("submitted_at")
+        if login and submitted and (login not in latest or submitted > latest[login].get("submitted_at", "")):
+            latest[login] = review
+    current = latest.get(reviewer)
+    if (
+        current is None or current.get("state") != "APPROVED"
+        or current.get("commit_id") != run_claim["head_sha"]
+        or current.get("id") != approval["review_id"]
+        or current.get("submitted_at") != approval["review_submitted_at"]
+    ):
+        raise AuthorityBundleError("live independent approval is missing, stale, vetoed, or bound to another SHA")
+
+
 def verify_immutable_store_object(
     envelope: dict[str, Any],
     *,
@@ -472,6 +574,7 @@ def import_verified_authority_bundle(
     expected_receipt_commit: str,
     expected_receipt_path: str,
     github_token: str,
+    source_github_token: str,
     attestation_secret: str,
     now: int | None = None,
 ) -> dict[str, Any]:
@@ -525,6 +628,8 @@ def import_verified_authority_bundle(
         receipt_path=expected_receipt_path,
         github_token=github_token,
     )
+
+    _verify_live_source_evidence(payload, source_github_token)
 
     records = payload["authority_records"]
     registry_record = records["capability_registry"]
