@@ -324,24 +324,33 @@ def _recover_pending_unlocked(aios_dir):
         if os.path.isfile(journal_path):
             with open(journal_path, "r", encoding="utf-8") as fh:
                 journal = json.load(fh)
-            for op in journal["ops"]:
-                dest = op["dest"]
-                tmp = op["tmp"]
-                if os.path.exists(dest):
-                    with open(dest, "rb") as fh:
-                        actual = _digest_bytes(fh.read())
-                    if actual != op["digest"]:
+            if journal.get("rollback") is True:
+                # A post-commit verifier rejected the staged state. Rollback is
+                # journaled first, so a process crash cannot roll this batch forward.
+                for op in journal["ops"]:
+                    dest = op["dest"]
+                    if os.path.exists(dest):
+                        os.unlink(dest)
+                        _fsync_dir(os.path.dirname(dest))
+            else:
+                for op in journal["ops"]:
+                    dest = op["dest"]
+                    tmp = op["tmp"]
+                    if os.path.exists(dest):
+                        with open(dest, "rb") as fh:
+                            actual = _digest_bytes(fh.read())
+                        if actual != op["digest"]:
+                            raise StateConflictError(
+                                f"committed file diverges from journal: {dest}"
+                            )
+                    elif os.path.exists(tmp):
+                        os.makedirs(os.path.dirname(dest), exist_ok=True)
+                        _replace(tmp, dest)
+                        _fsync_dir(os.path.dirname(dest))
+                    else:
                         raise StateConflictError(
-                            f"committed file diverges from journal: {dest}"
+                            f"journal op unrecoverable (temp and dest both missing): {dest}"
                         )
-                elif os.path.exists(tmp):
-                    os.makedirs(os.path.dirname(dest), exist_ok=True)
-                    _replace(tmp, dest)
-                    _fsync_dir(os.path.dirname(dest))
-                else:
-                    raise StateConflictError(
-                        f"journal op unrecoverable (temp and dest both missing): {dest}"
-                    )
             os.unlink(journal_path)
         shutil.rmtree(batch_dir, ignore_errors=True)
 
@@ -415,13 +424,12 @@ def _require_committed_event(aios_dir, entity):
         f"with or predates M1.5")
 
 
-def commit_batch(aios_dir, payloads, precondition=None):
-    """Single shared atomic commit engine under the mutation lock.
+def commit_batch(aios_dir, payloads, precondition=None, postcondition=None):
+    """Commit a batch under the mutation lock, optionally verifying it before finalize.
 
-    ``precondition`` (optional callable taking ``aios_dir``) runs while the
-    lock is held and before anything is staged. Raising aborts the batch with
-    no writes, which gives callers compare-and-swap semantics for the full
-    read -> validate -> write sequence.
+    A failing postcondition switches the durable journal to rollback mode and
+    removes every destination written by this batch. Recovery honors that mode
+    if the process stops during rollback.
     """
     with _MutationLock(aios_dir):
         state_layout.ensure_state_dirs(aios_dir)
@@ -454,6 +462,25 @@ def commit_batch(aios_dir, payloads, precondition=None):
             os.makedirs(os.path.dirname(op["dest"]), exist_ok=True)
             _replace(op["tmp"], op["dest"])
             _fsync_dir(os.path.dirname(op["dest"]))
+
+        if postcondition is not None:
+            try:
+                postcondition(aios_dir)
+            except Exception:
+                rollback_journal = journal_path + ".rollback"
+                _write_staged(
+                    rollback_journal,
+                    canonical_json({"batch_id": batch_id, "ops": ops, "rollback": True}).encode("utf-8"),
+                )
+                _replace(rollback_journal, journal_path)
+                _fsync_dir(batch_dir)
+                for op in ops:
+                    if os.path.exists(op["dest"]):
+                        os.unlink(op["dest"])
+                        _fsync_dir(os.path.dirname(op["dest"]))
+                os.unlink(journal_path)
+                shutil.rmtree(batch_dir, ignore_errors=True)
+                raise
 
         os.unlink(journal_path)
         shutil.rmtree(batch_dir, ignore_errors=True)
