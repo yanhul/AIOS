@@ -1,19 +1,39 @@
+import hashlib
+import json
 import pytest
+from core.evidence import EvidenceRecord, attest_evidence
 from research.absorption_apply import absorb
+
+
+def _digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def _artifacts():
     run = "r1"
+    source_digest, evidence_digest, test_digest = "a" * 64, "b" * 64, "c" * 64
     e = {"run_id": run, "records": [{"candidate_id": "c1", "run_id": run,
-        "source_ref": "s", "source_digest": "sd", "evidence_digest": "ed",
+        "source_ref": "https://github.com/example/repo", "source_digest": source_digest,
+        "evidence_digest": evidence_digest,
         "adaptation": {"primitive": "durable_execution", "signals": ["retry"],
                        "proposal": "p", "target_surface": "new AIOS adapter/task only"}}]}
-    v = {"run_id": run, "overall": "PASS", "records": [{"candidate_id": "c1", "run_id": run,
-        "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS", "test_digest": "td"}]}
-    p = {"run_id": run, "overall": "PASS",
+    evidence = EvidenceRecord("c1", "VERIFIED_DIGITAL", e["records"][0]["source_ref"],
+        "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS", run, "AIOS_CONTROL_PLANE",
+        source_digest=source_digest, evidence_digest=evidence_digest, test_digest=test_digest).as_record()
+    evidence["candidate_id"] = "c1"
+    evidence["attestation"] = attest_evidence(evidence, "unit-test-evidence-secret-32")
+    v = {"run_id": run, "overall": "PASS", "records": [evidence], "failures": [],
+         "independent_tests": {"passed": True, "digest": test_digest}}
+    v["digest"] = _digest({"verified": v["records"], "failures": v["failures"]})
+    implementation, probes = {"overall": "PASS"}, {"runtime": True}
+    runtime = {"run_id": run, "overall": "PASS", "implementation": implementation,
+               "probes": probes, "digest": _digest({"implementation": implementation, "probes": probes})}
+    p = {"schema_version": 4, "kind": "AIOS_ABSORPTION_PROMOTION", "run_id": run,
+         "input_verification_run_id": run, "input_verification_digest": v["digest"],
+         "input_runtime_run_id": run, "input_runtime_digest": runtime["digest"],
          "decisions": [{"candidate_id": "c1", "run_id": run, "allowed": True, "verdict": "PROMOTE"}],
-         "blocked": []}
-    runtime = {"run_id": run, "overall": "PASS", "digest": "runtime"}
+         "blocked": [], "overall": "PASS"}
+    p["digest"] = _digest(p)
     return e, v, p, runtime
 
 
@@ -34,10 +54,40 @@ def test_absorb_rejects_stale_artifact_run_id():
 def test_absorb_blocks_missing_candidate_lineage():
     run = "r2"
     e = {"run_id": run, "records": []}
-    v = {"run_id": run, "overall": "PASS", "records": []}
-    p = {"run_id": run, "overall": "PASS",
+    v = {"run_id": run, "overall": "PASS", "records": [], "failures": []}
+    v["digest"] = _digest({"verified": [], "failures": []})
+    implementation, probes = {"overall": "PASS"}, {"runtime": True}
+    runtime = {"run_id": run, "overall": "PASS", "implementation": implementation,
+               "probes": probes, "digest": _digest({"implementation": implementation, "probes": probes})}
+    p = {"run_id": run, "overall": "PASS", "input_verification_digest": v["digest"],
+         "input_runtime_digest": runtime["digest"],
          "decisions": [{"candidate_id": "c1", "run_id": run, "allowed": True, "verdict": "PROMOTE"}],
          "blocked": []}
-    runtime = {"run_id": run, "overall": "PASS", "digest": "runtime"}
+    p["digest"] = _digest(p)
     r = absorb(e, v, p, runtime, run_id=run)
     assert r["overall"] == "BLOCKED" and r["absorbed_count"] == 0
+
+
+def test_apply_rejects_same_run_source_digest_tampering():
+    e, v, p, runtime = _artifacts()
+    e["records"][0]["source_digest"] = "d" * 64
+    with pytest.raises(RuntimeError, match="source/evidence/test digest chain mismatch"):
+        absorb(e, v, p, runtime, run_id="r1")
+
+
+def test_apply_revalidates_signed_evidence_after_promotion():
+    e, v, p, runtime = _artifacts()
+    v["records"][0]["source_digest"] = "d" * 64
+    v["digest"] = _digest({"verified": v["records"], "failures": v["failures"]})
+    p["input_verification_digest"] = v["digest"]
+    p.pop("digest")
+    p["digest"] = _digest(p)
+    with pytest.raises(RuntimeError, match="promotion is not bound to this verification artifact"):
+        absorb(e, v, p, runtime, run_id="r1")
+
+
+def test_apply_rejects_tampered_promotion_artifact():
+    e, v, p, runtime = _artifacts()
+    p["decisions"][0]["allowed"] = False
+    with pytest.raises(RuntimeError, match="promotion is not PASS or its content digest is invalid"):
+        absorb(e, v, p, runtime, run_id="r1")
