@@ -106,6 +106,8 @@ def persist_permit(aios_dir, contract, issuer):
 
 def persist_attestation(aios_dir, contract, permit, secret):
     """Atomically persist an authenticity attestation for an issued permit."""
+    if not isinstance(secret, str) or len(secret) < 16:
+        raise TransitionError("authority attestation secret must contain at least 16 characters")
     canonical = _canonical_contract(contract)
     verify_permit(canonical, permit)
     _resolve_capabilities(aios_dir, canonical)
