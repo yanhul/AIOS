@@ -19,18 +19,29 @@ def _tests():
     return p.returncode == 0, _digest((p.stdout or "") + (p.stderr or ""))
 
 def run(verification: dict, *, run_id: str):
-    failures = list(verification.get("failures", []))
     lineage_errors = []
     if not run_id or verification.get("run_id") != run_id:
         lineage_errors.append("verification artifact run_id does not match current run")
     if verification.get("overall") != "PASS":
         lineage_errors.append("current-run independent verification is not PASS")
     if lineage_errors:
-        failures.append({"candidate_id": None, "errors": lineage_errors, "level": "UNKNOWN"})
+        obligations = [{"obligation_id": "lineage-" + _digest(lineage_errors)[:16],
+                        "candidate_id": None, "errors": lineage_errors, "attempts": 0,
+                        "status": "BLOCKED_STALE_OR_INVALID_INPUT"}]
+        result = {"schema_version": 2, "kind": "AIOS_ABSORPTION_REVERIFICATION_PROOF",
+                  "run_id": run_id, "input_run_id": verification.get("run_id"),
+                  "max_attempts": MAX_ATTEMPTS, "obligation_count": 1, "reverified_count": 0,
+                  "blocked_count": 1, "obligations": obligations, "overall": "BLOCKED",
+                  "authority": "AIOS_CONTROL_PLANE", "source_mutation": False,
+                  "external_code_execution": False, "digest": _digest(obligations)}
+        OUT.parent.mkdir(parents=True, exist_ok=True)
+        OUT.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return result
+
     obligations = [
         {"obligation_id": "reverify-" + _digest(f)[:16], "candidate_id": f.get("candidate_id"),
          "errors": f.get("errors", []), "attempts": 0, "status": "OPEN"}
-        for f in failures
+        for f in verification.get("failures", [])
     ]
     reverified = []
     for obligation in obligations:
@@ -44,7 +55,6 @@ def run(verification: dict, *, run_id: str):
                 break
         if obligation["status"] == "OPEN":
             obligation["status"] = "BLOCKED_BUDGET_EXHAUSTED"
-    valid_current_pass = not lineage_errors and verification.get("overall") == "PASS"
     result = {
         "schema_version": 2, "kind": "AIOS_ABSORPTION_REVERIFICATION_PROOF",
         "run_id": run_id, "input_run_id": verification.get("run_id"),
@@ -52,7 +62,7 @@ def run(verification: dict, *, run_id: str):
         "reverified_count": len(reverified),
         "blocked_count": sum(x["status"].startswith("BLOCKED") for x in obligations),
         "obligations": obligations,
-        "overall": "PASS" if valid_current_pass and not obligations else "BLOCKED",
+        "overall": "PASS" if not obligations else "BLOCKED",
         "authority": "AIOS_CONTROL_PLANE", "source_mutation": False,
         "external_code_execution": False, "digest": _digest(obligations),
     }
