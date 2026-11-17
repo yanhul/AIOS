@@ -108,7 +108,7 @@ def verify(data: dict, *, run_id: str, tests_passed: bool = False,
                 artifact_ref=str(record.get("evidence_url") or ""),
                 source_digest=record["source_digest"],
                 evidence_digest=record["evidence_digest"],
-                test_digest=test_digest,
+                test_digest=test_digest, candidate_digest=_digest(record),
             ).as_record()
             evidence["attestation"] = attest_evidence(evidence, secret)
             verified.append({
