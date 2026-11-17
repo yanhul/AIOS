@@ -22,6 +22,7 @@ class EvidenceRecord:
     source_digest: str | None = None
     evidence_digest: str | None = None
     test_digest: str | None = None
+    candidate_digest: str | None = None
 
     def __post_init__(self) -> None:
         if self.level not in LEVELS:
@@ -38,7 +39,7 @@ class EvidenceRecord:
             "run_id": self.run_id, "provider": self.provider,
             "artifact_ref": self.artifact_ref, "parent_evidence_id": self.parent_evidence_id,
             "source_digest": self.source_digest, "evidence_digest": self.evidence_digest,
-            "test_digest": self.test_digest,
+            "test_digest": self.test_digest, "candidate_digest": self.candidate_digest,
         }
         return sha256(json.dumps(data, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
@@ -49,7 +50,8 @@ class EvidenceRecord:
             "run_id": self.run_id, "provider": self.provider,
             "artifact_ref": self.artifact_ref, "parent_evidence_id": self.parent_evidence_id,
             "source_digest": self.source_digest, "evidence_digest": self.evidence_digest,
-            "test_digest": self.test_digest, "digest": self.digest,
+            "test_digest": self.test_digest, "candidate_digest": self.candidate_digest,
+            "digest": self.digest,
         }
 
 
@@ -60,6 +62,7 @@ def verify_evidence(record: Mapping[str, Any]) -> bool:
             str(record["claim"]), str(record["run_id"]), str(record["provider"]),
             record.get("artifact_ref"), record.get("parent_evidence_id"),
             record.get("source_digest"), record.get("evidence_digest"), record.get("test_digest"),
+            record.get("candidate_digest"),
         )
     except (KeyError, TypeError, ValueError):
         return False
