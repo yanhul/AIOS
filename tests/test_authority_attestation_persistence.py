@@ -57,3 +57,9 @@ def test_authorize_rejects_tampered_issuer_attestation(tmp_path):
     from core.contract import contract_identity
     with pytest.raises(TransitionError, match="attestation rejected"):
         authorize(str(tmp_path), contract_identity(c), p["permit_id"])
+
+
+def test_persist_attestation_rejects_short_secret(tmp_path):
+    c, p = setup_authority(str(tmp_path))
+    with pytest.raises(TransitionError, match="at least 16 characters"):
+        persist_attestation(str(tmp_path), c, p, "short")
