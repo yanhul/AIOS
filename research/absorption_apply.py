@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from core.evidence_gate import gate_promotion
+from core.artifact_attestation import verify_artifact_attestation
 
 DEFAULT_EXEC = ROOT / "research/artifacts/absorption-executor.json"
 DEFAULT_VERIFY = ROOT / "research/artifacts/absorption-verification.json"
@@ -32,14 +33,21 @@ def _verification_digest_valid(verification):
 def _runtime_digest_valid(runtime):
     if not isinstance(runtime.get("implementation"), dict) or not isinstance(runtime.get("probes"), dict):
         return False
-    return runtime.get("digest") == _digest({
-        "implementation": runtime["implementation"], "probes": runtime["probes"]})
+    digest = _digest({"implementation": runtime["implementation"], "probes": runtime["probes"]})
+    secret = os.environ.get("AIOS_EVIDENCE_SIGNING_SECRET", "")
+    return (runtime.get("digest") == digest and
+            verify_artifact_attestation("AIOS_ABSORPTION_RUNTIME_PROOF", runtime.get("run_id", ""),
+                                        digest, runtime.get("attestation"), secret))
 
 
 def _promotion_digest_valid(promotion):
     unsigned = dict(promotion)
     supplied = unsigned.pop("digest", None)
-    return isinstance(supplied, str) and supplied == _digest(unsigned)
+    attestation = unsigned.pop("attestation", None)
+    secret = os.environ.get("AIOS_EVIDENCE_SIGNING_SECRET", "")
+    return (isinstance(supplied, str) and supplied == _digest(unsigned) and
+            verify_artifact_attestation("AIOS_ABSORPTION_PROMOTION", promotion.get("run_id", ""),
+                                        supplied, attestation, secret)
 
 
 def absorb(executor, verification, promotion, runtime, *, run_id):
