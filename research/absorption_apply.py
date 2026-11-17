@@ -47,7 +47,7 @@ def _promotion_digest_valid(promotion):
     secret = os.environ.get("AIOS_EVIDENCE_SIGNING_SECRET", "")
     return (isinstance(supplied, str) and supplied == _digest(unsigned) and
             verify_artifact_attestation("AIOS_ABSORPTION_PROMOTION", promotion.get("run_id", ""),
-                                        supplied, attestation, secret)
+                                        supplied, attestation, secret))
 
 
 def absorb(executor, verification, promotion, runtime, *, run_id):
