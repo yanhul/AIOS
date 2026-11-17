@@ -83,7 +83,7 @@ def test_apply_rejects_same_run_source_digest_tampering():
     e, v, p, runtime = _artifacts()
     e["records"][0]["source_digest"] = "d" * 64
     result = absorb(e, v, p, runtime, run_id="r1")
-    assert result["overall"] == "PASS_WITH_HOLDS"
+    assert result["overall"] == "BLOCKED"
     assert result["absorbed_count"] == 0
     assert "source/evidence/test digest chain mismatch" in result["blocked"][0]["reason"]
 
@@ -99,7 +99,7 @@ def test_apply_revalidates_signed_evidence_after_promotion():
     p["attestation"] = attest_artifact("AIOS_ABSORPTION_PROMOTION", "r1", p["digest"],
                                        "unit-test-evidence-secret-32")
     result = absorb(e, v, p, runtime, run_id="r1")
-    assert result["overall"] == "PASS_WITH_HOLDS"
+    assert result["overall"] == "BLOCKED"
     assert result["absorbed_count"] == 0
     assert "source/evidence/test digest chain mismatch" in result["blocked"][0]["reason"]
 
