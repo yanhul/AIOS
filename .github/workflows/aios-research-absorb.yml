@@ -18,6 +18,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Remove tracked outputs from earlier runs
+        run: |
+          rm -f research/artifacts/absorption-executor.json
+          rm -f research/artifacts/absorption-verification.json
+          rm -f research/artifacts/absorption-runtime-proof.json
+          rm -f research/artifacts/absorption-repair.json
+          rm -f research/artifacts/absorption-promotion.json
+          rm -f research/artifacts/absorption.json
+
       - name: Run bounded ecosystem scan
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -41,6 +50,7 @@ jobs:
       - name: Independently verify adaptation conformance
         env:
           GITHUB_RUN_ID: ${{ github.run_id }}
+          AIOS_EVIDENCE_SIGNING_SECRET: ${{ secrets.AIOS_EVIDENCE_SIGNING_SECRET }}
         run: python research/absorption_verifier.py
 
       - name: Prove AIOS-native implementation and runtime
@@ -48,18 +58,19 @@ jobs:
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: python research/absorption_runtime_proof.py
 
-      - name: Run bounded autonomous repair obligations
+      - name: Run bounded autonomous re-verification
         if: always()
         env:
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: python research/absorption_repair.py
 
-      - name: Apply fail-closed evidence promotion gate
-        if: always()
+      - name: Apply authenticated same-run evidence promotion gate
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          AIOS_EVIDENCE_SIGNING_SECRET: ${{ secrets.AIOS_EVIDENCE_SIGNING_SECRET }}
         run: python research/absorption_promotion.py
 
-      - name: Materialize only proven absorption
-        if: always()
+      - name: Materialize only proven same-run absorption
         env:
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: python research/absorption_apply.py
@@ -74,7 +85,6 @@ jobs:
           retention-days: 30
 
       - name: Persist research and promotion artifacts
-        if: always()
         run: |
           git config user.name "aios-research[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -93,7 +103,6 @@ jobs:
           exit 1
 
       - name: Dispatch CI after governed research commit
-        if: ${{ always() }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run ci.yml --ref main
