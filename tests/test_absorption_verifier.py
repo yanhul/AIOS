@@ -9,10 +9,17 @@ def _digest(value):
 
 
 def _record(run_id="run-1"):
+    snapshot = {"full_name": "example/agent", "default_branch": "main"}
+    evidence_content = "# Example\nEvidence and provenance fixture."
+    source_digest = hashlib.sha256(json.dumps(snapshot, sort_keys=True).encode()).hexdigest()
+    evidence_digest = hashlib.sha256(evidence_content.encode("utf-8")).hexdigest()
     return {
         "candidate_id": "cand-1", "source_ref": "https://github.com/example/agent",
-        "source_digest": "a" * 64, "evidence_digest": "b" * 64, "run_id": run_id,
-        "status": "RESEARCHED_ADAPTATION_PROPOSED", "evidence_status": "COLLECTED",
+        "source_snapshot": snapshot, "source_digest": source_digest,
+        "evidence_content": evidence_content, "evidence_digest": evidence_digest,
+        "evidence_url": "https://raw.githubusercontent.com/example/agent/main/README.md",
+        "run_id": run_id, "status": "RESEARCHED_ADAPTATION_PROPOSED",
+        "evidence_status": "COLLECTED",
         "adaptation": {"external_code_copy": False, "external_code_execution": False,
             "target_surface": "new AIOS adapter/task only",
             "required_checks": ["source_evidence_digest", "AIOS_conformance", "independent_tests", "evidence_promotion_gate"]},
