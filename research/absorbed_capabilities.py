@@ -4,16 +4,16 @@ This module maps absorbed primitive classes to existing AIOS-owned runtime
 surfaces. It never imports or executes external repository code.
 """
 from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from core.capabilities import Capability, CapabilityRegistry
 from core.durable_loop import MemoryStateStore
 from core.durable_runtime import RuntimeSubmission, validate_submission
-from core.evidence import EvidenceRecord, verify_evidence
+from core.evidence import EvidenceRecord, attest_evidence, verify_evidence
 from core.evidence_gate import gate_promotion
 from core.research_worker import ResearchFinding, ResearchRequest, reconcile_research
+
+_CONFORMANCE_FIXTURE_KEY = "aios-conformance-only-fixture-key"
 
 
 @dataclass(frozen=True)
@@ -46,20 +46,19 @@ def _evidence_provenance() -> None:
 
 
 def _governance() -> None:
-    decision = gate_promotion({
-        "level": "VERIFIED_DIGITAL",
-        "run_id": "run-proof",
-        "source_ref": "aios://source",
-        "claim": "claim",
-    })
+    record = EvidenceRecord("ev-governance-proof", "VERIFIED_DIGITAL", "aios://source",
+                            "claim", "run-proof", "AIOS_CONTROL_PLANE").as_record()
+    record["attestation"] = attest_evidence(record, _CONFORMANCE_FIXTURE_KEY)
+    decision = gate_promotion(record, attestation_secret=_CONFORMANCE_FIXTURE_KEY)
     assert decision.allowed is True
-    blocked = gate_promotion({
-        "level": "UNKNOWN",
-        "run_id": "run-proof",
-        "source_ref": "aios://source",
-        "claim": "claim",
-    })
-    assert blocked.allowed is False
+    # A caller-declared level with no trusted attestation is never authoritative.
+    forged = {"level": "VERIFIED_DIGITAL", "run_id": "run-proof",
+              "source_ref": "aios://source", "claim": "claim"}
+    blocked_forgery = gate_promotion(forged, attestation_secret=_CONFORMANCE_FIXTURE_KEY)
+    assert blocked_forgery.allowed is False
+    unknown = {"level": "UNKNOWN", "run_id": "run-proof",
+               "source_ref": "aios://source", "claim": "claim"}
+    assert gate_promotion(unknown, attestation_secret=_CONFORMANCE_FIXTURE_KEY).allowed is False
 
 
 def _retry() -> None:
@@ -112,23 +111,14 @@ def run_conformance() -> dict[str, Any]:
     for item in IMPLEMENTATIONS:
         try:
             item.conformance()
-            results.append({
-                "primitive": item.primitive,
-                "capability_id": item.capability_id,
-                "implementation": item.implementation,
-                "status": "IMPLEMENTED_AND_CONFORMANT",
-            })
+            results.append({"primitive": item.primitive, "capability_id": item.capability_id,
+                            "implementation": item.implementation, "status": "IMPLEMENTED_AND_CONFORMANT"})
         except Exception as exc:
-            results.append({
-                "primitive": item.primitive,
-                "capability_id": item.capability_id,
-                "implementation": item.implementation,
-                "status": "BLOCKED",
-                "error_type": type(exc).__name__,
-            })
+            results.append({"primitive": item.primitive, "capability_id": item.capability_id,
+                            "implementation": item.implementation, "status": "BLOCKED",
+                            "error_type": type(exc).__name__})
     return {
-        "schema_version": 1,
-        "kind": "AIOS_ABSORBED_CAPABILITY_IMPLEMENTATION_PROOF",
+        "schema_version": 1, "kind": "AIOS_ABSORBED_CAPABILITY_IMPLEMENTATION_PROOF",
         "results": results,
         "implemented_count": sum(r["status"] == "IMPLEMENTED_AND_CONFORMANT" for r in results),
         "total_count": len(results),
