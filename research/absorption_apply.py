@@ -94,6 +94,7 @@ def absorb(executor, verification, promotion, runtime, *, run_id):
         if (source.get("source_ref") != evidence.get("source_ref") or
                 source.get("source_digest") != evidence.get("source_digest") or
                 source.get("evidence_digest") != evidence.get("evidence_digest") or
+                evidence.get("candidate_digest") != _digest(source) or
                 evidence.get("test_digest") != verification.get("independent_tests", {}).get("digest")):
             blocked.append({"candidate_id": cid, "verdict": "HOLD",
                             "reason": "source/evidence/test digest chain mismatch"})
@@ -105,7 +106,7 @@ def absorb(executor, verification, promotion, runtime, *, run_id):
             continue
         records.append({"candidate_id": cid, "run_id": run_id, "source_ref": source["source_ref"],
             "source_digest": source["source_digest"], "evidence_digest": source["evidence_digest"],
-            "test_digest": evidence["test_digest"], "evidence_record_digest": evidence["digest"],
+            "test_digest": evidence["test_digest"], "candidate_digest": evidence["candidate_digest"], "evidence_record_digest": evidence["digest"],
             "claim": evidence["claim"],
             "primitive": source["adaptation"]["primitive"], "signals": source["adaptation"]["signals"],
             "proposal": source["adaptation"]["proposal"], "target_surface": source["adaptation"]["target_surface"],
