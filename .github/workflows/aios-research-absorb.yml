@@ -5,7 +5,6 @@ on:
 permissions:
   actions: write
   contents: write
-  issues: write
 
 concurrency:
   group: aios-research-absorb-main
@@ -13,6 +12,9 @@ concurrency:
 
 jobs:
   scan-and-intake:
+    # This workflow consumes a deployment signing secret: never execute its code from an arbitrary ref.
+    if: github.ref == 'refs/heads/main'
+    environment: production
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -50,7 +52,7 @@ jobs:
       - name: Independently verify adaptation conformance
         env:
           GITHUB_RUN_ID: ${{ github.run_id }}
-          AIOS_EVIDENCE_SIGNING_SECRET: ${{ secrets.AIOS_EVIDENCE_SIGNING_SECRET }}
+          AIOS_EVIDENCE_SIGNING_SECRET: ${{ secrets.AIOS_PRODUCTION_EVIDENCE_SIGNING_SECRET }}
         run: python research/absorption_verifier.py
 
       - name: Prove AIOS-native implementation and runtime
