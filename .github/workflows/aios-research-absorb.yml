@@ -58,6 +58,7 @@ jobs:
       - name: Prove AIOS-native implementation and runtime
         env:
           GITHUB_RUN_ID: ${{ github.run_id }}
+          AIOS_EVIDENCE_SIGNING_SECRET: ${{ secrets.AIOS_PRODUCTION_EVIDENCE_SIGNING_SECRET }}
         run: python research/absorption_runtime_proof.py
 
       - name: Run bounded autonomous re-verification
