@@ -61,9 +61,24 @@ def _verify_record(record: dict, *, run_id: str, tests_passed: bool, test_digest
     for key in ("candidate_id", "source_ref"):
         if not isinstance(record.get(key), str) or not record[key].strip():
             errors.append(f"missing provenance: {key}")
-    for key in ("source_digest", "evidence_digest"):
-        if not _valid_digest(record.get(key)):
-            errors.append(f"invalid or missing provenance SHA-256: {key}")
+    snapshot = record.get("source_snapshot")
+    if not isinstance(snapshot, dict):
+        errors.append("missing source snapshot for independent digest recomputation")
+    elif _valid_digest(record.get("source_digest")):
+        actual_source_digest = hashlib.sha256(json.dumps(snapshot, sort_keys=True).encode()).hexdigest()
+        if actual_source_digest != record.get("source_digest"):
+            errors.append("source snapshot digest mismatch")
+    else:
+        errors.append("invalid or missing provenance SHA-256: source_digest")
+    evidence_content = record.get("evidence_content")
+    if not isinstance(evidence_content, str):
+        errors.append("missing collected evidence content for digest recomputation")
+    elif _valid_digest(record.get("evidence_digest")):
+        actual_evidence_digest = hashlib.sha256(evidence_content.encode("utf-8")).hexdigest()
+        if actual_evidence_digest != record.get("evidence_digest"):
+            errors.append("collected evidence content digest mismatch")
+    else:
+        errors.append("invalid or missing provenance SHA-256: evidence_digest")
     if record.get("run_id") != run_id:
         errors.append("executor record run_id does not match current run")
     if not evidence_secret or len(evidence_secret) < 16:
