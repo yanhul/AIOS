@@ -1,6 +1,6 @@
-"""Fail-closed promotion requiring authenticated, same-run verification and runtime proof."""
+"""Fail-closed promotion requiring authenticated evidence and same-run artifact integrity."""
 from __future__ import annotations
-import json, os, sys
+import hashlib, json, os, sys
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -11,8 +11,26 @@ DEFAULT_INPUT = Path("research/artifacts/absorption-verification.json")
 DEFAULT_RUNTIME = Path("research/artifacts/absorption-runtime-proof.json")
 DEFAULT_OUT = Path("research/artifacts/absorption-promotion.json")
 
+
 def _path(env_name, default):
     return Path(os.environ.get(env_name, str(default)))
+
+
+def _digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _verification_valid(data):
+    expected = _digest({"verified": data.get("records", []), "failures": data.get("failures", [])})
+    return isinstance(data.get("digest"), str) and data["digest"] == expected
+
+
+def _runtime_valid(runtime):
+    if not isinstance(runtime.get("implementation"), dict) or not isinstance(runtime.get("probes"), dict):
+        return False
+    expected = _digest({"implementation": runtime["implementation"], "probes": runtime["probes"]})
+    return runtime.get("digest") == expected
+
 
 def promote(data: dict, runtime: dict | None = None, *, run_id: str | None = None) -> dict:
     runtime = runtime or {}
@@ -26,6 +44,10 @@ def promote(data: dict, runtime: dict | None = None, *, run_id: str | None = Non
         lineage_errors.append("runtime proof run_id mismatch")
     if data.get("overall") != "PASS":
         lineage_errors.append("independent verification is not PASS")
+    if not _verification_valid(data):
+        lineage_errors.append("verification artifact content digest mismatch")
+    if not _runtime_valid(runtime):
+        lineage_errors.append("runtime proof content digest mismatch")
     runtime_ok = runtime.get("overall") == "PASS" and not lineage_errors
     decisions, blocked = [], []
     for record in data.get("records", []):
@@ -59,19 +81,24 @@ def promote(data: dict, runtime: dict | None = None, *, run_id: str | None = Non
         blocked.append({"candidate_id": None, "run_id": data.get("run_id"), "allowed": False,
                         "action": "HOLD", "verdict": "DEFER", "level": "UNKNOWN",
                         "reason": "; ".join(lineage_errors)})
-    result = {"schema_version": 3, "kind": "AIOS_ABSORPTION_PROMOTION",
+    result = {"schema_version": 4, "kind": "AIOS_ABSORPTION_PROMOTION",
               "run_id": expected_run, "input_verification_run_id": data.get("run_id"),
-              "input_runtime_run_id": runtime.get("run_id"), "decisions": decisions, "blocked": blocked,
+              "input_verification_digest": data.get("digest"),
+              "input_runtime_run_id": runtime.get("run_id"),
+              "input_runtime_digest": runtime.get("digest"),
+              "decisions": decisions, "blocked": blocked,
               "candidate_count": len(decisions) + len(blocked), "promoted_count": len(decisions),
               "deferred_count": len(blocked),
               "overall": "PASS" if decisions and not blocked and runtime_ok
                          else "PASS_WITH_HOLDS" if decisions or blocked else "BLOCKED",
               "implementation_runtime_proof": runtime_ok, "source_mutation": False,
               "external_code_execution": False, "authority": "AIOS_CONTROL_PLANE"}
+    result["digest"] = _digest(result)
     out = _path("AIOS_ABSORPTION_PROMOTION_OUT", DEFAULT_OUT)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return result
+
 
 if __name__ == "__main__":
     verification = json.loads(_path("AIOS_ABSORPTION_VERIFY_OUT", DEFAULT_INPUT).read_text())
