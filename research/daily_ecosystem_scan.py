@@ -43,6 +43,7 @@ def scan() -> dict:
                 "updated_at": item.get("updated_at"),
                 "query": query,
                 "source_digest": _digest(json.dumps(item, sort_keys=True)),
+                "source_snapshot": item,
             })
     unique = {r["source_ref"]: r for r in records if r["source_ref"]}
     result = {"schema_version": 1, "kind": "AIOS_DAILY_RESEARCH",
