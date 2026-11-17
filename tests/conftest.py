@@ -12,8 +12,8 @@ def _deployment_trust_anchors(monkeypatch):
     """Simulate deployment-supplied trust anchors (never stored in AIOS state)."""
     monkeypatch.setenv(RETRY_KEYRING_ENV, KEYRING_JSON)
     monkeypatch.setenv(PROVIDER_KEYRING_ENV, PROVIDER_KEYRING_JSON)
-    # Provider-side signing keys: only test provider processes/adapters read these.
     monkeypatch.setenv(PROVIDER_SIGNING_KEYS_ENV, SIGNING_KEYS_JSON)
-    # Verifier-side Ed25519 PUBLIC keys only (MiniMind); private keys live with the test workload.
+    monkeypatch.setenv("AIOS_AUTHORITY_ATTESTATION_SECRET", "unit-test-authority-secret-32")
+    monkeypatch.setenv("AIOS_EVIDENCE_SIGNING_SECRET", "unit-test-evidence-secret-32")
     if ED25519_PUBLIC_KEYRING_JSON is not None:
         monkeypatch.setenv(ED25519_KEYRING_ENV, ED25519_PUBLIC_KEYRING_JSON)
