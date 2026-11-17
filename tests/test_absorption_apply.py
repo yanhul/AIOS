@@ -82,8 +82,10 @@ def test_apply_revalidates_signed_evidence_after_promotion():
     p["input_verification_digest"] = v["digest"]
     p.pop("digest")
     p["digest"] = _digest(p)
-    with pytest.raises(RuntimeError, match="promotion is not bound to this verification artifact"):
-        absorb(e, v, p, runtime, run_id="r1")
+    result = absorb(e, v, p, runtime, run_id="r1")
+    assert result["overall"] == "PASS_WITH_HOLDS"
+    assert result["absorbed_count"] == 0
+    assert "source/evidence/test digest chain mismatch" in result["blocked"][0]["reason"]
 
 
 def test_apply_rejects_tampered_promotion_artifact():
