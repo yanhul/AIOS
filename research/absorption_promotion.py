@@ -23,7 +23,14 @@ def _digest(value):
 
 def _verification_valid(data):
     expected = _digest({"verified": data.get("records", []), "failures": data.get("failures", [])})
-    return isinstance(data.get("digest"), str) and data["digest"] == expected
+    records = data.get("records", [])
+    failures = data.get("failures", [])
+    counts_match = (data.get("candidate_count") == len(records) + len(failures) and
+                    data.get("verified_count") == len(records) and
+                    data.get("failure_count") == len(failures))
+    if data.get("overall") == "PASS":
+        counts_match = counts_match and not failures and len(records) > 0
+    return isinstance(data.get("digest"), str) and data["digest"] == expected and counts_match
 
 
 def _runtime_valid(runtime):
