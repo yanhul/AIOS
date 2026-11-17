@@ -1,25 +1,31 @@
 """Independent conformance verification for governed absorption proposals.
 
-Verification is current-run only. A trusted deployment secret attests each
-VERIFIED_DIGITAL record; a caller-provided level or a default test PASS is not
-authority to promote.
+Verification is current-run only. Trusted evidence attestations bind the
+source, collected-evidence, and independent-test digests into one record.
 """
 from __future__ import annotations
-import hashlib, json, os, subprocess, sys
+import hashlib, json, os, re, subprocess, sys
 from pathlib import Path
 from core.evidence import EvidenceRecord, attest_evidence
 
 DEFAULT_INPUT = Path("research/artifacts/absorption-executor.json")
 DEFAULT_OUT = Path("research/artifacts/absorption-verification.json")
 EVIDENCE_SECRET_ENV = "AIOS_EVIDENCE_SIGNING_SECRET"
+REQUIRED_CHECKS = {"source_evidence_digest", "AIOS_conformance", "independent_tests", "evidence_promotion_gate"}
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+
 
 def _path(env_name, default):
     return Path(os.environ.get(env_name, str(default)))
 
-REQUIRED_CHECKS = {"source_evidence_digest", "AIOS_conformance", "independent_tests", "evidence_promotion_gate"}
 
 def _digest(value: object) -> str:
-    return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _valid_digest(value: object) -> bool:
+    return isinstance(value, str) and _SHA256.fullmatch(value) is not None
+
 
 def run_independent_tests() -> tuple[bool, str]:
     proc = subprocess.run(
@@ -30,6 +36,7 @@ def run_independent_tests() -> tuple[bool, str]:
     )
     output = (proc.stdout or "") + (proc.stderr or "")
     return proc.returncode == 0, hashlib.sha256(output.encode("utf-8")).hexdigest()
+
 
 def _verify_record(record: dict, *, run_id: str, tests_passed: bool, test_digest: str,
                    evidence_secret: str | None) -> tuple[bool, list[str]]:
@@ -49,16 +56,20 @@ def _verify_record(record: dict, *, run_id: str, tests_passed: bool, test_digest
         errors.append("required verification checks are incomplete")
     if not tests_passed:
         errors.append("independent absorption tests did not pass in this invocation")
-    if not test_digest:
-        errors.append("missing independent test digest")
-    for key in ("candidate_id", "source_ref", "source_digest", "evidence_digest"):
-        if not record.get(key):
+    if not _valid_digest(test_digest):
+        errors.append("independent test digest is not a SHA-256 hex digest")
+    for key in ("candidate_id", "source_ref"):
+        if not isinstance(record.get(key), str) or not record[key].strip():
             errors.append(f"missing provenance: {key}")
+    for key in ("source_digest", "evidence_digest"):
+        if not _valid_digest(record.get(key)):
+            errors.append(f"invalid or missing provenance SHA-256: {key}")
     if record.get("run_id") != run_id:
         errors.append("executor record run_id does not match current run")
     if not evidence_secret or len(evidence_secret) < 16:
         errors.append(f"trusted evidence secret {EVIDENCE_SECRET_ENV} is not configured")
     return not errors, errors
+
 
 def verify(data: dict, *, run_id: str, tests_passed: bool = False,
            test_digest: str = "", evidence_secret: str | None = None) -> dict:
@@ -74,17 +85,20 @@ def verify(data: dict, *, run_id: str, tests_passed: bool = False,
         ok, errors = _verify_record(record, run_id=run_id, tests_passed=tests_passed,
                                     test_digest=test_digest, evidence_secret=secret)
         if ok:
-            claim = "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS"
             evidence = EvidenceRecord(
                 evidence_id=str(record["candidate_id"]), level="VERIFIED_DIGITAL",
-                source_ref=str(record["source_ref"]), claim=claim, run_id=run_id,
+                source_ref=str(record["source_ref"]),
+                claim="AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS", run_id=run_id,
                 provider="AIOS_CONTROL_PLANE",
+                artifact_ref=str(record.get("evidence_url") or ""),
+                source_digest=record["source_digest"],
+                evidence_digest=record["evidence_digest"],
+                test_digest=test_digest,
             ).as_record()
             evidence["attestation"] = attest_evidence(evidence, secret)
             verified.append({
                 **evidence, "candidate_id": record["candidate_id"],
-                "source_digest": record["source_digest"], "evidence_digest": record["evidence_digest"],
-                "test_digest": test_digest, "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE",
+                "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE",
                 "authority": "AIOS_CONTROL_PLANE", "external_code_copy": False,
                 "external_code_execution": False,
             })
@@ -93,20 +107,22 @@ def verify(data: dict, *, run_id: str, tests_passed: bool = False,
     if input_overall != "PASS":
         failures.append({"candidate_id": None,
                          "errors": [f"executor intake is not PASS: {input_overall!r}"], "level": "UNKNOWN"})
+    verified_payload = {"verified": verified, "failures": failures}
     result = {
-        "schema_version": 2, "kind": "AIOS_ABSORPTION_INDEPENDENT_VERIFICATION",
+        "schema_version": 3, "kind": "AIOS_ABSORPTION_INDEPENDENT_VERIFICATION",
         "run_id": run_id, "records": verified, "failures": failures,
         "candidate_count": len(records), "verified_count": len(verified),
         "failure_count": len(failures),
         "overall": "PASS" if input_overall == "PASS" and data.get("run_id") == run_id
                    and records and len(verified) == len(records) and not failures else "BLOCKED",
         "independent_tests": {"passed": tests_passed, "digest": test_digest},
-        "digest": _digest({"verified": verified, "failures": failures}),
+        "digest": _digest(verified_payload),
     }
     out = _path("AIOS_ABSORPTION_VERIFY_OUT", DEFAULT_OUT)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return result
+
 
 if __name__ == "__main__":
     data = json.loads(_path("AIOS_ABSORPTION_EXECUTOR_OUT", DEFAULT_INPUT).read_text(encoding="utf-8"))
