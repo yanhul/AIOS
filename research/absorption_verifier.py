@@ -1,47 +1,38 @@
 """Independent conformance verification for governed absorption proposals.
 
-This verifies the AIOS-native proposal artifact and independently runs the local
-absorption test suite. It never executes or copies external source code.
+Verification is current-run only. A trusted deployment secret attests each
+VERIFIED_DIGITAL record; a caller-provided level or a default test PASS is not
+authority to promote.
 """
 from __future__ import annotations
-import hashlib
-import json
-import os
-import subprocess
-import sys
+import hashlib, json, os, subprocess, sys
 from pathlib import Path
+from core.evidence import EvidenceRecord, attest_evidence
 
 DEFAULT_INPUT = Path("research/artifacts/absorption-executor.json")
 DEFAULT_OUT = Path("research/artifacts/absorption-verification.json")
+EVIDENCE_SECRET_ENV = "AIOS_EVIDENCE_SIGNING_SECRET"
 
-def _path(env_name, default): return Path(os.environ.get(env_name, str(default)))
+def _path(env_name, default):
+    return Path(os.environ.get(env_name, str(default)))
 
-REQUIRED_CHECKS = {
-    "source_evidence_digest",
-    "AIOS_conformance",
-    "independent_tests",
-    "evidence_promotion_gate",
-}
+REQUIRED_CHECKS = {"source_evidence_digest", "AIOS_conformance", "independent_tests", "evidence_promotion_gate"}
 
 def _digest(value: object) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 def run_independent_tests() -> tuple[bool, str]:
     proc = subprocess.run(
-        [
-            sys.executable, "-m", "pytest",
-            "tests/test_absorption_executor.py",
-            "tests/test_absorption_pipeline.py",
-            "tests/test_absorption_verifier.py",
-            "tests/test_absorption_repair.py",
-            "-v",
-        ],
+        [sys.executable, "-m", "pytest", "tests/test_absorption_executor.py",
+         "tests/test_absorption_pipeline.py", "tests/test_absorption_verifier.py",
+         "tests/test_absorption_repair.py", "-v"],
         capture_output=True, text=True, timeout=120,
     )
     output = (proc.stdout or "") + (proc.stderr or "")
     return proc.returncode == 0, hashlib.sha256(output.encode("utf-8")).hexdigest()
 
-def _verify_record(record: dict, tests_passed: bool, test_digest: str) -> tuple[bool, list[str]]:
+def _verify_record(record: dict, *, run_id: str, tests_passed: bool, test_digest: str,
+                   evidence_secret: str | None) -> tuple[bool, list[str]]:
     errors: list[str] = []
     if record.get("status") != "RESEARCHED_ADAPTATION_PROPOSED":
         errors.append("research/adaptation did not complete")
@@ -57,54 +48,58 @@ def _verify_record(record: dict, tests_passed: bool, test_digest: str) -> tuple[
     if set(adaptation.get("required_checks", [])) != REQUIRED_CHECKS:
         errors.append("required verification checks are incomplete")
     if not tests_passed:
-        errors.append("independent absorption tests failed")
+        errors.append("independent absorption tests did not pass in this invocation")
     if not test_digest:
         errors.append("missing independent test digest")
-    for key in ("candidate_id", "source_ref", "source_digest", "evidence_digest", "run_id"):
+    for key in ("candidate_id", "source_ref", "source_digest", "evidence_digest"):
         if not record.get(key):
             errors.append(f"missing provenance: {key}")
+    if record.get("run_id") != run_id:
+        errors.append("executor record run_id does not match current run")
+    if not evidence_secret or len(evidence_secret) < 16:
+        errors.append(f"trusted evidence secret {EVIDENCE_SECRET_ENV} is not configured")
     return not errors, errors
 
-def verify(data: dict, *, run_id: str, tests_passed: bool = True, test_digest: str = "unit-test-fixture") -> dict:
+def verify(data: dict, *, run_id: str, tests_passed: bool = False,
+           test_digest: str = "", evidence_secret: str | None = None) -> dict:
     records = data.get("records", [])
     input_overall = data.get("overall")
-    verified = []
-    failures = []
+    secret = evidence_secret if evidence_secret is not None else os.environ.get(EVIDENCE_SECRET_ENV)
+    verified, failures = [], []
+    if data.get("run_id") != run_id:
+        failures.append({"candidate_id": None,
+                         "errors": [f"executor artifact run_id mismatch: expected {run_id!r}, got {data.get('run_id')!r}"],
+                         "level": "UNKNOWN"})
     for record in records:
-        ok, errors = _verify_record(record, tests_passed, test_digest)
+        ok, errors = _verify_record(record, run_id=run_id, tests_passed=tests_passed,
+                                    test_digest=test_digest, evidence_secret=secret)
         if ok:
+            claim = "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS"
+            evidence = EvidenceRecord(
+                evidence_id=str(record["candidate_id"]), level="VERIFIED_DIGITAL",
+                source_ref=str(record["source_ref"]), claim=claim, run_id=run_id,
+                provider="AIOS_CONTROL_PLANE",
+            ).as_record()
+            evidence["attestation"] = attest_evidence(evidence, secret)
             verified.append({
-                "candidate_id": record["candidate_id"],
-                "run_id": run_id,
-                "source_ref": record["source_ref"],
-                "claim": "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS",
-                "source_digest": record["source_digest"],
-                "evidence_digest": record["evidence_digest"],
-                "test_digest": test_digest,
-                "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE",
-                "level": "VERIFIED_DIGITAL",
-                "authority": "AIOS_CONTROL_PLANE",
-                "external_code_copy": False,
+                **evidence, "candidate_id": record["candidate_id"],
+                "source_digest": record["source_digest"], "evidence_digest": record["evidence_digest"],
+                "test_digest": test_digest, "verification": "INDEPENDENT_STRUCTURAL_CONFORMANCE",
+                "authority": "AIOS_CONTROL_PLANE", "external_code_copy": False,
                 "external_code_execution": False,
             })
         else:
             failures.append({"candidate_id": record.get("candidate_id"), "errors": errors, "level": "UNKNOWN"})
     if input_overall != "PASS":
-        failures.append({
-            "candidate_id": None,
-            "errors": [f"executor intake is not PASS: {input_overall!r}"],
-            "level": "UNKNOWN",
-        })
+        failures.append({"candidate_id": None,
+                         "errors": [f"executor intake is not PASS: {input_overall!r}"], "level": "UNKNOWN"})
     result = {
-        "schema_version": 1,
-        "kind": "AIOS_ABSORPTION_INDEPENDENT_VERIFICATION",
-        "run_id": run_id,
-        "records": verified,
-        "failures": failures,
-        "candidate_count": len(records),
-        "verified_count": len(verified),
+        "schema_version": 2, "kind": "AIOS_ABSORPTION_INDEPENDENT_VERIFICATION",
+        "run_id": run_id, "records": verified, "failures": failures,
+        "candidate_count": len(records), "verified_count": len(verified),
         "failure_count": len(failures),
-        "overall": "PASS" if input_overall == "PASS" and records and len(verified) == len(records) and not failures else "BLOCKED",
+        "overall": "PASS" if input_overall == "PASS" and data.get("run_id") == run_id
+                   and records and len(verified) == len(records) and not failures else "BLOCKED",
         "independent_tests": {"passed": tests_passed, "digest": test_digest},
         "digest": _digest({"verified": verified, "failures": failures}),
     }
@@ -115,8 +110,7 @@ def verify(data: dict, *, run_id: str, tests_passed: bool = True, test_digest: s
 
 if __name__ == "__main__":
     data = json.loads(_path("AIOS_ABSORPTION_EXECUTOR_OUT", DEFAULT_INPUT).read_text(encoding="utf-8"))
+    current_run = os.environ.get("GITHUB_RUN_ID", "")
     tests_passed, test_digest = run_independent_tests()
-    result = verify(data, run_id=os.environ.get("GITHUB_RUN_ID", data.get("run_id", "local")),
-                    tests_passed=tests_passed, test_digest=test_digest)
-    # Candidate-level holds are expected outcomes; promotion remains fail-closed.
-    raise SystemExit(0)
+    result = verify(data, run_id=current_run, tests_passed=tests_passed, test_digest=test_digest)
+    raise SystemExit(0 if result["overall"] == "PASS" else 1)
