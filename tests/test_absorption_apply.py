@@ -2,6 +2,7 @@ import hashlib
 import json
 import pytest
 from core.evidence import EvidenceRecord, attest_evidence
+from core.artifact_attestation import attest_artifact
 from research.absorption_apply import absorb
 
 
@@ -26,14 +27,19 @@ def _artifacts():
          "independent_tests": {"passed": True, "digest": test_digest}}
     v["digest"] = _digest({"verified": v["records"], "failures": v["failures"]})
     implementation, probes = {"overall": "PASS"}, {"runtime": True}
+    runtime_digest = _digest({"implementation": implementation, "probes": probes})
     runtime = {"run_id": run, "overall": "PASS", "implementation": implementation,
-               "probes": probes, "digest": _digest({"implementation": implementation, "probes": probes})}
+               "probes": probes, "digest": runtime_digest,
+               "attestation": attest_artifact("AIOS_ABSORPTION_RUNTIME_PROOF", run, runtime_digest,
+                                              "unit-test-evidence-secret-32")}
     p = {"schema_version": 4, "kind": "AIOS_ABSORPTION_PROMOTION", "run_id": run,
          "input_verification_run_id": run, "input_verification_digest": v["digest"],
          "input_runtime_run_id": run, "input_runtime_digest": runtime["digest"],
          "decisions": [{"candidate_id": "c1", "run_id": run, "allowed": True, "verdict": "PROMOTE"}],
          "blocked": [], "overall": "PASS"}
     p["digest"] = _digest(p)
+    p["attestation"] = attest_artifact("AIOS_ABSORPTION_PROMOTION", run, p["digest"],
+                                       "unit-test-evidence-secret-32")
     return e, v, p, runtime
 
 
@@ -57,13 +63,18 @@ def test_absorb_blocks_missing_candidate_lineage():
     v = {"run_id": run, "overall": "PASS", "records": [], "failures": []}
     v["digest"] = _digest({"verified": [], "failures": []})
     implementation, probes = {"overall": "PASS"}, {"runtime": True}
+    runtime_digest = _digest({"implementation": implementation, "probes": probes})
     runtime = {"run_id": run, "overall": "PASS", "implementation": implementation,
-               "probes": probes, "digest": _digest({"implementation": implementation, "probes": probes})}
+               "probes": probes, "digest": runtime_digest,
+               "attestation": attest_artifact("AIOS_ABSORPTION_RUNTIME_PROOF", run, runtime_digest,
+                                              "unit-test-evidence-secret-32")}
     p = {"run_id": run, "overall": "PASS", "input_verification_digest": v["digest"],
          "input_runtime_digest": runtime["digest"],
          "decisions": [{"candidate_id": "c1", "run_id": run, "allowed": True, "verdict": "PROMOTE"}],
          "blocked": []}
     p["digest"] = _digest(p)
+    p["attestation"] = attest_artifact("AIOS_ABSORPTION_PROMOTION", run, p["digest"],
+                                       "unit-test-evidence-secret-32")
     r = absorb(e, v, p, runtime, run_id=run)
     assert r["overall"] == "BLOCKED" and r["absorbed_count"] == 0
 
@@ -83,7 +94,10 @@ def test_apply_revalidates_signed_evidence_after_promotion():
     v["digest"] = _digest({"verified": v["records"], "failures": v["failures"]})
     p["input_verification_digest"] = v["digest"]
     p.pop("digest")
+    p.pop("attestation")
     p["digest"] = _digest(p)
+    p["attestation"] = attest_artifact("AIOS_ABSORPTION_PROMOTION", "r1", p["digest"],
+                                       "unit-test-evidence-secret-32")
     result = absorb(e, v, p, runtime, run_id="r1")
     assert result["overall"] == "PASS_WITH_HOLDS"
     assert result["absorbed_count"] == 0
