@@ -41,8 +41,8 @@ def issue_attestation(contract: dict, permit: dict, secret: str) -> dict:
 
 def verify_attestation(contract: dict, permit: dict, attestation: dict, secret: str) -> bool:
     """Fail closed unless permit binding and external attestation both verify."""
-    if not isinstance(secret, str) or not secret:
-        raise ValueError("attestation secret must be non-empty")
+    if not isinstance(secret, str) or len(secret) < 16:
+        raise ValueError("attestation secret must contain at least 16 characters")
     verify_permit(contract, permit)
     required = {
         "attestation_type", "contract_id", "permit_id", "issuer",
