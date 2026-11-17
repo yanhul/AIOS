@@ -2,6 +2,7 @@ import hashlib
 import json
 from research.absorption_verifier import verify
 from research.absorption_promotion import promote
+from core.artifact_attestation import attest_artifact
 
 
 def _digest(value):
@@ -28,8 +29,11 @@ def _record(run_id="run-1"):
 
 def _runtime(run_id="run-1"):
     implementation, probes = {"overall": "PASS"}, {"runtime": True}
+    digest = _digest({"implementation": implementation, "probes": probes})
     return {"run_id": run_id, "overall": "PASS", "implementation": implementation,
-            "probes": probes, "digest": _digest({"implementation": implementation, "probes": probes})}
+            "probes": probes, "digest": digest,
+            "attestation": attest_artifact("AIOS_ABSORPTION_RUNTIME_PROOF", run_id, digest,
+                                           "unit-test-evidence-secret-32")}
 
 
 def test_independent_verification_and_gate(tmp_path, monkeypatch):
