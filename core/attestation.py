@@ -24,8 +24,8 @@ def _message(contract_id: str, permit_id: str, issuer: str) -> bytes:
 
 def issue_attestation(contract: dict, permit: dict, secret: str) -> dict:
     """Create an authenticity proof for an already valid permit."""
-    if not isinstance(secret, str) or not secret:
-        raise ValueError("attestation secret must be non-empty")
+    if not isinstance(secret, str) or len(secret) < 16:
+        raise ValueError("attestation secret must contain at least 16 characters")
     verify_permit(contract, permit)
     msg = _message(permit["contract_id"], permit["permit_id"], permit["issuer"])
     signature = hmac.new(secret.encode("utf-8"), msg, hashlib.sha256).hexdigest()
