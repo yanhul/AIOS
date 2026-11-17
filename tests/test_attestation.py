@@ -35,8 +35,11 @@ def test_attestation_binds_external_permit():
         verify_attestation(c, p, a, "wrong-secret")
 
 
-def test_attestation_rejects_short_signing_secret():
+def test_attestation_rejects_short_signing_and_verification_secrets():
     c = contract()
     p = issue_permit(c, "AIOS_AUTHORITY")
     with pytest.raises(ValueError, match="at least 16 characters"):
         issue_attestation(c, p, "short")
+    a = issue_attestation(c, p, "test-secret-for-permit-attestation")
+    with pytest.raises(ValueError, match="at least 16 characters"):
+        verify_attestation(c, p, a, "short")
