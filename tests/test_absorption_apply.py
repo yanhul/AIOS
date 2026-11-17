@@ -71,8 +71,10 @@ def test_absorb_blocks_missing_candidate_lineage():
 def test_apply_rejects_same_run_source_digest_tampering():
     e, v, p, runtime = _artifacts()
     e["records"][0]["source_digest"] = "d" * 64
-    with pytest.raises(RuntimeError, match="source/evidence/test digest chain mismatch"):
-        absorb(e, v, p, runtime, run_id="r1")
+    result = absorb(e, v, p, runtime, run_id="r1")
+    assert result["overall"] == "PASS_WITH_HOLDS"
+    assert result["absorbed_count"] == 0
+    assert "source/evidence/test digest chain mismatch" in result["blocked"][0]["reason"]
 
 
 def test_apply_revalidates_signed_evidence_after_promotion():
