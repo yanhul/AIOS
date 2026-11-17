@@ -40,3 +40,9 @@ def test_tampered_level_invalidates_attestation():
 def test_missing_provenance_fails_closed():
     result = gate_promotion({"level": "VERIFIED_DIGITAL", "run_id": "r"})
     assert not result.allowed
+
+
+def test_tampered_source_digest_invalidates_attestation():
+    record = _signed()
+    record["source_digest"] = "a" * 64
+    assert not gate_promotion(record).allowed
