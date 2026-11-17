@@ -110,3 +110,12 @@ def test_apply_rejects_tampered_promotion_artifact():
     p["decisions"][0]["allowed"] = False
     with pytest.raises(RuntimeError, match="promotion is not PASS or its content digest is invalid"):
         absorb(e, v, p, runtime, run_id="r1")
+
+
+def test_apply_rejects_tampered_candidate_proposal():
+    e, v, p, runtime = _artifacts()
+    e["records"][0]["adaptation"]["proposal"] = "attacker-modified"
+    result = absorb(e, v, p, runtime, run_id="r1")
+    assert result["overall"] == "BLOCKED"
+    assert result["absorbed_count"] == 0
+    assert "source/evidence/test digest chain mismatch" in result["blocked"][0]["reason"]
