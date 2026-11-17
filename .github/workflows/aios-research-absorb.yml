@@ -75,6 +75,7 @@ jobs:
       - name: Materialize only proven same-run absorption
         env:
           GITHUB_RUN_ID: ${{ github.run_id }}
+          AIOS_EVIDENCE_SIGNING_SECRET: ${{ secrets.AIOS_PRODUCTION_EVIDENCE_SIGNING_SECRET }}
         run: python research/absorption_apply.py
 
       - name: Publish absorption evidence
