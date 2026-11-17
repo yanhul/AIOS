@@ -94,3 +94,21 @@ def test_verification_rejects_malformed_provenance_digest():
     v = verify({"run_id": "run-1", "overall": "PASS", "records": [record]},
                run_id="run-1", tests_passed=True, test_digest="c" * 64)
     assert v["overall"] == "BLOCKED"
+
+
+def test_verification_recomputes_source_snapshot_digest():
+    record = _record()
+    record["source_snapshot"]["description"] = "tampered"
+    v = verify({"run_id": "run-1", "overall": "PASS", "records": [record]},
+               run_id="run-1", tests_passed=True, test_digest="c" * 64)
+    assert v["overall"] == "BLOCKED"
+    assert any("source snapshot digest mismatch" in e for f in v["failures"] for e in f["errors"])
+
+
+def test_verification_recomputes_collected_evidence_digest():
+    record = _record()
+    record["evidence_content"] += "tampered"
+    v = verify({"run_id": "run-1", "overall": "PASS", "records": [record]},
+               run_id="run-1", tests_passed=True, test_digest="c" * 64)
+    assert v["overall"] == "BLOCKED"
+    assert any("evidence content digest mismatch" in e for f in v["failures"] for e in f["errors"])
