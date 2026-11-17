@@ -23,13 +23,13 @@ def contract():
 def test_attestation_binds_external_permit():
     c = contract()
     p = issue_permit(c, "AIOS_AUTHORITY")
-    a = issue_attestation(c, p, "test-secret")
-    assert verify_attestation(c, p, a, "test-secret") is True
+    a = issue_attestation(c, p, "test-secret-for-permit-attestation")
+    assert verify_attestation(c, p, a, "test-secret-for-permit-attestation") is True
 
     forged = dict(a)
     forged["permit_id"] = "PT-forged"
     with pytest.raises(ValueError):
-        verify_attestation(c, p, forged, "test-secret")
+        verify_attestation(c, p, forged, "test-secret-for-permit-attestation")
 
     with pytest.raises(ValueError):
         verify_attestation(c, p, a, "wrong-secret")
