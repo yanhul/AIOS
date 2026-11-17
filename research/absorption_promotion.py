@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from core.evidence_gate import gate_promotion
+from core.artifact_attestation import attest_artifact, verify_artifact_attestation
 
 DEFAULT_INPUT = Path("research/artifacts/absorption-verification.json")
 DEFAULT_RUNTIME = Path("research/artifacts/absorption-runtime-proof.json")
@@ -44,6 +45,12 @@ def promote(data: dict, runtime: dict | None = None, *, run_id: str | None = Non
         lineage_errors.append("runtime proof run_id mismatch")
     if data.get("overall") != "PASS":
         lineage_errors.append("independent verification is not PASS")
+    secret = os.environ.get("AIOS_EVIDENCE_SIGNING_SECRET")
+    if not secret or len(secret) < 16:
+        lineage_errors.append("trusted artifact signing secret is not configured")
+    if not verify_artifact_attestation("AIOS_ABSORPTION_RUNTIME_PROOF", expected_run,
+                                       runtime.get("digest", ""), runtime.get("attestation"), secret or ""):
+        lineage_errors.append("runtime proof HMAC attestation is missing or invalid")
     if not _verification_valid(data):
         lineage_errors.append("verification artifact content digest mismatch")
     if not _runtime_valid(runtime):
@@ -94,6 +101,11 @@ def promote(data: dict, runtime: dict | None = None, *, run_id: str | None = Non
               "implementation_runtime_proof": runtime_ok, "source_mutation": False,
               "external_code_execution": False, "authority": "AIOS_CONTROL_PLANE"}
     result["digest"] = _digest(result)
+    if secret and len(secret) >= 16:
+        result["attestation"] = attest_artifact("AIOS_ABSORPTION_PROMOTION", expected_run,
+                                                result["digest"], secret)
+    else:
+        result["overall"] = "BLOCKED"
     out = _path("AIOS_ABSORPTION_PROMOTION_OUT", DEFAULT_OUT)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
