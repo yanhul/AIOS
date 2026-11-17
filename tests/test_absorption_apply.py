@@ -20,7 +20,8 @@ def _artifacts():
                        "proposal": "p", "target_surface": "new AIOS adapter/task only"}}]}
     evidence = EvidenceRecord("c1", "VERIFIED_DIGITAL", e["records"][0]["source_ref"],
         "AIOS_NATIVE_ADAPTATION_PROPOSAL_CONFORMS", run, "AIOS_CONTROL_PLANE",
-        source_digest=source_digest, evidence_digest=evidence_digest, test_digest=test_digest).as_record()
+        source_digest=source_digest, evidence_digest=evidence_digest, test_digest=test_digest,
+        candidate_digest=_digest(e["records"][0])).as_record()
     evidence["candidate_id"] = "c1"
     evidence["attestation"] = attest_evidence(evidence, "unit-test-evidence-secret-32")
     v = {"run_id": run, "overall": "PASS", "records": [evidence], "failures": [],
