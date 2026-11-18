@@ -8,6 +8,7 @@ process-local set, temporary file, or caller-supplied boolean.
 from __future__ import annotations
 from typing import Any, Mapping
 from core.absorption_authority import verify_absorption_permit, AbsorptionAuthorizationError
+from core.absorption_replay_store import consume_permit_once, ReplayStoreError
 
 
 def authorize_absorption_effect(*, permit: Mapping[str, Any], permit_keyring: Mapping[str, Any],
@@ -27,6 +28,8 @@ def authorize_absorption_effect(*, permit: Mapping[str, Any], permit_keyring: Ma
     allowed = policy.get("decision", {}).get("allowed_effects")
     if not isinstance(allowed, list) or effect not in allowed:
         raise AbsorptionAuthorizationError(f"effect {effect!r} is not authorized by policy; DENY")
-    raise AbsorptionAuthorizationError(
-        "durable atomic one-time permit-consumption backend is unavailable; replay safety unproven; DENY"
-    )
+    try:
+        consume_permit_once(permit=permit, repository=repository, now=now)
+    except ReplayStoreError as exc:
+        raise AbsorptionAuthorizationError(str(exc)) from exc
+    return True
