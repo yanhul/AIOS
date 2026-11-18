@@ -144,20 +144,81 @@ jobs:
           name: aios-absorption-permit-${{ github.run_id }}
           path: permit
 
-      - name: Block direct ledger writes until PR-based writer is implemented
-        run: |
-          echo "DENY: private ledger main is unprotected on GitHub Free."
-          echo "Direct Contents API writes cannot provide the required review boundary."
-          echo "No replay receipt will be issued; production apply remains blocked."
-          exit 1
+      - name: Mint ledger-scoped GitHub App token
+        id: ledger-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+        with:
+          app-id: ${{ secrets.AIOS_LEDGER_APP_ID }}
+          private-key: ${{ secrets.AIOS_LEDGER_PRIVATE_KEY }}
+          owner: yanhul
+          repositories: AIOS-replay-ledger
+          permission-contents: write
+          permission-pull-requests: write
 
-      - name: Publish one-time consumption receipt
+      - name: Create ledger candidate branch and pull request
+        env:
+          GH_TOKEN: ${{ steps.ledger-token.outputs.token }}
+          STAGE1_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64, hashlib, json, os, time, urllib.error, urllib.request
+          from pathlib import Path
+          token = os.environ["GH_TOKEN"]
+          repo = "yanhul/AIOS-replay-ledger"
+          path = ".aios/absorption-consumed-permits.json"
+          run_id = os.environ["STAGE1_RUN_ID"]
+          permit = json.loads(Path("permit/absorption-permit.json").read_text())
+          canonical = lambda x: json.dumps(x, sort_keys=True, separators=(",", ":"))
+          permit_id = hashlib.sha256(canonical(permit).encode()).hexdigest()
+          branch = "aios-absorption-" + run_id
+          def api(method, endpoint, body=None):
+              data = None if body is None else json.dumps(body).encode()
+              req = urllib.request.Request("https://api.github.com" + endpoint, data=data, method=method,
+                  headers={"Authorization":"Bearer "+token,"Accept":"application/vnd.github+json",
+                           "X-GitHub-Api-Version":"2022-11-28","Content-Type":"application/json"})
+              try:
+                  with urllib.request.urlopen(req, timeout=20) as r: return json.loads(r.read() or b"{}")
+              except urllib.error.HTTPError as e:
+                  raise SystemExit(f"GitHub API {method} {endpoint} failed HTTP {e.code}: {e.read().decode(errors='replace')[:500]}")
+          main = api("GET", f"/repos/{repo}/branches/main")
+          base_sha = main["commit"]["sha"]
+          current = api("GET", f"/repos/{repo}/contents/{path}?ref=main")
+          ledger = json.loads(base64.b64decode(current["content"]).decode())
+          if ledger.get("schema_version") != 1 or not isinstance(ledger.get("consumed"), dict):
+              raise SystemExit("ledger schema invalid; DENY")
+          if permit_id in ledger["consumed"]:
+              raise SystemExit("permit already present in ledger; DENY")
+          target = permit.get("target_apply_run_id")
+          if target != run_id:
+              raise SystemExit("permit target apply run does not match this writer run; DENY")
+          ledger["consumed"][permit_id] = {"consumed_at": int(time.time()), "target_apply_run_id": target}
+          api("POST", f"/repos/{repo}/git/refs", {"ref":"refs/heads/"+branch,"sha":base_sha})
+          branch_file = api("GET", f"/repos/{repo}/contents/{path}?ref="+branch)
+          payload = {"message":"security: propose absorption permit consumption "+permit_id,
+                     "content":base64.b64encode((canonical(ledger)+"\n").encode()).decode(),
+                     "branch":branch,"sha":branch_file["sha"]}
+          api("PUT", f"/repos/{repo}/contents/{path}", payload)
+          body = ("AIOS replay-ledger candidate. Human review and merge required.\n\n"
+                  f"AIOS_PERMIT_ID={permit_id}\nAIOS_TARGET_APPLY_RUN_ID={target}\n"
+                  f"AIOS_WRITER_RUN_ID={run_id}\nAIOS_BASE_SHA={base_sha}\n")
+          pr = api("POST", f"/repos/{repo}/pulls", {"title":"Consume AIOS absorption permit "+permit_id[:12],
+              "head":branch,"base":"main","body":body,"draft":False})
+          Path("permit/ledger-pr.json").write_text(json.dumps({
+              "repository":repo,"branch":branch,"base_sha":base_sha,"pr_number":pr["number"],
+              "pr_url":pr["html_url"],"permit_id":permit_id,"target_apply_run_id":target,
+              "stage1_run_id":run_id}, indent=2)+"\n")
+          print(json.dumps({"result":"PR_OPENED","pr_number":pr["number"],"pr_url":pr["html_url"],
+                            "permit_id":permit_id,"base_sha":base_sha}))
+          PY
+
+      - name: Publish ledger PR reference (not a replay receipt)
         uses: actions/upload-artifact@v4
         with:
-          name: aios-absorption-replay-receipt-${{ github.run_id }}
-          path: receipt/replay-receipt.json
+          name: aios-absorption-ledger-pr-${{ github.run_id }}
+          path: permit/ledger-pr.json
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
 
   apply:
     needs: consume-permit
