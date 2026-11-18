@@ -133,7 +133,8 @@ jobs:
           AIOS_TARGET_BRANCH: main
           AIOS_ABSORPTION_PERMIT_PATH: permit/absorption-permit.json
           AIOS_ABSORPTION_PERMIT_KEYRING_PATH: policies/absorption-permit-keyring.json
-        run: python - <<'PY'
+        run: |
+          python - <<'PY'
           import json, os
           from pathlib import Path
           from research.absorption_apply import absorb
