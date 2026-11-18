@@ -259,3 +259,32 @@ def test_effect_guard_rejects_permit_for_another_workflow_run(monkeypatch):
             source_commit_sha="a" * 40, artifact_digests={"a.json": "b" * 64},
             target_apply_run_id="different-run", effect="effect-x",
         )
+
+
+def test_post_merge_finalize_requires_merged_exact_pr_and_issues_bound_receipt():
+    import yaml
+
+    workflow = yaml.load(
+        (ROOT / ".github/workflows/aios-absorption-finalize.yml").read_text(),
+        Loader=yaml.BaseLoader,
+    )
+    assert set(workflow["jobs"]) == {"verify-merged-ledger", "apply"}
+    verify = workflow["jobs"]["verify-merged-ledger"]
+    assert verify["environment"] == "absorption-ledger-writer"
+    token = next(step for step in verify["steps"] if step.get("name") == "Mint read-only ledger verification token")
+    assert token["with"]["permission-contents"] == "read"
+    assert token["with"]["permission-pull-requests"] == "read"
+    check = next(step for step in verify["steps"] if step.get("name") == "Verify merged PR and exact main ledger entry before receipt")
+    assert "merged" in check["run"]
+    assert "merge_commit_sha" in check["run"]
+    assert "pulls/" in check["run"]
+    assert "contents/" in check["run"]
+    assert "target_apply_run_id" in check["run"]
+    assert "continuation_run_id" in check["run"]
+    apply = workflow["jobs"]["apply"]
+    assert apply["needs"] == "verify-merged-ledger"
+    assert apply["environment"] == "production"
+    serialized = json.dumps(apply)
+    assert "AIOS_LEDGER_PRIVATE_KEY" not in serialized
+    assert "AIOS_LEDGER_APP_ID" not in serialized
+    assert "AIOS_REPLAY_RECEIPT_PATH" in serialized
