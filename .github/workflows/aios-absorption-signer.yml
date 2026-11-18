@@ -59,6 +59,7 @@ jobs:
               f.write("AIOS_SOURCE_RUN_ID=" + str(run["id"]) + "\n")
               f.write("AIOS_SOURCE_COMMIT_SHA=" + run["head_sha"] + "\n")
               f.write("AIOS_TARGET_BRANCH=main\n")
+              f.write("AIOS_TARGET_APPLY_RUN_ID=" + target_apply_run_id + "\\n")
           PY
 
       - name: Download immutable source evidence
