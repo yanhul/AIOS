@@ -34,6 +34,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          APPLY_HEAD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}" > "$RUNNER_TEMP/source-run.json"
@@ -49,6 +50,8 @@ jobs:
               raise SystemExit("source research run is not successful; DENY")
           if run.get("head_branch") != "main" or not run.get("head_sha"):
               raise SystemExit("source research run is not trusted main; DENY")
+          if run.get("head_sha") != os.environ["APPLY_HEAD_SHA"]:
+              raise SystemExit("source and apply workflow code revisions differ; DENY")
           with open(os.environ["GITHUB_ENV"], "a") as f:
               f.write("AIOS_SOURCE_RUN_ID=" + str(run["id"]) + "\n")
               f.write("AIOS_SOURCE_COMMIT_SHA=" + run["head_sha"] + "\n")
