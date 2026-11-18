@@ -27,6 +27,7 @@ def test_checked_in_policy_and_empty_keyrings_fail_closed():
 
 
 def test_valid_signature_still_denied_without_durable_replay_store_credentials(monkeypatch):
+    monkeypatch.setenv("GITHUB_RUN_ID", "apply-42")
     monkeypatch.setattr(effect_guard, "verify_absorption_permit", lambda **kwargs: True)
     policy = {
         "decision": {
@@ -164,3 +165,16 @@ def test_apply_workflow_is_protected_and_binds_exact_apply_run():
     apply_step = next(step for step in steps if step.get("name") == "Apply with Ed25519 permit and durable replay ledger")
     assert "GITHUB_TOKEN" in json.dumps(apply_step["env"])
     assert "AIOS_TARGET_APPLY_RUN_ID" in json.dumps(apply_step["env"])
+
+
+def test_effect_guard_rejects_permit_for_another_workflow_run(monkeypatch):
+    monkeypatch.setenv("GITHUB_RUN_ID", "actual-run-7")
+    monkeypatch.setattr(effect_guard, "verify_absorption_permit", lambda **kwargs: True)
+    with pytest.raises(AbsorptionAuthorizationError, match="current GitHub workflow run"):
+        authorize_absorption_effect(
+            permit={"signature": "signed"}, permit_keyring={"test": {}},
+            policy={"decision": {"default": "DENY", "allowed_effects": ["effect-x"]}},
+            repository="owner/repo", target_branch="main", run_id="source-1",
+            source_commit_sha="a" * 40, artifact_digests={"a.json": "b" * 64},
+            target_apply_run_id="different-run", effect="effect-x",
+        )
