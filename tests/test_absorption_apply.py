@@ -5,6 +5,7 @@ from core.evidence import EvidenceRecord, attest_evidence
 from core.artifact_attestation import attest_artifact
 from research.absorption_apply import absorb
 import research.absorption_apply as apply_module
+_REAL_AUTHORIZE_ABSORPTION_EFFECT = apply_module._authorize_absorption_effect
 
 
 @pytest.fixture(autouse=True)
@@ -134,7 +135,7 @@ def test_apply_fails_closed_when_ed25519_permit_is_missing(monkeypatch):
     e, v, p, runtime = _artifacts()
     with monkeypatch.context() as patch:
         patch.setattr(apply_module, "_authorize_absorption_effect",
-                      apply_module._authorize_absorption_effect)
+                      _REAL_AUTHORIZE_ABSORPTION_EFFECT)
         patch.delenv("AIOS_ABSORPTION_PERMIT_PATH", raising=False)
         patch.delenv("AIOS_ABSORPTION_PERMIT_KEYRING_PATH", raising=False)
         result = absorb(e, v, p, runtime, run_id="r1")
