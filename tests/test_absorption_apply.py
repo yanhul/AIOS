@@ -4,6 +4,14 @@ import pytest
 from core.evidence import EvidenceRecord, attest_evidence
 from core.artifact_attestation import attest_artifact
 from research.absorption_apply import absorb
+import research.absorption_apply as apply_module
+
+
+@pytest.fixture(autouse=True)
+def _isolate_existing_apply_unit_tests(monkeypatch):
+    # These tests cover the pre-existing data-lineage gate; permit enforcement has
+    # dedicated integration tests below and is never bypassed in the CLI entrypoint.
+    monkeypatch.setattr(apply_module, "_authorize_absorption_effect", lambda *a, **k: True)
 
 
 def _digest(value):
@@ -119,3 +127,17 @@ def test_apply_rejects_tampered_candidate_proposal():
     assert result["overall"] == "BLOCKED"
     assert result["absorbed_count"] == 0
     assert "source/evidence/test digest chain mismatch" in result["blocked"][0]["reason"]
+
+
+
+def test_apply_fails_closed_when_ed25519_permit_is_missing(monkeypatch):
+    e, v, p, runtime = _artifacts()
+    with monkeypatch.context() as patch:
+        patch.setattr(apply_module, "_authorize_absorption_effect",
+                      apply_module._authorize_absorption_effect)
+        patch.delenv("AIOS_ABSORPTION_PERMIT_PATH", raising=False)
+        patch.delenv("AIOS_ABSORPTION_PERMIT_KEYRING_PATH", raising=False)
+        result = absorb(e, v, p, runtime, run_id="r1")
+    assert result["overall"] == "BLOCKED"
+    assert result["absorbed_count"] == 0
+    assert "Ed25519 permit enforcement denied effect" in result["blocked"][0]["reason"]
