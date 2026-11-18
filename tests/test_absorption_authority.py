@@ -61,16 +61,16 @@ def fixture():
 
 
 def test_valid_human_approval_and_ed25519_permit_round_trip():
-    _, signer, policy, approval, artifacts, lineage, permit = fixture()
+    governance, signer, policy, approval, artifacts, lineage, permit = fixture()
     assert verify_approval_attestation(
-        policy=policy, approval=approval, governance_keyring=keyring(_governance_key(approval)),
+        policy=policy, approval=approval, governance_keyring=keyring(governance),
         repository="yanhul/AIOS", target_branch="main"
     )
-
-
-def _governance_key(approval):
-    # Reconstructing a private key is intentionally impossible; test helper is replaced below.
-    raise AssertionError("unreachable")
+    assert verify_absorption_permit(
+        permit=permit, permit_keyring=keyring(signer), policy=policy,
+        repository="yanhul/AIOS", target_branch="main", run_id="987654",
+        source_commit_sha="c" * 40, artifact_digests=artifacts,
+    )
 
 
 def test_policy_draft_empty_effects_cannot_be_approved_or_signed():
