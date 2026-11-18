@@ -57,7 +57,7 @@ def fixture():
         policy=policy, approval=approval, governance_keyring=keyring(governance),
         repository="yanhul/AIOS", target_branch="main", lineage=lineage,
         expected_run_id="987654", expected_commit_sha="c" * 40,
-        expected_artifacts=artifacts, permit_private_key=signer,
+        expected_artifacts=artifacts, target_apply_run_id="apply-123", permit_private_key=signer,
     )
     return governance, signer, policy, approval, artifacts, lineage, permit
 
@@ -72,6 +72,7 @@ def test_valid_human_approval_and_ed25519_permit_round_trip():
         permit=permit, permit_keyring=keyring(signer), policy=policy,
         repository="yanhul/AIOS", target_branch="main", run_id="987654",
         source_commit_sha="c" * 40, artifact_digests=artifacts,
+        target_apply_run_id="apply-123",
     )
 
 
@@ -163,6 +164,8 @@ def test_permit_verifier_rejects_wrong_scope_commit_run_and_rotated_key():
         source_commit_sha="c" * 40, artifact_digests=artifacts,
     )
     assert verify_absorption_permit(**args)
+    with pytest.raises(AbsorptionAuthorizationError, match="target_apply_run_id"):
+        verify_absorption_permit(**dict(args, target_apply_run_id="apply-other"))
     for field, value in [("run_id", "wrong"), ("source_commit_sha", "d" * 40)]:
         tampered = dict(permit)
         tampered[field] = value
