@@ -144,49 +144,12 @@ jobs:
           name: aios-absorption-permit-${{ github.run_id }}
           path: permit
 
-      - name: Create repository-scoped ledger writer token
-        id: ledger-app-token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
-        with:
-          app-id: ${{ secrets.AIOS_LEDGER_APP_ID }}
-          private-key: ${{ secrets.AIOS_LEDGER_PRIVATE_KEY }}
-          owner: yanhul
-          repositories: AIOS-replay-ledger
-          permission-contents: write
-
-      - name: Consume permit exactly once in isolated ledger repository
-        env:
-          AIOS_REPLAY_LEDGER_TOKEN: ${{ steps.ledger-app-token.outputs.token }}
-          TARGET_APPLY_RUN_ID: ${{ github.run_id }}
+      - name: Block direct ledger writes until PR-based writer is implemented
         run: |
-          set -euo pipefail
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          from core.absorption_replay_store import consume_permit_once
-          permit = json.loads(Path("permit/absorption-permit.json").read_text())
-          if permit.get("target_apply_run_id") != os.environ["TARGET_APPLY_RUN_ID"]:
-              raise SystemExit("permit is not bound to this apply run; DENY")
-          permit_id = consume_permit_once(
-              permit=permit, repository="yanhul/AIOS-replay-ledger", branch="main"
-          )
-          receipt = {
-              "schema_version": 1,
-              "permit_id": permit_id,
-              "target_apply_run_id": os.environ["TARGET_APPLY_RUN_ID"],
-              "ledger_repository": "yanhul/AIOS-replay-ledger",
-              "ledger_branch": "main",
-              "writer_job": os.environ["GITHUB_JOB"],
-              "consumed": True,
-          }
-          if receipt["writer_job"] != "consume-permit":
-              raise SystemExit("unexpected writer job identity; DENY")
-          Path("receipt").mkdir(exist_ok=True)
-          Path("receipt/replay-receipt.json").write_text(
-              json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n",
-              encoding="utf-8"
-          )
-          PY
+          echo "DENY: private ledger main is unprotected on GitHub Free."
+          echo "Direct Contents API writes cannot provide the required review boundary."
+          echo "No replay receipt will be issued; production apply remains blocked."
+          exit 1
 
       - name: Publish one-time consumption receipt
         uses: actions/upload-artifact@v4
