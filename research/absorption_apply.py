@@ -7,7 +7,6 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from core.evidence import verify_evidence
-from core.artifact_attestation import verify_artifact_attestation
 from core.absorption_effect_guard import authorize_absorption_effect
 
 DEFAULT_EXEC = ROOT / "research/artifacts/absorption-executor.json"
