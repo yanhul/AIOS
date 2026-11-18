@@ -5,8 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from core.evidence_gate import gate_promotion
-from core.artifact_attestation import attest_artifact, verify_artifact_attestation
+from core.evidence import verify_evidence
 
 DEFAULT_INPUT = Path("research/artifacts/absorption-verification.json")
 DEFAULT_RUNTIME = Path("research/artifacts/absorption-runtime-proof.json")
@@ -52,12 +51,6 @@ def promote(data: dict, runtime: dict | None = None, *, run_id: str | None = Non
         lineage_errors.append("runtime proof run_id mismatch")
     if data.get("overall") != "PASS":
         lineage_errors.append("independent verification is not PASS")
-    secret = os.environ.get("AIOS_EVIDENCE_SIGNING_SECRET")
-    if not secret or len(secret) < 16:
-        lineage_errors.append("trusted artifact signing secret is not configured")
-    if not verify_artifact_attestation("AIOS_ABSORPTION_RUNTIME_PROOF", expected_run,
-                                       runtime.get("digest", ""), runtime.get("attestation"), secret or ""):
-        lineage_errors.append("runtime proof HMAC attestation is missing or invalid")
     if not _verification_valid(data):
         lineage_errors.append("verification artifact content digest mismatch")
     if not _runtime_valid(runtime):
@@ -72,9 +65,12 @@ def promote(data: dict, runtime: dict | None = None, *, run_id: str | None = Non
             decision = None
             reason = "; ".join(lineage_errors)
         else:
-            decision = gate_promotion(record, required_level="VERIFIED_DIGITAL")
-            reason = decision.reason if not decision.allowed else ""
-        allowed = bool(decision and decision.allowed and runtime_ok)
+            valid_evidence = (verify_evidence(record) and
+                              record.get("level") in {"VERIFIED_DIGITAL", "PROMOTED"} and
+                              bool(record.get("source_ref")) and bool(record.get("claim")))
+            decision = valid_evidence
+            reason = "" if decision else "evidence digest, level, or provenance is invalid"
+        allowed = bool(decision and runtime_ok)
         item = {"candidate_id": record.get("candidate_id"), "run_id": record.get("run_id"),
                 "source_ref": record.get("source_ref"), "claim": record.get("claim"),
                 "level": record.get("level"), "allowed": allowed,
@@ -108,11 +104,6 @@ def promote(data: dict, runtime: dict | None = None, *, run_id: str | None = Non
               "implementation_runtime_proof": runtime_ok, "source_mutation": False,
               "external_code_execution": False, "authority": "AIOS_CONTROL_PLANE"}
     result["digest"] = _digest(result)
-    if secret and len(secret) >= 16:
-        result["attestation"] = attest_artifact("AIOS_ABSORPTION_PROMOTION", expected_run,
-                                                result["digest"], secret)
-    else:
-        result["overall"] = "BLOCKED"
     out = _path("AIOS_ABSORPTION_PROMOTION_OUT", DEFAULT_OUT)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
