@@ -75,6 +75,22 @@ def test_valid_human_approval_and_ed25519_permit_round_trip():
     )
 
 
+def test_approval_rejects_allowlist_principal_mismatch_and_expiry():
+    governance, _, policy, approval, _, _, _ = fixture()
+    with pytest.raises(AbsorptionAuthorizationError, match="allowlist"):
+        verify_approval_attestation(
+            policy=policy, approval=approval,
+            governance_keyring=keyring(governance, principal="different-human"),
+            repository="yanhul/AIOS", target_branch="main"
+        )
+    with pytest.raises(AbsorptionAuthorizationError, match="expired"):
+        verify_approval_attestation(
+            policy=policy, approval=approval, governance_keyring=keyring(governance),
+            repository="yanhul/AIOS", target_branch="main",
+            now=approval["expires_at"],
+        )
+
+
 def test_policy_draft_empty_effects_cannot_be_approved_or_signed():
     policy = {
         "policy_type": "GOVERNING_POLICY", "status": "DRAFT_UNAPPROVED",
