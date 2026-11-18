@@ -1,0 +1,36 @@
+name: AIOS Replay Ledger App Permission Preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: none
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: absorption-ledger-writer
+    permissions:
+      contents: read
+    steps:
+      - name: Mint narrowly scoped ledger App token
+        id: ledger-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+        with:
+          app-id: ${{ secrets.AIOS_LEDGER_APP_ID }}
+          private-key: ${{ secrets.AIOS_LEDGER_PRIVATE_KEY }}
+          owner: yanhul
+          repositories: AIOS-replay-ledger
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Verify token can read the private ledger and PR API
+        env:
+          GH_TOKEN: ${{ steps.ledger-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/yanhul/AIOS-replay-ledger --jq '.full_name + " private=" + (.private|tostring)'
+          gh api repos/yanhul/AIOS-replay-ledger/branches/main --jq '.name + " sha=" + .commit.sha'
+          gh api 'repos/yanhul/AIOS-replay-ledger/pulls?state=open&per_page=1' --jq 'length'
+          echo "APP_PERMISSION_PREFLIGHT=PASS"
