@@ -1,32 +1,44 @@
-# PR #140 — isolated absorption replay-ledger writer
+# PR #140 — isolated signer and two-phase replay-ledger PR writer
 
 ## Status
 
-**Draft / DENY / not merged.** The workflow and code have been changed on this PR branch to isolate replay-ledger writes. CI on final code/documentation head `495a289b284c177c32bb5069eba4ea8fa5f04389` passed all three jobs (`826 passed, 16 skipped, 1 warning` in `full-suite`). No live apply, signer, or ledger write has been executed.
+**Draft / BLOCKED / not merged.** The implementation now has two separate workflow phases. No live ledger write, human merge, receipt issuance, or production apply has been performed. CI for the latest head is pending at the time of this update.
 
-## Job separation implemented
+## Phase 1 — propose ledger consumption
 
-1. `prepare`: validates the source run, dispatches the protected signer, and publishes the permit artifact for this workflow run.
-2. `consume-permit`: runs only in Environment `absorption-ledger-writer`; creates a GitHub App installation token scoped to repository `yanhul/AIOS-replay-ledger` with Contents write; consumes the permit once using Contents API blob-SHA CAS; publishes a receipt only after the CAS write succeeds.
-3. `apply`: runs only in Environment `production`; receives the permit and receipt artifacts, verifies the receipt binding and Ed25519 permit, and has no App private key or replay-ledger token.
+Workflow: `.github/workflows/aios-absorption-apply.yml`
 
-The App action is pinned to verified commit `64ab729a6294000f5aa4a4bc0b73d1f32bc45510` (tag v3.3.0). The replay store no longer falls back to `GITHUB_TOKEN`; it requires `AIOS_REPLAY_LEDGER_TOKEN`. Target is fixed in workflow configuration to `yanhul/AIOS-replay-ledger`, branch `main`, path `.aios/absorption-consumed-permits.json`. The initial ledger file used the wrong `consumed_permits` array schema; this was corrected on the ledger repository's `main` to `{"schema_version": 1, "consumed": {}}` in commit `0ce99640a0ff3dc2a1d9077bec1daa482da302e2` and read back successfully.
+1. Validate the trusted source research run and bind the signer permit to this stage-one workflow run.
+2. Signer remains isolated in the `absorption-signer` Environment.
+3. The `consume-permit` job runs in `absorption-ledger-writer`, mints a narrowly scoped GitHub App token for only `yanhul/AIOS-replay-ledger`, and requests Contents: write + Pull requests: write.
+4. Read the current `main` SHA and ledger; reject malformed schema or duplicate permit.
+5. Create a unique branch `aios-absorption-<stage1-run-id>` from that exact SHA, commit the candidate ledger entry to the branch, and open a PR targeting `main`.
+6. Publish only a PR reference artifact. **No replay receipt is issued in phase 1.**
 
-## Receipt and failure behavior
+## Phase 2 — verify after human merge
 
-- The writer job must successfully complete the Contents API CAS before it can upload the receipt.
-- Receipt binds permit digest, exact apply workflow run ID, ledger repository/branch, and writer job ID.
-- The production guard rejects missing, unreadable, or mismatched receipts.
-- A consumed permit is not automatically retried if downstream production fails; this is fail-closed and requires a fresh apply run/permit.
-- The receipt is a same-workflow artifact from the required writer job; production does not receive the App token or private key.
+Workflow: `.github/workflows/aios-absorption-finalize.yml`
 
-## Remaining blockers
+Inputs: original source run ID, successful stage-one run ID, and ledger PR number.
 
-- The target repository `yanhul/AIOS-replay-ledger` is private and its default branch is `main`. The branch endpoint explicitly reports `protected: false` and `protection.enabled: false` for `main`. The rulesets endpoint returned `403: Upgrade to GitHub Pro or make this repository public to enable this feature`; the branch-protection detail endpoint returned `403 Resource not accessible by integration`. Therefore `main` is **CONFIRMED UNPROTECTED**; ruleset configuration is unavailable on the current plan/API access. Do not describe the ledger as append-only or tamper-proof. Contents API blob-SHA CAS prevents two writers using the same stale SHA from both succeeding, but it does not prevent a credential holder or administrator from later rewriting/deleting history. Do not make the repository public or change its plan/privacy as a workaround.
-- No live writer-token creation, CAS write, signer→writer→production non-production run, or parallel CAS race has been executed. The existing tests simulate a CAS conflict; they are not a live GitHub concurrency test.
-- Environment secret presence is user-confirmed only; secret values were not exposed or independently read.
-- Policy remains default `DENY`, `allowed_effects: []`; governance and permit keyrings remain empty. No approval or production authorization is being created.
+1. Require source and stage-one runs to be successful, from their expected workflows, on `main`, and on the same source SHA.
+2. Download the exact signed permit from the stage-one run.
+3. Use a read-only App token to inspect the specified PR and ledger.
+4. Require the PR to be merged into `main`, have the expected unique branch, contain the exact permit/target/stage-one markers, and change only the ledger file.
+5. Re-read the ledger from `main`; require the exact permit ID and target stage-one run ID in the consumed map.
+6. Only after those checks, issue a receipt binding the permit, target stage-one run, continuation run, PR number, merge commit SHA, and ledger-entry digest.
+7. The separate `production` job downloads the original source evidence, permit, and same-run receipt and re-runs the apply-time Ed25519 and receipt checks.
 
-## Verification required
+The effect guard now distinguishes the permit's stage-one target run from the later post-merge continuation run. The receipt must bind both.
 
-Run PR CI on the latest head and inspect all jobs. CI passing is code/test evidence only. Before any non-production end-to-end run, verify the App installation is restricted to only `yanhul/AIOS-replay-ledger`, the Environment contains only the intended App ID/private-key secrets, and the separate repository's branch protection. Keep this PR Draft and unmerged until those checks and non-production E2E pass.
+## Security boundaries and remaining blockers
+
+- The App token is minted only in the writer/verification Environment. Production has no App ID/private key or ledger write credential.
+- Phase 1 writes only to a uniquely named branch; it does not write to ledger `main`.
+- Phase 2 does not issue a receipt unless the PR is merged and the exact ledger entry is observed on `main`.
+- GitHub Free does not provide server-enforced branch protection for this private ledger. The PR is a human review boundary, not tamper-proof append-only storage. An administrator or sufficiently privileged credential can still bypass it.
+- App preflight attempt 4 passed token minting and GET access. It did not test branch creation, PR creation, merge verification, or receipt issuance.
+- No live writer PR, live post-merge verification, live CAS/race test, or signer→writer→finalizer→apply E2E has been executed.
+- Environment secret presence is user-confirmed; secret values are not read.
+- Policy remains `DRAFT_UNAPPROVED`, default `DENY`, `allowed_effects: []`; governance and permit keyrings remain empty. The production effect must remain denied.
+- Keep this PR Draft and unmerged. Do not create governance/permit keys or run production to bypass these blockers.
