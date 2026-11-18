@@ -22,7 +22,7 @@ def test_checked_in_policy_and_empty_keyrings_fail_closed():
             permit={}, permit_keyring=permit_keys, policy=policy,
             repository="yanhul/AIOS", target_branch="main", run_id="1",
             source_commit_sha="a" * 40, artifact_digests={"artifact.json": "b" * 64},
-            effect="materialize_absorbed_registry",
+            target_apply_run_id="apply-42", effect="materialize_absorbed_registry",
         )
 
 
