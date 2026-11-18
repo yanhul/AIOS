@@ -72,8 +72,11 @@ def _validate_policy(policy: Mapping[str, Any]) -> str:
     approval = policy.get("approval")
     if not isinstance(decision, Mapping) or decision.get("default") != "DENY":
         raise AbsorptionAuthorizationError("policy must retain default DENY")
-    if not isinstance(decision.get("allowed_effects"), list) or not decision["allowed_effects"]:
-        raise AbsorptionAuthorizationError("policy has no explicitly approved effects; DENY")
+    effects = decision.get("allowed_effects")
+    if (not isinstance(effects, list) or not effects or
+            any(not isinstance(effect, str) or not effect.strip() for effect in effects) or
+            len(set(effects)) != len(effects)):
+        raise AbsorptionAuthorizationError("policy effects must be a non-empty unique string list; DENY")
     if not isinstance(approval, Mapping) or approval.get("required") is not True:
         raise AbsorptionAuthorizationError("human approval requirement missing; DENY")
     if policy.get("status") != "APPROVED" or approval.get("status") != "APPROVED":
@@ -123,8 +126,10 @@ def _verify_signed_record(record: Mapping[str, Any], keyring: Mapping[str, Any],
     if not isinstance(keyring, Mapping) or not keyring:
         raise AbsorptionAuthorizationError("trust keyring unavailable; DENY")
     entry = keyring.get(record["key_id"])
-    if not isinstance(entry, Mapping) or set(entry) != {"public_key", "revoked"}:
-        raise AbsorptionAuthorizationError("issuer is not allowlisted; DENY")
+    if not isinstance(entry, Mapping) or set(entry) != {"public_key", "revoked", "principal"}:
+        raise AbsorptionAuthorizationError("issuer is not allowlisted or principal binding is missing; DENY")
+    if not isinstance(entry.get("principal"), str) or not entry["principal"].strip():
+        raise AbsorptionAuthorizationError("allowlisted principal is missing; DENY")
     if entry.get("revoked") is not False:
         raise AbsorptionAuthorizationError("issuer key revoked or revocation unknown; DENY")
     pub = entry.get("public_key")
@@ -142,7 +147,7 @@ def _verify_signed_record(record: Mapping[str, Any], keyring: Mapping[str, Any],
         )
     except (InvalidSignature, ValueError) as exc:
         raise AbsorptionAuthorizationError("signature invalid; DENY") from exc
-    return record["key_id"]
+    return record["key_id"], entry["principal"]
 
 
 def verify_approval_attestation(*, policy: Mapping[str, Any], approval: Mapping[str, Any],
@@ -150,8 +155,14 @@ def verify_approval_attestation(*, policy: Mapping[str, Any], approval: Mapping[
                                 target_branch: str, now: int | None = None) -> bool:
     timestamp = int(time.time()) if now is None else now
     digest = _validate_policy(policy)
-    _verify_signed_record(approval, governance_keyring,
-                          expected_type=APPROVAL_TYPE, now=timestamp)
+    _, authorized_principal = _verify_signed_record(
+        approval, governance_keyring, expected_type=APPROVAL_TYPE, now=timestamp
+    )
+    approved_at = approval.get("approved_at")
+    if isinstance(approved_at, bool) or not isinstance(approved_at, int) or approved_at > timestamp:
+        raise AbsorptionAuthorizationError("approval timestamp is invalid or in the future; DENY")
+    if approval.get("approver") != authorized_principal:
+        raise AbsorptionAuthorizationError("approver does not match governance key allowlist; DENY")
     expected = {
         "policy_digest": digest, "repository": repository,
         "target_branch": target_branch,
