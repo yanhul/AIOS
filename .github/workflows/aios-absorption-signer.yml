@@ -7,6 +7,10 @@ on:
         description: "Completed absorption research workflow run ID"
         required: true
         type: string
+      target_apply_run_id:
+        description: "Pre-created, exact apply workflow run ID that this permit may authorize"
+        required: true
+        type: string
 
 permissions:
   actions: read
@@ -32,6 +36,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          INPUT_TARGET_APPLY_RUN_ID: ${{ inputs.target_apply_run_id }}
         run: |
           set -euo pipefail
           gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}" > "$RUNNER_TEMP/source-run.json"
