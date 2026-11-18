@@ -202,7 +202,7 @@ def sign_absorption_permit(*, policy: Mapping[str, Any], approval: Mapping[str, 
                            governance_keyring: Mapping[str, Any], repository: str,
                            target_branch: str, lineage: Mapping[str, Any],
                            expected_run_id: str, expected_commit_sha: str,
-                           expected_artifacts: Mapping[str, str], permit_private_key,
+                           expected_artifacts: Mapping[str, str], target_apply_run_id: str, permit_private_key,
                            now: int | None = None) -> dict:
     """Signer entry point. It signs only after independently checking policy, approval and lineage."""
     _require_crypto()
@@ -214,12 +214,15 @@ def sign_absorption_permit(*, policy: Mapping[str, Any], approval: Mapping[str, 
                    expected_run_id=expected_run_id, expected_commit_sha=expected_commit_sha,
                    expected_artifacts=expected_artifacts)
     digest = _validate_policy(policy)
+    if not isinstance(target_apply_run_id, str) or not target_apply_run_id.strip():
+        raise AbsorptionAuthorizationError("target apply run identity missing; DENY")
     record = {
         "type": PERMIT_TYPE, "algorithm": ALGORITHM,
         "key_id": _key_id(_public_hex(permit_private_key)),
         "policy_digest": digest, "repository": repository, "target_branch": target_branch,
         "allowed_effects": sorted(policy["decision"]["allowed_effects"]),
-        "run_id": expected_run_id, "source_commit_sha": expected_commit_sha,
+        "run_id": expected_run_id, "target_apply_run_id": target_apply_run_id,
+        "source_commit_sha": expected_commit_sha,
         "artifact_digests": dict(sorted(expected_artifacts.items())),
         "approval_key_id": approval["key_id"], "issued_at": timestamp,
         "expires_at": min(approval["expires_at"], timestamp + 900),
@@ -231,13 +234,15 @@ def sign_absorption_permit(*, policy: Mapping[str, Any], approval: Mapping[str, 
 def verify_absorption_permit(*, permit: Mapping[str, Any], permit_keyring: Mapping[str, Any],
                              policy: Mapping[str, Any], repository: str, target_branch: str,
                              run_id: str, source_commit_sha: str,
-                             artifact_digests: Mapping[str, str], now: int | None = None) -> bool:
+                             artifact_digests: Mapping[str, str], target_apply_run_id: str,
+                             now: int | None = None) -> bool:
     timestamp = int(time.time()) if now is None else now
     digest = _validate_policy(policy)
     _verify_signed_record(permit, permit_keyring, expected_type=PERMIT_TYPE, now=timestamp)
     expected = {
         "policy_digest": digest, "repository": repository, "target_branch": target_branch,
-        "run_id": run_id, "source_commit_sha": source_commit_sha,
+        "run_id": run_id, "target_apply_run_id": target_apply_run_id,
+        "source_commit_sha": source_commit_sha,
         "artifact_digests": dict(sorted(artifact_digests.items())),
         "allowed_effects": sorted(policy["decision"]["allowed_effects"]),
     }
