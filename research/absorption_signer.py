@@ -72,8 +72,11 @@ def validate_artifact_bundle(artifacts, *, source_run_id):
         raise RuntimeError("executor/verification/promotion candidate sets differ; DENY")
     if any(r.get("run_id") != source_run_id for r in executor.get("records", []) + verification.get("records", [])):
         raise RuntimeError("candidate record lineage mismatch; DENY")
-    if any(r.get("external_code_copy") is not False or r.get("external_code_execution") is not False
-           for r in executor.get("records", [])):
+    if any(
+        (r.get("adaptation") or {}).get("external_code_copy", r.get("external_code_copy")) is not False or
+        (r.get("adaptation") or {}).get("external_code_execution", r.get("external_code_execution")) is not False
+        for r in executor.get("records", [])
+    ):
         raise RuntimeError("executor record permits external code copy/execution; DENY")
     return True
 
