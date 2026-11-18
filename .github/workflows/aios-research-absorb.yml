@@ -2,23 +2,26 @@ name: AIOS Research -> Absorption Intake
 on:
   workflow_dispatch:
 
+# Research intake is deliberately read-only. Signing and effects are separate,
+# protected operations; this workflow never receives production signing secrets.
 permissions:
-  actions: write
-  contents: write
+  actions: read
+  contents: read
 
 concurrency:
   group: aios-research-absorb-main
   cancel-in-progress: false
 
 jobs:
-  scan-and-intake:
-    # This workflow consumes a deployment signing secret: never execute its code from an arbitrary ref.
+  research-intake:
     if: github.ref == 'refs/heads/main'
-    environment: production
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
 
       - name: Remove tracked outputs from earlier runs
         run: |
@@ -49,64 +52,13 @@ jobs:
       - name: Verify intake and executor invariants
         run: python -m pytest tests/test_absorption_*.py -v
 
-      - name: Independently verify adaptation conformance
-        env:
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          AIOS_EVIDENCE_SIGNING_SECRET: ${{ secrets.AIOS_PRODUCTION_EVIDENCE_SIGNING_SECRET }}
-        run: python research/absorption_verifier.py
-
-      - name: Prove AIOS-native implementation and runtime
-        env:
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          AIOS_EVIDENCE_SIGNING_SECRET: ${{ secrets.AIOS_PRODUCTION_EVIDENCE_SIGNING_SECRET }}
-        run: python research/absorption_runtime_proof.py
-
-      - name: Run bounded autonomous re-verification
-        if: always()
-        env:
-          GITHUB_RUN_ID: ${{ github.run_id }}
-        run: python research/absorption_repair.py
-
-      - name: Apply authenticated same-run evidence promotion gate
-        env:
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          AIOS_EVIDENCE_SIGNING_SECRET: ${{ secrets.AIOS_PRODUCTION_EVIDENCE_SIGNING_SECRET }}
-        run: python research/absorption_promotion.py
-
-      - name: Materialize only proven same-run absorption
-        env:
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          AIOS_EVIDENCE_SIGNING_SECRET: ${{ secrets.AIOS_PRODUCTION_EVIDENCE_SIGNING_SECRET }}
-        run: python research/absorption_apply.py
-
-      - name: Publish absorption evidence
+      # No verifier/promotion/apply here: those require independently approved
+      # governance and signer artifacts. This job only publishes untrusted research.
+      - name: Publish untrusted research evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: aios-absorption-runtime-${{ github.run_id }}
+          name: aios-absorption-research-${{ github.run_id }}
           path: research/artifacts/*.json
           if-no-files-found: warn
           retention-days: 30
-
-      - name: Persist research and promotion artifacts
-        run: |
-          git config user.name "aios-research[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          for attempt in 1 2 3; do
-            git fetch origin main
-            git reset --mixed origin/main
-            git add research/artifacts
-            if git diff --cached --quiet; then
-              exit 0
-            fi
-            git commit -m "research: record governed absorption"
-            git push && exit 0
-            git reset --mixed HEAD^
-            sleep 2
-          done
-          exit 1
-
-      - name: Dispatch CI after governed research commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run ci.yml --ref main
