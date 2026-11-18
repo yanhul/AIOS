@@ -282,6 +282,13 @@ def test_post_merge_finalize_requires_merged_exact_pr_and_issues_bound_receipt()
     assert "contents/" in check["run"]
     assert "target_apply_run_id" in check["run"]
     assert "continuation_run_id" in check["run"]
+    assert "verify_absorption_permit" in check["run"]
+    assert "source-evidence" in json.dumps(verify)
+    assert "AIOS_BASE_SHA" in check["run"]
+    assert "monotonic single-entry append" in check["run"]
+    assert "set(after)-set(before)" in check["run"]
+    assert "GITHUB_SHA" in json.dumps(verify)
+    assert "aios-absorption-permit-${{ inputs.stage1_run_id }}" in json.dumps(verify)
     apply = workflow["jobs"]["apply"]
     assert apply["needs"] == "verify-merged-ledger"
     assert apply["environment"] == "production"
