@@ -17,7 +17,7 @@ def digest_json(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 def run():
-    required = ("AIOS_SOURCE_RUN_ID", "AIOS_SOURCE_COMMIT_SHA", "AIOS_TARGET_BRANCH",
+    required = ("AIOS_SOURCE_RUN_ID", "AIOS_SOURCE_COMMIT_SHA", "AIOS_TARGET_BRANCH", "AIOS_TARGET_APPLY_RUN_ID",
                 "GITHUB_REPOSITORY", "AIOS_ABSORPTION_PERMIT_PRIVATE_KEY")
     missing = [name for name in required if not os.environ.get(name)]
     if missing:
@@ -43,13 +43,15 @@ def run():
         repository=repository, target_branch=os.environ["AIOS_TARGET_BRANCH"],
         lineage=lineage, expected_run_id=os.environ["AIOS_SOURCE_RUN_ID"],
         expected_commit_sha=os.environ["AIOS_SOURCE_COMMIT_SHA"],
-        expected_artifacts=expected, permit_private_key=private,
+        expected_artifacts=expected, target_apply_run_id=os.environ["AIOS_TARGET_APPLY_RUN_ID"],
+        permit_private_key=private,
     )
     out = Path(os.environ.get("AIOS_PERMIT_OUT", "output/absorption-permit.json"))
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(permit, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({"result": "SIGNED", "permit_key_id": permit["key_id"],
-                      "source_run_id": permit["run_id"], "artifact_count": len(expected)}))
+                      "source_run_id": permit["run_id"], "target_apply_run_id": permit["target_apply_run_id"],
+                      "artifact_count": len(expected)}))
     return permit
 
 if __name__ == "__main__":
