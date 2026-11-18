@@ -104,6 +104,7 @@ jobs:
           STAGE1_RUN_ID: ${{ inputs.stage1_run_id }}
           PR_NUMBER: ${{ inputs.ledger_pr_number }}
           CONTINUATION_RUN_ID: ${{ github.run_id }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -144,10 +145,15 @@ jobs:
               raise SystemExit("ledger PR changed unexpected files; DENY")
           base_marker=next((line.split("=",1)[1] for line in body.splitlines() if line.startswith("AIOS_BASE_SHA=")),None)
           if not isinstance(base_marker,str) or len(base_marker)!=40: raise SystemExit("ledger PR base SHA missing or malformed; DENY")
+          head_sha=pr.get("head",{}).get("sha")
+          if not isinstance(head_sha,str) or len(head_sha)!=40: raise SystemExit("ledger PR head SHA missing or malformed; DENY")
+          head_commit=api(f"/repos/{repo}/commits/{head_sha}")
+          parents=head_commit.get("parents",[])
+          if not parents or parents[0].get("sha")!=base_marker: raise SystemExit("ledger PR head is not based on declared immutable base SHA; DENY")
           def read_ledger(ref):
               obj=api(f"/repos/{repo}/contents/{path}?ref={ref}")
               return json.loads(base64.b64decode(obj["content"]).decode())
-          base_ledger=read_ledger(base_marker); branch_ledger=read_ledger(expected_branch); main_ledger=read_ledger("main")
+          base_ledger=read_ledger(base_marker); branch_ledger=read_ledger(head_sha); main_ledger=read_ledger("main")
           for label,value in (("base",base_ledger),("PR branch",branch_ledger),("main",main_ledger)):
               if value.get("schema_version")!=1 or not isinstance(value.get("consumed"),dict): raise SystemExit(f"{label} ledger schema invalid; DENY")
           before=base_ledger["consumed"]; candidate=branch_ledger["consumed"]; after=main_ledger["consumed"]
