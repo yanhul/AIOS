@@ -178,14 +178,12 @@ def test_apply_workflow_is_protected_and_binds_exact_apply_run():
     assert writer["needs"] == "prepare"
     assert writer["environment"] == "absorption-ledger-writer"
     writer_json = json.dumps(writer)
-    assert "AIOS_LEDGER_APP_ID" in writer_json
-    assert "AIOS_LEDGER_PRIVATE_KEY" in writer_json
-    assert "AIOS_REPLAY_LEDGER_TOKEN" in writer_json
-    assert "AIOS-replay-ledger" in writer_json
-    app_token = next(step for step in writer["steps"] if step.get("name") == "Create repository-scoped ledger writer token")
-    assert app_token["with"]["permission-contents"] == "write"
-    assert app_token["with"]["repositories"] == "AIOS-replay-ledger"
-    assert "64ab729a6294000f5aa4a4bc0b73d1f32bc45510" in writer_json
+    assert "AIOS_LEDGER_PRIVATE_KEY" not in writer_json
+    assert "AIOS_REPLAY_LEDGER_TOKEN" not in writer_json
+    blocker = next(step for step in writer["steps"] if step.get("name") == "Block direct ledger writes until PR-based writer is implemented")
+    assert "DENY" in blocker["run"]
+    assert "No replay receipt will be issued" in blocker["run"]
+    assert blocker["run"].strip().endswith("exit 1")
 
     apply = workflow["jobs"]["apply"]
     assert apply["needs"] == "consume-permit"
