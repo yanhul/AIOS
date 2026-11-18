@@ -47,7 +47,7 @@ def run():
     )
     out = Path(os.environ.get("AIOS_PERMIT_OUT", "output/absorption-permit.json"))
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(permit, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+    out.write_text(json.dumps(permit, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({"result": "SIGNED", "permit_key_id": permit["key_id"],
                       "source_run_id": permit["run_id"], "artifact_count": len(expected)}))
     return permit
