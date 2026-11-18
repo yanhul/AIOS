@@ -139,7 +139,7 @@ jobs:
       - name: Publish signed permit
         uses: actions/upload-artifact@v4
         with:
-          name: aios-absorption-permit-${{ inputs.source_run_id }}
+          name: aios-absorption-permit-${{ inputs.source_run_id }}-${{ inputs.target_apply_run_id }}
           path: output/absorption-permit.json
           if-no-files-found: error
           retention-days: 7
