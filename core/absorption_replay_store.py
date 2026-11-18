@@ -57,10 +57,10 @@ def consume_permit_once(*, permit: Mapping[str, Any], repository: str,
     credential = token or os.environ.get("AIOS_REPLAY_LEDGER_TOKEN", "")
     if not credential:
         raise ReplayStoreError("AIOS_REPLAY_LEDGER_TOKEN with contents:write is required; DENY")
-    if not isinstance(repository, str) or repository.count("/") != 1:
-        raise ReplayStoreError("repository identity malformed; DENY")
-    if not isinstance(branch, str) or not branch or "/" in branch:
-        raise ReplayStoreError("replay ledger branch malformed; DENY")
+    if repository != LEDGER_REPOSITORY:
+        raise ReplayStoreError("replay ledger repository must be the dedicated AIOS-replay-ledger repository; DENY")
+    if branch != LEDGER_BRANCH:
+        raise ReplayStoreError("replay ledger branch must be main; DENY")
     if not isinstance(permit, Mapping) or not isinstance(permit.get("signature"), str):
         raise ReplayStoreError("signed permit missing; DENY")
 
