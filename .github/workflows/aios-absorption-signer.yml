@@ -37,13 +37,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
           INPUT_TARGET_APPLY_RUN_ID: ${{ inputs.target_apply_run_id }}
+          SIGNER_HEAD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}" > "$RUNNER_TEMP/source-run.json"
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${INPUT_TARGET_APPLY_RUN_ID}" > "$RUNNER_TEMP/target-apply-run.json"
           python - <<'PY'
           import json, os
           from pathlib import Path
           run = json.loads(Path(os.environ["RUNNER_TEMP"] + "/source-run.json").read_text())
+          target = json.loads(Path(os.environ["RUNNER_TEMP"] + "/target-apply-run.json").read_text())
           if run.get("repository", {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
               raise SystemExit("source repository mismatch; DENY")
           if run.get("path") != ".github/workflows/aios-research-absorb.yml":
@@ -52,6 +55,14 @@ jobs:
               raise SystemExit("source run is not a completed successful manual workflow; DENY")
           if run.get("head_branch") != "main" or not run.get("head_sha"):
               raise SystemExit("source run is not from trusted main; DENY")
+          if target.get("repository", {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("target apply repository mismatch; DENY")
+          if target.get("path") != ".github/workflows/aios-absorption-apply.yml":
+              raise SystemExit("target run is not the protected apply workflow; DENY")
+          if target.get("event") != "workflow_dispatch" or target.get("status") != "in_progress":
+              raise SystemExit("target apply workflow is not an active manual run; DENY")
+          if target.get("head_branch") != "main" or target.get("head_sha") != run.get("head_sha") or target.get("head_sha") != os.environ["SIGNER_HEAD_SHA"]:
+              raise SystemExit("source, target apply, and signer revisions do not match; DENY")
           target_apply_run_id = os.environ.get("INPUT_TARGET_APPLY_RUN_ID", "")
           if not target_apply_run_id or len(target_apply_run_id) > 128 or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-" for c in target_apply_run_id):
               raise SystemExit("target_apply_run_id is missing or malformed; DENY")
