@@ -178,7 +178,9 @@ def test_apply_workflow_is_protected_and_binds_exact_apply_run():
     assert writer["needs"] == "prepare"
     assert writer["environment"] == "absorption-ledger-writer"
     writer_json = json.dumps(writer)
-    assert "AIOS_LEDGER_PRIVATE_KEY" not in writer_json
+    token_step = next(step for step in writer["steps"] if step.get("name") == "Mint ledger-scoped GitHub App token")
+    assert "secrets.AIOS_LEDGER_PRIVATE_KEY" in json.dumps(token_step)
+    assert all("AIOS_LEDGER_PRIVATE_KEY" not in json.dumps(step) for step in writer["steps"] if step is not token_step)
     assert "AIOS_REPLAY_LEDGER_TOKEN" not in writer_json
     app_token = next(step for step in writer["steps"] if step.get("name") == "Mint ledger-scoped GitHub App token")
     assert app_token["with"]["repositories"] == "AIOS-replay-ledger"
