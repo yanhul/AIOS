@@ -288,6 +288,10 @@ def test_post_merge_finalize_requires_merged_exact_pr_and_issues_bound_receipt()
     assert "monotonic single-entry append" in check["run"]
     assert "set(after)-set(before)" in check["run"]
     assert "GITHUB_SHA" in json.dumps(verify)
+    assert "read_ledger(head_sha)" in check["run"]
+    assert "parents[0].get(\"sha\")!=base_marker" in check["run"]
+    apply_prepare = next(step for step in yaml.load((ROOT / ".github/workflows/aios-absorption-apply.yml").read_text(), Loader=yaml.BaseLoader)["jobs"]["prepare"]["steps"] if step.get("name") == "Wait for permit signed for this apply run")
+    assert "permit artifact is not from successful signer workflow" in apply_prepare["run"]
     assert "aios-absorption-permit-${{ inputs.stage1_run_id }}" in json.dumps(verify)
     apply = workflow["jobs"]["apply"]
     assert apply["needs"] == "verify-merged-ledger"
