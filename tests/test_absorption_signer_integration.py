@@ -26,7 +26,7 @@ def test_checked_in_policy_and_empty_keyrings_fail_closed():
         )
 
 
-def test_valid_signature_still_denied_without_durable_atomic_replay_store(monkeypatch):
+def test_valid_signature_still_denied_without_durable_replay_store_credentials(monkeypatch):
     monkeypatch.setattr(effect_guard, "verify_absorption_permit", lambda **kwargs: True)
     policy = {
         "decision": {
@@ -34,7 +34,7 @@ def test_valid_signature_still_denied_without_durable_atomic_replay_store(monkey
             "allowed_effects": ["materialize_absorbed_registry"],
         }
     }
-    with pytest.raises(AbsorptionAuthorizationError, match="durable atomic one-time permit-consumption backend"):
+    with pytest.raises(AbsorptionAuthorizationError, match="GITHUB_TOKEN with contents:write is required"):
         authorize_absorption_effect(
             permit={"signature": "cryptographically-verified-by-test"},
             permit_keyring={"test": {}}, policy=policy,
