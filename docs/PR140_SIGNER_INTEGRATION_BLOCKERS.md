@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft / DENY / not merged.** The workflow and code have been changed on this PR branch to isolate replay-ledger writes. CI on commit `7e9b764223253a9ffe45801496527aa449d7980f` passed all three jobs (`826 passed, 16 skipped` in `full-suite`). The follow-up documentation-only integrity-boundary update is being rechecked. No live apply, signer, or ledger write has been executed.
+**Draft / DENY / not merged.** The workflow and code have been changed on this PR branch to isolate replay-ledger writes. CI on final code/documentation head `495a289b284c177c32bb5069eba4ea8fa5f04389` passed all three jobs (`826 passed, 16 skipped, 1 warning` in `full-suite`). No live apply, signer, or ledger write has been executed.
 
 ## Job separation implemented
 
@@ -10,7 +10,7 @@
 2. `consume-permit`: runs only in Environment `absorption-ledger-writer`; creates a GitHub App installation token scoped to repository `yanhul/AIOS-replay-ledger` with Contents write; consumes the permit once using Contents API blob-SHA CAS; publishes a receipt only after the CAS write succeeds.
 3. `apply`: runs only in Environment `production`; receives the permit and receipt artifacts, verifies the receipt binding and Ed25519 permit, and has no App private key or replay-ledger token.
 
-The App action is pinned to verified commit `64ab729a6294000f5aa4a4bc0b73d1f32bc45510` (tag v3.3.0). The replay store no longer falls back to `GITHUB_TOKEN`; it requires `AIOS_REPLAY_LEDGER_TOKEN`. Target is fixed in workflow configuration to `yanhul/AIOS-replay-ledger`, branch `main`, path `.aios/absorption-consumed-permits.json`.
+The App action is pinned to verified commit `64ab729a6294000f5aa4a4bc0b73d1f32bc45510` (tag v3.3.0). The replay store no longer falls back to `GITHUB_TOKEN`; it requires `AIOS_REPLAY_LEDGER_TOKEN`. Target is fixed in workflow configuration to `yanhul/AIOS-replay-ledger`, branch `main`, path `.aios/absorption-consumed-permits.json`. The initial ledger file used the wrong `consumed_permits` array schema; this was corrected on the ledger repository's `main` to `{"schema_version": 1, "consumed": {}}` in commit `0ce99640a0ff3dc2a1d9077bec1daa482da302e2` and read back successfully.
 
 ## Receipt and failure behavior
 
