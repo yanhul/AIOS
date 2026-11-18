@@ -89,7 +89,7 @@ def run():
         raise RuntimeError("missing signer inputs: " + ", ".join(missing) + "; DENY")
     repository = os.environ["GITHUB_REPOSITORY"]
     policy = read_json(os.environ.get("AIOS_POLICY_PATH", ROOT / "policies/absorption-default-deny.v1.json"))
-    approval = read_json(os.environ.get("AIOS_APPROVAL_PATH", "input/approval.json"))
+    approval = read_json(os.environ.get("AIOS_APPROVAL_PATH", ROOT / "policies/absorption-approval.json"))
     governance_keyring = read_json(os.environ.get("AIOS_GOVERNANCE_KEYRING_PATH", ROOT / "policies/absorption-governance-keyring.json"))
     permit_keyring = read_json(os.environ.get("AIOS_PERMIT_KEYRING_PATH", ROOT / "policies/absorption-permit-keyring.json"))
     names = ("absorption-executor.json", "absorption-verification.json",
