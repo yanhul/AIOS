@@ -36,7 +36,7 @@ def test_valid_signature_still_denied_without_durable_replay_store_credentials(m
             "allowed_effects": ["materialize_absorbed_registry"],
         }
     }
-    with pytest.raises(AbsorptionAuthorizationError, match="GITHUB_TOKEN with contents:write is required"):
+    with pytest.raises(AbsorptionAuthorizationError, match="writer replay receipt missing"):
         authorize_absorption_effect(
             permit={"signature": "cryptographically-verified-by-test"},
             permit_keyring={"test": {}}, policy=policy,
@@ -164,10 +164,16 @@ def test_apply_workflow_is_protected_and_binds_exact_apply_run():
         (ROOT / ".github/workflows/aios-absorption-apply.yml").read_text(),
         Loader=yaml.BaseLoader,
     )
+    assert set(workflow["jobs"]) == {"prepare", "consume-permit", "apply"}
+    writer = workflow["jobs"]["consume-permit"]
+    assert writer["environment"] == "absorption-ledger-writer"
+    assert "AIOS_LEDGER_PRIVATE_KEY" in json.dumps(writer)
     job = workflow["jobs"]["apply"]
     assert job["environment"] == "production"
-    assert job["permissions"]["actions"] == "write"
-    assert job["permissions"]["contents"] == "write"
+    assert "AIOS_LEDGER_PRIVATE_KEY" not in json.dumps(job)
+    assert "AIOS_REPLAY_LEDGER_TOKEN" not in json.dumps(job)
+    assert job["permissions"]["actions"] == "read"
+    assert job["permissions"]["contents"] == "read"
     steps = job["steps"]
     dispatch = next(step for step in steps if step.get("name") == "Dispatch protected permit signer")
     assert "aios-absorption-signer.yml/dispatches" in dispatch["run"]
@@ -178,7 +184,9 @@ def test_apply_workflow_is_protected_and_binds_exact_apply_run():
     assert "^[0-9]{1,20}$" in validate["run"]
     assert "aios-absorption-permit-${SOURCE_RUN_ID}-${TARGET_APPLY_RUN_ID}" in wait["run"]
     apply_step = next(step for step in steps if step.get("name") == "Apply with Ed25519 permit and durable replay ledger")
-    assert "GITHUB_TOKEN" in json.dumps(apply_step["env"])
+    assert "AIOS_REPLAY_RECEIPT_PATH" in json.dumps(apply_step["env"])
+    assert "GITHUB_TOKEN" not in json.dumps(apply_step["env"])
+    assert "AIOS_REPLAY_LEDGER_TOKEN" not in json.dumps(apply_workflow["jobs"]["apply"])
     assert "AIOS_TARGET_APPLY_RUN_ID" in json.dumps(apply_step["env"])
 
 
