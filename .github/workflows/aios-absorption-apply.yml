@@ -1,0 +1,341 @@
+name: AIOS Absorption Apply
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Successful main-branch absorption research run ID"
+        required: true
+        type: string
+
+permissions:
+  actions: none
+  contents: none
+
+concurrency:
+  group: aios-absorption-apply
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Validate source run and bind current apply run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          APPLY_HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]{1,20}$ ]] || { echo "Malformed source run ID; DENY"; exit 1; }
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}" > "$RUNNER_TEMP/source-run.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          run = json.loads(Path(os.environ["RUNNER_TEMP"] + "/source-run.json").read_text())
+          if str(run.get("id", "")) != os.environ["SOURCE_RUN_ID"]:
+              raise SystemExit("source run ID mismatch; DENY")
+          if run.get("repository", {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("source repository mismatch; DENY")
+          if run.get("path") != ".github/workflows/aios-research-absorb.yml":
+              raise SystemExit("source workflow mismatch; DENY")
+          if run.get("event") != "workflow_dispatch" or run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("source research run is not successful; DENY")
+          if run.get("head_branch") != "main" or run.get("head_sha") != os.environ["APPLY_HEAD_SHA"]:
+              raise SystemExit("source run is not bound to this trusted main revision; DENY")
+          PY
+
+      - name: Download immutable source evidence
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+          name: aios-absorption-research-${{ inputs.source_run_id }}
+          path: research/artifacts
+
+      - name: Validate source artifact contract
+        run: |
+          set -euo pipefail
+          for f in absorption-executor.json absorption-verification.json absorption-runtime-proof.json absorption-promotion.json; do
+            test -s "research/artifacts/$f" || { echo "Missing source artifact: $f"; exit 1; }
+          done
+
+      - name: Dispatch protected permit signer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/workflows/aios-absorption-signer.yml/dispatches" \
+            -f ref=main \
+            -f inputs[source_run_id]="${SOURCE_RUN_ID}" \
+            -f inputs[target_apply_run_id]="${GITHUB_RUN_ID}"
+
+      - name: Wait for permit signed for this apply run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          TARGET_APPLY_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p permit
+          for attempt in $(seq 1 90); do
+            artifact_json=$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=aios-absorption-permit-${SOURCE_RUN_ID}-${TARGET_APPLY_RUN_ID}" \
+              --jq '.artifacts[] | select(.expired == false) | @json' | head -n 1)
+            if [ -n "$artifact_json" ]; then
+              printf '%s\n' "$artifact_json" > "$RUNNER_TEMP/permit-artifact.json"
+              artifact_id=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$RUNNER_TEMP/permit-artifact.json")
+              gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/$artifact_id/zip" > "$RUNNER_TEMP/permit.zip"
+              unzip -oq "$RUNNER_TEMP/permit.zip" -d permit
+              if python - <<'PY'
+          import json, os, urllib.request
+          from pathlib import Path
+          p = Path("permit/absorption-permit.json")
+          if not p.is_file(): raise SystemExit(1)
+          permit = json.loads(p.read_text())
+          if permit.get("target_apply_run_id") != os.environ["TARGET_APPLY_RUN_ID"]: raise SystemExit(1)
+          artifact = json.loads(Path(os.environ["RUNNER_TEMP"] + "/permit-artifact.json").read_text())
+          owner_run = artifact.get("workflow_run") or {}
+          if owner_run.get("head_branch") != "main" or owner_run.get("head_sha") != os.environ["GITHUB_SHA"]: raise SystemExit("permit artifact revision mismatch; DENY")
+          url = "https://api.github.com/repos/" + os.environ["GITHUB_REPOSITORY"] + "/actions/runs/" + str(owner_run.get("id", ""))
+          req = urllib.request.Request(url, headers={"Authorization":"Bearer "+os.environ["GH_TOKEN"],"Accept":"application/vnd.github+json"})
+          with urllib.request.urlopen(req, timeout=15) as response: owner = json.loads(response.read())
+          if owner.get("path") != ".github/workflows/aios-absorption-signer.yml" or owner.get("event") != "workflow_dispatch" or owner.get("status") != "completed" or owner.get("conclusion") != "success": raise SystemExit("permit artifact is not from successful signer workflow; DENY")
+          if owner.get("head_sha") != os.environ["GITHUB_SHA"]: raise SystemExit("signer workflow revision mismatch; DENY")
+          PY
+              then
+                exit 0
+              fi
+              rm -f permit/absorption-permit.json
+            fi
+            sleep 10
+          done
+          echo "No permit signed for this exact apply run; DENY"
+          exit 1
+
+      - name: Publish permit for downstream isolated jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-absorption-permit-${{ github.run_id }}
+          path: permit/absorption-permit.json
+          if-no-files-found: error
+          retention-days: 1
+
+  consume-permit:
+    needs: prepare
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: absorption-ledger-writer
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Download permit for this workflow run
+        uses: actions/download-artifact@v4
+        with:
+          name: aios-absorption-permit-${{ github.run_id }}
+          path: permit
+
+      - name: Mint ledger-scoped GitHub App token
+        id: ledger-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+        with:
+          app-id: ${{ secrets.AIOS_LEDGER_APP_ID }}
+          private-key: ${{ secrets.AIOS_LEDGER_PRIVATE_KEY }}
+          owner: yanhul
+          repositories: AIOS-replay-ledger
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Create ledger candidate branch and pull request
+        env:
+          GH_TOKEN: ${{ steps.ledger-token.outputs.token }}
+          STAGE1_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64, hashlib, json, os, time, urllib.error, urllib.request
+          from pathlib import Path
+          token = os.environ["GH_TOKEN"]
+          repo = "yanhul/AIOS-replay-ledger"
+          path = ".aios/absorption-consumed-permits.json"
+          run_id = os.environ["STAGE1_RUN_ID"]
+          permit = json.loads(Path("permit/absorption-permit.json").read_text())
+          canonical = lambda x: json.dumps(x, sort_keys=True, separators=(",", ":"))
+          permit_id = hashlib.sha256(canonical(permit).encode()).hexdigest()
+          branch = "aios-absorption-" + run_id
+          def api(method, endpoint, body=None):
+              data = None if body is None else json.dumps(body).encode()
+              req = urllib.request.Request("https://api.github.com" + endpoint, data=data, method=method,
+                  headers={"Authorization":"Bearer "+token,"Accept":"application/vnd.github+json",
+                           "X-GitHub-Api-Version":"2022-11-28","Content-Type":"application/json"})
+              try:
+                  with urllib.request.urlopen(req, timeout=20) as r: return json.loads(r.read() or b"{}")
+              except urllib.error.HTTPError as e:
+                  raise SystemExit(f"GitHub API {method} {endpoint} failed HTTP {e.code}: {e.read().decode(errors='replace')[:500]}")
+          main = api("GET", f"/repos/{repo}/branches/main")
+          base_sha = main["commit"]["sha"]
+          current = api("GET", f"/repos/{repo}/contents/{path}?ref=main")
+          ledger = json.loads(base64.b64decode(current["content"]).decode())
+          if ledger.get("schema_version") != 1 or not isinstance(ledger.get("consumed"), dict):
+              raise SystemExit("ledger schema invalid; DENY")
+          if permit_id in ledger["consumed"]:
+              raise SystemExit("permit already present in ledger; DENY")
+          target = permit.get("target_apply_run_id")
+          if target != run_id:
+              raise SystemExit("permit target apply run does not match this writer run; DENY")
+          ledger["consumed"][permit_id] = {"consumed_at": int(time.time()), "target_apply_run_id": target}
+          api("POST", f"/repos/{repo}/git/refs", {"ref":"refs/heads/"+branch,"sha":base_sha})
+          branch_file = api("GET", f"/repos/{repo}/contents/{path}?ref="+branch)
+          payload = {"message":"security: propose absorption permit consumption "+permit_id,
+                     "content":base64.b64encode((canonical(ledger)+"\n").encode()).decode(),
+                     "branch":branch,"sha":branch_file["sha"]}
+          api("PUT", f"/repos/{repo}/contents/{path}", payload)
+          body = ("AIOS replay-ledger candidate. Human review and merge required.\n\n"
+                  f"AIOS_PERMIT_ID={permit_id}\nAIOS_TARGET_APPLY_RUN_ID={target}\n"
+                  f"AIOS_WRITER_RUN_ID={run_id}\nAIOS_BASE_SHA={base_sha}\n")
+          pr = api("POST", f"/repos/{repo}/pulls", {"title":"Consume AIOS absorption permit "+permit_id[:12],
+              "head":branch,"base":"main","body":body,"draft":False})
+          Path("permit/ledger-pr.json").write_text(json.dumps({
+              "repository":repo,"branch":branch,"base_sha":base_sha,"pr_number":pr["number"],
+              "pr_url":pr["html_url"],"permit_id":permit_id,"target_apply_run_id":target,
+              "stage1_run_id":run_id}, indent=2)+"\n")
+          print(json.dumps({"result":"PR_OPENED","pr_number":pr["number"],"pr_url":pr["html_url"],
+                            "permit_id":permit_id,"base_sha":base_sha}))
+          PY
+
+      - name: Publish ledger PR reference (not a replay receipt)
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-absorption-ledger-pr-${{ github.run_id }}
+          path: permit/ledger-pr.json
+          if-no-files-found: error
+          retention-days: 7
+
+  apply:
+    needs: consume-permit
+    if: false # Apply is deferred to the separate post-merge finalizer workflow.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Validate source run and bind current apply run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          APPLY_HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]{1,20}$ ]] || { echo "Malformed source run ID; DENY"; exit 1; }
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}" > "$RUNNER_TEMP/source-run.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          run = json.loads(Path(os.environ["RUNNER_TEMP"] + "/source-run.json").read_text())
+          if str(run.get("id", "")) != os.environ["SOURCE_RUN_ID"]:
+              raise SystemExit("source run ID mismatch; DENY")
+          if run.get("repository", {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("source repository mismatch; DENY")
+          if run.get("path") != ".github/workflows/aios-research-absorb.yml":
+              raise SystemExit("source workflow mismatch; DENY")
+          if run.get("event") != "workflow_dispatch" or run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("source research run is not successful; DENY")
+          if run.get("head_branch") != "main" or run.get("head_sha") != os.environ["APPLY_HEAD_SHA"]:
+              raise SystemExit("source run is not bound to this trusted main revision; DENY")
+          PY
+
+      - name: Download immutable source evidence
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+          name: aios-absorption-research-${{ inputs.source_run_id }}
+          path: research/artifacts
+
+      - name: Download writer permit and receipt
+        uses: actions/download-artifact@v4
+        with:
+          pattern: aios-absorption-*
+          merge-multiple: false
+          path: replay-inputs
+
+      - name: Stage permit and receipt
+        run: |
+          set -euo pipefail
+          mkdir -p permit receipt
+          cp "replay-inputs/aios-absorption-permit-${GITHUB_RUN_ID}/absorption-permit.json" permit/
+          cp "replay-inputs/aios-absorption-replay-receipt-${GITHUB_RUN_ID}/replay-receipt.json" receipt/
+
+      - name: Validate source artifact contract
+        run: |
+          set -euo pipefail
+          for f in absorption-executor.json absorption-verification.json absorption-runtime-proof.json absorption-promotion.json; do
+            test -s "research/artifacts/$f" || { echo "Missing source artifact: $f"; exit 1; }
+          done
+          test -s permit/absorption-permit.json
+          test -s receipt/replay-receipt.json
+
+      - name: Apply with Ed25519 permit and writer receipt
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          AIOS_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          AIOS_SOURCE_COMMIT_SHA: ${{ github.sha }}
+          AIOS_TARGET_APPLY_RUN_ID: ${{ github.run_id }}
+          AIOS_TARGET_BRANCH: main
+          AIOS_ABSORPTION_PERMIT_PATH: permit/absorption-permit.json
+          AIOS_ABSORPTION_PERMIT_KEYRING_PATH: policies/absorption-permit-keyring.json
+          AIOS_REPLAY_RECEIPT_PATH: receipt/replay-receipt.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from research.absorption_apply import absorb
+          root = Path("research/artifacts")
+          names = {
+              "executor": "absorption-executor.json",
+              "verification": "absorption-verification.json",
+              "promotion": "absorption-promotion.json",
+              "runtime": "absorption-runtime-proof.json",
+          }
+          artifacts = {key: json.loads((root / name).read_text()) for key, name in names.items()}
+          result = absorb(artifacts["executor"], artifacts["verification"],
+                          artifacts["promotion"], artifacts["runtime"],
+                          run_id=os.environ["AIOS_SOURCE_RUN_ID"])
+          (root / "absorption.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+          if result.get("overall") not in {"PASS", "PASS_WITH_HOLDS"}:
+              raise SystemExit("absorption apply blocked; DENY")
+          PY
+
+      - name: Publish apply result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-absorption-apply-${{ github.run_id }}
+          path: research/artifacts/absorption.json
+          if-no-files-found: warn
+          retention-days: 30

@@ -1,0 +1,151 @@
+name: AIOS Absorption Permit Signer
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Completed absorption research workflow run ID"
+        required: true
+        type: string
+      target_apply_run_id:
+        description: "Pre-created, exact apply workflow run ID that this permit may authorize"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  signer:
+    # Runs trusted default-branch code only. Never checkout the source run's commit or PR code.
+    if: github.ref == 'refs/heads/main'
+    environment: absorption-signer
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Validate source workflow run identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          INPUT_TARGET_APPLY_RUN_ID: ${{ inputs.target_apply_run_id }}
+          SIGNER_HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]{1,20}$ ]] || { echo "Malformed source run ID; DENY"; exit 1; }
+          [[ "$INPUT_TARGET_APPLY_RUN_ID" =~ ^[0-9]{1,20}$ ]] || { echo "Malformed target apply run ID; DENY"; exit 1; }
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}" > "$RUNNER_TEMP/source-run.json"
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${INPUT_TARGET_APPLY_RUN_ID}" > "$RUNNER_TEMP/target-apply-run.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          run = json.loads(Path(os.environ["RUNNER_TEMP"] + "/source-run.json").read_text())
+          target = json.loads(Path(os.environ["RUNNER_TEMP"] + "/target-apply-run.json").read_text())
+          if str(run.get("id", "")) != os.environ["SOURCE_RUN_ID"]:
+              raise SystemExit("source run ID does not match requested run; DENY")
+          if str(target.get("id", "")) != os.environ["INPUT_TARGET_APPLY_RUN_ID"]:
+              raise SystemExit("target apply run ID does not match requested run; DENY")
+          if run.get("repository", {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("source repository mismatch; DENY")
+          if run.get("path") != ".github/workflows/aios-research-absorb.yml":
+              raise SystemExit("source workflow mismatch; DENY")
+          if run.get("event") != "workflow_dispatch" or run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("source run is not a completed successful manual workflow; DENY")
+          if run.get("head_branch") != "main" or not run.get("head_sha"):
+              raise SystemExit("source run is not from trusted main; DENY")
+          if target.get("repository", {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("target apply repository mismatch; DENY")
+          if target.get("path") != ".github/workflows/aios-absorption-apply.yml":
+              raise SystemExit("target run is not the protected apply workflow; DENY")
+          if target.get("event") != "workflow_dispatch" or target.get("status") != "in_progress":
+              raise SystemExit("target apply workflow is not an active manual run; DENY")
+          if target.get("head_branch") != "main" or target.get("head_sha") != run.get("head_sha") or target.get("head_sha") != os.environ["SIGNER_HEAD_SHA"]:
+              raise SystemExit("source, target apply, and signer revisions do not match; DENY")
+          target_apply_run_id = os.environ.get("INPUT_TARGET_APPLY_RUN_ID", "")
+          if not target_apply_run_id or len(target_apply_run_id) > 20 or not target_apply_run_id.isdigit():
+              raise SystemExit("target_apply_run_id is missing or malformed; DENY")
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write("AIOS_SOURCE_RUN_ID=" + str(run["id"]) + "\n")
+              f.write("AIOS_SOURCE_COMMIT_SHA=" + run["head_sha"] + "\n")
+              f.write("AIOS_TARGET_BRANCH=main\n")
+              f.write("AIOS_TARGET_APPLY_RUN_ID=" + target_apply_run_id + "\n")
+          PY
+
+      - name: Download immutable source evidence
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+          name: aios-absorption-research-${{ inputs.source_run_id }}
+          path: input
+
+      # Validate all non-secret prerequisites before the protected private key
+      # is made available to any step. The current draft policy intentionally fails.
+      - name: Install pinned signer dependency
+        run: python -m pip install --disable-pip-version-check cryptography==44.0.2
+
+      - name: Preflight signer inputs before secret access
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from core.absorption_authority import verify_approval_attestation
+
+          root = Path(".")
+          policy = json.loads((root / "policies/absorption-default-deny.v1.json").read_text())
+          approval_path = Path("policies/absorption-approval.json")
+          required = [
+              "absorption-executor.json",
+              "absorption-verification.json",
+              "absorption-runtime-proof.json",
+              "absorption-promotion.json",
+          ]
+          missing = [name for name in required if not (Path("input") / name).is_file()]
+          if missing:
+              raise SystemExit("signer artifact contract incomplete: " + ", ".join(missing) + "; DENY")
+          if not approval_path.is_file():
+              raise SystemExit("separately authenticated governance approval is missing; DENY")
+          if policy.get("status") != "APPROVED" or policy.get("approval", {}).get("status") != "APPROVED":
+              raise SystemExit("governance policy is not approved; DENY")
+          effects = policy.get("decision", {}).get("allowed_effects")
+          if not isinstance(effects, list) or not effects:
+              raise SystemExit("policy has no explicitly approved effects; DENY")
+          governance_keyring = json.loads((root / "policies/absorption-governance-keyring.json").read_text())
+          permit_keyring = json.loads((root / "policies/absorption-permit-keyring.json").read_text())
+          if not isinstance(governance_keyring, dict) or not governance_keyring:
+              raise SystemExit("trusted governance keyring unavailable; DENY")
+          if not isinstance(permit_keyring, dict) or not permit_keyring:
+              raise SystemExit("trusted permit keyring unavailable; DENY")
+          approval = json.loads(approval_path.read_text())
+          verify_approval_attestation(
+              policy=policy, approval=approval, governance_keyring=governance_keyring,
+              repository=os.environ["GITHUB_REPOSITORY"], target_branch="main",
+          )
+          print("Signer preflight passed; governance approval cryptographically verified before secret access.")
+          PY
+
+      - name: Sign only independently validated evidence
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          AIOS_TARGET_APPLY_RUN_ID: ${{ inputs.target_apply_run_id }}
+          AIOS_APPROVAL_PATH: policies/absorption-approval.json
+          AIOS_ABSORPTION_PERMIT_PRIVATE_KEY: ${{ secrets.AIOS_ABSORPTION_PERMIT_PRIVATE_KEY }}
+        run: python research/absorption_signer.py
+
+      - name: Publish signed permit
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-absorption-permit-${{ inputs.source_run_id }}-${{ inputs.target_apply_run_id }}
+          path: output/absorption-permit.json
+          if-no-files-found: error
+          retention-days: 7
