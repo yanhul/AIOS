@@ -52,6 +52,9 @@ jobs:
               raise SystemExit("source run is not a completed successful manual workflow; DENY")
           if run.get("head_branch") != "main" or not run.get("head_sha"):
               raise SystemExit("source run is not from trusted main; DENY")
+          target_apply_run_id = os.environ.get("INPUT_TARGET_APPLY_RUN_ID", "")
+          if not target_apply_run_id or len(target_apply_run_id) > 128 or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-" for c in target_apply_run_id):
+              raise SystemExit("target_apply_run_id is missing or malformed; DENY")
           with open(os.environ["GITHUB_ENV"], "a") as f:
               f.write("AIOS_SOURCE_RUN_ID=" + str(run["id"]) + "\n")
               f.write("AIOS_SOURCE_COMMIT_SHA=" + run["head_sha"] + "\n")
@@ -111,6 +114,7 @@ jobs:
       - name: Sign only independently validated evidence
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
+          AIOS_TARGET_APPLY_RUN_ID: ${{ inputs.target_apply_run_id }}
           AIOS_ABSORPTION_PERMIT_PRIVATE_KEY: ${{ secrets.AIOS_ABSORPTION_PERMIT_PRIVATE_KEY }}
         run: python research/absorption_signer.py
 
