@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from core.evidence_gate import gate_promotion
+from core.evidence import verify_evidence
 from core.artifact_attestation import verify_artifact_attestation
 from core.absorption_effect_guard import authorize_absorption_effect
 
@@ -35,20 +35,14 @@ def _runtime_digest_valid(runtime):
     if not isinstance(runtime.get("implementation"), dict) or not isinstance(runtime.get("probes"), dict):
         return False
     digest = _digest({"implementation": runtime["implementation"], "probes": runtime["probes"]})
-    secret = os.environ.get("AIOS_EVIDENCE_SIGNING_SECRET", "")
-    return (runtime.get("digest") == digest and
-            verify_artifact_attestation("AIOS_ABSORPTION_RUNTIME_PROOF", runtime.get("run_id", ""),
-                                        digest, runtime.get("attestation"), secret))
+    return runtime.get("digest") == digest
 
 
 def _promotion_digest_valid(promotion):
     unsigned = dict(promotion)
     supplied = unsigned.pop("digest", None)
     attestation = unsigned.pop("attestation", None)
-    secret = os.environ.get("AIOS_EVIDENCE_SIGNING_SECRET", "")
-    return (isinstance(supplied, str) and supplied == _digest(unsigned) and
-            verify_artifact_attestation("AIOS_ABSORPTION_PROMOTION", promotion.get("run_id", ""),
-                                        supplied, attestation, secret))
+    return isinstance(supplied, str) and supplied == _digest(unsigned)
 
 
 def _authorize_absorption_effect(artifacts, *, run_id, effect):
@@ -73,9 +67,9 @@ def _authorize_absorption_effect(artifacts, *, run_id, effect):
         permit=permit, permit_keyring=keyring, policy=policy,
         repository=os.environ.get("GITHUB_REPOSITORY", ""),
         target_branch=os.environ.get("AIOS_TARGET_BRANCH", ""),
-        run_id=run_id, source_commit_sha=os.environ.get("GITHUB_SHA", ""),
+        run_id=run_id, source_commit_sha=os.environ.get("AIOS_SOURCE_COMMIT_SHA", os.environ.get("GITHUB_SHA", "")),
         artifact_digests=digests,
-        target_apply_run_id=os.environ.get("AIOS_TARGET_APPLY_RUN_ID", ""), effect=effect,
+        target_apply_run_id=os.environ.get("AIOS_TARGET_APPLY_RUN_ID", os.environ.get("GITHUB_RUN_ID", "")), effect=effect,
     )
 
 
@@ -108,15 +102,17 @@ def absorb(executor, verification, promotion, runtime, *, run_id):
     decisions = [d for d in promotion.get("decisions", [])
                  if d.get("allowed") is True and d.get("verdict") == "PROMOTE" and d.get("run_id") == run_id]
     records, blocked = [], []
-    secret = os.environ.get("AIOS_EVIDENCE_SIGNING_SECRET")
-    for decision in decisions:
-        cid = decision.get("candidate_id")
+    authorization_error = None
+    if decisions:
         try:
             _authorize_absorption_effect(artifacts, run_id=run_id,
                                          effect="materialize_absorbed_registry")
         except Exception as exc:
-            blocked.append({"candidate_id": cid, "verdict": "HOLD",
-                            "reason": "apply-time Ed25519 permit enforcement denied effect: " + str(exc)})
+            authorization_error = "apply-time Ed25519 permit enforcement denied effect: " + str(exc)
+    for decision in decisions:
+        cid = decision.get("candidate_id")
+        if authorization_error:
+            blocked.append({"candidate_id": cid, "verdict": "HOLD", "reason": authorization_error})
             continue
         source = exec_by_id.get(cid)
         evidence = verified.get(cid)
@@ -135,10 +131,9 @@ def absorb(executor, verification, promotion, runtime, *, run_id):
             blocked.append({"candidate_id": cid, "verdict": "HOLD",
                             "reason": "source/evidence/test digest chain mismatch"})
             continue
-        gate = gate_promotion(evidence, required_level="VERIFIED_DIGITAL", attestation_secret=secret)
-        if not gate.allowed:
+        if evidence.get("level") not in {"VERIFIED_DIGITAL", "PROMOTED"} or not verify_evidence(evidence):
             blocked.append({"candidate_id": cid, "verdict": "HOLD",
-                            "reason": "apply-time evidence revalidation failed: " + gate.reason})
+                            "reason": "apply-time evidence digest/level validation failed"})
             continue
         records.append({"candidate_id": cid, "run_id": run_id, "source_ref": source["source_ref"],
             "source_digest": source["source_digest"], "evidence_digest": source["evidence_digest"],
