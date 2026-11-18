@@ -170,6 +170,7 @@ def test_apply_workflow_is_protected_and_binds_exact_apply_run():
     assert "target_apply_run_id" in dispatch["run"]
     wait = next(step for step in steps if step.get("name") == "Wait for permit signed for this apply run")
     assert "TARGET_APPLY_RUN_ID" in json.dumps(wait)
+    assert "aios-absorption-permit-${SOURCE_RUN_ID}-${TARGET_APPLY_RUN_ID}" in wait["run"]
     apply_step = next(step for step in steps if step.get("name") == "Apply with Ed25519 permit and durable replay ledger")
     assert "GITHUB_TOKEN" in json.dumps(apply_step["env"])
     assert "AIOS_TARGET_APPLY_RUN_ID" in json.dumps(apply_step["env"])
