@@ -1,8 +1,10 @@
-"""Durable one-time absorption permit consumption using GitHub Contents CAS.
+"""One-time absorption permit consumption using GitHub Contents API CAS.
 
-The dedicated ledger branch is append-only. GitHub's contents API requires the
-current blob SHA for updates; concurrent consumers racing on the same SHA cannot
-both commit. Any API error or conflict is DENY. No local cache is authoritative.
+A current blob SHA makes competing writers race on one version: only one update
+using that same SHA can succeed. This is not server-enforced append-only storage.
+Without branch protection, a credential holder or repository administrator can
+still rewrite or delete ledger history. Any API error or conflict is DENY; no
+local cache is authoritative.
 """
 from __future__ import annotations
 
