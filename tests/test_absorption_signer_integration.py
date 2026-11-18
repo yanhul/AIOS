@@ -248,10 +248,11 @@ def test_effect_guard_accepts_only_matching_writer_receipt(monkeypatch, tmp_path
             target_apply_run_id="apply-42", effect="effect-x",
         )
 
-def test_effect_guard_rejects_permit_for_another_workflow_run(monkeypatch):
-    monkeypatch.setenv("GITHUB_RUN_ID", "actual-run-7")
+def test_effect_guard_requires_receipt_for_post_merge_continuation_run(monkeypatch):
+    monkeypatch.setenv("GITHUB_RUN_ID", "continuation-run-9")
     monkeypatch.setattr(effect_guard, "verify_absorption_permit", lambda **kwargs: True)
-    with pytest.raises(AbsorptionAuthorizationError, match="current GitHub workflow run"):
+    monkeypatch.delenv("AIOS_REPLAY_RECEIPT_PATH", raising=False)
+    with pytest.raises(AbsorptionAuthorizationError, match="writer replay receipt missing"):
         authorize_absorption_effect(
             permit={"signature": "signed"}, permit_keyring={"test": {}},
             policy={"decision": {"default": "DENY", "allowed_effects": ["effect-x"]}},
