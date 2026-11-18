@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft / DENY / not merged.** The workflow and code have been changed on this PR branch to isolate replay-ledger writes. No live apply, signer, or ledger write has been executed.
+**Draft / DENY / not merged.** The workflow and code have been changed on this PR branch to isolate replay-ledger writes. CI on commit `7e9b764223253a9ffe45801496527aa449d7980f` passed all three jobs (`826 passed, 16 skipped` in `full-suite`). The follow-up documentation-only integrity-boundary update is being rechecked. No live apply, signer, or ledger write has been executed.
 
 ## Job separation implemented
 
@@ -22,8 +22,8 @@ The App action is pinned to verified commit `64ab729a6294000f5aa4a4bc0b73d1f32bc
 
 ## Remaining blockers
 
-- The repository ruleset previously inspected targets the legacy branch `aios-absorption-replay-ledger`, not the separate repository's `main`. Do not claim that the new repository branch is protected or immutable until its actual settings are checked.
-- No live writer-token creation, CAS write, signer→writer→production non-production run, or parallel CAS race has been executed.
+- The target repository `yanhul/AIOS-replay-ledger` is private and its default branch is `main`. The connected GitHub API returned `403: Upgrade to GitHub Pro or make this repository public to enable this feature` for repository rulesets; branch-protection reads also returned `403 Resource not accessible by integration`. Therefore protection of `main` is **UNKNOWN / NOT VERIFIED**. Do not describe the ledger as append-only or tamper-proof. Contents API blob-SHA CAS prevents two writers using the same stale SHA from both succeeding, but it does not prevent a credential holder or administrator from later rewriting/deleting history. Do not make the repository public or change its plan/privacy as a workaround.
+- No live writer-token creation, CAS write, signer→writer→production non-production run, or parallel CAS race has been executed. The existing tests simulate a CAS conflict; they are not a live GitHub concurrency test.
 - Environment secret presence is user-confirmed only; secret values were not exposed or independently read.
 - Policy remains default `DENY`, `allowed_effects: []`; governance and permit keyrings remain empty. No approval or production authorization is being created.
 
