@@ -36,7 +36,7 @@
 
 ## Test status
 
-- CI run **44253161295** on head `5d0c37116b15f75e574d5d787356a8f17f21a3d3` completed successfully: `full-suite`, `minimind-key-isolation`, and `minimind-capability-readiness (non-production)`.
+- CI run **44256569022** on exact final head `18a3d9222aa3b7a5b5bc5bc15c76e93f8840cda5` completed successfully: `full-suite`, `minimind-key-isolation`, and `minimind-capability-readiness (non-production)`. This confirms the test suite passed for this code head; it does not prove A/B/C or production authorization.
 - This is a code/test-suite pass only. It does not prove A, B, or C are complete, and it does not establish production authorization.
 - Required additional adversarial tests: missing/invalid approval, draft policy, unknown/revoked key, expired permit, wrong repository/run/commit/apply-run, altered/missing/extra artifact, wrong effect, replay, concurrent consumption, and missing audit receipt.
 
