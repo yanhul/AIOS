@@ -40,7 +40,7 @@ def test_valid_signature_still_denied_without_durable_atomic_replay_store(monkey
             permit_keyring={"test": {}}, policy=policy,
             repository="yanhul/AIOS", target_branch="main", run_id="42",
             source_commit_sha="a" * 40, artifact_digests={"artifact.json": "b" * 64},
-            effect="materialize_absorbed_registry",
+            target_apply_run_id="apply-42", effect="materialize_absorbed_registry",
         )
 
 
