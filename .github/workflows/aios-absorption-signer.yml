@@ -48,9 +48,9 @@ jobs:
           if run.get("head_branch") != "main" or not run.get("head_sha"):
               raise SystemExit("source run is not from trusted main; DENY")
           with open(os.environ["GITHUB_ENV"], "a") as f:
-              f.write("AIOS_SOURCE_RUN_ID=" + str(run["id"]) + "\\n")
-              f.write("AIOS_SOURCE_COMMIT_SHA=" + run["head_sha"] + "\\n")
-              f.write("AIOS_TARGET_BRANCH=main\\n")
+              f.write("AIOS_SOURCE_RUN_ID=" + str(run["id"]) + "\n")
+              f.write("AIOS_SOURCE_COMMIT_SHA=" + run["head_sha"] + "\n")
+              f.write("AIOS_TARGET_BRANCH=main\n")
           PY
 
       - name: Download immutable source evidence
@@ -68,9 +68,6 @@ jobs:
       - name: Sign only independently validated evidence
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
-          AIOS_SOURCE_RUN_ID: ${{ env.AIOS_SOURCE_RUN_ID }}
-          AIOS_SOURCE_COMMIT_SHA: ${{ env.AIOS_SOURCE_COMMIT_SHA }}
-          AIOS_TARGET_BRANCH: ${{ env.AIOS_TARGET_BRANCH }}
           AIOS_ABSORPTION_PERMIT_PRIVATE_KEY: ${{ secrets.AIOS_ABSORPTION_PERMIT_PRIVATE_KEY }}
         run: python research/absorption_signer.py
 
