@@ -49,6 +49,21 @@ jobs:
       - name: Install absorption test runner
         run: python -m pip install pytest
 
+      - name: Run independent absorption verification
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: python research/absorption_verifier.py
+
+      - name: Generate AIOS implementation and runtime proof
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: python research/absorption_runtime_proof.py
+
+      - name: Evaluate same-run promotion evidence
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: python research/absorption_promotion.py
+
       - name: Verify intake and executor invariants
         run: python -m pytest tests/test_absorption_*.py -v
 
