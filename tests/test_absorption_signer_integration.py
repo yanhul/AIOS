@@ -86,3 +86,59 @@ def test_signer_workflow_scopes_private_key_to_single_protected_job_step():
     assert "secrets.AIOS_ABSORPTION_PERMIT_PRIVATE_KEY" in json.dumps(secret_refs[0])
     checkout = next(step for step in job["steps"] if step.get("uses", "").startswith("actions/checkout"))
     assert checkout["with"]["ref"] == "main"
+
+
+def _signed_bundle():
+    import hashlib
+
+    def digest(value):
+        return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+    run_id = "source-run-1"
+    executor = {
+        "kind": "AIOS_ABSORPTION_EXECUTOR", "run_id": run_id, "overall": "PASS",
+        "records": [{"candidate_id": "c1", "run_id": run_id,
+                     "external_code_copy": False, "external_code_execution": False}],
+    }
+    verified_records = [{"candidate_id": "c1", "run_id": run_id}]
+    verification = {
+        "kind": "AIOS_ABSORPTION_INDEPENDENT_VERIFICATION", "run_id": run_id,
+        "overall": "PASS", "records": verified_records, "failures": [],
+        "independent_tests": {"passed": True, "digest": "a" * 64},
+    }
+    verification["digest"] = digest({"verified": verified_records, "failures": []})
+    implementation, probes = {"overall": "PASS"}, {"runtime": True}
+    runtime = {
+        "kind": "AIOS_ABSORPTION_RUNTIME_PROOF", "run_id": run_id, "overall": "PASS",
+        "implementation": implementation, "probes": probes,
+        "digest": digest({"implementation": implementation, "probes": probes}),
+    }
+    promotion = {
+        "kind": "AIOS_ABSORPTION_PROMOTION", "run_id": run_id, "overall": "PASS",
+        "input_verification_digest": verification["digest"],
+        "input_runtime_digest": runtime["digest"], "blocked": [],
+        "decisions": [{"candidate_id": "c1", "run_id": run_id,
+                       "allowed": True, "verdict": "PROMOTE"}],
+    }
+    promotion["digest"] = digest(promotion)
+    return {
+        "absorption-executor.json": executor,
+        "absorption-verification.json": verification,
+        "absorption-runtime-proof.json": runtime,
+        "absorption-promotion.json": promotion,
+    }
+
+
+def test_signer_validates_all_artifact_semantics_before_signing():
+    from research.absorption_signer import validate_artifact_bundle
+
+    assert validate_artifact_bundle(_signed_bundle(), source_run_id="source-run-1")
+
+
+def test_signer_rejects_tampered_runtime_proof_before_signing():
+    from research.absorption_signer import validate_artifact_bundle
+
+    artifacts = _signed_bundle()
+    artifacts["absorption-runtime-proof.json"]["probes"]["runtime"] = False
+    with pytest.raises(RuntimeError, match="runtime proof contains failed or missing probes"):
+        validate_artifact_bundle(artifacts, source_run_id="source-run-1")
