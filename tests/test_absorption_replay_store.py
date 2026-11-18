@@ -33,7 +33,7 @@ def test_replay_store_creates_ledger_once_and_rejects_second_consumption(monkeyp
         "consumed_at": 10, "target_apply_run_id": "123"
     }
     with pytest.raises(ReplayStoreError, match="already consumed"):
-        consume_permit_once(permit=permit, repository="owner/repo", token="test", now=11)
+        consume_permit_once(permit=permit, repository=LEDGER_REPOSITORY, token="test", now=11)
     assert state["writes"] == 1
 
 
@@ -50,7 +50,7 @@ def test_replay_store_fails_closed_on_concurrent_compare_and_swap_conflict(monke
     with pytest.raises(ReplayStoreError, match="atomic replay-ledger write failed"):
         consume_permit_once(
             permit={"signature": "signed", "target_apply_run_id": "123"},
-            repository="owner/repo", token="test",
+            repository=LEDGER_REPOSITORY, token="test",
         )
     assert calls == ["GET", "PUT"]
 
