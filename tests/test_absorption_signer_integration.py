@@ -165,30 +165,75 @@ def test_apply_workflow_is_protected_and_binds_exact_apply_run():
         Loader=yaml.BaseLoader,
     )
     assert set(workflow["jobs"]) == {"prepare", "consume-permit", "apply"}
-    writer = workflow["jobs"]["consume-permit"]
-    assert writer["environment"] == "absorption-ledger-writer"
-    assert "AIOS_LEDGER_PRIVATE_KEY" in json.dumps(writer)
-    job = workflow["jobs"]["apply"]
-    assert job["environment"] == "production"
-    assert "AIOS_LEDGER_PRIVATE_KEY" not in json.dumps(job)
-    assert "AIOS_REPLAY_LEDGER_TOKEN" not in json.dumps(job)
-    assert job["permissions"]["actions"] == "read"
-    assert job["permissions"]["contents"] == "read"
-    steps = job["steps"]
-    dispatch = next(step for step in steps if step.get("name") == "Dispatch protected permit signer")
+    prepare = workflow["jobs"]["prepare"]
+    assert prepare["permissions"]["actions"] == "write"
+    dispatch = next(step for step in prepare["steps"] if step.get("name") == "Dispatch protected permit signer")
     assert "aios-absorption-signer.yml/dispatches" in dispatch["run"]
     assert "target_apply_run_id" in dispatch["run"]
-    wait = next(step for step in steps if step.get("name") == "Wait for permit signed for this apply run")
+    wait = next(step for step in prepare["steps"] if step.get("name") == "Wait for permit signed for this apply run")
     assert "TARGET_APPLY_RUN_ID" in json.dumps(wait)
-    validate = next(step for step in steps if step.get("name") == "Validate source run and bind current apply run")
-    assert "^[0-9]{1,20}$" in validate["run"]
     assert "aios-absorption-permit-${SOURCE_RUN_ID}-${TARGET_APPLY_RUN_ID}" in wait["run"]
-    apply_step = next(step for step in steps if step.get("name") == "Apply with Ed25519 permit and durable replay ledger")
-    assert "AIOS_REPLAY_RECEIPT_PATH" in json.dumps(apply_step["env"])
-    assert "GITHUB_TOKEN" not in json.dumps(apply_step["env"])
-    assert "AIOS_REPLAY_LEDGER_TOKEN" not in json.dumps(apply_workflow["jobs"]["apply"])
-    assert "AIOS_TARGET_APPLY_RUN_ID" in json.dumps(apply_step["env"])
 
+    writer = workflow["jobs"]["consume-permit"]
+    assert writer["needs"] == "prepare"
+    assert writer["environment"] == "absorption-ledger-writer"
+    writer_json = json.dumps(writer)
+    assert "AIOS_LEDGER_APP_ID" in writer_json
+    assert "AIOS_LEDGER_PRIVATE_KEY" in writer_json
+    assert "AIOS_REPLAY_LEDGER_TOKEN" in writer_json
+    assert "AIOS-replay-ledger" in writer_json
+    assert "permission-contents: write" in writer_json
+    assert "64ab729a6294000f5aa4a4bc0b73d1f32bc45510" in writer_json
+
+    apply = workflow["jobs"]["apply"]
+    assert apply["needs"] == "consume-permit"
+    assert apply["environment"] == "production"
+    assert apply["permissions"]["actions"] == "read"
+    assert apply["permissions"]["contents"] == "read"
+    apply_json = json.dumps(apply)
+    assert "AIOS_LEDGER_PRIVATE_KEY" not in apply_json
+    assert "AIOS_REPLAY_LEDGER_TOKEN" not in apply_json
+    assert "GITHUB_TOKEN" not in apply_json
+    apply_step = next(step for step in apply["steps"] if step.get("name") == "Apply with Ed25519 permit and writer receipt")
+    assert "AIOS_REPLAY_RECEIPT_PATH" in json.dumps(apply_step["env"])
+
+
+def test_effect_guard_accepts_only_matching_writer_receipt(monkeypatch, tmp_path):
+    import hashlib
+    from core.mutation import canonical_json
+
+    monkeypatch.setenv("GITHUB_RUN_ID", "apply-42")
+    monkeypatch.setattr(effect_guard, "verify_absorption_permit", lambda **kwargs: True)
+    permit = {"signature": "cryptographically-verified-by-test", "target_apply_run_id": "apply-42"}
+    permit_id = hashlib.sha256(canonical_json(permit).encode("utf-8")).hexdigest()
+    receipt = {
+        "schema_version": 1,
+        "permit_id": permit_id,
+        "target_apply_run_id": "apply-42",
+        "ledger_repository": "yanhul/AIOS-replay-ledger",
+        "ledger_branch": "main",
+        "writer_job": "consume-permit",
+        "consumed": True,
+    }
+    path = tmp_path / "receipt.json"
+    path.write_text(json.dumps(receipt), encoding="utf-8")
+    monkeypatch.setenv("AIOS_REPLAY_RECEIPT_PATH", str(path))
+    policy = {"decision": {"default": "DENY", "allowed_effects": ["effect-x"]}}
+    assert authorize_absorption_effect(
+        permit=permit, permit_keyring={"test": {}}, policy=policy,
+        repository="yanhul/AIOS", target_branch="main", run_id="source-1",
+        source_commit_sha="a" * 40, artifact_digests={"a.json": "b" * 64},
+        target_apply_run_id="apply-42", effect="effect-x",
+    )
+    receipt["target_apply_run_id"] = "other-run"
+    path.write_text(json.dumps(receipt), encoding="utf-8")
+    with pytest.raises(AbsorptionAuthorizationError, match="receipt binding mismatch"):
+        authorize_absorption_effect(
+            permit=permit, permit_keyring={"test": {}}, policy=policy,
+            repository="yanhul/AIOS", target_branch="main", run_id="source-1",
+            source_commit_sha="a" * 40, artifact_digests={"a.json": "b" * 64},
+            target_apply_run_id="apply-42", effect="effect-x",
+        )
 
 def test_effect_guard_rejects_permit_for_another_workflow_run(monkeypatch):
     monkeypatch.setenv("GITHUB_RUN_ID", "actual-run-7")
