@@ -24,11 +24,11 @@
 - Current permit binds policy digest, repository, target branch, source run, source commit, and artifact digests.
 - It does **not** bind a distinct target apply-run ID.
 - No durable atomic one-time nonce-consumption/replay ledger is implemented. Signature verification alone does not prevent reuse of a valid permit.
-- `core/absorption_effect_guard.py` checks signature/scope/effect but does not consume a permit exactly once.
+- `core/absorption_effect_guard.py` now verifies signature/scope/effect and then **unconditionally DENIES** because no durable atomic one-time consumption backend exists. This is an intentional safety interlock, not replay protection.
 - `tests/test_absorption_apply.py` uses an autouse fixture to replace the real effect authorization call with an always-allow stub for its data-lineage tests. One dedicated test restores the real function to check missing-permit denial. This does not establish replay, wrong-effect, or successful end-to-end enforcement coverage.
-- There is no dedicated effect-guard test module on this branch.
+- There is no durable one-time permit-consumption implementation. The added test asserts denial when that backend is absent; it does not claim replay protection is implemented.
 
-## Test status
+## Safe hardening applied on PR #140\n\n- Effect guard now fails closed after cryptographic/scope checks because atomic replay-safe consumption is not implemented. No process-local nonce cache or fake ledger was introduced.\n- Signer workflow now performs a no-secret preflight before the private-key step: it requires the separate approval file, all four expected artifacts, an approved policy with non-empty effects, and non-empty governance/permit keyrings. The current draft policy and current research artifact bundle intentionally fail this gate, so the private-key step is not reached.\n- Added tests asserting the effect guard denies without the durable consumption backend and that signer preflight precedes any private-key exposure.\n\n## Test status
 
 - CI run **44253161295** on head `5d0c37116b15f75e574d5d787356a8f17f21a3d3` completed successfully: `full-suite`, `minimind-key-isolation`, and `minimind-capability-readiness (non-production)`.
 - This is a code/test-suite pass only. It does not prove A, B, or C are complete, and it does not establish production authorization.
