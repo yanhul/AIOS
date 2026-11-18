@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from core.absorption_replay_store import ReplayStoreError, consume_permit_once
+from core.absorption_replay_store import LEDGER_REPOSITORY, ReplayStoreError, consume_permit_once
 
 
 def _encoded_ledger(ledger):
@@ -27,7 +27,7 @@ def test_replay_store_creates_ledger_once_and_rejects_second_consumption(monkeyp
 
     monkeypatch.setattr("core.absorption_replay_store._api_request", fake_request)
     permit = {"signature": "signed", "target_apply_run_id": "123"}
-    permit_id = consume_permit_once(permit=permit, repository="owner/repo", token="test", now=10)
+    permit_id = consume_permit_once(permit=permit, repository=LEDGER_REPOSITORY, token="test", now=10)
     assert permit_id in state["ledger"]["consumed"]
     assert state["ledger"]["consumed"][permit_id] == {
         "consumed_at": 10, "target_apply_run_id": "123"
@@ -62,3 +62,13 @@ def test_replay_store_requires_write_token(monkeypatch):
             permit={"signature": "signed", "target_apply_run_id": "123"},
             repository="owner/repo", token="",
         )
+
+
+def test_replay_store_rejects_legacy_repository_or_branch(monkeypatch):
+    monkeypatch.setenv("AIOS_REPLAY_LEDGER_TOKEN", "test")
+    permit = {"signature": "signed", "target_apply_run_id": "123"}
+    with pytest.raises(ReplayStoreError, match="dedicated AIOS-replay-ledger"):
+        consume_permit_once(permit=permit, repository="yanhul/AIOS")
+    with pytest.raises(ReplayStoreError, match="branch must be main"):
+        consume_permit_once(permit=permit, repository=LEDGER_REPOSITORY,
+                            branch="aios-absorption-replay-ledger")
