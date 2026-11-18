@@ -38,7 +38,7 @@ Implemented in the PR branch:
 - The effect guard consumes one permit once for the complete apply batch, not once per candidate.
 - The replay ledger branch has been created. The apply workflow requests `contents:write` only for its job and passes its GitHub token to the replay store.
 
-Tests added for first consumption, duplicate replay rejection, missing write credentials, and compare-and-swap conflict denial. The concurrency test is a mocked API conflict test, not a live parallel GitHub race test.
+Tests added for first consumption, duplicate replay rejection, missing write credentials, and compare-and-swap conflict denial. The concurrency test is a mocked API conflict test, not a live parallel GitHub race test. The dedicated ledger branch exists, but this change did not configure branch protection/rulesets; repository administrators or other actors with write authority could still rewrite the ledger. Production activation therefore also requires a ruleset that blocks force-push/deletion and restricts ledger updates to the intended automation identity.
 
 ## Governance activation blockers — deliberately not manufactured
 
