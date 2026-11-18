@@ -6,6 +6,7 @@ materialization effect. Do not replace this fail-closed boundary with a
 process-local set, temporary file, or caller-supplied boolean.
 """
 from __future__ import annotations
+import os
 from typing import Any, Mapping
 from core.absorption_authority import verify_absorption_permit, AbsorptionAuthorizationError
 from core.absorption_replay_store import consume_permit_once, ReplayStoreError
@@ -19,6 +20,9 @@ def authorize_absorption_effect(*, permit: Mapping[str, Any], permit_keyring: Ma
     """Verify scope, then fail closed because atomic replay protection is unavailable."""
     if not isinstance(effect, str) or not effect.strip():
         raise AbsorptionAuthorizationError("effect identity missing; DENY")
+    current_apply_run_id = os.environ.get("GITHUB_RUN_ID", "")
+    if not current_apply_run_id or target_apply_run_id != current_apply_run_id:
+        raise AbsorptionAuthorizationError("target apply run does not match the current GitHub workflow run; DENY")
     verify_absorption_permit(
         permit=permit, permit_keyring=permit_keyring, policy=policy,
         repository=repository, target_branch=target_branch, run_id=run_id,
