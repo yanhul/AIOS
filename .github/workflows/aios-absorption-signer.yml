@@ -93,7 +93,7 @@ jobs:
 
           root = Path(".")
           policy = json.loads((root / "policies/absorption-default-deny.v1.json").read_text())
-          approval_path = Path("input/approval.json")
+          approval_path = Path("policies/absorption-approval.json")
           required = [
               "absorption-executor.json",
               "absorption-verification.json",
@@ -127,6 +127,7 @@ jobs:
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           AIOS_TARGET_APPLY_RUN_ID: ${{ inputs.target_apply_run_id }}
+          AIOS_APPROVAL_PATH: policies/absorption-approval.json
           AIOS_ABSORPTION_PERMIT_PRIVATE_KEY: ${{ secrets.AIOS_ABSORPTION_PERMIT_PRIVATE_KEY }}
         run: python research/absorption_signer.py
 
