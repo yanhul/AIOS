@@ -1,0 +1,83 @@
+name: AIOS Absorption Permit Signer
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Completed absorption research workflow run ID"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  signer:
+    # Runs trusted default-branch code only. Never checkout the source run's commit or PR code.
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Validate source workflow run identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}" > "$RUNNER_TEMP/source-run.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          run = json.loads(Path(os.environ["RUNNER_TEMP"] + "/source-run.json").read_text())
+          if run.get("repository", {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("source repository mismatch; DENY")
+          if run.get("path") != ".github/workflows/aios-research-absorb.yml":
+              raise SystemExit("source workflow mismatch; DENY")
+          if run.get("event") != "workflow_dispatch" or run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("source run is not a completed successful manual workflow; DENY")
+          if run.get("head_branch") != "main" or not run.get("head_sha"):
+              raise SystemExit("source run is not from trusted main; DENY")
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write("AIOS_SOURCE_RUN_ID=" + str(run["id"]) + "\\n")
+              f.write("AIOS_SOURCE_COMMIT_SHA=" + run["head_sha"] + "\\n")
+              f.write("AIOS_TARGET_BRANCH=main\\n")
+          PY
+
+      - name: Download immutable source evidence
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+          name: aios-absorption-runtime-${{ inputs.source_run_id }}
+          path: input
+
+      - name: Install pinned signer dependency
+        run: python -m pip install --disable-pip-version-check cryptography==44.0.2
+
+      - name: Sign only independently validated evidence
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          AIOS_SOURCE_RUN_ID: ${{ env.AIOS_SOURCE_RUN_ID }}
+          AIOS_SOURCE_COMMIT_SHA: ${{ env.AIOS_SOURCE_COMMIT_SHA }}
+          AIOS_TARGET_BRANCH: ${{ env.AIOS_TARGET_BRANCH }}
+          AIOS_ABSORPTION_PERMIT_PRIVATE_KEY: ${{ secrets.AIOS_ABSORPTION_PERMIT_PRIVATE_KEY }}
+        run: python research/absorption_signer.py
+
+      - name: Publish signed permit
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-absorption-permit-${{ inputs.source_run_id }}
+          path: output/absorption-permit.json
+          if-no-files-found: error
+          retention-days: 7
