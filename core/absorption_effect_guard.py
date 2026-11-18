@@ -13,7 +13,7 @@ from core.absorption_authority import verify_absorption_permit, AbsorptionAuthor
 def authorize_absorption_effect(*, permit: Mapping[str, Any], permit_keyring: Mapping[str, Any],
                                 policy: Mapping[str, Any], repository: str, target_branch: str,
                                 run_id: str, source_commit_sha: str,
-                                artifact_digests: Mapping[str, str], effect: str,
+                                artifact_digests: Mapping[str, str], target_apply_run_id: str, effect: str,
                                 now: int | None = None) -> bool:
     """Verify scope, then fail closed because atomic replay protection is unavailable."""
     if not isinstance(effect, str) or not effect.strip():
@@ -21,7 +21,8 @@ def authorize_absorption_effect(*, permit: Mapping[str, Any], permit_keyring: Ma
     verify_absorption_permit(
         permit=permit, permit_keyring=permit_keyring, policy=policy,
         repository=repository, target_branch=target_branch, run_id=run_id,
-        source_commit_sha=source_commit_sha, artifact_digests=artifact_digests, now=now,
+        source_commit_sha=source_commit_sha, artifact_digests=artifact_digests,
+        target_apply_run_id=target_apply_run_id, now=now,
     )
     allowed = policy.get("decision", {}).get("allowed_effects")
     if not isinstance(allowed, list) or effect not in allowed:
