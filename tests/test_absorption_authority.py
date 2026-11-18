@@ -162,6 +162,7 @@ def test_permit_verifier_rejects_wrong_scope_commit_run_and_rotated_key():
         permit=permit, permit_keyring=keyring(signer), policy=policy,
         repository="yanhul/AIOS", target_branch="main", run_id="987654",
         source_commit_sha="c" * 40, artifact_digests=artifacts,
+        target_apply_run_id="apply-123",
     )
     assert verify_absorption_permit(**args)
     with pytest.raises(AbsorptionAuthorizationError, match="target_apply_run_id"):
