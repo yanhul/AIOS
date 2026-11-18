@@ -11,7 +11,8 @@ import core.absorption_effect_guard as effect_guard
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_checked_in_policy_and_empty_keyrings_fail_closed():
+def test_checked_in_policy_and_empty_keyrings_fail_closed(monkeypatch):
+    monkeypatch.setenv("GITHUB_RUN_ID", "apply-42")
     policy = json.loads((ROOT / "policies/absorption-default-deny.v1.json").read_text())
     governance = json.loads((ROOT / "policies/absorption-governance-keyring.json").read_text())
     permit_keys = json.loads((ROOT / "policies/absorption-permit-keyring.json").read_text())
