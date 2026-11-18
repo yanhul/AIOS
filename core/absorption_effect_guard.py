@@ -23,12 +23,13 @@ def _verify_replay_receipt(*, permit: Mapping[str, Any], target_apply_run_id: st
         raise AbsorptionAuthorizationError("writer replay receipt unreadable; DENY") from exc
     permit_id = hashlib.sha256(canonical_json(dict(permit)).encode("utf-8")).hexdigest()
     expected = {
-        "schema_version": 1,
+        "schema_version": 2,
         "permit_id": permit_id,
         "target_apply_run_id": target_apply_run_id,
+        "continuation_run_id": os.environ.get("GITHUB_RUN_ID", ""),
         "ledger_repository": "yanhul/AIOS-replay-ledger",
         "ledger_branch": "main",
-        "writer_job": "consume-permit",
+        "writer_job": "verify-merged-ledger",
         "consumed": True,
     }
     if not isinstance(receipt, Mapping) or any(receipt.get(k) != v for k, v in expected.items()):
@@ -44,9 +45,9 @@ def authorize_absorption_effect(*, permit: Mapping[str, Any], permit_keyring: Ma
     """Verify permit scope and require proof from the isolated writer job."""
     if not isinstance(effect, str) or not effect.strip():
         raise AbsorptionAuthorizationError("effect identity missing; DENY")
-    current_apply_run_id = os.environ.get("GITHUB_RUN_ID", "")
-    if not current_apply_run_id or target_apply_run_id != current_apply_run_id:
-        raise AbsorptionAuthorizationError("target apply run does not match the current GitHub workflow run; DENY")
+    continuation_run_id = os.environ.get("GITHUB_RUN_ID", "")
+    if not continuation_run_id:
+        raise AbsorptionAuthorizationError("current continuation workflow run identity missing; DENY")
     verify_absorption_permit(
         permit=permit, permit_keyring=permit_keyring, policy=policy,
         repository=repository, target_branch=target_branch, run_id=run_id,
