@@ -222,7 +222,7 @@ jobs:
 
   apply:
     needs: consume-permit
-    if: github.ref == 'refs/heads/main'
+    if: false # Apply is deferred to the separate post-merge finalizer workflow.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
