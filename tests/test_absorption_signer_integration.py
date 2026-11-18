@@ -85,6 +85,7 @@ def test_signer_workflow_scopes_private_key_to_single_protected_job_step():
     )
     assert apply_workflow["jobs"]["apply"]["environment"] == "production"
     assert apply_workflow["jobs"]["apply"]["environment"] != job["environment"]
+    assert "secrets.AIOS_ABSORPTION_PERMIT_PRIVATE_KEY" not in json.dumps(apply_workflow)
     secret_refs = []
     for step in job["steps"]:
         serialized = json.dumps(step)
