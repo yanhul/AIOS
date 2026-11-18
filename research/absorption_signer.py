@@ -8,7 +8,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from core.absorption_authority import sign_absorption_permit, _key_id, _public_hex
+from core.absorption_authority import (sign_absorption_permit, verify_approval_attestation,
+                                       _key_id, _public_hex)
 
 def read_json(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
@@ -96,6 +97,10 @@ def run():
              "absorption-runtime-proof.json", "absorption-promotion.json")
     artifacts = {name: read_json(Path(os.environ.get("AIOS_ARTIFACTS_DIR", "input")) / name) for name in names}
     validate_artifact_bundle(artifacts, source_run_id=os.environ["AIOS_SOURCE_RUN_ID"])
+    verify_approval_attestation(
+        policy=policy, approval=approval, governance_keyring=governance_keyring,
+        repository=repository, target_branch=os.environ["AIOS_TARGET_BRANCH"],
+    )
     expected = {name: digest_json(value) for name, value in artifacts.items()}
     lineage = {"repository": repository, "run_id": os.environ["AIOS_SOURCE_RUN_ID"],
                "source_commit_sha": os.environ["AIOS_SOURCE_COMMIT_SHA"], "artifacts": expected}
