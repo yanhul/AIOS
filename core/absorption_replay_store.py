@@ -18,7 +18,8 @@ from typing import Any, Mapping
 
 from core.mutation import canonical_json
 
-LEDGER_BRANCH = "aios-absorption-replay-ledger"
+LEDGER_REPOSITORY = "yanhul/AIOS-replay-ledger"
+LEDGER_BRANCH = "main"
 LEDGER_PATH = ".aios/absorption-consumed-permits.json"
 MAX_ENTRIES = 10000
 
@@ -53,9 +54,9 @@ def consume_permit_once(*, permit: Mapping[str, Any], repository: str,
                         token: str | None = None, branch: str = LEDGER_BRANCH,
                         now: int | None = None) -> str:
     """Atomically record a permit exactly once; return its stable permit ID."""
-    credential = token or os.environ.get("GITHUB_TOKEN", "")
+    credential = token or os.environ.get("AIOS_REPLAY_LEDGER_TOKEN", "")
     if not credential:
-        raise ReplayStoreError("GITHUB_TOKEN with contents:write is required; DENY")
+        raise ReplayStoreError("AIOS_REPLAY_LEDGER_TOKEN with contents:write is required; DENY")
     if not isinstance(repository, str) or repository.count("/") != 1:
         raise ReplayStoreError("repository identity malformed; DENY")
     if not isinstance(branch, str) or not branch or "/" in branch:
@@ -114,4 +115,4 @@ def consume_permit_once(*, permit: Mapping[str, Any], repository: str,
     return permit_id
 
 
-__all__ = ["ReplayStoreError", "consume_permit_once", "LEDGER_BRANCH", "LEDGER_PATH"]
+__all__ = ["ReplayStoreError", "consume_permit_once", "LEDGER_REPOSITORY", "LEDGER_BRANCH", "LEDGER_PATH"]
