@@ -56,8 +56,8 @@ No production secret, Environment setting, approval, private key, or permit was 
 
 ## Verification and merge gate
 
-- CI run **44260452001** on code head `1f8a6a59e99ca17705da3e3b89349a0997ea8f2b` completed successfully: `full-suite`, `minimind-key-isolation`, and `minimind-capability-readiness (non-production)` all passed.
-- Full suite: **824 passed, 16 skipped**, one pre-existing unknown pytest-mark warning.
+- CI run **44261879344** on current code head `d46e7046e1870ba2eee77806aafa54c3f2af5e03` completed successfully: `full-suite`, `minimind-key-isolation`, and `minimind-capability-readiness (non-production)` all passed.
+- Full suite: **824 passed, 16 skipped**, one existing PytestUnknownMarkWarning for pytest.mark.integration in tests/test_kicad_adapter.py.
 - This is code/test-suite evidence only. It does not prove live parallel GitHub API races, branch immutability, production authorization, or an end-to-end signer/apply run.
 - The ledger branch still needs a ruleset preventing force-push/deletion and restricting writers. The GitHub connection used here can read rulesets but cannot configure them.
 - The signer/apply Environment split is enforced by `tests/test_absorption_signer_integration.py`; the test also asserts that the apply workflow does not reference the signer private-key secret.
