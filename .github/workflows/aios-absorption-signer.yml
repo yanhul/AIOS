@@ -59,7 +59,7 @@ jobs:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ inputs.source_run_id }}
-          name: aios-absorption-runtime-${{ inputs.source_run_id }}
+          name: aios-absorption-research-${{ inputs.source_run_id }}
           path: input
 
       - name: Install pinned signer dependency
