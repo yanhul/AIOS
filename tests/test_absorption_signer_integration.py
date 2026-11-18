@@ -180,10 +180,16 @@ def test_apply_workflow_is_protected_and_binds_exact_apply_run():
     writer_json = json.dumps(writer)
     assert "AIOS_LEDGER_PRIVATE_KEY" not in writer_json
     assert "AIOS_REPLAY_LEDGER_TOKEN" not in writer_json
-    blocker = next(step for step in writer["steps"] if step.get("name") == "Block direct ledger writes until PR-based writer is implemented")
-    assert "DENY" in blocker["run"]
-    assert "No replay receipt will be issued" in blocker["run"]
-    assert blocker["run"].strip().endswith("exit 1")
+    app_token = next(step for step in writer["steps"] if step.get("name") == "Mint ledger-scoped GitHub App token")
+    assert app_token["with"]["repositories"] == "AIOS-replay-ledger"
+    assert app_token["with"]["permission-contents"] == "write"
+    assert app_token["with"]["permission-pull-requests"] == "write"
+    pr_writer = next(step for step in writer["steps"] if step.get("name") == "Create ledger candidate branch and pull request")
+    assert "refs/heads/" in pr_writer["run"]
+    assert '"base":"main"' in pr_writer["run"]
+    assert '"head":branch' in pr_writer["run"]
+    assert "Publish ledger PR reference (not a replay receipt)" in json.dumps(writer)
+    assert workflow["jobs"]["apply"]["if"].startswith("false")
 
     apply = workflow["jobs"]["apply"]
     assert apply["needs"] == "consume-permit"
@@ -207,13 +213,18 @@ def test_effect_guard_accepts_only_matching_writer_receipt(monkeypatch, tmp_path
     permit = {"signature": "cryptographically-verified-by-test", "target_apply_run_id": "apply-42"}
     permit_id = hashlib.sha256(canonical_json(permit).encode("utf-8")).hexdigest()
     receipt = {
-        "schema_version": 1,
+        "schema_version": 2,
         "permit_id": permit_id,
         "target_apply_run_id": "apply-42",
+        "continuation_run_id": "apply-42",
         "ledger_repository": "yanhul/AIOS-replay-ledger",
         "ledger_branch": "main",
-        "writer_job": "consume-permit",
+        "writer_job": "verify-merged-ledger",
+        "ledger_pr_number": 17,
+        "ledger_merge_commit_sha": "c" * 40,
+        "ledger_entry_digest": "d" * 64,
         "consumed": True,
+        "verified_at": 123,
     }
     path = tmp_path / "receipt.json"
     path.write_text(json.dumps(receipt), encoding="utf-8")
