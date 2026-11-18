@@ -42,3 +42,12 @@ The effect guard now distinguishes the permit's stage-one target run from the la
 - Environment secret presence is user-confirmed; secret values are not read.
 - Policy remains `DRAFT_UNAPPROVED`, default `DENY`, `allowed_effects: []`; governance and permit keyrings remain empty. The production effect must remain denied.
 - Keep this PR Draft and unmerged. Do not create governance/permit keys or run production to bypass these blockers.
+
+
+## Follow-up hardening (PR #140)
+
+- Finalizer downloads the permit using the exact artifact name uploaded by the stage-one writer.
+- Finalizer downloads source evidence and verifies the Ed25519 permit against the checked-in policy, keyring, exact source run, source revision, target run, and artifact digests before issuing a receipt. Empty/unapproved keyrings remain fail-closed.
+- Finalizer requires source, stage-one, and continuation workflow revisions to match.
+- Finalizer compares base, PR-branch, and merged-main ledger states; only one new permit entry is accepted, and all prior entries must remain unchanged.
+- GitHub Free does not provide server-enforced branch protection/rulesets for this private ledger repository. These checks detect non-monotonic PR outcomes but do not make the ledger tamper-proof against privileged administrators or credentials. Production remains DENY until an enforceable governance boundary exists.
