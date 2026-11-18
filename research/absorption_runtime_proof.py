@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
 from core.durable_loop import LoopPolicy, MemoryStateStore, run_durable_loop
 from core.durable_runtime import RuntimeSubmission, validate_submission
 from core.evidence import EvidenceRecord, verify_evidence
+from core.artifact_attestation import attest_artifact
 from research.absorbed_capabilities import run_conformance
 
 OUT = Path(os.environ.get("AIOS_ABSORPTION_RUNTIME_PROOF_OUT", "research/artifacts/absorption-runtime-proof.json"))
@@ -82,6 +83,13 @@ def run():
         "source_mutation": False,
         "digest": _digest({"implementation": implementation, "probes": probes}),
     }
+    secret = os.environ.get("AIOS_EVIDENCE_SIGNING_SECRET")
+    if secret and len(secret) >= 16:
+        result["attestation"] = attest_artifact("AIOS_ABSORPTION_RUNTIME_PROOF", result["run_id"],
+                                                result["digest"], secret)
+    else:
+        result["overall"] = "BLOCKED"
+        result["attestation_error"] = "trusted artifact signing secret is not configured"
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(result, indent=2, sort_keys=True)+"\n", encoding="utf-8")
     return result

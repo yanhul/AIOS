@@ -34,10 +34,10 @@ def execute(candidates,*,run_id):
     records=[]
     for c in candidates:
         source=c.get("source_ref",""); url=_readme_url(source,c.get("ref"))
-        base={"candidate_id":c["candidate_id"],"source_ref":source,"source_digest":c["source_digest"],"run_id":run_id,"authority":"AIOS_CONTROL_PLANE","status":"HOLD","promotion":"REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE"}
+        base={"candidate_id":c["candidate_id"],"source_ref":source,"source_digest":c["source_digest"],"source_snapshot":c.get("source_snapshot"),"run_id":run_id,"authority":"AIOS_CONTROL_PLANE","status":"HOLD","promotion":"REQUIRES_INDEPENDENT_RESEARCH_AND_EVIDENCE_GATE"}
         try:
             readme=_get(url) if url else ""; readme=readme[:MAX_README]
-            base.update({"evidence_url":url,"evidence_digest":_digest(readme),"evidence_status":"COLLECTED","adaptation":_adapt(c,readme),"status":"RESEARCHED_ADAPTATION_PROPOSED"})
+            base.update({"evidence_url":url,"evidence_content":readme,"evidence_digest":_digest(readme),"evidence_status":"COLLECTED","adaptation":_adapt(c,readme),"status":"RESEARCHED_ADAPTATION_PROPOSED"})
         except Exception as exc:
             base.update({"evidence_status":"ERROR","error_type":type(exc).__name__,"error_digest":_digest(str(exc))})
         records.append(base)
