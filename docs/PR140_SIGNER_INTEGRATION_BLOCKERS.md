@@ -2,7 +2,7 @@
 
 ## Current implementation status
 
-**Code path implemented in PR branch; activation remains blocked by missing governance authority material.** The implementation now includes a four-artifact producer, signer-side semantic validation, a distinct target apply-run binding, an apply workflow, and a durable replay ledger using GitHub Contents API compare-and-swap. It is not yet CI-verified at the current head and has not been run end-to-end on `main`.
+**Code path implemented in PR branch; activation remains blocked by missing governance authority material.** The implementation includes a four-artifact producer, signer-side semantic validation, a distinct target apply-run binding, an apply workflow, and a durable replay ledger using GitHub Contents API compare-and-swap. CI run `44260452001` passed all three jobs on code head `1f8a6a59e99ca17705da3e3b89349a0997ea8f2b`; no trusted source→signer→apply run has been executed on `main` because the required governance approval and keyrings are absent.
 
 ## A — Producer/consumer artifact contract
 
@@ -55,8 +55,9 @@ No production secret, Environment setting, approval, private key, or permit was 
 
 ## Verification and merge gate
 
-- CI run `44258376538` failed on the test that had not yet been updated for the required `target_apply_run_id` parameter. The failure was identified from the job log and the test was corrected in a later commit.
-- CI run `44259554737` is the latest PR validation run currently observed. At last inspection, the full test suite was still running; the two MiniMind jobs had passed. Do not report this run as fully passed until the full-suite conclusion is available.
-- The exact current head must have all CI jobs pass.
-- Before converting PR #140 to Ready or merging, review the complete diff and validate the workflow YAML plus the source→signer→apply sequence in a non-production test policy/key setup.
+- CI run **44260452001** on code head `1f8a6a59e99ca17705da3e3b89349a0997ea8f2b` completed successfully: `full-suite`, `minimind-key-isolation`, and `minimind-capability-readiness (non-production)` all passed.
+- Full suite: **824 passed, 16 skipped**, one pre-existing unknown pytest-mark warning.
+- This is code/test-suite evidence only. It does not prove live parallel GitHub API races, branch immutability, production authorization, or an end-to-end signer/apply run.
+- The ledger branch still needs a ruleset preventing force-push/deletion and restricting writers. The GitHub connection used here can read rulesets but cannot configure them.
+- Before converting PR #140 to Ready or merging, review the complete diff and validate the workflow YAML plus source→signer→apply sequence in a non-production test policy/key setup.
 - Keep production policy default DENY until a separate authorized governance approval. Do not treat CI success as production authorization.
