@@ -8,6 +8,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from core.evidence_gate import gate_promotion
 from core.artifact_attestation import verify_artifact_attestation
+from core.absorption_effect_guard import authorize_absorption_effect
 
 DEFAULT_EXEC = ROOT / "research/artifacts/absorption-executor.json"
 DEFAULT_VERIFY = ROOT / "research/artifacts/absorption-verification.json"
@@ -50,6 +51,33 @@ def _promotion_digest_valid(promotion):
                                         supplied, attestation, secret))
 
 
+def _authorize_absorption_effect(artifacts, *, run_id, effect):
+    def required_path(env_name):
+        value = os.environ.get(env_name)
+        if not value:
+            raise RuntimeError(f"{env_name} is required; DENY")
+        return Path(value)
+    policy_path = Path(os.environ.get("AIOS_ABSORPTION_POLICY_PATH", ROOT / "policies/absorption-default-deny.v1.json"))
+    permit_path = required_path("AIOS_ABSORPTION_PERMIT_PATH")
+    keyring_path = required_path("AIOS_ABSORPTION_PERMIT_KEYRING_PATH")
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    permit = json.loads(permit_path.read_text(encoding="utf-8"))
+    keyring = json.loads(keyring_path.read_text(encoding="utf-8"))
+    digests = {
+        "absorption-executor.json": _digest(artifacts["executor"]),
+        "absorption-verification.json": _digest(artifacts["verification"]),
+        "absorption-promotion.json": _digest(artifacts["promotion"]),
+        "absorption-runtime-proof.json": _digest(artifacts["runtime"]),
+    }
+    return authorize_absorption_effect(
+        permit=permit, permit_keyring=keyring, policy=policy,
+        repository=os.environ.get("GITHUB_REPOSITORY", ""),
+        target_branch=os.environ.get("AIOS_TARGET_BRANCH", ""),
+        run_id=run_id, source_commit_sha=os.environ.get("GITHUB_SHA", ""),
+        artifact_digests=digests, effect=effect,
+    )
+
+
 def absorb(executor, verification, promotion, runtime, *, run_id):
     if not run_id:
         raise RuntimeError("current run_id is required for absorption")
@@ -82,6 +110,13 @@ def absorb(executor, verification, promotion, runtime, *, run_id):
     secret = os.environ.get("AIOS_EVIDENCE_SIGNING_SECRET")
     for decision in decisions:
         cid = decision.get("candidate_id")
+        try:
+            _authorize_absorption_effect(artifacts, run_id=run_id,
+                                         effect="materialize_absorbed_registry")
+        except Exception as exc:
+            blocked.append({"candidate_id": cid, "verdict": "HOLD",
+                            "reason": "apply-time Ed25519 permit enforcement denied effect: " + str(exc)})
+            continue
         source = exec_by_id.get(cid)
         evidence = verified.get(cid)
         if not source or not evidence:
