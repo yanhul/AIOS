@@ -20,7 +20,7 @@ jobs:
   signer:
     # Runs trusted default-branch code only. Never checkout the source run's commit or PR code.
     if: github.ref == 'refs/heads/main'
-    environment: production
+    environment: absorption-signer
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
