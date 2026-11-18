@@ -196,6 +196,7 @@ jobs:
 
       - name: Apply only after post-merge receipt verification
         env:
+          GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           AIOS_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
           AIOS_SOURCE_COMMIT_SHA: ${{ github.sha }}
