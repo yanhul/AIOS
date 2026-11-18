@@ -90,12 +90,13 @@ jobs:
           set -euo pipefail
           mkdir -p permit
           for attempt in $(seq 1 90); do
-            artifact_id=$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=aios-absorption-permit-${SOURCE_RUN_ID}-${TARGET_APPLY_RUN_ID}" \
-              --jq '.artifacts[] | select(.expired == false) | .id' | head -n 1)
-            if [ -n "$artifact_id" ]; then
+            artifact_json=$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=aios-absorption-permit-${SOURCE_RUN_ID}-${TARGET_APPLY_RUN_ID}" \
+              --jq '.artifacts[] | select(.expired == false) | @json' | head -n 1)
+            if [ -n "$artifact_json" ]; then
+              printf '%s\n' "$artifact_json" > "$RUNNER_TEMP/permit-artifact.json"
+              artifact_id=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$RUNNER_TEMP/permit-artifact.json")
               gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/$artifact_id/zip" > "$RUNNER_TEMP/permit.zip"
               unzip -oq "$RUNNER_TEMP/permit.zip" -d permit
-              gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/$artifact_id" > "$RUNNER_TEMP/permit-artifact.json"
               if python - <<'PY'
           import json, os, urllib.request
           from pathlib import Path
