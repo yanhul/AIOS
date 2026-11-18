@@ -2,7 +2,7 @@
 
 ## Current implementation status
 
-**Code path implemented in PR branch; activation remains blocked by missing governance authority material.** The implementation includes a four-artifact producer, signer-side semantic validation, a distinct target apply-run binding, an apply workflow, and a durable replay ledger using GitHub Contents API compare-and-swap. CI run `44260452001` passed all three jobs on code head `1f8a6a59e99ca17705da3e3b89349a0997ea8f2b`; no trusted source→signer→apply run has been executed on `main` because the required governance approval and keyrings are absent.
+**Code path implemented in PR branch; activation remains blocked by missing governance authority material.** The implementation includes a four-artifact producer, signer-side semantic validation, a distinct target apply-run binding, an apply workflow, and a durable replay ledger using GitHub Contents API compare-and-swap. CI run `44260722683` passed all three jobs on code head `2a60729f1976c308451722eec06c1451b9b5e943`; no trusted source→signer→apply run has been executed on `main` because the required governance approval and keyrings are absent.
 
 ## A — Producer/consumer artifact contract
 
@@ -11,6 +11,7 @@ Implemented in the PR branch:
 - `.github/workflows/aios-research-absorb.yml` now runs the executor, independent verifier, runtime proof, and promotion steps and publishes the four JSON artifacts in one source-run artifact.
 - `research/absorption_signer.py` rejects missing/extra artifact names, wrong source-run IDs, non-PASS stages, invalid verification/runtime/promotion digests, failed runtime probes, promotion holds, mismatched candidate sets, and unsafe external-code flags before loading the permit private key.
 - The signer uses a separately reviewed `policies/absorption-approval.json` governance approval record; research output is not treated as approval.
+- The signer job uses the dedicated GitHub Environment `absorption-signer`; the apply job uses `production`. The permit private-key secret is referenced only by the signer step. Repository Environment settings and secrets are not provisioned by this PR.
 - `.github/workflows/aios-absorption-apply.yml` downloads the immutable source-run artifact and validates the exact four-file contract.
 
 Still required for activation: the separately signed approval file must exist and bind the exact approved policy digest. It must not be fabricated from research output.
@@ -51,7 +52,7 @@ Current checked-in governance state was inspected:
 
 Until an authorized governance owner provisions distinct governance and permit public keys, their corresponding private keys in the appropriate protected secret boundary, and a signed approval bound to the exact approved policy digest, the signer must stop before private-key use and the apply workflow must not materialize anything.
 
-No production secret, Environment setting, approval, private key, or permit was created or changed in this work.
+No production secret, Environment setting, approval, private key, or permit was created or changed in this work. The workflow now references a new Environment name (`absorption-signer`), but that Environment must be created and configured by a repository administrator before any future signer activation.
 
 ## Verification and merge gate
 
@@ -59,5 +60,7 @@ No production secret, Environment setting, approval, private key, or permit was 
 - Full suite: **824 passed, 16 skipped**, one pre-existing unknown pytest-mark warning.
 - This is code/test-suite evidence only. It does not prove live parallel GitHub API races, branch immutability, production authorization, or an end-to-end signer/apply run.
 - The ledger branch still needs a ruleset preventing force-push/deletion and restricting writers. The GitHub connection used here can read rulesets but cannot configure them.
+- The signer/apply Environment split is enforced by `tests/test_absorption_signer_integration.py`; the test also asserts that the apply workflow does not reference the signer private-key secret.
+- GitHub rulesets were queried and returned an empty list (`[]`). The branch-protection endpoint returned HTTP 403 to this connection, so no protection state can be asserted from that endpoint. The replay ledger remains unprotected until a repository administrator configures and verifies the dedicated ruleset.
 - Before converting PR #140 to Ready or merging, review the complete diff and validate the workflow YAML plus source→signer→apply sequence in a non-production test policy/key setup.
 - Keep production policy default DENY until a separate authorized governance approval. Do not treat CI success as production authorization.
