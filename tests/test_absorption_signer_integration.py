@@ -95,6 +95,8 @@ def test_signer_workflow_scopes_private_key_to_single_protected_job_step():
     assert "secrets.AIOS_ABSORPTION_PERMIT_PRIVATE_KEY" in json.dumps(secret_refs[0])
     checkout = next(step for step in job["steps"] if step.get("uses", "").startswith("actions/checkout"))
     assert checkout["with"]["ref"] == "main"
+    publish = next(step for step in job["steps"] if step.get("name") == "Publish signed permit")
+    assert publish["with"]["name"] == "aios-absorption-permit-${{ inputs.source_run_id }}-${{ inputs.target_apply_run_id }}"
 
 
 def _signed_bundle():
