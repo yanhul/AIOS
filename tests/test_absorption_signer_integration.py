@@ -95,6 +95,8 @@ def test_signer_workflow_scopes_private_key_to_single_protected_job_step():
     assert "secrets.AIOS_ABSORPTION_PERMIT_PRIVATE_KEY" in json.dumps(secret_refs[0])
     checkout = next(step for step in job["steps"] if step.get("uses", "").startswith("actions/checkout"))
     assert checkout["with"]["ref"] == "main"
+    validate = next(step for step in job["steps"] if step.get("name") == "Validate source workflow run identity")
+    assert "^[0-9]{1,20}$" in validate["run"]
     publish = next(step for step in job["steps"] if step.get("name") == "Publish signed permit")
     assert publish["with"]["name"] == "aios-absorption-permit-${{ inputs.source_run_id }}-${{ inputs.target_apply_run_id }}"
 
@@ -172,6 +174,8 @@ def test_apply_workflow_is_protected_and_binds_exact_apply_run():
     assert "target_apply_run_id" in dispatch["run"]
     wait = next(step for step in steps if step.get("name") == "Wait for permit signed for this apply run")
     assert "TARGET_APPLY_RUN_ID" in json.dumps(wait)
+    validate = next(step for step in steps if step.get("name") == "Validate source run and bind current apply run")
+    assert "^[0-9]{1,20}$" in validate["run"]
     assert "aios-absorption-permit-${SOURCE_RUN_ID}-${TARGET_APPLY_RUN_ID}" in wait["run"]
     apply_step = next(step for step in steps if step.get("name") == "Apply with Ed25519 permit and durable replay ledger")
     assert "GITHUB_TOKEN" in json.dumps(apply_step["env"])
