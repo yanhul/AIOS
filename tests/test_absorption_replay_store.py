@@ -56,8 +56,8 @@ def test_replay_store_fails_closed_on_concurrent_compare_and_swap_conflict(monke
 
 
 def test_replay_store_requires_write_token(monkeypatch):
-    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
-    with pytest.raises(ReplayStoreError, match="contents:write"):
+    monkeypatch.delenv("AIOS_REPLAY_LEDGER_TOKEN", raising=False)
+    with pytest.raises(ReplayStoreError, match="AIOS_REPLAY_LEDGER_TOKEN"):
         consume_permit_once(
             permit={"signature": "signed", "target_apply_run_id": "123"},
             repository="owner/repo", token="",
