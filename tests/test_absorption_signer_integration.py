@@ -142,3 +142,25 @@ def test_signer_rejects_tampered_runtime_proof_before_signing():
     artifacts["absorption-runtime-proof.json"]["probes"]["runtime"] = False
     with pytest.raises(RuntimeError, match="runtime proof contains failed or missing probes"):
         validate_artifact_bundle(artifacts, source_run_id="source-run-1")
+
+
+def test_apply_workflow_is_protected_and_binds_exact_apply_run():
+    import yaml
+
+    workflow = yaml.load(
+        (ROOT / ".github/workflows/aios-absorption-apply.yml").read_text(),
+        Loader=yaml.BaseLoader,
+    )
+    job = workflow["jobs"]["apply"]
+    assert job["environment"] == "production"
+    assert job["permissions"]["actions"] == "write"
+    assert job["permissions"]["contents"] == "write"
+    steps = job["steps"]
+    dispatch = next(step for step in steps if step.get("name") == "Dispatch protected permit signer")
+    assert "aios-absorption-signer.yml/dispatches" in dispatch["run"]
+    assert "target_apply_run_id" in dispatch["run"]
+    wait = next(step for step in steps if step.get("name") == "Wait for permit signed for this apply run")
+    assert "TARGET_APPLY_RUN_ID" in json.dumps(wait)
+    apply_step = next(step for step in steps if step.get("name") == "Apply with Ed25519 permit and durable replay ledger")
+    assert "GITHUB_TOKEN" in json.dumps(apply_step["env"])
+    assert "AIOS_TARGET_APPLY_RUN_ID" in json.dumps(apply_step["env"])
