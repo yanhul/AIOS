@@ -34,6 +34,14 @@ def _verify_replay_receipt(*, permit: Mapping[str, Any], target_apply_run_id: st
     }
     if not isinstance(receipt, Mapping) or any(receipt.get(k) != v for k, v in expected.items()):
         raise AbsorptionAuthorizationError("writer replay receipt binding mismatch; DENY")
+    if (isinstance(receipt.get("ledger_pr_number"), bool) or
+            not isinstance(receipt.get("ledger_pr_number"), int) or receipt["ledger_pr_number"] < 1 or
+            not isinstance(receipt.get("ledger_merge_commit_sha"), str) or
+            len(receipt["ledger_merge_commit_sha"]) != 40 or
+            not isinstance(receipt.get("ledger_entry_digest"), str) or
+            len(receipt["ledger_entry_digest"]) != 64 or
+            not isinstance(receipt.get("verified_at"), int)):
+        raise AbsorptionAuthorizationError("post-merge ledger proof fields missing or malformed; DENY")
     return True
 
 
