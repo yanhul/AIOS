@@ -1,4 +1,10 @@
-"""Effect-level Ed25519 permit enforcement for absorption materialization."""
+"""Effect-level Ed25519 permit enforcement for absorption materialization.
+
+A valid signature is not one-time authorization. Until a durable, atomic
+permit-consumption backend is configured, this guard deliberately DENIES every
+materialization effect. Do not replace this fail-closed boundary with a
+process-local set, temporary file, or caller-supplied boolean.
+"""
 from __future__ import annotations
 from typing import Any, Mapping
 from core.absorption_authority import verify_absorption_permit, AbsorptionAuthorizationError
@@ -9,7 +15,7 @@ def authorize_absorption_effect(*, permit: Mapping[str, Any], permit_keyring: Ma
                                 run_id: str, source_commit_sha: str,
                                 artifact_digests: Mapping[str, str], effect: str,
                                 now: int | None = None) -> bool:
-    """Verify exact permit scope and deny any effect not explicitly authorized by policy."""
+    """Verify scope, then fail closed because atomic replay protection is unavailable."""
     if not isinstance(effect, str) or not effect.strip():
         raise AbsorptionAuthorizationError("effect identity missing; DENY")
     verify_absorption_permit(
@@ -20,4 +26,6 @@ def authorize_absorption_effect(*, permit: Mapping[str, Any], permit_keyring: Ma
     allowed = policy.get("decision", {}).get("allowed_effects")
     if not isinstance(allowed, list) or effect not in allowed:
         raise AbsorptionAuthorizationError(f"effect {effect!r} is not authorized by policy; DENY")
-    return True
+    raise AbsorptionAuthorizationError(
+        "durable atomic one-time permit-consumption backend is unavailable; replay safety unproven; DENY"
+    )
