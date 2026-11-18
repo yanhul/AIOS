@@ -84,12 +84,16 @@ jobs:
 
       # Validate all non-secret prerequisites before the protected private key
       # is made available to any step. The current draft policy intentionally fails.
+      - name: Install pinned signer dependency
+        run: python -m pip install --disable-pip-version-check cryptography==44.0.2
+
       - name: Preflight signer inputs before secret access
         run: |
           set -euo pipefail
           python - <<'PY'
-          import json
+          import json, os
           from pathlib import Path
+          from core.absorption_authority import verify_approval_attestation
 
           root = Path(".")
           policy = json.loads((root / "policies/absorption-default-deny.v1.json").read_text())
@@ -110,18 +114,19 @@ jobs:
           effects = policy.get("decision", {}).get("allowed_effects")
           if not isinstance(effects, list) or not effects:
               raise SystemExit("policy has no explicitly approved effects; DENY")
-          for path in (
-              root / "policies/absorption-governance-keyring.json",
-              root / "policies/absorption-permit-keyring.json",
-          ):
-              value = json.loads(path.read_text())
-              if not isinstance(value, dict) or not value:
-                  raise SystemExit(f"trusted keyring unavailable: {path}; DENY")
-          print("Signer preflight passed; cryptographic verification remains mandatory.")
+          governance_keyring = json.loads((root / "policies/absorption-governance-keyring.json").read_text())
+          permit_keyring = json.loads((root / "policies/absorption-permit-keyring.json").read_text())
+          if not isinstance(governance_keyring, dict) or not governance_keyring:
+              raise SystemExit("trusted governance keyring unavailable; DENY")
+          if not isinstance(permit_keyring, dict) or not permit_keyring:
+              raise SystemExit("trusted permit keyring unavailable; DENY")
+          approval = json.loads(approval_path.read_text())
+          verify_approval_attestation(
+              policy=policy, approval=approval, governance_keyring=governance_keyring,
+              repository=os.environ["GITHUB_REPOSITORY"], target_branch="main",
+          )
+          print("Signer preflight passed; governance approval cryptographically verified before secret access.")
           PY
-
-      - name: Install pinned signer dependency
-        run: python -m pip install --disable-pip-version-check cryptography==44.0.2
 
       - name: Sign only independently validated evidence
         env:
