@@ -23,8 +23,10 @@ def key_id(key):
     return "ed25519:" + hashlib.sha256(bytes.fromhex(raw_public(key))).hexdigest()[:32]
 
 
-def keyring(key):
-    return {key_id(key): {"public_key": raw_public(key), "revoked": False}}
+def keyring(key, principal="governance-human"):
+    return {key_id(key): {
+        "public_key": raw_public(key), "revoked": False, "principal": principal
+    }}
 
 
 def approved_policy():
