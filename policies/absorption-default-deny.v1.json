@@ -1,0 +1,89 @@
+{
+  "policy_type": "GOVERNING_POLICY",
+  "policy_id": "aios.absorption.default_deny",
+  "policy_version": "1.0.0",
+  "status": "DRAFT_UNAPPROVED",
+  "purpose": "Constrain AIOS research absorption to non-mutating evidence collection and proposal generation until an authorized human approves a separately content-addressed policy revision.",
+  "scope": {
+    "workload": "research.absorption",
+    "repository": "yanhul/AIOS",
+    "workflow": ".github/workflows/aios-research-absorb.yml"
+  },
+  "decision": {
+    "default": "DENY",
+    "allowed_effects": [],
+    "permitted_non_effect_operations": [
+      "read_public_source_metadata",
+      "collect_public_source_evidence",
+      "compute_content_digests",
+      "produce_untrusted_research_proposal",
+      "run_isolated_non_production_tests"
+    ],
+    "denied_effects": [
+      "source_mutation",
+      "policy_mutation",
+      "capability_registry_mutation",
+      "contract_mutation",
+      "permit_issuance",
+      "production_execution",
+      "artifact_materialization",
+      "promotion",
+      "automatic_promotion",
+      "deployment",
+      "secret_access_outside_signer"
+    ]
+  },
+  "constraints": {
+    "external_code_execution": false,
+    "external_code_copy": false,
+    "source_mutation": false,
+    "policy_mutation": false,
+    "capability_registry_mutation": false,
+    "automatic_promotion": false,
+    "automatic_permit_issuance": false,
+    "production_authorization": false,
+    "maximum_attempts": 1,
+    "network_access": "public_read_only_sources_only",
+    "evidence_classification_default": "UNTRUSTED",
+    "missing_or_invalid_evidence": "BLOCK"
+  },
+  "signer_requirements": {
+    "algorithm": "Ed25519",
+    "private_key_location": "GitHub Actions Environment production secret, signer job only",
+    "verifier_key_material": "public_key_only",
+    "signer_must_revalidate": [
+      "repository_identity",
+      "workflow_run_id",
+      "source_commit_sha",
+      "artifact_digests",
+      "policy_digest",
+      "approval_attestation"
+    ],
+    "signing_without_valid_approval": "DENY",
+    "signer_must_not_execute_candidate_code": true
+  },
+  "approval": {
+    "required": true,
+    "status": "NOT_APPROVED",
+    "approver_identity": null,
+    "approval_record_ref": null,
+    "approved_policy_digest": null,
+    "approved_at_utc": null,
+    "signature_algorithm": "Ed25519",
+    "signature": null,
+    "binding": [
+      "policy_digest",
+      "repository",
+      "target_branch",
+      "allowed_effects",
+      "expiry"
+    ],
+    "note": "This draft is not an approval. Approval must be a separate authenticated governance decision by an authorized human and must bind the exact immutable policy digest."
+  },
+  "expiry": null,
+  "revocation": {
+    "supported": true,
+    "revocation_source": "AIOS governance authority",
+    "unknown_or_unavailable": "DENY"
+  }
+}
