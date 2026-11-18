@@ -76,8 +76,8 @@ jobs:
           done
 
       # Start signer only after this apply run exists, so the signed permit is
-      # bound to this exact GITHUB_RUN_ID. Signer remains protected by its own
-      # production Environment approval and private-key isolation.
+      # bound to this exact GITHUB_RUN_ID. Signer uses the dedicated
+      # absorption-signer Environment; apply uses production and has no signing key.
       - name: Dispatch protected permit signer
         env:
           GH_TOKEN: ${{ github.token }}
