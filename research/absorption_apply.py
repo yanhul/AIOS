@@ -74,7 +74,8 @@ def _authorize_absorption_effect(artifacts, *, run_id, effect):
         repository=os.environ.get("GITHUB_REPOSITORY", ""),
         target_branch=os.environ.get("AIOS_TARGET_BRANCH", ""),
         run_id=run_id, source_commit_sha=os.environ.get("GITHUB_SHA", ""),
-        artifact_digests=digests, effect=effect,
+        artifact_digests=digests,
+        target_apply_run_id=os.environ.get("AIOS_TARGET_APPLY_RUN_ID", ""), effect=effect,
     )
 
 
