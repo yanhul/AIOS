@@ -2,30 +2,49 @@
 
 ## Status
 
-**DRAFT / BLOCKED — partial implementation added, end-to-end integration not complete.** This branch is based on PR #139. The signer workflow and apply-time Ed25519 guard are present, but no policy is activated, no permit is issued, and no production secret is accessed or changed.
+**DRAFT / BLOCKED — no end-to-end authorization path is established.** Current reviewed head before this documentation correction: `5d0c37116b15f75e574d5d787356a8f17f21a3d3`. The policy remains `DRAFT_UNAPPROVED` with `allowed_effects: []`. This is intentional and must remain DENY.
 
-## Source facts reviewed at PR #139 head
+## A — Artifact producer/consumer contract: NOT CONNECTED
 
-- `.github/workflows/aios-research-absorb.yml` currently has one `scan-and-intake` job with `environment: production` at job scope. The job runs research, verification, runtime proof, promotion, and apply in the same job.
-- That workflow passes `AIOS_PRODUCTION_EVIDENCE_SIGNING_SECRET` to verifier, runtime proof, promotion, and apply. This is incompatible with the intended isolated Ed25519 signer boundary.
-- `research/absorption_verifier.py`, `research/absorption_runtime_proof.py`, and `research/absorption_promotion.py` still create or verify HMAC attestations using `AIOS_EVIDENCE_SIGNING_SECRET`.
-- `research/absorption_apply.py` now calls an Ed25519 effect guard before each candidate materialization. It still retains legacy HMAC checks, so it is not yet public-key-only.
-- `core/absorption_authority.py` supplies Ed25519 approval/permit primitives. The new `core/absorption_effect_guard.py` wires permit verification into the apply loop. The separate signer workflow is not yet sequenced before apply in the existing research workflow.
-- `policies/absorption-default-deny.v1.json` is `DRAFT_UNAPPROVED`, with `allowed_effects: []`; this state must remain a hard DENY.
+- `.github/workflows/aios-research-absorb.yml` runs read-only research intake and publishes `aios-absorption-research-${{ github.run_id }}`.
+- `research/absorption_signer.py` expects `input/approval.json` and four separate files: executor, verification, runtime-proof, and promotion.
+- The research workflow does not produce that approved four-artifact bundle or an approval record. The signer therefore cannot complete with the current producer output.
+- Do not fabricate approval or synthesize missing verification/runtime/promotion records merely to make signer pass.
 
-## Required implementation sequence
+## B — Authentication migration: INCOMPLETE
 
-1. Split the workflow into an unprivileged research/verification job, a protected signer job, and a public-key-only apply job. The signer job must be the only job with access to the new permit private-key secret. Do not pass any signing secret to verifier, runtime, promotion, or apply.
-2. Replace HMAC artifact/evidence attestations with content-addressed artifacts whose exact digests are independently checked by the signer. The signer must validate trusted workflow/run metadata and must not execute candidate-controlled code.
-3. Add an explicit governance approval record and governance public-key allowlist. The permit signer public key must also be pinned in a verifier keyring. Missing, empty, revoked, or unavailable keyrings mean DENY.
-4. Complete the apply integration: remove legacy HMAC requirements from apply and its upstream gates, bind the signer output to the exact same source run and artifacts, and ensure the apply job consumes the signer artifact before any effect. The current guard checks the permit immediately before each candidate effect, but the workflow does not yet connect signer output to apply.
-5. Expand adversarial tests for forged/expired approvals, revoked and unknown keys, replayed run IDs, wrong commit, modified/missing/extra artifacts, and wrong effect. Current tests cover missing permit denial, empty default-deny policy/keyrings, and signer workflow secret scoping; this is not the full adversarial corpus.
-6. Ensure CI runs for PRs targeting `security/absorption-policy-ed25519-tests`, then run the full suite and inspect the resulting run logs on the exact PR #140 head.
+- `core/artifact_attestation.py` still defines HMAC-SHA256 artifact attestations.
+- `core/evidence.py` and `core/evidence_gate.py` still use HMAC-SHA256 for evidence attestations and promotion authorization.
+- `research/absorption_verifier.py`, `research/absorption_runtime_proof.py`, `research/absorption_promotion.py`, and `research/absorption_apply.py` still depend on those HMAC paths.
+- Ed25519 approval/permit primitives in `core/absorption_authority.py` do not by themselves replace those legacy evidence trust decisions.
+- Research workflow isolation removed production signing secrets from the research job; it did not complete the Python-side HMAC-to-public-key migration.
+
+## C — Permit scope and effect enforcement: INCOMPLETE
+
+- Current permit binds policy digest, repository, target branch, source run, source commit, and artifact digests.
+- It does **not** bind a distinct target apply-run ID.
+- No durable atomic one-time nonce-consumption/replay ledger is implemented. Signature verification alone does not prevent reuse of a valid permit.
+- `core/absorption_effect_guard.py` checks signature/scope/effect but does not consume a permit exactly once.
+- `tests/test_absorption_apply.py` uses an autouse fixture to replace the real effect authorization call with an always-allow stub for its data-lineage tests. One dedicated test restores the real function to check missing-permit denial. This does not establish replay, wrong-effect, or successful end-to-end enforcement coverage.
+- There is no dedicated effect-guard test module on this branch.
+
+## Test status
+
+- CI run **44253161295** on head `5d0c37116b15f75e574d5d787356a8f17f21a3d3` completed successfully: `full-suite`, `minimind-key-isolation`, and `minimind-capability-readiness (non-production)`.
+- This is a code/test-suite pass only. It does not prove A, B, or C are complete, and it does not establish production authorization.
+- Required additional adversarial tests: missing/invalid approval, draft policy, unknown/revoked key, expired permit, wrong repository/run/commit/apply-run, altered/missing/extra artifact, wrong effect, replay, concurrent consumption, and missing audit receipt.
+
+## Safe next implementation gates
+
+1. Define one versioned artifact manifest produced by research, including exact artifact names, run ID, repository, source commit, sizes, and SHA-256 digests. Signer must validate exact expected contents and reject missing/extra artifacts.
+2. Replace HMAC authorization dependencies with public-key verification or content-addressed integrity plus separately authenticated provenance. Do not treat a bare digest as an authenticated issuer.
+3. Add target apply-run binding and a durable atomic one-time permit-consumption service. If that service is unavailable, effect authorization must remain DENY; an ephemeral runner-local file is not a cross-run replay defense.
+4. Enforce the guard in the actual apply entrypoint and test direct invocation, wrong effect, replay, and concurrent consumption without stubbing the guard.
+5. Run CI against the exact final head and inspect all job results.
 
 ## Merge / activation gates
 
-- Keep PR #138, #139, and this PR in Draft until the above implementation and tests are complete.
-- Do not merge this PR as an implementation-complete change while any legacy HMAC secret remains exposed outside the signer.
-- Do not create or modify production secrets, key material, GitHub Environment protection, or approval records as part of this PR.
-- Do not change the current policy from `DRAFT_UNAPPROVED` or populate `allowed_effects`.
-- CI success alone is not evidence that the production signer boundary is enforced.
+- Keep PR #140 Draft and unmerged until A, B, C, and their adversarial tests are implemented.
+- Keep the policy draft and empty-effect list unchanged until a separate authorized governance decision.
+- Do not create governance approvals or production private keys, and do not modify production secrets or Environment settings.
+- Do not claim production readiness from CI success alone.
