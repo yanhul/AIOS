@@ -1,56 +1,62 @@
-# PR #140 — Ed25519 signer / permit integration gate
+# PR #140 — absorption signer, apply binding, and replay enforcement
 
-## Status
+## Current implementation status
 
-**DRAFT / BLOCKED — no end-to-end authorization path is established.** Current reviewed head before this documentation correction: `5d0c37116b15f75e574d5d787356a8f17f21a3d3`. The policy remains `DRAFT_UNAPPROVED` with `allowed_effects: []`. This is intentional and must remain DENY.
+**Code path implemented in PR branch; activation remains blocked by missing governance authority material.** The implementation now includes a four-artifact producer, signer-side semantic validation, a distinct target apply-run binding, an apply workflow, and a durable replay ledger using GitHub Contents API compare-and-swap. It is not yet CI-verified at the current head and has not been run end-to-end on `main`.
 
-## A — Artifact producer/consumer contract: NOT CONNECTED
+## A — Producer/consumer artifact contract
 
-- `.github/workflows/aios-research-absorb.yml` runs read-only research intake and publishes `aios-absorption-research-${{ github.run_id }}`.
-- `research/absorption_signer.py` expects `input/approval.json` and four separate files: executor, verification, runtime-proof, and promotion.
-- The research workflow does not produce that approved four-artifact bundle or an approval record. The signer therefore cannot complete with the current producer output.
-- Do not fabricate approval or synthesize missing verification/runtime/promotion records merely to make signer pass.
+Implemented in the PR branch:
 
-## B — Authentication migration: INCOMPLETE
+- `.github/workflows/aios-research-absorb.yml` now runs the executor, independent verifier, runtime proof, and promotion steps and publishes the four JSON artifacts in one source-run artifact.
+- `research/absorption_signer.py` rejects missing/extra artifact names, wrong source-run IDs, non-PASS stages, invalid verification/runtime/promotion digests, failed runtime probes, promotion holds, mismatched candidate sets, and unsafe external-code flags before loading the permit private key.
+- The signer uses a separately reviewed `policies/absorption-approval.json` governance approval record; research output is not treated as approval.
+- `.github/workflows/aios-absorption-apply.yml` downloads the immutable source-run artifact and validates the exact four-file contract.
 
-- `core/artifact_attestation.py` still defines HMAC-SHA256 artifact attestations.
-- `core/evidence.py` and `core/evidence_gate.py` still use HMAC-SHA256 for evidence attestations and promotion authorization.
-- `research/absorption_verifier.py`, `research/absorption_runtime_proof.py`, `research/absorption_promotion.py`, and `research/absorption_apply.py` still depend on those HMAC paths.
-- Ed25519 approval/permit primitives in `core/absorption_authority.py` do not by themselves replace those legacy evidence trust decisions.
-- Research workflow isolation removed production signing secrets from the research job; it did not complete the Python-side HMAC-to-public-key migration.
+Still required for activation: the separately signed approval file must exist and bind the exact approved policy digest. It must not be fabricated from research output.
 
-## C — Permit scope and effect enforcement: INCOMPLETE
+## B — HMAC removal from absorption authorization
 
-- Current permit binds policy digest, repository, target branch, source run, source commit, and artifact digests.
-- It does **not** bind a distinct target apply-run ID.
-- No durable atomic one-time nonce-consumption/replay ledger is implemented. Signature verification alone does not prevent reuse of a valid permit.
-- `core/absorption_effect_guard.py` now verifies signature/scope/effect and then **unconditionally DENIES** because no durable atomic one-time consumption backend exists. This is an intentional safety interlock, not replay protection.
-- `tests/test_absorption_apply.py` uses an autouse fixture to replace the real effect authorization call with an always-allow stub for its data-lineage tests. One dedicated test restores the real function to check missing-permit denial. This does not establish replay, wrong-effect, or successful end-to-end enforcement coverage.
-- There is no durable one-time permit-consumption implementation. The added test asserts denial when that backend is absent; it does not claim replay protection is implemented.
+Implemented for the absorption decision path:
 
-## Safe hardening applied on PR #140
+- `research/absorption_verifier.py` now emits content-addressed evidence records without using HMAC as issuer authentication.
+- `research/absorption_runtime_proof.py` emits a content digest; the signer later authenticates the exact artifact bytes through the Ed25519 permit.
+- `research/absorption_promotion.py` validates evidence-record digests and levels, runtime proof digest, and same-run lineage without using HMAC as the promotion authority.
+- `research/absorption_apply.py` revalidates evidence and artifact digests and requires the Ed25519 permit before the effect. It no longer uses the legacy HMAC evidence gate for this absorption path.
+- Generic HMAC utilities and `core/evidence_gate.py` remain for other existing AIOS workflows; they are not being silently removed globally.
 
-- Effect guard now fails closed after cryptographic/scope checks because atomic replay-safe consumption is not implemented. No process-local nonce cache or fake ledger was introduced.
-- Signer workflow now performs a no-secret preflight before the private-key step: it requires the separate approval file, all four expected artifacts, an approved policy with non-empty effects, and non-empty governance/permit keyrings. The current draft policy and current research artifact bundle intentionally fail this gate, so the private-key step is not reached.
-- Added tests asserting the effect guard denies without the durable consumption backend and that signer preflight precedes any private-key exposure.
+Trust boundary: content digests provide integrity, not issuer identity. The signed Ed25519 permit is the authorization over the exact artifact manifest and scope.
 
-## Test status
+## C — Target apply-run binding and durable replay prevention
 
-- CI run **44256569022** on exact final head `18a3d9222aa3b7a5b5bc5bc15c76e93f8840cda5` completed successfully: `full-suite`, `minimind-key-isolation`, and `minimind-capability-readiness (non-production)`. This confirms the test suite passed for this code head; it does not prove A/B/C or production authorization.
-- This is a code/test-suite pass only. It does not prove A, B, or C are complete, and it does not establish production authorization.
-- Required additional adversarial tests: missing/invalid approval, draft policy, unknown/revoked key, expired permit, wrong repository/run/commit/apply-run, altered/missing/extra artifact, wrong effect, replay, concurrent consumption, and missing audit receipt.
+Implemented in the PR branch:
 
-## Safe next implementation gates
+- Permit signature includes `target_apply_run_id`, distinct from the source research `run_id`.
+- Signer validates that the target ID is an active `.github/workflows/aios-absorption-apply.yml` workflow run, from the same repository, on `main`, with the same source/signer commit SHA.
+- Apply workflow starts first, dispatches the signer with its own `GITHUB_RUN_ID`, waits for the permit artifact, and checks that the permit targets that exact run.
+- `core/absorption_replay_store.py` writes a durable permit-consumption ledger on branch `aios-absorption-replay-ledger`. Updates require the current blob SHA; concurrent compare-and-swap conflicts fail closed. A consumed permit ID is rejected on subsequent use.
+- The effect guard consumes one permit once for the complete apply batch, not once per candidate.
+- The replay ledger branch has been created. The apply workflow requests `contents:write` only for its job and passes its GitHub token to the replay store.
 
-1. Define one versioned artifact manifest produced by research, including exact artifact names, run ID, repository, source commit, sizes, and SHA-256 digests. Signer must validate exact expected contents and reject missing/extra artifacts.
-2. Replace HMAC authorization dependencies with public-key verification or content-addressed integrity plus separately authenticated provenance. Do not treat a bare digest as an authenticated issuer.
-3. Add target apply-run binding and a durable atomic one-time permit-consumption service. If that service is unavailable, effect authorization must remain DENY; an ephemeral runner-local file is not a cross-run replay defense.
-4. Enforce the guard in the actual apply entrypoint and test direct invocation, wrong effect, replay, and concurrent consumption without stubbing the guard.
-5. Run CI against the exact final head and inspect all job results.
+Tests added for first consumption, duplicate replay rejection, missing write credentials, and compare-and-swap conflict denial. The concurrency test is a mocked API conflict test, not a live parallel GitHub race test.
 
-## Merge / activation gates
+## Governance activation blockers — deliberately not manufactured
 
-- Keep PR #140 Draft and unmerged until A, B, C, and their adversarial tests are implemented.
-- Keep the policy draft and empty-effect list unchanged until a separate authorized governance decision.
-- Do not create governance approvals or production private keys, and do not modify production secrets or Environment settings.
-- Do not claim production readiness from CI success alone.
+Current checked-in governance state was inspected:
+
+- `policies/absorption-default-deny.v1.json`: `DRAFT_UNAPPROVED`; `allowed_effects: []`.
+- `policies/absorption-governance-keyring.json`: empty object.
+- `policies/absorption-permit-keyring.json`: empty object.
+- `policies/absorption-approval.json`: not present.
+
+Until an authorized governance owner provisions distinct governance and permit public keys, their corresponding private keys in the appropriate protected secret boundary, and a signed approval bound to the exact approved policy digest, the signer must stop before private-key use and the apply workflow must not materialize anything.
+
+No production secret, Environment setting, approval, private key, or permit was created or changed in this work.
+
+## Verification and merge gate
+
+- CI run `44258376538` failed on the test that had not yet been updated for the required `target_apply_run_id` parameter. The failure was identified from the job log and the test was corrected in a later commit.
+- CI run `44259554737` is the latest PR validation run currently observed. At last inspection, the full test suite was still running; the two MiniMind jobs had passed. Do not report this run as fully passed until the full-suite conclusion is available.
+- The exact current head must have all CI jobs pass.
+- Before converting PR #140 to Ready or merging, review the complete diff and validate the workflow YAML plus the source→signer→apply sequence in a non-production test policy/key setup.
+- Keep production policy default DENY until a separate authorized governance approval. Do not treat CI success as production authorization.
