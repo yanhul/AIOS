@@ -95,15 +95,22 @@ jobs:
             if [ -n "$artifact_id" ]; then
               gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/$artifact_id/zip" > "$RUNNER_TEMP/permit.zip"
               unzip -oq "$RUNNER_TEMP/permit.zip" -d permit
+              gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/$artifact_id" > "$RUNNER_TEMP/permit-artifact.json"
               if python - <<'PY'
-          import json, os
+          import json, os, urllib.request
           from pathlib import Path
           p = Path("permit/absorption-permit.json")
-          if not p.is_file():
-              raise SystemExit(1)
+          if not p.is_file(): raise SystemExit(1)
           permit = json.loads(p.read_text())
-          if permit.get("target_apply_run_id") != os.environ["TARGET_APPLY_RUN_ID"]:
-              raise SystemExit(1)
+          if permit.get("target_apply_run_id") != os.environ["TARGET_APPLY_RUN_ID"]: raise SystemExit(1)
+          artifact = json.loads(Path(os.environ["RUNNER_TEMP"] + "/permit-artifact.json").read_text())
+          owner_run = artifact.get("workflow_run") or {}
+          if owner_run.get("head_branch") != "main" or owner_run.get("head_sha") != os.environ["GITHUB_SHA"]: raise SystemExit("permit artifact revision mismatch; DENY")
+          url = "https://api.github.com/repos/" + os.environ["GITHUB_REPOSITORY"] + "/actions/runs/" + str(owner_run.get("id", ""))
+          req = urllib.request.Request(url, headers={"Authorization":"Bearer "+os.environ["GH_TOKEN"],"Accept":"application/vnd.github+json"})
+          with urllib.request.urlopen(req, timeout=15) as response: owner = json.loads(response.read())
+          if owner.get("path") != ".github/workflows/aios-absorption-signer.yml" or owner.get("event") != "workflow_dispatch" or owner.get("status") != "completed" or owner.get("conclusion") != "success": raise SystemExit("permit artifact is not from successful signer workflow; DENY")
+          if owner.get("head_sha") != os.environ["GITHUB_SHA"]: raise SystemExit("signer workflow revision mismatch; DENY")
           PY
               then
                 exit 0
