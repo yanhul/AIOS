@@ -166,5 +166,5 @@ if __name__ == "__main__":
     v = json.loads(_path("AIOS_ABSORPTION_VERIFY_IN", DEFAULT_VERIFY).read_text())
     p = json.loads(_path("AIOS_ABSORPTION_PROMO_IN", DEFAULT_PROMO).read_text())
     r = json.loads(_path("AIOS_ABSORPTION_RUNTIME_IN", DEFAULT_RUNTIME).read_text())
-    result = absorb(e, v, p, r, run_id=os.environ.get("GITHUB_RUN_ID", ""))
+    result = absorb(e, v, p, r, run_id=os.environ.get("AIOS_SOURCE_RUN_ID", os.environ.get("GITHUB_RUN_ID", "")))
     raise SystemExit(0 if result["overall"] in {"PASS", "PASS_WITH_HOLDS"} else 1)
