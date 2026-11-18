@@ -28,6 +28,7 @@
       "production_execution",
       "artifact_materialization",
       "promotion",
+      "automatic_promotion",
       "deployment",
       "secret_access_outside_signer"
     ]
