@@ -1,0 +1,236 @@
+name: AIOS Absorption Post-Merge Finalize
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Successful absorption research run ID"
+        required: true
+        type: string
+      stage1_run_id:
+        description: "Completed apply run that opened the ledger PR and owns the signed permit"
+        required: true
+        type: string
+      ledger_pr_number:
+        description: "Human-merged PR number in yanhul/AIOS-replay-ledger"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: aios-absorption-finalize
+  cancel-in-progress: false
+
+jobs:
+  verify-merged-ledger:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: absorption-ledger-writer
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Validate source and stage-one workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          STAGE1_RUN_ID: ${{ inputs.stage1_run_id }}
+          PR_NUMBER: ${{ inputs.ledger_pr_number }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]{1,20}$ ]]
+          [[ "$STAGE1_RUN_ID" =~ ^[0-9]{1,20}$ ]]
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$SOURCE_RUN_ID" > "$RUNNER_TEMP/source.json"
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$STAGE1_RUN_ID" > "$RUNNER_TEMP/stage1.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          source = json.loads(Path(os.environ["RUNNER_TEMP"]+"/source.json").read_text())
+          stage1 = json.loads(Path(os.environ["RUNNER_TEMP"]+"/stage1.json").read_text())
+          if str(source.get("id")) != os.environ["SOURCE_RUN_ID"] or source.get("path") != ".github/workflows/aios-research-absorb.yml":
+              raise SystemExit("source run identity mismatch; DENY")
+          if source.get("event") != "workflow_dispatch" or source.get("status") != "completed" or source.get("conclusion") != "success" or source.get("head_branch") != "main":
+              raise SystemExit("source run is not successful trusted main evidence; DENY")
+          if str(stage1.get("id")) != os.environ["STAGE1_RUN_ID"] or stage1.get("path") != ".github/workflows/aios-absorption-apply.yml":
+              raise SystemExit("stage-one run identity mismatch; DENY")
+          if stage1.get("event") != "workflow_dispatch" or stage1.get("status") != "completed" or stage1.get("conclusion") != "success" or stage1.get("head_branch") != "main":
+              raise SystemExit("stage-one writer workflow did not complete successfully on main; DENY")
+          if stage1.get("head_sha") != source.get("head_sha"):
+              raise SystemExit("source and stage-one trusted revisions differ; DENY")
+          PY
+
+      - name: Download exact signed permit from stage-one run
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.stage1_run_id }}
+          name: aios-absorption-permit-${{ inputs.source_run_id }}-${{ inputs.stage1_run_id }}
+          path: permit
+
+      - name: Mint read-only ledger verification token
+        id: ledger-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+        with:
+          app-id: ${{ secrets.AIOS_LEDGER_APP_ID }}
+          private-key: ${{ secrets.AIOS_LEDGER_PRIVATE_KEY }}
+          owner: yanhul
+          repositories: AIOS-replay-ledger
+          permission-contents: read
+          permission-pull-requests: read
+
+      - name: Verify merged PR and exact main ledger entry before receipt
+        env:
+          GH_TOKEN: ${{ steps.ledger-token.outputs.token }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          STAGE1_RUN_ID: ${{ inputs.stage1_run_id }}
+          PR_NUMBER: ${{ inputs.ledger_pr_number }}
+          CONTINUATION_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64, hashlib, json, os, time, urllib.request
+          from pathlib import Path
+          token=os.environ["GH_TOKEN"]; repo="yanhul/AIOS-replay-ledger"; path=".aios/absorption-consumed-permits.json"
+          def api(endpoint):
+              req=urllib.request.Request("https://api.github.com"+endpoint,headers={
+                  "Authorization":"Bearer "+token,"Accept":"application/vnd.github+json",
+                  "X-GitHub-Api-Version":"2022-11-28"})
+              with urllib.request.urlopen(req,timeout=20) as r: return json.loads(r.read())
+          canonical=lambda x: json.dumps(x,sort_keys=True,separators=(",",":"))
+          permit=json.loads(Path("permit/absorption-permit.json").read_text())
+          permit_id=hashlib.sha256(canonical(permit).encode()).hexdigest()
+          stage1=os.environ["STAGE1_RUN_ID"]; target=permit.get("target_apply_run_id")
+          if target != stage1: raise SystemExit("permit is not bound to stage-one apply run; DENY")
+          pr=api(f"/repos/{repo}/pulls/{os.environ['PR_NUMBER']}")
+          expected_branch="aios-absorption-"+stage1
+          if pr.get("state")!="closed" or pr.get("merged") is not True or not pr.get("merged_at") or not pr.get("merge_commit_sha"):
+              raise SystemExit("ledger PR is not merged; DENY")
+          if pr.get("base",{}).get("ref")!="main" or pr.get("head",{}).get("ref")!=expected_branch:
+              raise SystemExit("ledger PR base/head branch mismatch; DENY")
+          body=pr.get("body") or ""
+          for marker in (f"AIOS_PERMIT_ID={permit_id}",f"AIOS_TARGET_APPLY_RUN_ID={target}",f"AIOS_WRITER_RUN_ID={stage1}"):
+              if marker not in body: raise SystemExit("ledger PR metadata binding mismatch; DENY")
+          files=api(f"/repos/{repo}/pulls/{os.environ['PR_NUMBER']}/files")
+          if len(files)!=1 or files[0].get("filename")!=path:
+              raise SystemExit("ledger PR changed unexpected files; DENY")
+          main=api(f"/repos/{repo}/contents/{path}?ref=main")
+          ledger=json.loads(base64.b64decode(main["content"]).decode())
+          consumed=ledger.get("consumed")
+          if ledger.get("schema_version")!=1 or not isinstance(consumed,dict):
+              raise SystemExit("main ledger schema invalid; DENY")
+          entry=consumed.get(permit_id)
+          if not isinstance(entry,dict) or entry.get("target_apply_run_id")!=target:
+              raise SystemExit("merged main ledger does not contain the exact permit entry; DENY")
+          receipt={
+              "schema_version":2,"permit_id":permit_id,"target_apply_run_id":target,
+              "continuation_run_id":os.environ["CONTINUATION_RUN_ID"],
+              "ledger_repository":repo,"ledger_branch":"main","writer_job":"verify-merged-ledger",
+              "ledger_pr_number":int(os.environ["PR_NUMBER"]),
+              "ledger_merge_commit_sha":pr["merge_commit_sha"],
+              "ledger_entry_digest":hashlib.sha256(canonical(entry).encode()).hexdigest(),
+              "consumed":True,"verified_at":int(time.time())
+          }
+          out=Path("receipt/replay-receipt.json"); out.parent.mkdir(parents=True,exist_ok=True)
+          out.write_text(json.dumps(receipt,indent=2,sort_keys=True)+"\n")
+          print(json.dumps({"result":"MERGED_LEDGER_VERIFIED","permit_id":permit_id,
+                            "pr_number":os.environ["PR_NUMBER"],"merge_commit_sha":pr["merge_commit_sha"],
+                            "receipt":"issued"}))
+          PY
+
+      - name: Publish post-merge verification receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-absorption-replay-receipt-${{ github.run_id }}
+          path: receipt/replay-receipt.json
+          if-no-files-found: error
+          retention-days: 1
+
+  apply:
+    needs: verify-merged-ledger
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Download source evidence from original research run
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+          name: aios-absorption-research-${{ inputs.source_run_id }}
+          path: research/artifacts
+
+      - name: Download signed permit from stage-one run
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.stage1_run_id }}
+          name: aios-absorption-permit-${{ inputs.source_run_id }}-${{ inputs.stage1_run_id }}
+          path: permit
+
+      - name: Download receipt from this verified continuation run
+        uses: actions/download-artifact@v4
+        with:
+          name: aios-absorption-replay-receipt-${{ github.run_id }}
+          path: receipt
+
+      - name: Apply only after post-merge receipt verification
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          AIOS_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          AIOS_SOURCE_COMMIT_SHA: ${{ github.sha }}
+          AIOS_TARGET_APPLY_RUN_ID: ${{ inputs.stage1_run_id }}
+          AIOS_TARGET_BRANCH: main
+          AIOS_ABSORPTION_PERMIT_PATH: permit/absorption-permit.json
+          AIOS_ABSORPTION_PERMIT_KEYRING_PATH: policies/absorption-permit-keyring.json
+          AIOS_REPLAY_RECEIPT_PATH: receipt/replay-receipt.json
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${AIOS_SOURCE_RUN_ID}" > "$RUNNER_TEMP/source.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from research.absorption_apply import absorb
+          source=json.loads(Path(os.environ["RUNNER_TEMP"]+"/source.json").read_text())
+          if source.get("head_branch")!="main" or source.get("head_sha") is None:
+              raise SystemExit("source run trust binding invalid; DENY")
+          os.environ["AIOS_SOURCE_COMMIT_SHA"]=source["head_sha"]
+          root=Path("research/artifacts")
+          names={"executor":"absorption-executor.json","verification":"absorption-verification.json",
+                 "promotion":"absorption-promotion.json","runtime":"absorption-runtime-proof.json"}
+          artifacts={k:json.loads((root/v).read_text()) for k,v in names.items()}
+          result=absorb(artifacts["executor"],artifacts["verification"],artifacts["promotion"],
+                        artifacts["runtime"],run_id=os.environ["AIOS_SOURCE_RUN_ID"])
+          (root/"absorption.json").write_text(json.dumps(result,indent=2,sort_keys=True)+"\n")
+          if result.get("overall") not in {"PASS","PASS_WITH_HOLDS"}:
+              raise SystemExit("absorption apply blocked; DENY")
+          PY
+
+      - name: Publish apply result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-absorption-finalized-apply-${{ github.run_id }}
+          path: research/artifacts/absorption.json
+          if-no-files-found: warn
+          retention-days: 30
