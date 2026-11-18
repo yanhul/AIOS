@@ -62,6 +62,44 @@ jobs:
           name: aios-absorption-research-${{ inputs.source_run_id }}
           path: input
 
+      # Validate all non-secret prerequisites before the protected private key
+      # is made available to any step. The current draft policy intentionally fails.
+      - name: Preflight signer inputs before secret access
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path(".")
+          policy = json.loads((root / "policies/absorption-default-deny.v1.json").read_text())
+          approval_path = Path("input/approval.json")
+          required = [
+              "absorption-executor.json",
+              "absorption-verification.json",
+              "absorption-runtime-proof.json",
+              "absorption-promotion.json",
+          ]
+          missing = [name for name in required if not (Path("input") / name).is_file()]
+          if missing:
+              raise SystemExit("signer artifact contract incomplete: " + ", ".join(missing) + "; DENY")
+          if not approval_path.is_file():
+              raise SystemExit("separately authenticated governance approval is missing; DENY")
+          if policy.get("status") != "APPROVED" or policy.get("approval", {}).get("status") != "APPROVED":
+              raise SystemExit("governance policy is not approved; DENY")
+          effects = policy.get("decision", {}).get("allowed_effects")
+          if not isinstance(effects, list) or not effects:
+              raise SystemExit("policy has no explicitly approved effects; DENY")
+          for path in (
+              root / "policies/absorption-governance-keyring.json",
+              root / "policies/absorption-permit-keyring.json",
+          ):
+              value = json.loads(path.read_text())
+              if not isinstance(value, dict) or not value:
+                  raise SystemExit(f"trusted keyring unavailable: {path}; DENY")
+          print("Signer preflight passed; cryptographic verification remains mandatory.")
+          PY
+
       - name: Install pinned signer dependency
         run: python -m pip install --disable-pip-version-check cryptography==44.0.2
 
