@@ -99,7 +99,7 @@ jobs:
           mkdir -p permit
           for attempt in $(seq 1 90); do
             artifact_id=$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=aios-absorption-permit-${SOURCE_RUN_ID}" \
-              --jq '.artifacts[] | select(.expired == false) | .id' | tail -n 1)
+              --jq '.artifacts[] | select(.expired == false) | .id' | head -n 1)
             if [ -n "$artifact_id" ]; then
               gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/$artifact_id/zip" > "$RUNNER_TEMP/permit.zip"
               unzip -oq "$RUNNER_TEMP/permit.zip" -d permit
