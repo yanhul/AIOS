@@ -3,6 +3,7 @@ import json
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from core.provider_ed25519 import key_id_for
 
 from scripts.check_production_authority import (
     ProductionAuthorityConfigError, validate_production_authority,
@@ -12,6 +13,10 @@ from scripts.check_production_authority import (
 def _valid_env(now=1000):
     reviewer_key = Ed25519PrivateKey.generate()
     raw_public = reviewer_key.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    ).hex()
+    provider_key = Ed25519PrivateKey.generate()
+    provider_public = provider_key.public_key().public_bytes(
         serialization.Encoding.Raw, serialization.PublicFormat.Raw
     ).hex()
     att = {
@@ -31,7 +36,7 @@ def _valid_env(now=1000):
             "operator-x": {"secret": "R" * 40, "scopes": ["effect.retry.approve"], "revoked": False}
         }),
         "AIOS_PROVIDER_ED25519_KEYRING": json.dumps({
-            "minimind": {"key_id": "ed25519:" + "1" * 32, "public_key": "2" * 64}
+            "minimind": {"key_id": key_id_for(provider_public), "public_key": provider_public}
         }),
         "AIOS_DEPLOYMENT_EXECUTOR_ID": "runtime:prod",
         "AIOS_DEPLOYMENT_ENVIRONMENT": "production",
