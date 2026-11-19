@@ -104,3 +104,22 @@ def test_tampered_evidence_digest_is_rejected(tmp_path):
         observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", {
             **_observation(effect["effect_id"]), "evidence": evidence,
         })
+
+
+def test_terminal_provider_receipt_is_persisted_immutably(tmp_path):
+    import json
+    effect = _effect(tmp_path)
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    dispatch(str(tmp_path), effect["effect_id"], "agent-1", attempt_id, "provider-1")
+    supplied = sign_observation(effect, _observation(effect["effect_id"]))
+    done = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS", supplied)
+    receipt_id = supplied["authentication"]["receipt_id"]
+    receipt_path = tmp_path / "provider_receipts" / (receipt_id + ".json")
+    assert receipt_path.is_file()
+    persisted = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert persisted["record_type"] == "AIOS_TERMINAL_PROVIDER_RECEIPT"
+    assert persisted["effect_id"] == done["effect_id"]
+    assert persisted["attempt_id"] == attempt_id
+    assert persisted["outcome"] == "OBSERVED_SUCCESS"
+    assert persisted["authentication"] == supplied["authentication"]
+    assert persisted["evidence"] == done["provider_observation"]["evidence"]
