@@ -24,7 +24,9 @@ Enforcement provided by this module (and nothing more):
 Not provided: authorization policy, deployment trust-anchor provisioning,
 distributed consensus/locking, or protection against direct filesystem writes.
 Stdlib only. Never writes outside <aios_dir>.
-"""import datetime
+"""
+
+import datetime
 import hashlib
 import json
 import os
