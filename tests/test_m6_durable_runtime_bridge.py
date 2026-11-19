@@ -46,6 +46,11 @@ class GoodAdapter:
         return signed(ProviderReceipt(self.name, effect["effect_id"], attempt_id,
                                "provider-op", "OBSERVED_SUCCESS", {"status": "ok"}), effect)
 
+    def reconcile_not_applied(self, *, contract, effect, attempt_id):
+        # Test fixture: provider-authenticated proof that the prior operation did not apply.
+        return signed(ProviderReceipt(self.name, effect["effect_id"], attempt_id,
+                               "provider-op", "NOT_APPLIED", {"status": "not_applied"}), effect)
+
 
 class GoodRuntime:
     name = "durable-test"
