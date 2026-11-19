@@ -40,7 +40,9 @@ def _valid_env(now=1000):
         }),
         "AIOS_DEPLOYMENT_EXECUTOR_ID": "runtime:prod",
         "AIOS_DEPLOYMENT_ENVIRONMENT": "production",
-        "AIOS_DEPLOYMENT_REVIEWER_PUBLIC_KEY": raw_public,
+        "AIOS_DEPLOYMENT_REVIEWER_KEYRING": json.dumps({
+            "human:security-reviewer": {"public_key": raw_public, "revoked": False}
+        }),
         "AIOS_DEPLOYMENT_REVIEWER_ATTESTATION": json.dumps(att),
         "GITHUB_REPOSITORY": "yanhul/AIOS",
         "GITHUB_SHA": "a" * 40,
