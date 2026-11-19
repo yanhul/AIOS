@@ -212,7 +212,7 @@ def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: 
 
 def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapter, attempt_id, attempt,
                           durable_runtime: DurableRuntime | None = None, *, retry_keyring=None,
-                          provider_keyring=None, provider_public_keyring=None, now=None):
+                          provider_keyring=None, provider_public_keyring=None, now=None, lineage=None):
     """Authorize, dispatch and execute one explicit retry of an UNKNOWN effect.
 
     The external runtime may schedule/persist the attempt, but AIOS remains the
