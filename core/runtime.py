@@ -178,7 +178,6 @@ def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: 
         "effect_id": receipt.effect_id,
         "attempt_id": receipt.attempt_id,
         "observation": receipt.observation,
-        "reconciled": True,
     }
     if receipt.authentication is not None:
         provider_observation["authentication"] = receipt.authentication
