@@ -158,7 +158,7 @@ def test_production_dispatch_requires_and_persists_contract_bound_lineage(tmp_pa
     assert persisted["execution_lineage"] == dispatched["execution_lineage"]
     from tests.provider_keys import KEYRING
     done = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS",
-                   sign_observation(effect, _observation(effect["effect_id"])), provider_keyring=KEYRING)
+                   sign_observation(dispatched, _observation(effect["effect_id"])), provider_keyring=KEYRING)
     assert done["state"] == "OBSERVED_SUCCESS"
     receipt_id = done["provider_observation"]["provider_authentication"]["receipt_id"]
     receipt = json.loads((tmp_path / "provider_receipts" / (receipt_id + ".json")).read_text())
