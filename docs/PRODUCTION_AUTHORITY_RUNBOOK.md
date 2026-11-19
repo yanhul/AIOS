@@ -20,8 +20,9 @@ Set these in the production deployment environment (not in the repository):
   hex `public_key`; private keys must remain in the workload secret store.
 - `AIOS_DEPLOYMENT_EXECUTOR_ID`: stable identity of the deployment executor.
 - `AIOS_DEPLOYMENT_ENVIRONMENT`: exact deployment environment name.
-- `AIOS_DEPLOYMENT_REVIEWER_PUBLIC_KEY`: 32-byte Ed25519 public key controlled
-  by the independent reviewer, stored as a protected deployment secret.
+- `AIOS_DEPLOYMENT_REVIEWER_KEYRING`: protected identity registry mapping
+  reviewer principal IDs to their Ed25519 public keys and revocation status.
+  The registry itself must be pinned by the organization/deployment trust root.
 - `AIOS_DEPLOYMENT_REVIEWER_ATTESTATION`: JSON signed by that reviewer.
 
 The deployment platform must also provide `GITHUB_REPOSITORY` and
