@@ -25,7 +25,7 @@ from core.evidence import EvidenceRecord
 from tests.retry_issuers import signed_retry_auth
 from core.mutation import TransitionError
 from core.pcb_eda import PcbEdaRequest
-from tests.provider_keys import signed
+from tests.provider_keys import signed, signed_not_applied_proof
 from core.runtime import ProviderReceipt, execute
 from tests.test_m6_effect_authority import _effect
 from tests.test_m6_runtime import setup_authority
@@ -70,7 +70,7 @@ def test_f01_retry_rejects_provider_substitution(tmp_path):
     auth = signed_retry_auth(str(tmp_path), effect["effect_id"], ACTOR, 2, "operator:x", "r")
     with pytest.raises(TransitionError, match="provider is not authorized"):
         retry_dispatch(str(tmp_path), effect["effect_id"], ACTOR,
-                       f"{effect['effect_id']}:attempt:2", "provider-evil", 2, auth)
+                       f"{effect['effect_id']}:attempt:2", "provider-evil", 2, auth, not_applied_proof=signed_not_applied_proof(str(tmp_path), effect["effect_id"], PROVIDER))
 
 
 # --- F-02 ------------------------------------------------------------------
