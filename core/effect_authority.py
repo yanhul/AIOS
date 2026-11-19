@@ -208,7 +208,7 @@ def transition(aios_dir, effect_id, target, actor, **fields):
     return _commit_transition(aios_dir, current, actor, target, fields)
 
 
-def _commit_transition(aios_dir, current, actor, target, fields):
+def _commit_transition(aios_dir, current, actor, target, fields, *, extra_payloads=(), extra_checks=()):
     effect_id = current["effect_id"]
     if current.get("state") not in _ALLOWED or target not in _ALLOWED[current["state"]]:
         raise TransitionError(f"undefined external-effect transition: {current.get('state')} -> {target}")
@@ -220,9 +220,11 @@ def _commit_transition(aios_dir, current, actor, target, fields):
         "from_state": current["state"], "to_state": target, "actor": actor,
         "attempt": updated.get("attempt", 0),
     }
-    commit_batch(aios_dir, [(_effect_rel(effect_id), updated),
-                            (os.path.join("events", "effect-" + effect_id + "-" + target + ".json"), event)],
-                 precondition=_expect_unchanged(_effect_rel(effect_id), current))
+    payloads = [(_effect_rel(effect_id), updated),
+                (os.path.join("events", "effect-" + effect_id + "-" + target + ".json"), event)]
+    payloads.extend(extra_payloads)
+    commit_batch(aios_dir, payloads,
+                 precondition=_all_of(_expect_unchanged(_effect_rel(effect_id), current), *extra_checks))
     return updated
 
 
@@ -876,7 +878,30 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation, *, provid
         "attempt_id": attempt_id, "observation": raw, "provider_authentication": dict(auth),
         "evidence": minted, "evidence_authority": EVIDENCE_AUTHORITY,
     }
-    return _commit_transition(aios_dir, current, actor, outcome, {"provider_observation": record})
+    receipt_id = auth["receipt_id"]
+    receipt_rel = os.path.join("provider_receipts", receipt_id + ".json")
+    terminal_receipt = {
+        "record_type": "AIOS_TERMINAL_PROVIDER_RECEIPT",
+        "receipt_id": receipt_id,
+        "effect_id": effect_id,
+        "contract_id": current["contract_id"],
+        "permit_id": current["permit_id"],
+        "attempt_id": attempt_id,
+        "provider": provider,
+        "provider_operation_id": operation_id,
+        "outcome": outcome,
+        "observation": raw,
+        "observation_digest": observation_digest(raw),
+        "authentication": dict(auth),
+        "evidence": minted,
+        "evidence_authority": EVIDENCE_AUTHORITY,
+    }
+    # The immutable receipt and terminal effect transition are one journaled
+    # transaction. A receipt ID can never be silently overwritten or replayed.
+    return _commit_transition(
+        aios_dir, current, actor, outcome, {"provider_observation": record},
+        extra_payloads=[(receipt_rel, terminal_receipt)],
+        extra_checks=[_expect_unchanged(receipt_rel, None)])
 
 
 __all__ = ["STATES", "create_effect", "transition", "dispatch", "retry_dispatch", "unknown", "observe",
