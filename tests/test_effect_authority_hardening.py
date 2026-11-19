@@ -1,4 +1,4 @@
-from tests.provider_keys import sign_observation
+from tests.provider_keys import sign_observation, signed_not_applied_proof
 # AIOS-CONTRACT: durable external-effect retry authority
 # AIOS-REGRESSION: Prevent ambiguous UNKNOWN effects from retrying without governed authority
 # AIOS-OWNER: AIOS control-plane durable execution
@@ -103,7 +103,7 @@ def test_unknown_can_only_return_to_dispatch_through_bounded_retry():
         unknown(td, effect["effect_id"], "bc-controller", "provider timeout")
         with pytest.raises(TransitionError):
             dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:2", "provider-a")
-        retried = retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:2", "provider-a", 2, signed_retry_auth(td, effect["effect_id"], "bc-controller", 2, "operator:test", "test retry"))
+        retried = retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:2", "provider-a", 2, signed_retry_auth(td, effect["effect_id"], "bc-controller", 2, "operator:test", "test retry"), not_applied_proof=signed_not_applied_proof(td, effect["effect_id"], "provider-a"))
         assert retried["state"] == "DISPATCHED"
         with pytest.raises(TransitionError):
             retry_dispatch(td, effect["effect_id"], "bc-controller", f"{effect['effect_id']}:attempt:3", "provider-a", 3, {"authorization_id": "RA-forged"})
