@@ -42,31 +42,43 @@ def validate_production_authority(env=None, *, now=None):
     if not isinstance(secret, str) or len(secret) < 32:
         raise ProductionAuthorityConfigError(f"{AUTHORITY_SECRET} must be a deployment secret of at least 32 characters")
 
-    providers = _json_object(env, PROVIDER_RING)
+    try:
+        providers = json.loads(env.get(PROVIDER_RING, "{}"))
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise ProductionAuthorityConfigError(f"{PROVIDER_RING} is invalid JSON") from exc
+    if not isinstance(providers, dict):
+        raise ProductionAuthorityConfigError(f"{PROVIDER_RING} must be a JSON object")
     active_provider = False
     for provider, entry in providers.items():
         if not isinstance(provider, str) or not isinstance(entry, dict):
             raise ProductionAuthorityConfigError("provider keyring entry is malformed")
+        if not isinstance(entry.get("revoked", False), bool):
+            raise ProductionAuthorityConfigError(f"provider revoked flag for {provider} must be boolean")
         if entry.get("revoked", False):
             continue
+        scopes = entry.get("scopes", [])
+        if not isinstance(scopes, list) or not all(isinstance(scope, str) for scope in scopes):
+            raise ProductionAuthorityConfigError(f"provider scopes for {provider} must be a list of strings")
         if not isinstance(entry.get("secret"), str) or len(entry["secret"]) < 32:
             raise ProductionAuthorityConfigError(f"active provider key for {provider} must be at least 32 characters")
-        if "provider.receipt.sign" not in entry.get("scopes", []):
+        if "provider.receipt.sign" not in scopes:
             raise ProductionAuthorityConfigError(f"active provider {provider} lacks provider.receipt.sign scope")
         active_provider = True
-    if not active_provider:
-        raise ProductionAuthorityConfigError("provider keyring has no active receipt signer")
-
     retry = _json_object(env, RETRY_RING)
     active_issuers = []
     for issuer, entry in retry.items():
         if not isinstance(issuer, str) or not isinstance(entry, dict):
             raise ProductionAuthorityConfigError("retry issuer keyring entry is malformed")
+        if not isinstance(entry.get("revoked", False), bool):
+            raise ProductionAuthorityConfigError(f"retry issuer revoked flag for {issuer} must be boolean")
         if entry.get("revoked", False):
             continue
+        scopes = entry.get("scopes", [])
+        if not isinstance(scopes, list) or not all(isinstance(scope, str) for scope in scopes):
+            raise ProductionAuthorityConfigError(f"retry issuer scopes for {issuer} must be a list of strings")
         if not isinstance(entry.get("secret"), str) or len(entry["secret"]) < 32:
             raise ProductionAuthorityConfigError(f"active retry issuer key for {issuer} must be at least 32 characters")
-        if "effect.retry.approve" not in entry.get("scopes", []):
+        if "effect.retry.approve" not in scopes:
             raise ProductionAuthorityConfigError(f"active retry issuer {issuer} lacks effect.retry.approve scope")
         active_issuers.append(issuer)
     if not active_issuers:
@@ -131,7 +143,7 @@ def validate_production_authority(env=None, *, now=None):
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     try:
         reviewer.verify(bytes.fromhex(signature), canonical)
-    except (ValueError, TypeError, Exception) as exc:
+    except Exception as exc:
         raise ProductionAuthorityConfigError("independent reviewer signature verification failed") from exc
     return {
         "ready": True,
