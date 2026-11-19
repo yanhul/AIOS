@@ -10,6 +10,7 @@ import json
 import os
 import time
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from core.provider_ed25519 import ProviderPublicKeyring
 
 AUTHORITY_SECRET = "AIOS_AUTHORITY_ATTESTATION_SECRET"
 PROVIDER_RING = "AIOS_PROVIDER_KEYRING"
@@ -72,6 +73,10 @@ def validate_production_authority(env=None, *, now=None):
         raise ProductionAuthorityConfigError("retry issuer keyring has no active issuer")
 
     public_ring = _json_object(env, PROVIDER_ED25519_RING)
+    try:
+        ProviderPublicKeyring(public_ring)
+    except ValueError as exc:
+        raise ProductionAuthorityConfigError(f"{PROVIDER_ED25519_RING} is invalid: {exc}") from exc
     minimind = public_ring.get("minimind")
     if not isinstance(minimind, dict) or minimind.get("revoked", False):
         raise ProductionAuthorityConfigError("active Ed25519 public key for minimind is required")
