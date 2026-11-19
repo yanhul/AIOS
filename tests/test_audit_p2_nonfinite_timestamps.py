@@ -18,7 +18,7 @@ from core import effect_authority as ea
 from core import provider_ed25519 as ed
 from core.effect_authority import ProviderAuthenticationError, dispatch, observe, retry_dispatch, unknown
 from core.mutation import TransitionError, canonical_json
-from tests.provider_keys import SECRETS, _ed25519_private, ed25519_keyring_spec, sign_observation
+from tests.provider_keys import SECRETS, _ed25519_private, ed25519_keyring_spec, sign_observation, signed_not_applied_proof
 from tests.retry_issuers import ISSUER_SECRETS, signed_retry_auth
 from tests.test_m6_effect_authority import _effect
 
@@ -235,7 +235,9 @@ def _resign_with(tmp_path, auth, **fields):
 
 def _retry(tmp_path, effect, auth, **kw):
     return retry_dispatch(str(tmp_path), effect["effect_id"], ACTOR, _aid(effect, 2), PROVIDER, 2,
-                          auth["authorization_id"], **kw)
+                          auth["authorization_id"],
+                          not_applied_proof=signed_not_applied_proof(str(tmp_path), effect["effect_id"], PROVIDER, now=kw.get("now")),
+                          **kw)
 
 
 def test_retry_harness_control_resigned_finite_record_accepted(tmp_path):
