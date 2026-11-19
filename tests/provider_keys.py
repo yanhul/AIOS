@@ -76,4 +76,5 @@ def signed_not_applied_proof(aios_dir, effect_id, provider, *, provider_operatio
     observation = {"status": "not_applied"}
     receipt = {"effect_id": effect_id, "attempt_id": effect["attempt_id"], "provider": provider,
                "provider_operation_id": provider_operation_id, "observation": observation}
-    return sign_observation(effect, receipt, outcome="NOT_APPLIED", now=now)
+    return {**sign_observation(effect, receipt, outcome="NOT_APPLIED", now=now),
+            "outcome": "NOT_APPLIED"}
