@@ -1,33 +1,30 @@
 """Authoritative AIOS state mutation boundary (M1.5).
 
-The operational mutation lock is stored alongside the state tree; every AIOS state mutation produced by the application MUST pass through
-``apply_mutations``. There is deliberately no other supported way to write
-entity or audit-event files.
+All supported AIOS state mutations pass through commit_batch and its shared
+OS-level lock file. The lock serializes cooperating processes on local
+filesystems: flock on POSIX and msvcrt.locking on Windows. CAS preconditions
+are evaluated while that lock is held, so read/validate/write transitions
+cannot silently overwrite a competing writer.
+
+Atomicity is staged temp files -> write-ahead journal -> atomic renames ->
+journal removal, with roll-forward recovery under the same lock. This is not
+a distributed lock: correctness on NFS/SMB or other network filesystems,
+hostile writers bypassing this module, and multi-host deployments require an
+external transactional store or a separately validated filesystem guarantee.
 
 Enforcement provided by this module (and nothing more):
 
-- Entity contracts: required fields, types, ID formats, structural status
-  rules. Unknown entity types and malformed entities fail loudly.
-- Transition legality: creation of a new entity is allowed; byte-identical
-  replay is allowed; ANY other change to an existing entity is rejected as
-  an UNDEFINED transition. This repository contains no evidence defining
-  status-transition rules between RX50 statuses (they are free-form prose),
-  so none are invented here (see docs/ROADMAP.md M2).
+- Entity contracts: required fields, types, ID formats, structural status rules.
+- Transition legality: create, byte-identical replay, or explicit CAS transition.
 - Actor identity: mandatory, recorded in every event.
-- Deterministic event identity: SHA-256 over the canonicalized event values
-  (full digest, timestamps excluded from identity).
-- Atomicity: staged temp files -> write-ahead journal -> atomic renames ->
-  journal removal, with roll-forward recovery (``recover_pending``) invoked
-  at the start of every mutation.
+- Deterministic event identity: SHA-256 over canonical event values.
+- Cross-process exclusion on supported local filesystems.
+- Atomic journaled batches and locked roll-forward recovery.
 
-Not provided by this module (explicitly out of scope for M1.5): agents,
-policy, gates, verification, contradiction resolution, concurrency control
-beyond single-process atomic commit, OS-level protection of the RX50 tree.
-
-Stdlib only. Never writes outside ``<aios_dir>``.
-"""
-
-import datetime
+Not provided: authorization policy, deployment trust-anchor provisioning,
+distributed consensus/locking, or protection against direct filesystem writes.
+Stdlib only. Never writes outside <aios_dir>.
+"""import datetime
 import hashlib
 import json
 import os
