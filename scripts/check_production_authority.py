@@ -48,7 +48,6 @@ def validate_production_authority(env=None, *, now=None):
         raise ProductionAuthorityConfigError(f"{PROVIDER_RING} is invalid JSON") from exc
     if not isinstance(providers, dict):
         raise ProductionAuthorityConfigError(f"{PROVIDER_RING} must be a JSON object")
-    active_provider = False
     for provider, entry in providers.items():
         if not isinstance(provider, str) or not isinstance(entry, dict):
             raise ProductionAuthorityConfigError("provider keyring entry is malformed")
@@ -63,7 +62,6 @@ def validate_production_authority(env=None, *, now=None):
             raise ProductionAuthorityConfigError(f"active provider key for {provider} must be at least 32 characters")
         if "provider.receipt.sign" not in scopes:
             raise ProductionAuthorityConfigError(f"active provider {provider} lacks provider.receipt.sign scope")
-        active_provider = True
     retry = _json_object(env, RETRY_RING)
     active_issuers = []
     for issuer, entry in retry.items():
