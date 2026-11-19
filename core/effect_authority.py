@@ -24,6 +24,8 @@ import secrets
 import time
 from collections.abc import Mapping
 
+from .execution_lineage import bind_lineage_to_effect, verify_effect_lineage
+
 from .authority import authorize, load_contract, load_permit
 from .contract import verify_permit
 from .evidence import EvidenceRecord, verify_evidence
@@ -89,6 +91,16 @@ def _validate_persisted_effect(aios_dir, effect):
         raise TransitionError("effect attempt budget differs from authorized contract")
     if not isinstance(effect["attempt"], int) or isinstance(effect["attempt"], bool) or effect["attempt"] < 0:
         raise TransitionError("persisted effect attempt is invalid")
+    binding = effect.get("execution_lineage")
+    required = os.environ.get("AIOS_REQUIRE_EXECUTION_LINEAGE", "").lower() == "true"
+    if required and effect.get("state") in ("DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE") and binding is None:
+        raise TransitionError("production effect is missing mandatory execution lineage")
+    if binding is not None:
+        try:
+            verify_effect_lineage(binding, contract, effect["contract_id"], effect["permit_id"],
+                                  effect.get("provider"), effect.get("attempt_id"))
+        except (TypeError, ValueError) as exc:
+            raise TransitionError(f"persisted execution lineage failed verification: {exc}") from exc
     return contract, permit
 
 
@@ -208,7 +220,7 @@ def transition(aios_dir, effect_id, target, actor, **fields):
     return _commit_transition(aios_dir, current, actor, target, fields)
 
 
-def _commit_transition(aios_dir, current, actor, target, fields):
+def _commit_transition(aios_dir, current, actor, target, fields, *, extra_payloads=(), extra_checks=()):
     effect_id = current["effect_id"]
     if current.get("state") not in _ALLOWED or target not in _ALLOWED[current["state"]]:
         raise TransitionError(f"undefined external-effect transition: {current.get('state')} -> {target}")
@@ -220,9 +232,11 @@ def _commit_transition(aios_dir, current, actor, target, fields):
         "from_state": current["state"], "to_state": target, "actor": actor,
         "attempt": updated.get("attempt", 0),
     }
-    commit_batch(aios_dir, [(_effect_rel(effect_id), updated),
-                            (os.path.join("events", "effect-" + effect_id + "-" + target + ".json"), event)],
-                 precondition=_expect_unchanged(_effect_rel(effect_id), current))
+    payloads = [(_effect_rel(effect_id), updated),
+                (os.path.join("events", "effect-" + effect_id + "-" + target + ".json"), event)]
+    payloads.extend(extra_payloads)
+    commit_batch(aios_dir, payloads,
+                 precondition=_all_of(_expect_unchanged(_effect_rel(effect_id), current), *extra_checks))
     return updated
 
 
@@ -249,7 +263,7 @@ def _transition_dispatch(aios_dir, current, actor, *, attempt, attempt_id, provi
     return updated
 
 
-def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
+def dispatch(aios_dir, effect_id, actor, attempt_id, provider, *, lineage=None):
     _validate_strings(("attempt_id", attempt_id), ("provider", provider))
     current, contract = _load_owned_effect(aios_dir, effect_id, actor, "dispatch")
     _require_provider_authorized(contract, provider)
@@ -260,8 +274,21 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
         raise ValueError("attempt_id does not match initial effect attempt")
     if int(current.get("max_attempts", 0)) < 1:
         raise TransitionError("effect has no authorized execution attempts")
+    require_lineage = os.environ.get("AIOS_REQUIRE_EXECUTION_LINEAGE", "").lower() == "true"
+    if lineage is None and require_lineage:
+        raise TransitionError("production dispatch requires execution-substrate lineage")
+    lineage_binding = None
+    if lineage is not None:
+        try:
+            lineage_binding = bind_lineage_to_effect(lineage, contract, current["contract_id"],
+                                                     current["permit_id"], provider)
+            verify_effect_lineage(lineage_binding, contract, current["contract_id"], current["permit_id"],
+                                  provider, attempt_id)
+        except ValueError as exc:
+            raise TransitionError(f"execution lineage rejected: {exc}") from exc
     return _transition_dispatch(aios_dir, current, actor,
-                                attempt=1, attempt_id=attempt_id, provider=provider)
+                                attempt=1, attempt_id=attempt_id, provider=provider,
+                                extra_fields={"execution_lineage": lineage_binding} if lineage_binding else None)
 
 
 # --- Retry authority -------------------------------------------------------
@@ -454,6 +481,12 @@ def issue_retry_authorization(aios_dir, effect_id, actor, attempt, issuer, reaso
     ``effect.retry.approve`` scope and must prove possession of its registered
     secret. It must differ from the executing actor (separation of duties).
     """
+    # The current retry signer is symmetric HMAC and executes inside the AIOS
+    # trust boundary. Production must not use it as a substitute for an
+    # independently operated issuer. Keep UNKNOWN retries fail-closed until
+    # the external Ed25519 issuer/verifier protocol is integrated.
+    if os.environ.get("AIOS_REQUIRE_EXECUTION_LINEAGE", "").lower() == "true":
+        raise TransitionError("production UNKNOWN retry is blocked until an independent public-key retry issuer is integrated")
     _validate_strings(("issuer", issuer), ("reason", reason))
     if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 2:
         raise ValueError("retry attempt must be an integer >= 2")
@@ -554,13 +587,20 @@ def _verify_retry_authorization(aios_dir, supplied, current, actor, attempt, att
 
 
 def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, retry_authorization=None, *,
-                   keyring=None, now=None):
+                   lineage=None, keyring=None, not_applied_proof=None, provider_keyring=None,
+                   provider_public_keyring=None, now=None):
     """Explicitly dispatch the next attempt for an UNKNOWN effect.
 
     Consumes the signed retry authorization atomically with the dispatch: the
     effect CAS, the create-once consumption record and the unchanged issued
     record are all checked under the mutation lock in one commit batch.
     """
+    # Never let the in-process HMAC keyring authorize production retries.
+    # AIOS_REQUIRE_EXECUTION_LINEAGE is the production-mode switch today;
+    # an external Ed25519 issuer protocol must replace this guard before
+    # production retry can be enabled.
+    if os.environ.get("AIOS_REQUIRE_EXECUTION_LINEAGE", "").lower() == "true":
+        raise TransitionError("production UNKNOWN retry is blocked until an independent public-key retry issuer is integrated")
     _validate_strings(("effect_id", effect_id), ("actor", actor),
                       ("attempt_id", attempt_id), ("provider", provider))
     if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 2:
@@ -577,9 +617,58 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
         raise TransitionError("retry exceeds contract attempt budget")
     if attempt_id != _attempt_id(effect_id, attempt):
         raise ValueError("attempt_id does not match retry attempt")
+    require_lineage = os.environ.get("AIOS_REQUIRE_EXECUTION_LINEAGE", "").lower() == "true"
+    if lineage is None and (require_lineage or current.get("execution_lineage") is not None):
+        raise TransitionError("retry dispatch requires fresh execution-substrate lineage")
+    lineage_binding = None
+    if lineage is not None:
+        try:
+            lineage_binding = bind_lineage_to_effect(lineage, contract, current["contract_id"],
+                                                     current["permit_id"], provider)
+            verify_effect_lineage(lineage_binding, contract, current["contract_id"], current["permit_id"],
+                                  provider, attempt_id)
+        except ValueError as exc:
+            raise TransitionError(f"execution lineage rejected: {exc}") from exc
+    # Verify issuer authorization first, without consuming it. Provider
+    # reconciliation remains a separate mandatory gate before dispatch.
     auth_rel, auth = _verify_retry_authorization(aios_dir, retry_authorization, current, actor,
                                                  attempt, attempt_id, keyring, now)
     authorization_id = auth["authorization_id"]
+
+    # Explicit human/issuer approval is necessary but never sufficient.
+    # Require a provider-authenticated NOT_APPLIED statement for the previous
+    # attempt before the next attempt can be dispatched.
+    if not isinstance(not_applied_proof, Mapping):
+        raise TransitionError("retry requires authenticated provider NOT_APPLIED reconciliation")
+    proof = dict(not_applied_proof)
+    proof_record = {
+        "provider": proof.get("provider"),
+        "provider_operation_id": proof.get("provider_operation_id"),
+        "effect_id": proof.get("effect_id"),
+        "attempt_id": proof.get("attempt_id"),
+        "observation": proof.get("observation"),
+        "authentication": proof.get("authentication"),
+    }
+    if (proof.get("outcome") != "NOT_APPLIED"
+            or proof_record["effect_id"] != effect_id
+            or proof_record["attempt_id"] != current.get("attempt_id")
+            or proof_record["provider"] != current.get("provider")
+            or not isinstance(proof_record["provider_operation_id"], str)
+            or not proof_record["provider_operation_id"].strip()
+            or not isinstance(proof_record["observation"], dict)
+            or not proof_record["observation"]):
+        raise TransitionError("NOT_APPLIED proof is not bound to the previous dispatched attempt")
+    proof_auth = _verify_provider_receipt(current, "NOT_APPLIED", proof_record,
+                                          provider_keyring, now, provider_public_keyring)
+    proof_id = "RP-" + hashlib.sha256(canonical_json({
+        "effect_id": effect_id, "attempt_id": current["attempt_id"],
+        "provider": current["provider"], "provider_operation_id": proof_record["provider_operation_id"],
+        "observation": proof_record["observation"], "authentication": proof_auth,
+    }).encode("utf-8")).hexdigest()
+    proof_record.update({"record_type": "PROVIDER_NOT_APPLIED_RECONCILIATION",
+                         "outcome": "NOT_APPLIED", "proof_id": proof_id,
+                         "verified_at": _now(now)})
+    proof_rel = os.path.join("reconciliation_proofs", proof_id + ".json")
     consumption = {
         "record_type": "RETRY_AUTHORIZATION_CONSUMPTION", "authorization_id": authorization_id,
         "authorization_signature": auth["signature"], "effect_id": effect_id,
@@ -592,10 +681,13 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
     return _transition_dispatch(aios_dir, current, actor,
                                 attempt=attempt, attempt_id=attempt_id, provider=provider,
                                 extra_fields={"consumed_retry_authorizations": history,
-                                              "retry_authorization_id": authorization_id},
-                                extra_payloads=[(consumption_rel, consumption)],
+                                              "retry_authorization_id": authorization_id,
+                                              "not_applied_proof_id": proof_id,
+                                              **({"execution_lineage": lineage_binding} if lineage_binding else {})},
+                                extra_payloads=[(consumption_rel, consumption), (proof_rel, proof_record)],
                                 extra_checks=[_expect_unchanged(auth_rel, auth),
-                                              _expect_unchanged(consumption_rel, None)])
+                                              _expect_unchanged(consumption_rel, None),
+                                              _expect_unchanged(proof_rel, None)])
 
 
 def unknown(aios_dir, effect_id, actor, reason):
@@ -636,7 +728,7 @@ _PROVIDER_RECEIPT_ID = re.compile(r"PR-[0-9a-f]{32}")
 _PROVIDER_AUTH_FIELDS = ("type", "receipt_id", "contract_id", "permit_id", "issued_at", "expires_at",
                          "algorithm", "signature")
 _PROVIDER_SIGNED_FIELDS = ("type", "receipt_id", "effect_id", "contract_id", "permit_id", "attempt_id",
-                           "provider", "provider_operation_id", "outcome", "observation_digest",
+                           "provider", "provider_operation_id", "outcome", "observation_digest", "lineage_digest",
                            "issued_at", "expires_at", "algorithm")
 
 
@@ -652,13 +744,13 @@ class ProviderKeyring(_HmacKeyring):
 
 
 def provider_receipt_body(*, receipt_id, effect_id, contract_id, permit_id, attempt_id, provider,
-                          provider_operation_id, outcome, observation, issued_at, expires_at):
+                          provider_operation_id, outcome, observation, issued_at, expires_at, lineage_digest=None):
     """Canonical body a provider signs (shared by signer and verifier)."""
     return {
         "type": PROVIDER_RECEIPT_TYPE, "receipt_id": receipt_id, "effect_id": effect_id,
         "contract_id": contract_id, "permit_id": permit_id, "attempt_id": attempt_id,
         "provider": provider, "provider_operation_id": provider_operation_id, "outcome": outcome,
-        "observation_digest": observation_digest(observation),
+        "observation_digest": observation_digest(observation), "lineage_digest": lineage_digest,
         "issued_at": issued_at, "expires_at": expires_at, "algorithm": "HMAC-SHA256",
     }
 
@@ -712,7 +804,8 @@ def _verify_ed25519_receipt(current, outcome, record, public_keyring, now):
         key_id=auth["key_id"], receipt_id=auth["receipt_id"], effect_id=current["effect_id"],
         contract_id=current["contract_id"], permit_id=current["permit_id"], attempt_id=current["attempt_id"],
         provider=current["provider"], provider_operation_id=record["provider_operation_id"], outcome=outcome,
-        observation=record["observation"], issued_at=auth["issued_at"], expires_at=auth["expires_at"])
+        observation=record["observation"], issued_at=auth["issued_at"], expires_at=auth["expires_at"],
+        lineage_digest=(current.get("execution_lineage") or {}).get("lineage", {}).get("lineage_digest"))
     try:
         public_keyring.verify(current["provider"], auth["key_id"], auth["signature"], payload)
     except ValueError as exc:
@@ -752,7 +845,8 @@ def _verify_provider_receipt(current, outcome, record, keyring, now, public_keyr
         receipt_id=auth["receipt_id"], effect_id=current["effect_id"], contract_id=current["contract_id"],
         permit_id=current["permit_id"], attempt_id=current["attempt_id"], provider=current["provider"],
         provider_operation_id=record["provider_operation_id"], outcome=outcome,
-        observation=record["observation"], issued_at=auth["issued_at"], expires_at=auth["expires_at"])
+        observation=record["observation"], issued_at=auth["issued_at"], expires_at=auth["expires_at"],
+        lineage_digest=(current.get("execution_lineage") or {}).get("lineage", {}).get("lineage_digest"))
     if not hmac.compare_digest(auth["signature"], provider_receipt_signature(secret, body)):
         raise ProviderAuthenticationError("provider receipt signature is invalid or not bound to this "
                                           "effect/attempt/outcome/observation")
@@ -836,7 +930,31 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation, *, provid
         "attempt_id": attempt_id, "observation": raw, "provider_authentication": dict(auth),
         "evidence": minted, "evidence_authority": EVIDENCE_AUTHORITY,
     }
-    return _commit_transition(aios_dir, current, actor, outcome, {"provider_observation": record})
+    receipt_id = auth["receipt_id"]
+    receipt_rel = os.path.join("provider_receipts", receipt_id + ".json")
+    terminal_receipt = {
+        "record_type": "AIOS_TERMINAL_PROVIDER_RECEIPT",
+        "receipt_id": receipt_id,
+        "effect_id": effect_id,
+        "contract_id": current["contract_id"],
+        "permit_id": current["permit_id"],
+        "attempt_id": attempt_id,
+        "provider": provider,
+        "provider_operation_id": operation_id,
+        "outcome": outcome,
+        "observation": raw,
+        "observation_digest": observation_digest(raw),
+        "authentication": dict(auth),
+        "evidence": minted,
+        "evidence_authority": EVIDENCE_AUTHORITY,
+        "execution_lineage": current.get("execution_lineage"),
+    }
+    # The immutable receipt and terminal effect transition are one journaled
+    # transaction. A receipt ID can never be silently overwritten or replayed.
+    return _commit_transition(
+        aios_dir, current, actor, outcome, {"provider_observation": record},
+        extra_payloads=[(receipt_rel, terminal_receipt)],
+        extra_checks=[_expect_unchanged(receipt_rel, None)])
 
 
 __all__ = ["STATES", "create_effect", "transition", "dispatch", "retry_dispatch", "unknown", "observe",

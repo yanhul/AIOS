@@ -71,7 +71,8 @@ class ProviderReceiptSigner:
             receipt_id=auth["receipt_id"], effect_id=effect["effect_id"], contract_id=auth["contract_id"],
             permit_id=auth["permit_id"], attempt_id=attempt_id, provider=self.provider,
             provider_operation_id=provider_operation_id, outcome=outcome, observation=observation,
-            issued_at=issued_at, expires_at=auth["expires_at"])
+            issued_at=issued_at, expires_at=auth["expires_at"],
+            lineage_digest=(effect.get("execution_lineage") or {}).get("lineage", {}).get("lineage_digest"))
         auth["signature"] = provider_receipt_signature(self._secret, body)
         return auth
 

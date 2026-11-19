@@ -17,7 +17,7 @@ from core.effect_authority import (
 )
 from core.mutation import TransitionError
 from core.runtime import ProviderReceipt, execute
-from tests.provider_keys import SECRETS, sign_observation, signed
+from tests.provider_keys import SECRETS, sign_observation, signed, signed_not_applied_proof
 from tests.retry_issuers import signed_retry_auth
 from tests.test_m6_effect_authority import _effect
 from tests.test_m6_runtime import setup_authority
@@ -135,7 +135,7 @@ def test_receipt_replay_across_attempts_rejected(tmp_path):
     attempt1 = sign_observation(effect, _obs(effect))
     unknown(str(tmp_path), effect["effect_id"], ACTOR, "timeout")
     auth = signed_retry_auth(str(tmp_path), effect["effect_id"], ACTOR, 2, "operator:x", "r")
-    retry_dispatch(str(tmp_path), effect["effect_id"], ACTOR, _aid(effect, 2), PROVIDER, 2, auth)
+    retry_dispatch(str(tmp_path), effect["effect_id"], ACTOR, _aid(effect, 2), PROVIDER, 2, auth, not_applied_proof=signed_not_applied_proof(str(tmp_path), effect["effect_id"], PROVIDER))
     _rejected(tmp_path, effect, attempt1, exc=TransitionError, match="attempt")
     _rejected(tmp_path, effect, {**attempt1, "attempt_id": _aid(effect, 2)}, match="signature is invalid")
 

@@ -67,3 +67,14 @@ try:
     ED25519_PUBLIC_KEYRING_JSON = json.dumps(ed25519_keyring_spec())
 except ImportError:  # cryptography absent: MiniMind receipts stay UNKNOWN (fail closed)
     ED25519_PUBLIC_KEYRING_JSON = None
+
+
+def signed_not_applied_proof(aios_dir, effect_id, provider, *, provider_operation_id="op-1", now=None):
+    """Build a provider-authenticated NOT_APPLIED receipt for the current dispatched attempt."""
+    from core import effect_authority as ea
+    effect = ea._load(ea._path(aios_dir, effect_id))
+    observation = {"status": "not_applied"}
+    receipt = {"effect_id": effect_id, "attempt_id": effect["attempt_id"], "provider": provider,
+               "provider_operation_id": provider_operation_id, "observation": observation}
+    return {**sign_observation(effect, receipt, outcome="NOT_APPLIED", now=now),
+            "outcome": "NOT_APPLIED"}

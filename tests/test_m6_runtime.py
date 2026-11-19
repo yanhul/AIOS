@@ -14,7 +14,7 @@ from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.effect_authority import create_effect, dispatch, issue_retry_authorization, retry_dispatch, transition
 from core.policy_registry import persist_policy
-from tests.provider_keys import signed
+from tests.provider_keys import signed, signed_not_applied_proof
 from core.runtime import ProviderReceipt, execute, execute_attempt, execute_retry_attempt
 
 
@@ -41,6 +41,11 @@ class GoodAdapter:
         return signed(ProviderReceipt(provider=self.name, effect_id=effect["effect_id"], attempt_id=attempt_id,
                                provider_operation_id="provider-op-1", outcome="OBSERVED_SUCCESS",
                                observation={"status": "ok"}), effect)
+
+    def reconcile_not_applied(self, *, contract, effect, attempt_id):
+        return signed(ProviderReceipt(provider=self.name, effect_id=effect["effect_id"], attempt_id=attempt_id,
+                               provider_operation_id="provider-op-1", outcome="NOT_APPLIED",
+                               observation={"status": "not_applied"}), effect)
 
 
 class BrokenAdapter:
@@ -147,7 +152,8 @@ def test_retry_dispatch_requires_unknown_and_increments_attempt(tmp_path):
     unknown_effect = transition(str(tmp_path), first["effect_id"], "UNKNOWN", "agent:test", unknown_reason="timeout")
     auth = signed_retry_auth(str(tmp_path), effect["effect_id"], "agent:test", 2, "operator:test", "test retry")
     retried = retry_dispatch(str(tmp_path), unknown_effect["effect_id"], "agent:test",
-                             f"{effect['effect_id']}:attempt:2", "fake-provider", 2, auth)
+                             f"{effect['effect_id']}:attempt:2", "fake-provider", 2, auth,
+                             not_applied_proof=signed_not_applied_proof(str(tmp_path), effect["effect_id"], "fake-provider"))
     assert retried["effect_id"] == effect["effect_id"]
     assert retried["attempt"] == 2
     assert retried["state"] == "DISPATCHED"

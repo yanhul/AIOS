@@ -41,6 +41,16 @@ class GoodAdapter:
         return signed(ProviderReceipt(self.name, effect["effect_id"], attempt_id,
                                "provider-op", "OBSERVED_SUCCESS", {"status": "ok"}), effect)
 
+    def reconcile(self, *, contract, effect, attempt_id):
+        # Test fixture: report the already-completed operation without executing it.
+        return signed(ProviderReceipt(self.name, effect["effect_id"], attempt_id,
+                               "provider-op", "OBSERVED_SUCCESS", {"status": "ok"}), effect)
+
+    def reconcile_not_applied(self, *, contract, effect, attempt_id):
+        # Test fixture: provider-authenticated proof that the prior operation did not apply.
+        return signed(ProviderReceipt(self.name, effect["effect_id"], attempt_id,
+                               "provider-op", "NOT_APPLIED", {"status": "not_applied"}), effect)
+
 
 class GoodRuntime:
     name = "durable-test"
@@ -107,10 +117,18 @@ def test_resume_reuses_exact_dispatched_attempt_after_ambiguous_submission(tmp_p
 
     runtime = RecordingRuntime()
     contract = __import__("core.authority", fromlist=["load_contract"]).load_contract(str(tmp_path), cid)
+    class NoReexecuteAdapter(GoodAdapter):
+        execute_calls = 0
+        def execute(self, **kwargs):
+            self.execute_calls += 1
+            raise AssertionError("resume must not execute the provider operation again")
+
+    adapter = NoReexecuteAdapter()
     result = resume_attempt(
-        str(tmp_path), contract, effect, "agent:test", GoodAdapter(), runtime
+        str(tmp_path), contract, effect, "agent:test", adapter, runtime
     )
     assert result["state"] == "OBSERVED_SUCCESS"
+    assert adapter.execute_calls == 0
     assert runtime.resumed == (effect["effect_id"], attempt_id)
 
 
@@ -128,6 +146,44 @@ def test_retry_bridges_explicit_bounded_retry(tmp_path):
     )
     assert result["state"] == "OBSERVED_SUCCESS"
     assert result["attempt"] == 2
+
+
+def test_retry_without_provider_reconciliation_is_blocked(tmp_path):
+    cid, pid = setup(tmp_path, max_attempts=2)
+    effect = create_effect(str(tmp_path), cid, "op-no-proof", "agent:test", pid, "external_effect")
+    effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
+                      f"{effect['effect_id']}:attempt:1", "fake-provider")
+    effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test",
+                        unknown_reason="timeout")
+    effect["retry_authorization"] = signed_retry_auth(
+        str(tmp_path), effect["effect_id"], "agent:test", 2, "operator:test", "test retry")
+    class NoProofAdapter(GoodAdapter):
+        reconcile_not_applied = None
+    with pytest.raises(PermissionError, match="reconcile_not_applied"):
+        execute_retry_attempt(str(tmp_path), cid, pid, effect, "agent:test", NoProofAdapter(),
+                              f"{effect['effect_id']}:attempt:2", 2, GoodRuntime())
+    stored = __import__("json").load(open(tmp_path / "effects" / (effect["effect_id"] + ".json")))
+    assert stored["state"] == "UNKNOWN"
+
+
+def test_retry_with_applied_reconciliation_is_blocked(tmp_path):
+    cid, pid = setup(tmp_path, max_attempts=2)
+    effect = create_effect(str(tmp_path), cid, "op-applied", "agent:test", pid, "external_effect")
+    effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
+                      f"{effect['effect_id']}:attempt:1", "fake-provider")
+    effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test",
+                        unknown_reason="timeout")
+    effect["retry_authorization"] = signed_retry_auth(
+        str(tmp_path), effect["effect_id"], "agent:test", 2, "operator:test", "test retry")
+    class AppliedAdapter(GoodAdapter):
+        def reconcile_not_applied(self, *, contract, effect, attempt_id):
+            return signed(ProviderReceipt(self.name, effect["effect_id"], attempt_id,
+                               "provider-op", "OBSERVED_SUCCESS", {"status": "applied"}), effect)
+    with pytest.raises(PermissionError, match="NOT_APPLIED"):
+        execute_retry_attempt(str(tmp_path), cid, pid, effect, "agent:test", AppliedAdapter(),
+                              f"{effect['effect_id']}:attempt:2", 2, GoodRuntime())
+    stored = __import__("json").load(open(tmp_path / "effects" / (effect["effect_id"] + ".json")))
+    assert stored["state"] == "UNKNOWN"
 
 
 def test_unknown_retry_requires_explicit_authorization(tmp_path):
@@ -157,3 +213,25 @@ def test_retry_runtime_cannot_override_contract_bounds(tmp_path):
             f"{effect['effect_id']}:attempt:2", 2, GoodRuntime()
         )
     assert effect["state"] == "UNKNOWN"
+
+
+def test_stale_dispatched_snapshot_cannot_reexecute_after_unknown(tmp_path):
+    from core.effect_authority import unknown
+    cid, pid = setup(tmp_path)
+    effect = create_effect(str(tmp_path), cid, "stale-op", "agent:test", pid, "external_effect")
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    dispatched = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")
+    unknown(str(tmp_path), effect["effect_id"], "agent:test", "timeout")
+
+    class CountingAdapter(GoodAdapter):
+        calls = 0
+        def execute(self, **kwargs):
+            self.calls += 1
+            return super().execute(**kwargs)
+
+    adapter = CountingAdapter()
+    contract = __import__("core.authority", fromlist=["load_contract"]).load_contract(str(tmp_path), cid)
+    with pytest.raises(RuntimeError, match="persisted DISPATCHED"):
+        from core.runtime import execute_attempt
+        execute_attempt(str(tmp_path), contract, dispatched, "agent:test", adapter, attempt_id)
+    assert adapter.calls == 0
