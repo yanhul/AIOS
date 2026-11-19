@@ -716,7 +716,7 @@ _PROVIDER_RECEIPT_ID = re.compile(r"PR-[0-9a-f]{32}")
 _PROVIDER_AUTH_FIELDS = ("type", "receipt_id", "contract_id", "permit_id", "issued_at", "expires_at",
                          "algorithm", "signature")
 _PROVIDER_SIGNED_FIELDS = ("type", "receipt_id", "effect_id", "contract_id", "permit_id", "attempt_id",
-                           "provider", "provider_operation_id", "outcome", "observation_digest",
+                           "provider", "provider_operation_id", "outcome", "observation_digest", "lineage_digest",
                            "issued_at", "expires_at", "algorithm")
 
 
@@ -732,13 +732,13 @@ class ProviderKeyring(_HmacKeyring):
 
 
 def provider_receipt_body(*, receipt_id, effect_id, contract_id, permit_id, attempt_id, provider,
-                          provider_operation_id, outcome, observation, issued_at, expires_at):
+                          provider_operation_id, outcome, observation, issued_at, expires_at, lineage_digest=None):
     """Canonical body a provider signs (shared by signer and verifier)."""
     return {
         "type": PROVIDER_RECEIPT_TYPE, "receipt_id": receipt_id, "effect_id": effect_id,
         "contract_id": contract_id, "permit_id": permit_id, "attempt_id": attempt_id,
         "provider": provider, "provider_operation_id": provider_operation_id, "outcome": outcome,
-        "observation_digest": observation_digest(observation),
+        "observation_digest": observation_digest(observation), "lineage_digest": lineage_digest,
         "issued_at": issued_at, "expires_at": expires_at, "algorithm": "HMAC-SHA256",
     }
 
@@ -792,7 +792,8 @@ def _verify_ed25519_receipt(current, outcome, record, public_keyring, now):
         key_id=auth["key_id"], receipt_id=auth["receipt_id"], effect_id=current["effect_id"],
         contract_id=current["contract_id"], permit_id=current["permit_id"], attempt_id=current["attempt_id"],
         provider=current["provider"], provider_operation_id=record["provider_operation_id"], outcome=outcome,
-        observation=record["observation"], issued_at=auth["issued_at"], expires_at=auth["expires_at"])
+        observation=record["observation"], issued_at=auth["issued_at"], expires_at=auth["expires_at"],
+        lineage_digest=(current.get("execution_lineage") or {}).get("lineage", {}).get("lineage_digest"))
     try:
         public_keyring.verify(current["provider"], auth["key_id"], auth["signature"], payload)
     except ValueError as exc:
@@ -832,7 +833,8 @@ def _verify_provider_receipt(current, outcome, record, keyring, now, public_keyr
         receipt_id=auth["receipt_id"], effect_id=current["effect_id"], contract_id=current["contract_id"],
         permit_id=current["permit_id"], attempt_id=current["attempt_id"], provider=current["provider"],
         provider_operation_id=record["provider_operation_id"], outcome=outcome,
-        observation=record["observation"], issued_at=auth["issued_at"], expires_at=auth["expires_at"])
+        observation=record["observation"], issued_at=auth["issued_at"], expires_at=auth["expires_at"],
+        lineage_digest=(current.get("execution_lineage") or {}).get("lineage", {}).get("lineage_digest"))
     if not hmac.compare_digest(auth["signature"], provider_receipt_signature(secret, body)):
         raise ProviderAuthenticationError("provider receipt signature is invalid or not bound to this "
                                           "effect/attempt/outcome/observation")
