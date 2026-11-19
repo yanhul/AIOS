@@ -578,6 +578,12 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
         raise TransitionError("retry exceeds contract attempt budget")
     if attempt_id != _attempt_id(effect_id, attempt):
         raise ValueError("attempt_id does not match retry attempt")
+    # Verify issuer authorization first, without consuming it. Provider
+    # reconciliation remains a separate mandatory gate before dispatch.
+    auth_rel, auth = _verify_retry_authorization(aios_dir, retry_authorization, current, actor,
+                                                 attempt, attempt_id, keyring, now)
+    authorization_id = auth["authorization_id"]
+
     # Explicit human/issuer approval is necessary but never sufficient.
     # Require a provider-authenticated NOT_APPLIED statement for the previous
     # attempt before the next attempt can be dispatched.
@@ -612,9 +618,6 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
                          "outcome": "NOT_APPLIED", "proof_id": proof_id,
                          "verified_at": _now(now)})
     proof_rel = os.path.join("reconciliation_proofs", proof_id + ".json")
-    auth_rel, auth = _verify_retry_authorization(aios_dir, retry_authorization, current, actor,
-                                                 attempt, attempt_id, keyring, now)
-    authorization_id = auth["authorization_id"]
     consumption = {
         "record_type": "RETRY_AUTHORIZATION_CONSUMPTION", "authorization_id": authorization_id,
         "authorization_signature": auth["signature"], "effect_id": effect_id,
