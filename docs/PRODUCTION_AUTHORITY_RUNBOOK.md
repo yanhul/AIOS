@@ -9,9 +9,9 @@ Set these in the production deployment environment (not in the repository):
 
 - `AIOS_REQUIRE_EXECUTION_LINEAGE=true`
 - `AIOS_AUTHORITY_ATTESTATION_SECRET`: random secret, at least 32 characters.
-- `AIOS_PROVIDER_KEYRING`: JSON object keyed by provider; each active entry
+- `AIOS_PROVIDER_KEYRING` (when HMAC-based providers are used): JSON object keyed by provider; each active entry
   contains a deployment-only `secret` (at least 32 characters),
-  `scopes: ["provider.receipt.sign"]`, and optional `revoked: true`.
+  `scopes: ["provider.receipt.sign"]`, and optional `revoked: true`. It may be an empty object when all deployed providers use Ed25519.
 - `AIOS_RETRY_ISSUER_KEYRING`: JSON object keyed by retry issuer; each active
   entry contains a distinct secret (at least 32 characters),
   `scopes: ["effect.retry.approve"]`, and optional `revoked: true`.
