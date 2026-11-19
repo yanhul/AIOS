@@ -91,6 +91,16 @@ def _validate_persisted_effect(aios_dir, effect):
         raise TransitionError("effect attempt budget differs from authorized contract")
     if not isinstance(effect["attempt"], int) or isinstance(effect["attempt"], bool) or effect["attempt"] < 0:
         raise TransitionError("persisted effect attempt is invalid")
+    binding = effect.get("execution_lineage")
+    required = os.environ.get("AIOS_REQUIRE_EXECUTION_LINEAGE", "").lower() == "true"
+    if required and effect.get("state") in ("DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE") and binding is None:
+        raise TransitionError("production effect is missing mandatory execution lineage")
+    if binding is not None:
+        try:
+            verify_effect_lineage(binding, contract, effect["contract_id"], effect["permit_id"],
+                                  effect.get("provider"), effect.get("attempt_id"))
+        except (TypeError, ValueError) as exc:
+            raise TransitionError(f"persisted execution lineage failed verification: {exc}") from exc
     return contract, permit
 
 
