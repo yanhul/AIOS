@@ -155,8 +155,39 @@ def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: 
     if "external_effect" not in contract.get("allowed_effects", []):
         raise PermissionError("external effect is not authorized by contract")
     _submit_runtime(durable_runtime, "resume", effect, attempt_id, provider_name)
-    return execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id,
-                           provider_keyring=provider_keyring, now=now)
+
+    # A DISPATCHED attempt may already have changed the external system. Never
+    # call execute() again during recovery: reconcile the existing provider
+    # operation and accept only an authenticated terminal receipt.
+    reconcile = getattr(adapter, "reconcile", None)
+    if not callable(reconcile):
+        raise RuntimeError(
+            "safe resume requires provider adapter.reconcile(); refusing to re-execute "
+            "an ambiguous DISPATCHED attempt"
+        )
+    try:
+        receipt = reconcile(contract=dict(contract), effect=dict(effect), attempt_id=attempt_id)
+        validate_receipt(receipt, effect, attempt_id, provider_name)
+    except Exception as exc:
+        return unknown(aios_dir, effect["effect_id"], actor,
+                       f"provider reconciliation inconclusive: {type(exc).__name__}: {exc}")
+
+    provider_observation = {
+        "provider": receipt.provider,
+        "provider_operation_id": receipt.provider_operation_id,
+        "effect_id": receipt.effect_id,
+        "attempt_id": receipt.attempt_id,
+        "observation": receipt.observation,
+        "reconciled": True,
+    }
+    if receipt.authentication is not None:
+        provider_observation["authentication"] = receipt.authentication
+    try:
+        return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, provider_observation,
+                       provider_keyring=provider_keyring, now=now)
+    except ProviderAuthenticationError as exc:
+        return unknown(aios_dir, effect["effect_id"], actor,
+                       f"reconciled provider receipt is not authoritative: {exc}")
 
 
 def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapter, attempt_id, attempt,

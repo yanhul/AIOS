@@ -41,6 +41,11 @@ class GoodAdapter:
         return signed(ProviderReceipt(self.name, effect["effect_id"], attempt_id,
                                "provider-op", "OBSERVED_SUCCESS", {"status": "ok"}), effect)
 
+    def reconcile(self, *, contract, effect, attempt_id):
+        # Test fixture: report the already-completed operation without executing it.
+        return signed(ProviderReceipt(self.name, effect["effect_id"], attempt_id,
+                               "provider-op", "OBSERVED_SUCCESS", {"status": "ok"}), effect)
+
 
 class GoodRuntime:
     name = "durable-test"
@@ -107,10 +112,18 @@ def test_resume_reuses_exact_dispatched_attempt_after_ambiguous_submission(tmp_p
 
     runtime = RecordingRuntime()
     contract = __import__("core.authority", fromlist=["load_contract"]).load_contract(str(tmp_path), cid)
+    class NoReexecuteAdapter(GoodAdapter):
+        execute_calls = 0
+        def execute(self, **kwargs):
+            self.execute_calls += 1
+            raise AssertionError("resume must not execute the provider operation again")
+
+    adapter = NoReexecuteAdapter()
     result = resume_attempt(
-        str(tmp_path), contract, effect, "agent:test", GoodAdapter(), runtime
+        str(tmp_path), contract, effect, "agent:test", adapter, runtime
     )
     assert result["state"] == "OBSERVED_SUCCESS"
+    assert adapter.execute_calls == 0
     assert runtime.resumed == (effect["effect_id"], attempt_id)
 
 
