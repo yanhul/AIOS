@@ -16,7 +16,7 @@ AUTHORITY_SECRET = "AIOS_AUTHORITY_ATTESTATION_SECRET"
 PROVIDER_RING = "AIOS_PROVIDER_KEYRING"
 RETRY_RING = "AIOS_RETRY_ISSUER_KEYRING"
 PROVIDER_ED25519_RING = "AIOS_PROVIDER_ED25519_KEYRING"
-REVIEWER_PUBLIC_KEY = "AIOS_DEPLOYMENT_REVIEWER_PUBLIC_KEY"
+REVIEWER_KEYRING = "AIOS_DEPLOYMENT_REVIEWER_KEYRING"
 REVIEWER_ATTESTATION = "AIOS_DEPLOYMENT_REVIEWER_ATTESTATION"
 
 
@@ -101,19 +101,12 @@ def validate_production_authority(env=None, *, now=None):
         raise ProductionAuthorityConfigError("minimind Ed25519 public key must be 32-byte hex") from exc
 
     executor = env.get("AIOS_DEPLOYMENT_EXECUTOR_ID", "")
-    reviewer_key = env.get(REVIEWER_PUBLIC_KEY, "")
+    reviewer_keyring = _json_object(env, REVIEWER_KEYRING)
     repository = env.get("GITHUB_REPOSITORY", "")
     commit = env.get("GITHUB_SHA", "")
     environment = env.get("AIOS_DEPLOYMENT_ENVIRONMENT", "")
-    if not all(isinstance(x, str) and x.strip() for x in (executor, reviewer_key, repository, commit, environment)):
-        raise ProductionAuthorityConfigError("deployment executor, environment, repository, commit and reviewer trust key are required")
-    try:
-        reviewer_pub = bytes.fromhex(reviewer_key)
-        if len(reviewer_pub) != 32:
-            raise ValueError("wrong key length")
-        reviewer = Ed25519PublicKey.from_public_bytes(reviewer_pub)
-    except (TypeError, ValueError) as exc:
-        raise ProductionAuthorityConfigError("reviewer trust public key must be 32-byte Ed25519 hex") from exc
+    if not all(isinstance(x, str) and x.strip() for x in (executor, repository, commit, environment)):
+        raise ProductionAuthorityConfigError("deployment executor, environment and deployed repository/commit are required")
 
     attestation = _json_object(env, REVIEWER_ATTESTATION)
     expected = {"repository", "commit", "environment", "executor_id", "reviewer_id", "issued_at", "expires_at", "signature"}
@@ -124,6 +117,18 @@ def validate_production_authority(env=None, *, now=None):
         raise ProductionAuthorityConfigError("reviewer must be a named principal distinct from executor")
     if reviewer_id in active_issuers:
         raise ProductionAuthorityConfigError("reviewer and retry issuer must be separate principals")
+    reviewer_entry = reviewer_keyring.get(reviewer_id)
+    if not isinstance(reviewer_entry, dict) or reviewer_entry.get("revoked", False):
+        raise ProductionAuthorityConfigError("reviewer identity is not registered or has been revoked")
+    if set(reviewer_entry) - {"public_key", "revoked"}:
+        raise ProductionAuthorityConfigError("reviewer trust entry contains unsupported fields")
+    try:
+        reviewer_pub = bytes.fromhex(reviewer_entry.get("public_key", ""))
+        if len(reviewer_pub) != 32:
+            raise ValueError("wrong key length")
+        reviewer = Ed25519PublicKey.from_public_bytes(reviewer_pub)
+    except (TypeError, ValueError) as exc:
+        raise ProductionAuthorityConfigError("registered reviewer public key must be 32-byte Ed25519 hex") from exc
     for key, value in (("repository", repository), ("commit", commit),
                        ("environment", environment), ("executor_id", executor)):
         if attestation[key] != value:
