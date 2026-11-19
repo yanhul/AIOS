@@ -294,7 +294,7 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
     dispatched = retry_dispatch(
         aios_dir, effect["effect_id"], actor, attempt_id, provider_name, attempt,
         retry_authorization=retry_auth, keyring=retry_keyring,
-        not_applied_proof=proof_record, provider_keyring=provider_keyring,
+        not_applied_proof=proof_record, lineage=lineage, provider_keyring=provider_keyring,
         provider_public_keyring=provider_public_keyring, now=now)
     _submit_runtime(durable_runtime, "retry", dispatched, attempt_id, provider_name, attempt=attempt)
     return execute_attempt(aios_dir, contract, dispatched, actor, adapter, attempt_id,
@@ -302,7 +302,7 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
 
 
 def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapter,
-            durable_runtime: DurableRuntime | None = None, *, provider_keyring=None, now=None):
+            durable_runtime: DurableRuntime | None = None, *, provider_keyring=None, now=None, lineage=None):
     """Authorize/create/dispatch the first attempt, then delegate execution."""
     _text(logical_operation_id, "logical_operation_id")
     _text(actor, "actor")
@@ -326,7 +326,7 @@ def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapt
     if effect["state"] != "PLANNED":
         raise RuntimeError("logical operation already has a non-planned effect")
     attempt_id = f"{effect['effect_id']}:attempt:1"
-    effect = dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name)
+    effect = dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name, lineage=lineage)
     _submit_runtime(durable_runtime, "submit", effect, attempt_id, provider_name)
     return execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id,
                            provider_keyring=provider_keyring, now=now)
