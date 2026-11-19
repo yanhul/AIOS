@@ -213,3 +213,25 @@ def test_retry_runtime_cannot_override_contract_bounds(tmp_path):
             f"{effect['effect_id']}:attempt:2", 2, GoodRuntime()
         )
     assert effect["state"] == "UNKNOWN"
+
+
+def test_stale_dispatched_snapshot_cannot_reexecute_after_unknown(tmp_path):
+    from core.effect_authority import unknown
+    cid, pid = setup(tmp_path)
+    effect = create_effect(str(tmp_path), cid, "stale-op", "agent:test", pid, "external_effect")
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    dispatched = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")
+    unknown(str(tmp_path), effect["effect_id"], "agent:test", "timeout")
+
+    class CountingAdapter(GoodAdapter):
+        calls = 0
+        def execute(self, **kwargs):
+            self.calls += 1
+            return super().execute(**kwargs)
+
+    adapter = CountingAdapter()
+    contract = __import__("core.authority", fromlist=["load_contract"]).load_contract(str(tmp_path), cid)
+    with pytest.raises(RuntimeError, match="persisted DISPATCHED"):
+        from core.runtime import execute_attempt
+        execute_attempt(str(tmp_path), contract, dispatched, "agent:test", adapter, attempt_id)
+    assert adapter.calls == 0
