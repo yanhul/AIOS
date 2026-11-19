@@ -69,6 +69,16 @@ attempt. It revalidates the binding on every authoritative effect load and
 copies it into the immutable terminal provider receipt. Missing, stale,
 tampered, or mismatched lineage blocks production dispatch/receipt verification.
 
+## Retry issuer status
+
+The current HMAC retry issuer is symmetric and must not be treated as an
+independent trust domain. While `AIOS_REQUIRE_EXECUTION_LINEAGE=true`,
+AIOS deliberately blocks both HMAC authorization issuance and retry dispatch.
+Production UNKNOWN retries remain BLOCKED until a separately operated issuer
+signs the fully bound authorization with an asymmetric key and AIOS verifies
+it using a pinned public-key registry, including expiry and replay protection.
+Do not inject retry signing secrets into AIOS, TRY, agents, or subprocesses.
+
 ## Preflight
 
 Run in the actual production deployment environment after injecting the
