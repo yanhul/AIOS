@@ -81,6 +81,9 @@ def validate_production_authority(env=None, *, now=None):
         active_issuers.append(issuer)
     if not active_issuers:
         raise ProductionAuthorityConfigError("retry issuer keyring has no active issuer")
+    if executor := env.get("AIOS_DEPLOYMENT_EXECUTOR_ID"):
+        if executor in active_issuers:
+            raise ProductionAuthorityConfigError("executor and retry issuer must be separate principals")
 
     public_ring = _json_object(env, PROVIDER_ED25519_RING)
     try:
@@ -117,6 +120,20 @@ def validate_production_authority(env=None, *, now=None):
         raise ProductionAuthorityConfigError("reviewer must be a named principal distinct from executor")
     if reviewer_id in active_issuers:
         raise ProductionAuthorityConfigError("reviewer and retry issuer must be separate principals")
+    for principal, entry in reviewer_keyring.items():
+        if not isinstance(principal, str) or not principal.strip() or not isinstance(entry, dict):
+            raise ProductionAuthorityConfigError("reviewer identity registry entry is malformed")
+        if not isinstance(entry.get("revoked", False), bool):
+            raise ProductionAuthorityConfigError("reviewer revoked flag must be boolean")
+        if set(entry) - {"public_key", "revoked"}:
+            raise ProductionAuthorityConfigError("reviewer identity registry contains unsupported fields")
+        try:
+            key_bytes = bytes.fromhex(entry.get("public_key", ""))
+            if len(key_bytes) != 32:
+                raise ValueError("wrong key length")
+            Ed25519PublicKey.from_public_bytes(key_bytes)
+        except (TypeError, ValueError) as exc:
+            raise ProductionAuthorityConfigError(f"reviewer public key for {principal} is invalid") from exc
     reviewer_entry = reviewer_keyring.get(reviewer_id)
     if not isinstance(reviewer_entry, dict) or reviewer_entry.get("revoked", False):
         raise ProductionAuthorityConfigError("reviewer identity is not registered or has been revoked")
