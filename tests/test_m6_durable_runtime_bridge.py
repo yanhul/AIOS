@@ -148,6 +148,44 @@ def test_retry_bridges_explicit_bounded_retry(tmp_path):
     assert result["attempt"] == 2
 
 
+def test_retry_without_provider_reconciliation_is_blocked(tmp_path):
+    cid, pid = setup(tmp_path, max_attempts=2)
+    effect = create_effect(str(tmp_path), cid, "op-no-proof", "agent:test", pid, "external_effect")
+    effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
+                      f"{effect['effect_id']}:attempt:1", "fake-provider")
+    effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test",
+                        unknown_reason="timeout")
+    effect["retry_authorization"] = signed_retry_auth(
+        str(tmp_path), effect["effect_id"], "agent:test", 2, "operator:test", "test retry")
+    class NoProofAdapter(GoodAdapter):
+        reconcile_not_applied = None
+    with pytest.raises(PermissionError, match="reconcile_not_applied"):
+        execute_retry_attempt(str(tmp_path), cid, pid, effect, "agent:test", NoProofAdapter(),
+                              f"{effect['effect_id']}:attempt:2", 2, GoodRuntime())
+    stored = __import__("json").load(open(tmp_path / "effects" / (effect["effect_id"] + ".json")))
+    assert stored["state"] == "UNKNOWN"
+
+
+def test_retry_with_applied_reconciliation_is_blocked(tmp_path):
+    cid, pid = setup(tmp_path, max_attempts=2)
+    effect = create_effect(str(tmp_path), cid, "op-applied", "agent:test", pid, "external_effect")
+    effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test",
+                      f"{effect['effect_id']}:attempt:1", "fake-provider")
+    effect = transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test",
+                        unknown_reason="timeout")
+    effect["retry_authorization"] = signed_retry_auth(
+        str(tmp_path), effect["effect_id"], "agent:test", 2, "operator:test", "test retry")
+    class AppliedAdapter(GoodAdapter):
+        def reconcile_not_applied(self, *, contract, effect, attempt_id):
+            return signed(ProviderReceipt(self.name, effect["effect_id"], attempt_id,
+                               "provider-op", "OBSERVED_SUCCESS", {"status": "applied"}), effect)
+    with pytest.raises(PermissionError, match="NOT_APPLIED"):
+        execute_retry_attempt(str(tmp_path), cid, pid, effect, "agent:test", AppliedAdapter(),
+                              f"{effect['effect_id']}:attempt:2", 2, GoodRuntime())
+    stored = __import__("json").load(open(tmp_path / "effects" / (effect["effect_id"] + ".json")))
+    assert stored["state"] == "UNKNOWN"
+
+
 def test_unknown_retry_requires_explicit_authorization(tmp_path):
     cid, pid = setup(tmp_path, max_attempts=2)
     effect = create_effect(str(tmp_path), cid, "op-1", "agent:test", pid, "external_effect")
