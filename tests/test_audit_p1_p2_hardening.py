@@ -118,7 +118,8 @@ def test_f02_concurrent_retry_consumes_authorization_once(tmp_path):
         barrier.wait()
         try:
             retry_dispatch(str(tmp_path), effect["effect_id"], ACTOR,
-                           f"{effect['effect_id']}:attempt:2", PROVIDER, 2, auth)
+                           f"{effect['effect_id']}:attempt:2", PROVIDER, 2, auth,
+                           not_applied_proof=signed_not_applied_proof(str(tmp_path), effect["effect_id"], PROVIDER))
             results.append("ok")
         except TransitionError:
             results.append("rejected")
@@ -156,7 +157,8 @@ def test_f03_authorization_is_single_use_and_records_provenance(tmp_path):
     assert auth["issuer"] == "operator:x" and auth["reason"] == "manual reconcile"
     assert auth["unknown_reason"] == "timeout" and auth["previous_attempt"] == 1
     a2 = f"{effect['effect_id']}:attempt:2"
-    done = retry_dispatch(str(tmp_path), effect["effect_id"], ACTOR, a2, PROVIDER, 2, auth)
+    done = retry_dispatch(str(tmp_path), effect["effect_id"], ACTOR, a2, PROVIDER, 2, auth,
+                          not_applied_proof=signed_not_applied_proof(str(tmp_path), effect["effect_id"], PROVIDER))
     assert done["consumed_retry_authorizations"] == [auth["authorization_id"]]
     path = os.path.join(str(tmp_path), ea.RETRY_AUTH_DIR, auth["authorization_id"] + ".consumed.json")
     with open(path, encoding="utf-8") as fh:
@@ -191,7 +193,8 @@ def test_f04_observe_rejects_evidence_from_previous_attempt(tmp_path):
     _to_unknown(tmp_path, effect)
     auth = signed_retry_auth(str(tmp_path), effect["effect_id"], ACTOR, 2, "operator:x", "r")
     a2 = f"{effect['effect_id']}:attempt:2"
-    retry_dispatch(str(tmp_path), effect["effect_id"], ACTOR, a2, PROVIDER, 2, auth)
+    retry_dispatch(str(tmp_path), effect["effect_id"], ACTOR, a2, PROVIDER, 2, auth,
+                   not_applied_proof=signed_not_applied_proof(str(tmp_path), effect["effect_id"], PROVIDER))
     replayed = ea.mint_observation_evidence(effect["effect_id"], _a1(effect), PROVIDER, "op", {"status": "ok"})
     with pytest.raises(ValueError, match="run_id"):
         observe(str(tmp_path), effect["effect_id"], ACTOR, "OBSERVED_SUCCESS", _obs(effect, a2, evidence=replayed))
