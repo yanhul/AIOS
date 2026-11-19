@@ -42,7 +42,7 @@ class GoodAdapter:
                                provider_operation_id="provider-op-1", outcome="OBSERVED_SUCCESS",
                                observation={"status": "ok"}), effect)
 
-    def reconcile_not_applied(self, *, effect, attempt_id):
+    def reconcile_not_applied(self, *, contract, effect, attempt_id):
         return signed(ProviderReceipt(provider=self.name, effect_id=effect["effect_id"], attempt_id=attempt_id,
                                provider_operation_id="provider-op-1", outcome="NOT_APPLIED",
                                observation={"status": "not_applied"}), effect)
