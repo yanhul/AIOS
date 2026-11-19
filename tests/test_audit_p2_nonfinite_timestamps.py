@@ -168,7 +168,8 @@ def _ed_record(issued_at, expires_at, *, label="minimind-workload-test-key"):
         "receipt_id": "PR-" + "c" * 32, "effect_id": cur["effect_id"], "contract_id": cur["contract_id"],
         "permit_id": cur["permit_id"], "attempt_id": cur["attempt_id"], "provider": "minimind",
         "provider_operation_id": "op-1", "outcome": "OBSERVED_SUCCESS",
-        "receipt_digest": ed.receipt_digest(observation), "issued_at": issued_at, "expires_at": expires_at,
+        "receipt_digest": ed.receipt_digest(observation), "lineage_digest": None,
+        "issued_at": issued_at, "expires_at": expires_at,
     }).encode("utf-8")
     sig = _ed25519_private(label).sign(payload).hex()
     auth = {"type": ed.ED25519_RECEIPT_TYPE, "algorithm": ed.ED25519_ALGORITHM, "key_id": key_id,
