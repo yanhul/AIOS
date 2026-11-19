@@ -44,7 +44,8 @@ def test_persisted_receipt_tampering_is_rejected(tmp_path):
         verify_persisted_receipt(str(tmp_path), receipt_id, "agent-1", provider_keyring=KEYRING)
 
 
-def test_persisted_receipt_requires_deployment_trust_anchor(tmp_path):
+def test_persisted_receipt_requires_deployment_trust_anchor(tmp_path, monkeypatch):
     _done, receipt_id = _terminal(tmp_path)
+    monkeypatch.delenv("AIOS_PROVIDER_KEYRING", raising=False)
     with pytest.raises(PersistedReceiptError, match="deployment-supplied trusted provider keyring"):
         verify_persisted_receipt(str(tmp_path), receipt_id, "agent-1")
