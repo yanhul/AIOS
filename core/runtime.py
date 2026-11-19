@@ -240,7 +240,14 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
     # Authenticate the retry authorization before invoking the provider adapter.
     # This is a read-only preflight; retry_dispatch re-loads and re-verifies it
     # against current persisted state before atomically consuming it.
-    _verify_retry_authorization(aios_dir, retry_auth, effect, actor, attempt, attempt_id,
+    from .effect_authority import _load_owned_effect
+    persisted_effect, _persisted_contract = _load_owned_effect(
+        aios_dir, effect["effect_id"], actor, "retry preflight")
+    if (persisted_effect.get("state") != "UNKNOWN"
+            or persisted_effect.get("attempt_id") != effect.get("attempt_id")
+            or persisted_effect.get("attempt") != effect.get("attempt")):
+        raise PermissionError("retry preflight effect is stale or is not the persisted UNKNOWN attempt")
+    _verify_retry_authorization(aios_dir, retry_auth, persisted_effect, actor, attempt, attempt_id,
                                 retry_keyring, now)
 
     # Reconcile the previous provider operation before dispatching a retry.
