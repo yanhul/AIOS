@@ -554,7 +554,8 @@ def _verify_retry_authorization(aios_dir, supplied, current, actor, attempt, att
 
 
 def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, retry_authorization=None, *,
-                   keyring=None, now=None):
+                   keyring=None, not_applied_proof=None, provider_keyring=None,
+                   provider_public_keyring=None, now=None):
     """Explicitly dispatch the next attempt for an UNKNOWN effect.
 
     Consumes the signed retry authorization atomically with the dispatch: the
@@ -577,6 +578,40 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
         raise TransitionError("retry exceeds contract attempt budget")
     if attempt_id != _attempt_id(effect_id, attempt):
         raise ValueError("attempt_id does not match retry attempt")
+    # Explicit human/issuer approval is necessary but never sufficient.
+    # Require a provider-authenticated NOT_APPLIED statement for the previous
+    # attempt before the next attempt can be dispatched.
+    if not isinstance(not_applied_proof, Mapping):
+        raise TransitionError("retry requires authenticated provider NOT_APPLIED reconciliation")
+    proof = dict(not_applied_proof)
+    proof_record = {
+        "provider": proof.get("provider"),
+        "provider_operation_id": proof.get("provider_operation_id"),
+        "effect_id": proof.get("effect_id"),
+        "attempt_id": proof.get("attempt_id"),
+        "observation": proof.get("observation"),
+        "authentication": proof.get("authentication"),
+    }
+    if (proof.get("outcome") != "NOT_APPLIED"
+            or proof_record["effect_id"] != effect_id
+            or proof_record["attempt_id"] != current.get("attempt_id")
+            or proof_record["provider"] != current.get("provider")
+            or not isinstance(proof_record["provider_operation_id"], str)
+            or not proof_record["provider_operation_id"].strip()
+            or not isinstance(proof_record["observation"], dict)
+            or not proof_record["observation"]):
+        raise TransitionError("NOT_APPLIED proof is not bound to the previous dispatched attempt")
+    proof_auth = _verify_provider_receipt(current, "NOT_APPLIED", proof_record,
+                                          provider_keyring, now, provider_public_keyring)
+    proof_id = "RP-" + hashlib.sha256(canonical_json({
+        "effect_id": effect_id, "attempt_id": current["attempt_id"],
+        "provider": current["provider"], "provider_operation_id": proof_record["provider_operation_id"],
+        "observation": proof_record["observation"], "authentication": proof_auth,
+    }).encode("utf-8")).hexdigest()
+    proof_record.update({"record_type": "PROVIDER_NOT_APPLIED_RECONCILIATION",
+                         "outcome": "NOT_APPLIED", "proof_id": proof_id,
+                         "verified_at": _now(now)})
+    proof_rel = os.path.join("reconciliation_proofs", proof_id + ".json")
     auth_rel, auth = _verify_retry_authorization(aios_dir, retry_authorization, current, actor,
                                                  attempt, attempt_id, keyring, now)
     authorization_id = auth["authorization_id"]
@@ -592,10 +627,12 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
     return _transition_dispatch(aios_dir, current, actor,
                                 attempt=attempt, attempt_id=attempt_id, provider=provider,
                                 extra_fields={"consumed_retry_authorizations": history,
-                                              "retry_authorization_id": authorization_id},
-                                extra_payloads=[(consumption_rel, consumption)],
+                                              "retry_authorization_id": authorization_id,
+                                              "not_applied_proof_id": proof_id},
+                                extra_payloads=[(consumption_rel, consumption), (proof_rel, proof_record)],
                                 extra_checks=[_expect_unchanged(auth_rel, auth),
-                                              _expect_unchanged(consumption_rel, None)])
+                                              _expect_unchanged(consumption_rel, None),
+                                              _expect_unchanged(proof_rel, None)])
 
 
 def unknown(aios_dir, effect_id, actor, reason):
