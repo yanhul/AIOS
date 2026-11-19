@@ -11,6 +11,7 @@ from .authority import authorize, load_contract, load_permit
 from .durable_runtime import DurableRuntime, validate_submission
 from .effect_authority import (
     ProviderAuthenticationError, create_effect, dispatch, observation_digest, observe, retry_dispatch, unknown,
+    _verify_retry_authorization,
 )
 
 
@@ -235,6 +236,12 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
         raise PermissionError("provider capability is not authorized by contract")
     if "external_effect" not in contract["allowed_effects"]:
         raise PermissionError("external effect is not authorized by contract")
+
+    # Authenticate the retry authorization before invoking the provider adapter.
+    # This is a read-only preflight; retry_dispatch re-loads and re-verifies it
+    # against current persisted state before atomically consuming it.
+    _verify_retry_authorization(aios_dir, retry_auth, effect, actor, attempt, attempt_id,
+                                retry_keyring, now)
 
     # Reconcile the previous provider operation before dispatching a retry.
     # Missing, ambiguous, APPLIED, or unauthenticated results fail closed.
