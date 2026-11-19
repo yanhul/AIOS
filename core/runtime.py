@@ -192,7 +192,7 @@ def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: 
 
 def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapter, attempt_id, attempt,
                           durable_runtime: DurableRuntime | None = None, *, retry_keyring=None,
-                          provider_keyring=None, now=None):
+                          provider_keyring=None, provider_public_keyring=None, now=None):
     """Authorize, dispatch and execute one explicit retry of an UNKNOWN effect.
 
     The external runtime may schedule/persist the attempt, but AIOS remains the
@@ -237,8 +237,32 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
     if "external_effect" not in contract["allowed_effects"]:
         raise PermissionError("external effect is not authorized by contract")
 
-    dispatched = retry_dispatch(aios_dir, effect["effect_id"], actor, attempt_id, provider_name, attempt,
-                                retry_authorization=retry_auth, keyring=retry_keyring, now=now)
+    # Reconcile the previous provider operation before dispatching a retry.
+    # Missing, ambiguous, APPLIED, or unauthenticated results fail closed.
+    reconcile_not_applied = getattr(adapter, "reconcile_not_applied", None)
+    if not callable(reconcile_not_applied):
+        raise PermissionError("safe retry requires provider reconcile_not_applied(); retry blocked")
+    previous_attempt_id = _text(effect.get("attempt_id"), "effect.attempt_id")
+    proof = reconcile_not_applied(contract=dict(contract), effect=dict(effect),
+                                  attempt_id=previous_attempt_id)
+    if not isinstance(proof, ProviderReceipt) or proof.outcome != "NOT_APPLIED":
+        raise PermissionError("provider did not prove previous attempt NOT_APPLIED; retry blocked")
+    if (proof.effect_id != effect["effect_id"] or proof.attempt_id != previous_attempt_id
+            or proof.provider != provider_name or not proof.provider_operation_id
+            or not isinstance(proof.observation, dict) or not proof.observation
+            or not isinstance(proof.authentication, dict)):
+        raise PermissionError("provider NOT_APPLIED proof binding is invalid")
+    proof_record = {
+        "provider": proof.provider, "provider_operation_id": proof.provider_operation_id,
+        "effect_id": proof.effect_id, "attempt_id": proof.attempt_id,
+        "observation": proof.observation, "authentication": proof.authentication,
+        "outcome": "NOT_APPLIED",
+    }
+    dispatched = retry_dispatch(
+        aios_dir, effect["effect_id"], actor, attempt_id, provider_name, attempt,
+        retry_authorization=retry_auth, keyring=retry_keyring,
+        not_applied_proof=proof_record, provider_keyring=provider_keyring,
+        provider_public_keyring=provider_public_keyring, now=now)
     _submit_runtime(durable_runtime, "retry", dispatched, attempt_id, provider_name, attempt=attempt)
     return execute_attempt(aios_dir, contract, dispatched, actor, adapter, attempt_id,
                            provider_keyring=provider_keyring, now=now)
