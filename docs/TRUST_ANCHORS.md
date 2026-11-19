@@ -82,7 +82,7 @@ belongs to the MiniMind workload) but cannot read the key or sign anything.
 | Parent is not root, not the workload UID, not in the workload's primary group | `getuid/geteuid/getgroups`, `pwd` | `IsolationError`, no launch |
 | Parent has no Linux capabilities | `/proc/self/status` `CapEff/CapPrm/CapAmb == 0` | `IsolationError` |
 | `sudo` is root-owned setuid (root-owned symlink hops only); signer launcher root-owned | `lstat` walk to `/` | `IsolationError` |
-| Complete executable chain derived from the signer launcher, **not** from caller `trusted_paths`: launcher must be exactly `#!/bin/sh` + `exec <python> -I -B <lib>/adapters/minimind/workload_entry.py <config>`; interpreter, every file of `<lib>` (recursive, no symlinks), config | `parse_signer_launcher`, `check_trusted_tree` | `IsolationError` |
+| Complete executable chain derived from the signer launcher, **not** from caller `trusted_paths`: launcher must be exactly `#!/bin/sh` + `exec <python> -I -S -B <lib>/adapters/minimind/workload_entry.py <config>`; interpreter, every file of `<lib>` (recursive, no symlinks), config | `parse_signer_launcher`, `check_trusted_tree` | `IsolationError` |
 | Config keys exactly `provider,key_path,runner_user,receipt_launcher,receipt_launcher_sha256,timeout,ttl` (legacy `receipt_command` rejected); `key_path` equals the caller's | `load_workload_config` | `IsolationError` |
 | Receipt launcher root-owned, no g/o write on any ancestor, referenced by its real path, sha256 equals config; `runner_user` exists, non-root, ≠ signer, ≠ parent | `validate_receipt_command` | `IsolationError` |
 | Parent sudo rights are **exactly** `(workload_user) NOPASSWD: <launcher> ""` (no args, no other rule, no root) | `sudo -n -l` parsed | `IsolationError` |
@@ -141,8 +141,7 @@ verifier's `AIOS_PROVIDER_ED25519_KEYRING`. `key_id = key_id_for(public_key)` is
 
 **Operational verification.** On the deployment host, as the AIOS user:
 `python -c "from adapters.minimind.isolation import WorkloadIsolation as W; print(W(workload_user='aios-minimind', launcher='/usr/lib/aios-minimind/bin/minimind-workload', key_path='/var/lib/aios-minimind/keys/ed25519.pem', trusted_paths=('/usr/lib/aios-minimind/lib','/usr/lib/aios-minimind/etc/workload.json')).verify())"`
-must print evidence with `key_probe: EACCES`. Also confirm `sudo -n -l` shows only the launcher rule,
-and run `scripts/minimind_isolation_e2e.sh` on a disposable host built from the same image.
+must print evidence with `key_probe: EACCES`. Also confirm `sudo -n -l` shows only the launcher rule. As the receipt-runner UID, verify that `sudo -n -l` grants no commands; the runner must have no sudo authority. The parent cannot safely infer another UID's full sudo policy from its own restricted sudo rule, so this is a deployment provisioning gate. Run `scripts/minimind_isolation_e2e.sh` on a disposable host built from the same image.
 
 **Deployment is BLOCKED if any of:** `verify()` raises; the AIOS user is root, has capabilities or any
 other sudo right; the agent runs as the workload UID; the key, launcher, workload code or config is

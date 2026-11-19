@@ -23,6 +23,51 @@ LOGS=/tmp/aios-isolation-logs; PROBE=$LOGS/runner-probe.json
 
 for u in $PARENT $WL $RUN $AGENT; do id "$u" >/dev/null 2>&1 || useradd --system --user-group --no-create-home --shell /usr/sbin/nologin "$u"; done
 /usr/bin/python3 -c 'import cryptography' 2>/dev/null || { apt-get update -qq && apt-get install -y -qq python3-cryptography; }
+# The disposable runner may expose Babel locale-data through a symlink.
+# The signer validates the resolved target AND every ancestor, because a writable
+# ancestor can replace the target after validation. Harden only this disposable host;
+# never weaken the signer policy or silently chown a non-root-owned system path.
+BABEL_LOCALE_DATA=/usr/share/python-babel-localedata
+if [ -e "$BABEL_LOCALE_DATA" ]; then
+  BABEL_REAL=$(readlink -f -- "$BABEL_LOCALE_DATA")
+  [ -n "$BABEL_REAL" ] && [ -d "$BABEL_REAL" ] || {
+    echo "FAIL: cannot resolve Babel locale-data directory: $BABEL_LOCALE_DATA" >&2
+    exit 1
+  }
+
+  # Secure every ancestor checked by check_trusted_path, up to filesystem root.
+  # Require existing root ownership; only remove group/other write bits.
+  current="$BABEL_REAL"
+  while :; do
+    [ -d "$current" ] || {
+      echo "FAIL: Babel path ancestor is not a directory: $current" >&2
+      exit 1
+    }
+    owner=$(stat -c '%u' -- "$current")
+    mode=$(stat -c '%a' -- "$current")
+    [ "$owner" = 0 ] || {
+      echo "FAIL: Babel path ancestor is not root-owned: $current (uid=$owner)" >&2
+      exit 1
+    }
+    if [ $((8#$mode & 0022)) -ne 0 ]; then
+      echo "HARDEN: removing group/other write from $current (mode=$mode)"
+      chmod go-w -- "$current"
+    fi
+    [ "$current" = / ] && break
+    current=$(dirname -- "$current")
+  done
+
+  # Secure nested data directories too. Do not chown anything: unexpected
+  # ownership is a failed fixture precondition, not something the test may conceal.
+  while IFS= read -r -d '' directory; do
+    owner=$(stat -c '%u' -- "$directory")
+    [ "$owner" = 0 ] || {
+      echo "FAIL: Babel data directory is not root-owned: $directory (uid=$owner)" >&2
+      exit 1
+    }
+    chmod go-w -- "$directory"
+  done < <(find "$BABEL_REAL" -type d -print0)
+fi
 rm -rf "$LOGS"; mkdir -p "$LOGS"; chmod 0777 "$LOGS"
 
 # Immutable root-owned signer code, config and launchers.
@@ -54,7 +99,7 @@ print(json.dumps({"minimind_receipt": {"capability": "minimind.learning@1", "tas
       "evidence": {"training_receipt": {**a, "steps": 1}, "provenance": {**a},
                    "evaluation_receipt": {**a, "independent": True, "holdout": True}}}}))
 PYEOF
-printf '#!/bin/sh\nexec /usr/bin/python3 -I -B %s\n' "$BASE/bin/receipt-demo.py" > "$RLAUNCHER"
+printf '#!/bin/sh\nexec /usr/bin/python3 -I -S -B %s\n' "$BASE/bin/receipt-demo.py" > "$RLAUNCHER"
 chmod 0755 "$RLAUNCHER"; chmod 0644 "$BASE/bin/receipt-demo.py"
 
 write_config() {  # path receipt_launcher [sha]
@@ -63,7 +108,7 @@ write_config() {  # path receipt_launcher [sha]
     "$KEY" "$RUN" "$2" "$sha" > "$1"; chmod 0644 "$1"
 }
 write_signer_launcher() {  # path lib config
-  printf '#!/bin/sh\nexec /usr/bin/python3 -I -B %s/adapters/minimind/workload_entry.py %s\n' "$2" "$3" > "$1"; chmod 0755 "$1"
+  printf '#!/bin/sh\nexec /usr/bin/python3 -I -S -B %s/adapters/minimind/workload_entry.py %s\n' "$2" "$3" > "$1"; chmod 0755 "$1"
 }
 write_config "$CONFIG" "$RLAUNCHER"
 write_signer_launcher "$LAUNCHER" "$BASE/lib" "$CONFIG"
@@ -131,6 +176,17 @@ cp -r "$SRC/." "$WORK/"; rm -rf "$WORK/.git"; chown -R "$PARENT:$PARENT" "$WORK"
 ls -l /usr/bin/sudo; readlink -f /usr/bin/sudo; /usr/bin/sudo -V 2>&1 | head -1
 (cd / && sudo -u "$PARENT" /usr/bin/sudo -n -l) || echo "parent sudo -l failed"
 (cd / && sudo -u "$WL" /usr/bin/sudo -n -l) || echo "signer sudo -l failed"
+# The receipt runner is untrusted with the key and must have no sudo authority.
+if (cd / && sudo -u "$RUN" /usr/bin/sudo -n -l >"$LOGS/runner-sudo-list.txt" 2>&1); then
+  echo "FAIL: receipt runner has sudo privileges" >&2
+  cat "$LOGS/runner-sudo-list.txt" >&2
+  exit 1
+fi
+if grep -q "may run the following commands" "$LOGS/runner-sudo-list.txt"; then
+  echo "FAIL: receipt runner sudo policy is present" >&2
+  cat "$LOGS/runner-sudo-list.txt" >&2
+  exit 1
+fi
 
 run_role() {  # role user
   local runas=(); [ "$2" = root ] || runas=(sudo -u "$2")
@@ -155,7 +211,7 @@ required = {
                "test_untrusted_receipt_chain_blocks_parent_side", "test_isolated_run_returns_only_signed_receipt_and_public_material",
                "test_parent_cannot_reach_key_via_workload_process_fds_env_or_argv", "test_receipt_command_cannot_read_private_key"],
     "agent": ["test_other_agent_cannot_read_key_or_start_workload", "test_other_agent_cannot_modify_executable_chain"],
-    "root": ["test_signer_entry_refuses_untrusted_receipt_chain", "test_receipt_command_changed_after_validation_is_blocked"],
+    "root": ["test_signer_startup_does_not_execute_pth_code", "test_signer_entry_refuses_untrusted_receipt_chain", "test_receipt_command_changed_after_validation_is_blocked"],
 }
 bad = False
 for role, names in required.items():

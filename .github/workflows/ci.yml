@@ -22,6 +22,228 @@ concurrency:
 # Stable check names for branch protection: "full-suite" and "minimind-key-isolation".
 # No path filters: every PR update runs the full suite (security-relevant changes cannot be skipped).
 jobs:
+  posix-cgroup-f01-probe:
+    name: posix-cgroup-f01-probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Report cgroup v2 delegation and attempt a disposable child cgroup
+        shell: bash
+        run: |
+          set -eu
+          echo "=== cgroup filesystem ==="
+          stat -fc 'filesystem=%T' /sys/fs/cgroup || true
+          echo "=== current cgroup ==="
+          cat /proc/self/cgroup
+          echo "=== cgroup2 mounts ==="
+          grep ' - cgroup2 ' /proc/self/mountinfo || true
+          echo "=== cgroup root controls ==="
+          ls -ld /sys/fs/cgroup
+          for f in cgroup.controllers cgroup.subtree_control cgroup.events cgroup.procs cgroup.kill; do
+            if [ -e "/sys/fs/cgroup/$f" ]; then
+              printf '%s: ' "$f"
+              if [ -r "/sys/fs/cgroup/$f" ]; then cat "/sys/fs/cgroup/$f" 2>/dev/null || true; else echo UNREADABLE; fi
+            else
+              echo "$f: ABSENT"
+            fi
+          done
+          echo "=== PID namespace capability probes ==="
+          if command -v unshare >/dev/null 2>&1; then
+            if unshare --user --map-root-user --pid --fork -- true; then
+              echo "USER_PID_NAMESPACE=AVAILABLE"
+            else
+              echo "USER_PID_NAMESPACE=BLOCKED"
+            fi
+            if unshare --pid --fork -- true; then
+              echo "PRIVILEGED_PID_NAMESPACE=AVAILABLE"
+            else
+              echo "PRIVILEGED_PID_NAMESPACE=BLOCKED"
+            if sudo unshare --pid --fork -- true; then
+              echo "SUDO_PID_NAMESPACE=AVAILABLE"
+            else
+              echo "SUDO_PID_NAMESPACE=BLOCKED"
+            fi
+            fi
+          else
+            echo "UNSHARE_BINARY=MISSING"
+          fi
+          probe="/sys/fs/cgroup/aios-f01-probe-$GITHUB_RUN_ID"
+          if mkdir "$probe" 2>/tmp/aios-cgroup-mkdir.err; then
+            echo "DELEGATED_CHILD_CGROUP_CREATE=YES"
+            rmdir "$probe"
+          else
+            echo "DELEGATED_CHILD_CGROUP_CREATE=NO"
+            cat /tmp/aios-cgroup-mkdir.err
+          fi
+      - name: Verify PID namespace teardown kills detached descendants
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmpdir="$(mktemp -d)"
+          inner_pidfile="$tmpdir/inner.pid"
+          host_pidfile="$tmpdir/host.pid"
+          releasefile="$tmpdir/release"
+          daemon_comm="aios-f01d"
+          cleanup() {
+            touch "$releasefile" 2>/dev/null || true
+            if [ -n "${ns_launcher:-}" ]; then wait "$ns_launcher" 2>/dev/null || true; fi
+            rm -rf "$tmpdir"
+          }
+          trap cleanup EXIT
+
+          sudo unshare --pid --fork --mount-proc python - "$inner_pidfile" "$releasefile" "$daemon_comm" <<'PY' &
+          import os, sys, time
+          inner_pidfile, releasefile, daemon_comm = sys.argv[1:]
+          if os.getpid() != 1:
+              raise SystemExit(f"namespace init expected PID 1, got {os.getpid()}")
+          intermediate = os.fork()
+          if intermediate == 0:
+              os.setsid()
+              daemon = os.fork()
+              if daemon > 0:
+                  os._exit(0)
+              import ctypes
+              if ctypes.CDLL(None).prctl(15, daemon_comm.encode(), 0, 0, 0) != 0:
+                  raise OSError("prctl(PR_SET_NAME) failed")
+              for fd in (0, 1, 2):
+                  try: os.close(fd)
+                  except OSError: pass
+              temporary_pidfile = inner_pidfile + ".tmp"
+              with open(temporary_pidfile, "w") as stream:
+                  stream.write(str(os.getpid()))
+                  stream.flush()
+                  os.fsync(stream.fileno())
+              os.replace(temporary_pidfile, inner_pidfile)
+              # Keep the detached daemon alive until the host has mapped its PID.
+              while not os.path.exists(releasefile):
+                  time.sleep(0.01)
+              time.sleep(60)
+              os._exit(0)
+          os.waitpid(intermediate, 0)
+          deadline = time.monotonic() + 10
+          while not os.path.exists(inner_pidfile) and time.monotonic() < deadline:
+              time.sleep(0.01)
+          if not os.path.exists(inner_pidfile):
+              raise SystemExit("namespace descendant inner PID file missing")
+          print("PID_NAMESPACE_INIT=1", flush=True)
+          print("DETACHED_DESCENDANT_CREATED=YES", flush=True)
+          # Hold PID 1 open until the host maps the exact process.
+          while not os.path.exists(releasefile):
+              time.sleep(0.01)
+          # PID 1 exits; the kernel must terminate all remaining namespace tasks.
+          PY
+          ns_launcher=$!
+
+          python - "$inner_pidfile" "$host_pidfile" "$daemon_comm" <<'PY'
+          import os, sys, time
+          inner_pidfile, host_pidfile, daemon_comm = sys.argv[1:]
+          deadline = time.monotonic() + 10
+          while not os.path.exists(inner_pidfile) and time.monotonic() < deadline:
+              time.sleep(0.01)
+          if not os.path.exists(inner_pidfile):
+              raise SystemExit("namespace descendant inner PID file missing")
+          inner_pid = int(open(inner_pidfile).read().strip())
+          while time.monotonic() < deadline:
+              for entry in os.scandir("/proc"):
+                  if not entry.name.isdigit():
+                      continue
+                  pid = int(entry.name)
+                  try:
+                      comm = open(f"/proc/{pid}/comm", encoding="ascii").read().strip()
+                  except OSError:
+                      continue
+                  # Match a unique process name; host procfs may hide ancestor NSpid levels.
+                  if comm == daemon_comm:
+                      with open(host_pidfile, "w") as stream:
+                          stream.write(str(pid))
+                      print(f"NAMESPACE_INNER_PID={inner_pid}")
+                      print(f"NAMESPACE_HOST_PID={pid}")
+                      raise SystemExit(0)
+              time.sleep(0.02)
+          raise SystemExit("could not find uniquely named namespace daemon in host /proc")
+          PY
+
+          host_pid="$(cat "$host_pidfile")"
+          touch "$releasefile"
+          wait "$ns_launcher"
+          ns_launcher=""
+          for _ in $(seq 1 100); do
+            if [ ! -r "/proc/$host_pid/stat" ]; then
+              echo "NAMESPACE_DESCENDANT_TERMINATED=YES"
+              exit 0
+            fi
+            state="$(awk '{print $3}' "/proc/$host_pid/stat" 2>/dev/null || true)"
+            if [ "$state" = Z ] || [ "$state" = X ]; then
+              echo "NAMESPACE_DESCENDANT_TERMINATED=YES"
+              exit 0
+            fi
+            sleep 0.02
+          done
+          echo "NAMESPACE_DESCENDANT_TERMINATED=NO"
+          ps -o pid,ppid,pgid,sid,stat,cmd -p "$host_pid" || true
+          exit 1
+      - name: Reproduce escaped setsid-fork daemon against current cleanup
+        run: |
+          python - <<'PY'
+          import os, signal, subprocess, sys, tempfile, time
+          from pathlib import Path
+          from adapters.bounded_process import _posix_cleanup, CLEANUP_CONFIRMED
+
+          with tempfile.TemporaryDirectory() as td:
+              pidfile = Path(td) / "daemon.pid"
+              code = r"""
+          import os, sys, time
+          pidfile = sys.argv[1]
+          intermediate = os.fork()
+          if intermediate == 0:
+              os.setsid()
+              daemon = os.fork()
+              if daemon > 0:
+                  os._exit(0)
+              for fd in (0, 1, 2):
+                  try: os.close(fd)
+                  except OSError: pass
+              with open(pidfile, "w") as f:
+                  f.write(str(os.getpid()))
+              time.sleep(90)
+              os._exit(0)
+          os.waitpid(intermediate, 0)
+          """
+              proc = subprocess.Popen([sys.executable, "-c", code, str(pidfile)],
+                                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                       stderr=subprocess.DEVNULL, start_new_session=True)
+              try:
+                  proc.wait(timeout=5)
+                  deadline = time.monotonic() + 5
+                  while not pidfile.exists() and time.monotonic() < deadline:
+                      time.sleep(0.02)
+                  if not pidfile.exists():
+                      raise SystemExit("REPRODUCTION_INCONCLUSIVE: daemon pidfile missing")
+                  daemon_pid = int(pidfile.read_text())
+                  record = _posix_cleanup(proc, 0.5)
+                  try:
+                      os.kill(daemon_pid, 0)
+                      alive = True
+                  except ProcessLookupError:
+                      alive = False
+                  print("cleanup_status=" + str(record.get("status")))
+                  print("escaped_daemon_pid=" + str(daemon_pid))
+                  print("escaped_daemon_alive_after_cleanup=" + str(alive))
+                  if record.get("status") == CLEANUP_CONFIRMED and alive:
+                      print("F01_REPRODUCED=YES")
+                      raise SystemExit("F-01 regression: cleanup claimed CONFIRMED while escaped daemon remained alive")
+                  else:
+                      print("F01_REPRODUCED=NO_OR_INCONCLUSIVE")
+                      raise SystemExit("F-01 probe did not reproduce; inspect evidence before treating as resolved")
+              finally:
+                  if pidfile.exists():
+                      try: os.kill(int(pidfile.read_text()), signal.SIGKILL)
+                      except (OSError, ValueError): pass
+          PY
   full-suite:
     name: full-suite
     runs-on: ubuntu-latest
@@ -85,6 +307,8 @@ jobs:
           git clone --depth 1 --no-checkout https://github.com/jingyaogong/minimind.git "$RUNNER_TEMP/minimind"
           git -C "$RUNNER_TEMP/minimind" fetch --depth 1 origin 6fc918beb68a0d8c40452338df6319fe168014ba
           git -C "$RUNNER_TEMP/minimind" checkout --detach 6fc918beb68a0d8c40452338df6319fe168014ba
+      - name: Install pinned CPU smoke-test dependencies
+        run: python -m pip install torch==2.6.0 transformers==4.57.6 datasets==3.6.0
       - name: Check MiniMind capability
         env:
           MINIMIND_ROOT: ${{ runner.temp }}/minimind

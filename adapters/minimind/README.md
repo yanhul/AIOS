@@ -39,3 +39,19 @@ I/O, malformed JSON, invalid receipts or a missing/invalid signature leave the e
 Only `PROMOTE` is an observed success. `REJECT`, `INCONCLUSIVE` and `BLOCKED` are recorded as
 `OBSERVED_FAILURE` and never read as task success. `PROMOTE` remains a separate AIOS terminal decision
 based on the independent locked-holdout evidence; the workload cannot promote itself.
+
+
+## Provider availability verification
+
+The CI readiness check pins the upstream repository to an immutable commit and
+validates the actual source layout at that revision:
+`model/model_minimind.py`, `dataset/lm_dataset.py`, tokenizer assets,
+`trainer/train_agent.py`, and `trainer/rollout_engine.py`. It then imports
+`MiniMindConfig`, `MiniMindForCausalLM`, and `AgentRLDataset`, instantiates
+a tiny CPU model, and performs a forward pass with an asserted logits shape.
+
+This verifies source/API/runtime compatibility only. It does **not** establish
+that model weights or training datasets are downloaded, that a training job
+can complete, or that model quality meets any evaluation threshold. Those
+remain separate evidence gates; no model-quality or promotion claim is inferred
+from this smoke test.

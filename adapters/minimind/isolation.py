@@ -45,7 +45,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 SUPPORTED_PLATFORM = "linux"
-_CAP_FIELDS = ("CapEff", "CapPrm", "CapAmb")
+# CapInh can be carried into execve and must be empty.
+# CapBnd is a ceiling, not a currently-held capability: record it for audit,
+# but do not reject ordinary unprivileged Linux processes merely because it is nonzero.
+_CAP_FIELDS = ("CapEff", "CapPrm", "CapInh", "CapAmb", "CapBnd")
+_CAP_ENFORCED_FIELDS = ("CapEff", "CapPrm", "CapInh", "CapAmb")
 _MINIMAL_ENV = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
 
 
@@ -132,16 +136,141 @@ def resolve_trusted_symlinks(path: str, *, kind: str, max_hops: int = 8) -> str:
     raise IsolationError(f"{kind}: too many symlink hops")
 
 
-def check_trusted_tree(root: str, *, kind: str) -> int:
-    """``root`` and every entry below it: root-owned, no group/other write, no symlinks. Returns file count."""
+_PYTHON_IMPORT_SUFFIXES = (".py", ".pyc", ".pyo", ".so", ".pyd", ".dll", ".zip", ".egg")
+_VERSIONED_NATIVE_LIBRARY = re.compile(r"\.so(?:\.\d+)+$", re.IGNORECASE)
+
+
+def _is_importable_python_code(path: str) -> bool:
+    """Classify Python modules and native code-bearing import dependencies."""
+    lowered = path.lower()
+    if lowered.endswith(_PYTHON_IMPORT_SUFFIXES) or _VERSIONED_NATIVE_LIBRARY.search(lowered):
+        return True
+    # Native ELF shared objects may be versioned unusually or have no suffix.
+    try:
+        with open(path, "rb") as stream:
+            return stream.read(4) == b"\x7fELF"
+    except OSError as exc:
+        raise IsolationError(f"cannot inspect import candidate {path!r}: {exc}") from exc
+
+
+def _check_trusted_import_directories(root: str, *, kind: str) -> None:
+    """Require every directory in a symlinked import subtree to be immutable by non-root.
+
+    Data files may be writable for distro resource packages, but no untrusted user
+    may be able to add/replace an importable file after this check.
+    """
+    pending = [os.path.realpath(root)]
+    visited = set()
+    while pending:
+        directory = pending.pop()
+        if directory in visited:
+            continue
+        visited.add(directory)
+        check_trusted_path(directory, kind=f"{kind} directory")
+        try:
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            pending.append(entry.path)
+                        elif entry.is_symlink():
+                            st = entry.stat(follow_symlinks=False)
+                            if st.st_uid != 0:
+                                raise IsolationError(
+                                    f"{kind}: symlink inside import subtree is not root-owned: {entry.path!r}"
+                                )
+                            target = os.path.realpath(entry.path)
+                            target_st = os.stat(entry.path)
+                            if stat.S_ISDIR(target_st.st_mode):
+                                pending.append(target)
+                            elif stat.S_ISREG(target_st.st_mode) and _is_importable_python_code(target):
+                                check_trusted_path(target, kind=f"{kind} symlink code target")
+                        elif entry.is_file(follow_symlinks=False) and _is_importable_python_code(entry.path):
+                            check_trusted_path(entry.path, kind=f"{kind} code file")
+                    except OSError as exc:
+                        raise IsolationError(f"cannot inspect import-tree entry {entry.path!r}: {exc}") from exc
+        except OSError as exc:
+            raise IsolationError(f"cannot inspect import-tree directory {directory!r}: {exc}") from exc
+
+
+def _tree_contains_importable_python_code(root: str) -> bool:
+    """Return whether a directory tree contains files Python can import as code.
+
+    Site-package trees can contain symlinked locale/resource data that is writable
+    by a data owner. Such files cannot supply modules through normal Python import
+    resolution. Code-bearing targets are fully validated.
+    """
+    pending = [root]
+    visited = set()
+    while pending:
+        directory = pending.pop()
+        real = os.path.realpath(directory)
+        if real in visited:
+            continue
+        visited.add(real)
+        try:
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    try:
+                        if entry.is_dir(follow_symlinks=True):
+                            pending.append(entry.path)
+                        elif entry.is_file(follow_symlinks=True) and _is_importable_python_code(entry.path):
+                            return True
+                    except OSError as exc:
+                        raise IsolationError(f"cannot inspect import-tree entry {entry.path!r}: {exc}") from exc
+        except OSError as exc:
+            raise IsolationError(f"cannot inspect import-tree directory {directory!r}: {exc}") from exc
+    return False
+
+
+def check_trusted_tree(root: str, *, kind: str, _visited: set | None = None) -> int:
+    """Validate a root-owned import tree, including the targets of internal symlinks.
+
+    Some distro packages expose importable modules through symlinked directories.
+    Their targets are recursively checked; symlink traversal is cycle-safe.
+    """
+    real_root = os.path.realpath(root)
+    visited = _visited if _visited is not None else set()
+    if real_root in visited:
+        return 0
+    visited.add(real_root)
     check_trusted_path(root, kind=kind)
     count = 0
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-        for name in dirnames + filenames:
+
+    def fail_on_walk_error(exc: OSError) -> None:
+        # os.walk silently ignores traversal errors unless onerror is supplied.
+        # A partial trust scan is never sufficient evidence for signer execution.
+        raise IsolationError(f"{kind}: cannot traverse trusted tree: {exc}") from exc
+
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False, onerror=fail_on_walk_error):
+        for name in list(dirnames) + filenames:
             entry = os.path.join(dirpath, name)
             st = os.lstat(entry)
             if stat.S_ISLNK(st.st_mode):
-                raise IsolationError(f"{kind}: symlink inside trusted tree: {entry!r}")
+                if st.st_uid != 0:
+                    raise IsolationError(f"{kind}: symlink inside trusted tree is not root-owned: {entry!r}")
+                target = os.path.realpath(entry)
+                try:
+                    target_st = os.stat(entry)
+                except OSError as exc:
+                    raise IsolationError(f"{kind}: broken/unreadable symlink {entry!r}") from exc
+                if stat.S_ISDIR(target_st.st_mode):
+                    # Even data-only targets must have immutable directory structure:
+                    # otherwise code could be added after classification (TOCTOU).
+                    _check_trusted_import_directories(target, kind=f"{kind} symlink directory target")
+                    if _tree_contains_importable_python_code(target):
+                        count += check_trusted_tree(target, kind=f"{kind} symlink directory target",
+                                                    _visited=visited)
+                elif stat.S_ISREG(target_st.st_mode):
+                    # Data symlinks (for example Babel's global.dat) are not Python
+                    # import targets. A .py/.so/.zip symlink remains executable code
+                    # and its resolved target must satisfy the full trust policy.
+                    if _is_importable_python_code(entry):
+                        check_trusted_path(target, kind=f"{kind} symlink file target")
+                        count += 1
+                else:
+                    raise IsolationError(f"{kind}: symlink target is not a regular file or directory: {entry!r}")
+                continue
             if st.st_uid != 0:
                 raise IsolationError(f"{kind}: {entry!r} is not root-owned (uid {st.st_uid})")
             if st.st_mode & 0o022:
@@ -151,6 +280,55 @@ def check_trusted_tree(root: str, *, kind: str) -> int:
             elif not stat.S_ISDIR(st.st_mode):
                 raise IsolationError(f"{kind}: {entry!r} is not a regular file or directory")
     return count
+
+
+def prepare_trusted_python_imports(lib: str) -> int:
+    """Validate every Python import root before third-party code is allowed to import.
+
+    The signer launcher uses -S, so Python has not processed site directories or .pth files.
+    This function validates the stdlib roots, the AIOS code tree, and known platform
+    site/dist-packages roots before adding those dependency roots to sys.path.
+    """
+    import sysconfig
+
+    checked = set()
+    roots = set()
+    for key in ("stdlib", "platstdlib", "purelib", "platlib"):
+        value = sysconfig.get_paths().get(key)
+        if value:
+            roots.add(os.path.abspath(value))
+    version = f"{sys.version_info.major}.{sys.version_info.minor}"
+    roots.update({
+        f"/usr/lib/python{version}",
+        "/usr/lib/python3/dist-packages",
+        f"/usr/local/lib/python{version}/site-packages",
+        f"/usr/local/lib/python{version}/dist-packages",
+        f"/usr/lib/python{version}/site-packages",
+    })
+    roots.update(os.path.abspath(p) for p in sys.path if p)
+    roots.add(os.path.abspath(lib))
+
+    for root in sorted(roots):
+        if root in checked or not os.path.exists(root):
+            continue
+        checked.add(root)
+        if os.path.isdir(root):
+            check_trusted_tree(root, kind=f"Python import tree {root}")
+        else:
+            check_trusted_path(root, kind=f"Python import file {root}")
+
+    # Only add package roots after their complete trees passed the trust check.
+    for key in ("purelib", "platlib"):
+        value = sysconfig.get_paths().get(key)
+        if value and os.path.isdir(value) and value not in sys.path:
+            sys.path.append(value)
+    for root in ("/usr/lib/python3/dist-packages",
+                 f"/usr/local/lib/python{version}/site-packages",
+                 f"/usr/local/lib/python{version}/dist-packages",
+                 f"/usr/lib/python{version}/site-packages"):
+        if os.path.isdir(root) and root not in sys.path:
+            sys.path.append(root)
+    return len(checked)
 
 
 def check_trusted_executable(path: str, *, kind: str) -> str:
@@ -174,12 +352,12 @@ def sha256_file(path: str) -> str:
         os.close(fd)
 
 
-_LAUNCHER_EXEC = re.compile(r"^exec (?P<interp>/\S+) -I -B (?P<entry>/\S+/adapters/minimind/workload_entry\.py) "
+_LAUNCHER_EXEC = re.compile(r"^exec (?P<interp>/\S+) -I -S -B (?P<entry>/\S+/adapters/minimind/workload_entry\.py) "
                             r"(?P<config>/\S+\.json)$")
 
 
 def parse_signer_launcher(path: str) -> dict:
-    """The signer launcher must be exactly ``#!/bin/sh`` + ``exec <python> -I -B <lib>/...workload_entry.py <config>``.
+    """The signer launcher must be exactly ``#!/bin/sh`` + ``exec <python> -I -S -B <lib>/...workload_entry.py <config>``.
 
     This binds the launcher (which the parent may start) to one interpreter, one code tree and one
     root-owned config; nothing in it comes from the caller.
@@ -215,9 +393,31 @@ def load_workload_config(config_path: str) -> dict:
     return config
 
 
-def validate_receipt_command(config: dict, *, signer_uid: int, parent_uids=()) -> dict:
-    """The receipt command runs as a *separate* UID (no key access) through an immutable root-owned launcher.
+_RECEIPT_LAUNCHER_EXEC = re.compile(
+    r"^exec (?P<interp>/\S+) -I -S -B (?P<script>/\S+\.py)$"
+)
 
+
+def parse_receipt_launcher(path: str) -> dict:
+    """Require a fixed isolated-Python invocation with no caller-controlled arguments."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lines = [line.rstrip("\n") for line in fh.read(4096).splitlines()]
+    except OSError as exc:
+        raise IsolationError(f"cannot read receipt launcher: {exc}") from exc
+    if len(lines) != 2 or lines[0] != "#!/bin/sh":
+        raise IsolationError("receipt launcher must be exactly '#!/bin/sh' + one exec line")
+    match = _RECEIPT_LAUNCHER_EXEC.fullmatch(lines[1])
+    if not match:
+        raise IsolationError("receipt launcher must invoke an absolute interpreter with exactly -I -S -B and one .py script")
+    return {"interpreter": match.group("interp"), "script": match.group("script")}
+
+
+def validate_receipt_command(config: dict, *, signer_uid: int, parent_uids=()) -> dict:
+    """Validate the key-isolated receipt runner and its immutable launcher.
+
+    The launcher is hash-bound and its invocation is constrained to isolated Python
+    startup (-I -S -B), with one root-owned script and no additional arguments.
     Returns the resolved launcher path and runner UID; raises IsolationError otherwise.
     """
     import pwd
@@ -235,7 +435,12 @@ def validate_receipt_command(config: dict, *, signer_uid: int, parent_uids=()) -
     actual = sha256_file(real)
     if actual != config["receipt_launcher_sha256"]:
         raise IsolationError("receipt launcher content does not match the config-bound sha256 (changed)")
-    return {"receipt_launcher": real, "runner_uid": runner.pw_uid, "receipt_launcher_sha256": actual}
+    invocation = parse_receipt_launcher(real)
+    check_trusted_executable(invocation["interpreter"], kind="receipt interpreter")
+    check_trusted_path(invocation["script"], kind="receipt script")
+    return {"receipt_launcher": real, "runner_uid": runner.pw_uid,
+            "receipt_launcher_sha256": actual, "receipt_interpreter": invocation["interpreter"],
+            "receipt_script": invocation["script"]}
 
 
 _RULE = re.compile(r"^\((?P<runas>[^)]*)\)\s+(?P<rest>.+)$")
@@ -319,7 +524,7 @@ class WorkloadIsolation:
         if workload.pw_gid in {os.getgid(), os.getegid(), *os.getgroups()}:
             raise IsolationError("parent is a member of the workload's primary group")
         caps = _process_capabilities()
-        if any(caps.values()):
+        if any(caps[name] for name in _CAP_ENFORCED_FIELDS):
             raise IsolationError(f"parent holds Linux capabilities {caps}: isolation BLOCKED")
 
         check_trusted_path(resolve_trusted_symlinks(self.sudo, kind="sudo"), kind="sudo", executable=True,
@@ -359,19 +564,82 @@ def _check_private(st: os.stat_result, *, what: str, euid: int, allow_root: bool
         raise IsolationError(f"{what} grants group/other access ({oct(st.st_mode & 0o777)})")
 
 
+def _open_private_key_directory(path: str, *, euid: int) -> int:
+    """Open the key directory component-by-component without following symlinks.
+
+    Keep the directory descriptors pinned until the key has been opened. This prevents
+    an attacker from swapping an ancestor after its permissions have been checked.
+    Root-owned non-writable ancestors and the sticky shared temporary directory are
+    accepted; every other ancestor must be owned by root/the workload and not writable
+    by group or other users. The final key directory is private to root/the workload.
+    """
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    current_fd = os.open("/", flags)
+    try:
+        parts = [part for part in os.path.normpath(path).split(os.sep) if part]
+        if not parts:
+            raise IsolationError("key path must name a file below a directory")
+        for index, part in enumerate(parts):
+            try:
+                next_fd = os.open(part, flags, dir_fd=current_fd)
+            except OSError as exc:
+                raise IsolationError(
+                    f"cannot safely open key path directory component {part!r}: {exc.strerror}"
+                ) from exc
+            st = os.fstat(next_fd)
+            if not stat.S_ISDIR(st.st_mode):
+                os.close(next_fd)
+                raise IsolationError(f"key path component {part!r} is not a directory")
+            is_key_directory = index == len(parts) - 1
+            if is_key_directory:
+                try:
+                    _check_private(st, what="key directory", euid=euid, allow_root=True)
+                except Exception:
+                    os.close(next_fd)
+                    raise
+            else:
+                if st.st_uid not in (0, euid):
+                    os.close(next_fd)
+                    raise IsolationError(
+                        f"key path ancestor {part!r} is owned by untrusted uid {st.st_uid}"
+                    )
+                writable = bool(st.st_mode & 0o022)
+                sticky_shared = bool(st.st_mode & stat.S_ISVTX)
+                if writable and not sticky_shared:
+                    os.close(next_fd)
+                    raise IsolationError(
+                        f"key path ancestor {part!r} is group/other writable"
+                    )
+            os.close(current_fd)
+            current_fd = next_fd
+        return current_fd
+    except Exception:
+        os.close(current_fd)
+        raise
+
+
 def read_workload_key(path: str) -> bytes:
-    """Workload side: read the PEM key only if it is private to the workload identity."""
+    """Workload side: read the PEM key only if its entire path is private and stable."""
     _require_linux()
     euid = os.geteuid()
     if euid == 0:
         raise IsolationError("workload must not run as root")
-    if not os.path.isabs(path):
+    if not isinstance(path, str) or not os.path.isabs(path):
         raise IsolationError("key path must be absolute")
-    _check_private(os.lstat(os.path.dirname(path)), what="key directory", euid=euid, allow_root=True)
+    normalized = os.path.normpath(path)
+    key_name = os.path.basename(normalized)
+    if key_name in ("", ".", ".."):
+        raise IsolationError("key path must name a file")
+    directory_fd = _open_private_key_directory(os.path.dirname(normalized), euid=euid)
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
-    except OSError as exc:
-        raise IsolationError(f"cannot open workload key without following links: {exc.strerror}") from exc
+        try:
+            fd = os.open(key_name, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=directory_fd)
+        except OSError as exc:
+            raise IsolationError(
+                f"cannot open workload key without following links: {exc.strerror}"
+            ) from exc
+    finally:
+        os.close(directory_fd)
     try:
         st = os.fstat(fd)
         if not stat.S_ISREG(st.st_mode):

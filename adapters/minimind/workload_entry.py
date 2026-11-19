@@ -1,7 +1,7 @@
 """Isolated MiniMind signer entry point (runs as the dedicated key-owning workload UID).
 
 Started only by the root-owned launcher through ``sudo -n -u <workload_user> -- <launcher>``.
-Usage (inside the launcher): ``python3 -I -B <lib>/adapters/minimind/workload_entry.py <config.json>``
+Usage (inside the launcher): ``python3 -I -S -B <lib>/adapters/minimind/workload_entry.py <config.json>``
 
 Trust split (audit P1, executable trust boundary):
 
@@ -26,17 +26,8 @@ _LIB = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 if _LIB not in sys.path:
     sys.path.insert(0, _LIB)
 
-# Import everything the signer will ever execute *before* the self-check, so lazily imported code
-# cannot bypass it.
-from cryptography.hazmat.primitives import serialization  # noqa: F401
-from cryptography.hazmat.primitives.asymmetric import ed25519  # noqa: F401
-
-import core.provider_ed25519  # noqa: F401
-from adapters.minimind.contract import (
-    MINIMIND_CAPABILITY,
-    outcome_for_terminal_state,
-    validate_receipt,
-)
+# Import only the stdlib-backed isolation module before the trust check. The launcher
+# uses -I -S: site.py and executable .pth files have not run at this point.
 from adapters.minimind.isolation import (
     IsolationError,
     check_sudo_rules,
@@ -45,12 +36,17 @@ from adapters.minimind.isolation import (
     check_trusted_tree,
     load_workload_config,
     load_workload_signer,
+    prepare_trusted_python_imports,
     resolve_trusted_symlinks,
     validate_receipt_command,
 )
 
+
 SUDO = "/usr/bin/sudo"
 _ENV = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
+MAX_REQUEST_BYTES = 128 * 1024
+MAX_RECEIPT_BYTES = 256 * 1024
+MAX_RECEIPT_STDERR_BYTES = 64 * 1024
 
 
 def verify_signer_code() -> int:
@@ -83,16 +79,24 @@ def run_receipt_command(config: dict, raw: bytes, timeout: float) -> bytes:
         raise IsolationError("signer has no usable sudo rule for the receipt runner")
     check_sudo_rules(listing.stdout.decode("utf-8", "replace"), workload_user=config["runner_user"],
                      launcher=runner["receipt_launcher"])
-    done = subprocess.run([SUDO, "-n", "-u", config["runner_user"], "--", runner["receipt_launcher"]],
-                          input=raw, capture_output=True, timeout=timeout, check=False, close_fds=True,
-                          env=dict(_ENV))
+    # The receipt runner is workload code and is not trusted with the signer's key.
+    # Enforce both stream caps while it is running; checking len(stdout) after
+    # subprocess.run(capture_output=True) would already have allowed unbounded
+    # memory growth inside this key-owning signer process.
+    from adapters.bounded_process import run_bounded
+
+    done = run_bounded(
+        [SUDO, "-n", "-u", config["runner_user"], "--", runner["receipt_launcher"]],
+        input=raw,
+        timeout=timeout,
+        max_stdout_bytes=MAX_RECEIPT_BYTES,
+        max_stderr_bytes=MAX_RECEIPT_STDERR_BYTES,
+        cwd="/",
+        env=dict(_ENV),
+    )
     if done.returncode != 0:
         raise RuntimeError(f"receipt command exited {done.returncode}")
     return done.stdout
-
-
-MAX_REQUEST_BYTES = 128 * 1024
-MAX_RECEIPT_BYTES = 256 * 1024
 
 
 def _fail(message: str) -> int:
@@ -107,6 +111,15 @@ def main(argv) -> int:
         if os.geteuid() == 0:
             return _fail("signer must not run as root")
         verify_signer_code()
+        prepare_trusted_python_imports(_LIB)
+        # Third-party and remaining AIOS modules are imported only after their complete roots
+        # have been checked while Python site initialization was disabled with -S.
+        from cryptography.hazmat.primitives import serialization  # noqa: F401
+        from cryptography.hazmat.primitives.asymmetric import ed25519  # noqa: F401
+        import core.provider_ed25519  # noqa: F401
+        from adapters.minimind.contract import (
+            MINIMIND_CAPABILITY, outcome_for_terminal_state, validate_receipt,
+        )
         config = load_workload_config(argv[1])
         provider, key_path = config["provider"], config["key_path"]
         timeout, ttl = float(config["timeout"]), float(config["ttl"])
