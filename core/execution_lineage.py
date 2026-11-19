@@ -109,3 +109,63 @@ def require_lineage_fields(record: Mapping[str, Any]) -> None:
 
 
 __all__ = ["ExecutionLineage", "validate_lineage", "require_lineage_fields"]
+
+
+def bind_lineage_to_effect(record: Mapping[str, Any], contract: Mapping[str, Any],
+                           contract_id: str, permit_id: str, provider: str) -> dict[str, Any]:
+    """Bind substrate-supplied lineage to the exact authorized effect context.
+
+    Policy revision and capability snapshot are checked against the immutable
+    AIOS contract; provider revision must match the version authorized for the
+    selected provider. Environment and trajectory identifiers remain sourced
+    from the execution substrate and are never fabricated by AIOS.
+    """
+    obj = validate_lineage(record)
+    capabilities = contract.get("capabilities")
+    if not isinstance(capabilities, list) or not capabilities:
+        raise ValueError("authorized contract capabilities are missing")
+    expected_snapshot = {
+        "capabilities": capabilities,
+        "policy_digest": contract.get("policy_digest"),
+    }
+    if obj.policy_revision != contract.get("policy_digest"):
+        raise ValueError("lineage policy_revision differs from authorized contract policy_digest")
+    if dict(obj.capability_snapshot) != expected_snapshot:
+        raise ValueError("lineage capability_snapshot differs from authorized contract")
+    provider_refs = [ref for ref in capabilities if isinstance(ref, str)
+                     and ref.split("@", 1)[0] == provider]
+    if not provider_refs or not any(ref.split("@", 1)[1] == obj.provider_revision
+                                     for ref in provider_refs if "@" in ref):
+        raise ValueError("lineage provider_revision is not authorized for selected provider")
+    binding = {
+        "contract_id": contract_id,
+        "permit_id": permit_id,
+        "lineage": obj.as_record(),
+    }
+    digest_payload = json.dumps(binding, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    binding["binding_digest"] = sha256(digest_payload.encode("utf-8")).hexdigest()
+    return binding
+
+
+def verify_effect_lineage(binding: Mapping[str, Any], contract: Mapping[str, Any],
+                          contract_id: str, permit_id: str, provider: str, attempt_id: str) -> dict[str, Any]:
+    if not isinstance(binding, Mapping) or set(binding) != {"contract_id", "permit_id", "lineage", "binding_digest"}:
+        raise ValueError("effect lineage binding schema mismatch")
+    body = {key: binding[key] for key in ("contract_id", "permit_id", "lineage")}
+    digest = sha256(json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+    if binding.get("binding_digest") != digest:
+        raise ValueError("effect lineage binding digest mismatch")
+    if binding["contract_id"] != contract_id or binding["permit_id"] != permit_id:
+        raise ValueError("effect lineage contract/permit binding mismatch")
+    obj = validate_lineage(binding["lineage"])
+    if obj.attempt_id != attempt_id:
+        raise ValueError("effect lineage attempt_id mismatch")
+    # Re-run contract and provider authorization checks, not just digest checks.
+    rebuilt = bind_lineage_to_effect(binding["lineage"], contract, contract_id, permit_id, provider)
+    if rebuilt != dict(binding):
+        raise ValueError("effect lineage does not match authoritative execution context")
+    return obj.as_record()
+
+
+__all__ = ["ExecutionLineage", "validate_lineage", "require_lineage_fields",
+           "bind_lineage_to_effect", "verify_effect_lineage"]
