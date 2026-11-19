@@ -24,6 +24,8 @@ import secrets
 import time
 from collections.abc import Mapping
 
+from .execution_lineage import bind_lineage_to_effect, verify_effect_lineage
+
 from .authority import authorize, load_contract, load_permit
 from .contract import verify_permit
 from .evidence import EvidenceRecord, verify_evidence
@@ -251,7 +253,7 @@ def _transition_dispatch(aios_dir, current, actor, *, attempt, attempt_id, provi
     return updated
 
 
-def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
+def dispatch(aios_dir, effect_id, actor, attempt_id, provider, *, lineage=None):
     _validate_strings(("attempt_id", attempt_id), ("provider", provider))
     current, contract = _load_owned_effect(aios_dir, effect_id, actor, "dispatch")
     _require_provider_authorized(contract, provider)
@@ -262,8 +264,21 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
         raise ValueError("attempt_id does not match initial effect attempt")
     if int(current.get("max_attempts", 0)) < 1:
         raise TransitionError("effect has no authorized execution attempts")
+    require_lineage = os.environ.get("AIOS_REQUIRE_EXECUTION_LINEAGE", "").lower() == "true"
+    if lineage is None and require_lineage:
+        raise TransitionError("production dispatch requires execution-substrate lineage")
+    lineage_binding = None
+    if lineage is not None:
+        try:
+            lineage_binding = bind_lineage_to_effect(lineage, contract, current["contract_id"],
+                                                     current["permit_id"], provider)
+            verify_effect_lineage(lineage_binding, contract, current["contract_id"], current["permit_id"],
+                                  provider, attempt_id)
+        except ValueError as exc:
+            raise TransitionError(f"execution lineage rejected: {exc}") from exc
     return _transition_dispatch(aios_dir, current, actor,
-                                attempt=1, attempt_id=attempt_id, provider=provider)
+                                attempt=1, attempt_id=attempt_id, provider=provider,
+                                extra_fields={"execution_lineage": lineage_binding} if lineage_binding else None)
 
 
 # --- Retry authority -------------------------------------------------------
@@ -556,7 +571,7 @@ def _verify_retry_authorization(aios_dir, supplied, current, actor, attempt, att
 
 
 def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, retry_authorization=None, *,
-                   keyring=None, not_applied_proof=None, provider_keyring=None,
+                   lineage=None, keyring=None, not_applied_proof=None, provider_keyring=None,
                    provider_public_keyring=None, now=None):
     """Explicitly dispatch the next attempt for an UNKNOWN effect.
 
@@ -580,6 +595,18 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
         raise TransitionError("retry exceeds contract attempt budget")
     if attempt_id != _attempt_id(effect_id, attempt):
         raise ValueError("attempt_id does not match retry attempt")
+    require_lineage = os.environ.get("AIOS_REQUIRE_EXECUTION_LINEAGE", "").lower() == "true"
+    if lineage is None and require_lineage:
+        raise TransitionError("production retry dispatch requires execution-substrate lineage")
+    lineage_binding = None
+    if lineage is not None:
+        try:
+            lineage_binding = bind_lineage_to_effect(lineage, contract, current["contract_id"],
+                                                     current["permit_id"], provider)
+            verify_effect_lineage(lineage_binding, contract, current["contract_id"], current["permit_id"],
+                                  provider, attempt_id)
+        except ValueError as exc:
+            raise TransitionError(f"execution lineage rejected: {exc}") from exc
     # Verify issuer authorization first, without consuming it. Provider
     # reconciliation remains a separate mandatory gate before dispatch.
     auth_rel, auth = _verify_retry_authorization(aios_dir, retry_authorization, current, actor,
@@ -633,7 +660,8 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
                                 attempt=attempt, attempt_id=attempt_id, provider=provider,
                                 extra_fields={"consumed_retry_authorizations": history,
                                               "retry_authorization_id": authorization_id,
-                                              "not_applied_proof_id": proof_id},
+                                              "not_applied_proof_id": proof_id,
+                                              **({"execution_lineage": lineage_binding} if lineage_binding else {})},
                                 extra_payloads=[(consumption_rel, consumption), (proof_rel, proof_record)],
                                 extra_checks=[_expect_unchanged(auth_rel, auth),
                                               _expect_unchanged(consumption_rel, None),
@@ -895,6 +923,7 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation, *, provid
         "authentication": dict(auth),
         "evidence": minted,
         "evidence_authority": EVIDENCE_AUTHORITY,
+        "execution_lineage": current.get("execution_lineage"),
     }
     # The immutable receipt and terminal effect transition are one journaled
     # transaction. A receipt ID can never be silently overwritten or replayed.
