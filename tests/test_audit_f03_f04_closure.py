@@ -20,7 +20,7 @@ from core.effect_authority import (
 from core.evidence import EvidenceRecord
 from core.mutation import TransitionError
 from core.runtime import execute_retry_attempt
-from tests.provider_keys import sign_observation
+from tests.provider_keys import sign_observation, signed_not_applied_proof
 from tests.retry_issuers import ISSUER_SECRETS, KEYRING, signed_retry_auth
 from tests.test_m6_effect_authority import _effect
 from tests.test_m6_runtime import setup_authority
@@ -56,7 +56,7 @@ def _rewrite(path, mutate):
 
 
 def _retry(tmp_path, effect, auth, attempt=2, actor=ACTOR, **kw):
-    return retry_dispatch(str(tmp_path), effect["effect_id"], actor, _aid(effect, attempt), PROVIDER, attempt, auth, **kw)
+    return retry_dispatch(str(tmp_path), effect["effect_id"], actor, _aid(effect, attempt), PROVIDER, attempt, auth, not_applied_proof=signed_not_applied_proof(str(tmp_path), effect["effect_id"], PROVIDER, now=kw.get("now")), **kw)
 
 
 # --- F-03: issuer authentication / authorization ---------------------------
@@ -283,6 +283,13 @@ def test_f03_runtime_rejects_caller_built_explicit_mode(tmp_path):
     class Adapter:
         name = "fake-provider"
         calls = 0
+
+        def reconcile_not_applied(self, *, effect, attempt_id):
+            from core.runtime import ProviderReceipt
+            from tests.provider_keys import signed
+            return signed(ProviderReceipt(provider=self.name, effect_id=effect["effect_id"],
+                          attempt_id=attempt_id, provider_operation_id="op-1",
+                          outcome="NOT_APPLIED", observation={"status": "not_applied"}), effect)
 
         def execute(self, **_):
             Adapter.calls += 1
