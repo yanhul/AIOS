@@ -94,6 +94,17 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id, *, p
         raise PermissionError("effect actor does not match execution actor")
     if effect.get("attempt_id") != attempt_id:
         raise RuntimeError("attempt_id does not match dispatched effect")
+    from .effect_authority import _load_owned_effect
+    persisted_effect, persisted_contract = _load_owned_effect(
+        aios_dir, effect["effect_id"], actor, "provider execution")
+    if (persisted_effect.get("state") != "DISPATCHED"
+            or persisted_effect.get("attempt_id") != attempt_id
+            or persisted_effect.get("provider") != effect.get("provider")):
+        raise RuntimeError("provider execution requires the exact persisted DISPATCHED attempt")
+    if persisted_effect.get("contract_id") != contract.get("contract_id", persisted_effect.get("contract_id")):
+        raise PermissionError("provider execution contract binding mismatch")
+    effect = persisted_effect
+    contract = persisted_contract
     if not hasattr(adapter, "name"):
         raise ValueError("adapter must expose a provider name")
     provider_name = _text(adapter.name, "adapter.name")
@@ -150,6 +161,15 @@ def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: 
     _text(attempt_id, "effect.attempt_id")
     if effect.get("actor") != actor:
         raise PermissionError("effect actor does not match execution actor")
+    from .effect_authority import _load_owned_effect
+    persisted_effect, persisted_contract = _load_owned_effect(
+        aios_dir, effect["effect_id"], actor, "provider resume")
+    if (persisted_effect.get("state") != "DISPATCHED"
+            or persisted_effect.get("attempt_id") != effect.get("attempt_id")
+            or persisted_effect.get("attempt_id") != attempt_id):
+        raise RuntimeError("resume requires the exact persisted DISPATCHED attempt")
+    effect = persisted_effect
+    contract = persisted_contract
     provider_name = _text(getattr(adapter, "name", None), "adapter.name")
     if not _provider_authorized(contract, provider_name):
         raise PermissionError("provider capability is not authorized by contract")
