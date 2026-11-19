@@ -54,7 +54,7 @@ def verify_persisted_receipt(
         "record_type", "receipt_id", "effect_id", "contract_id", "permit_id",
         "attempt_id", "provider", "provider_operation_id", "outcome",
         "observation", "observation_digest", "authentication", "evidence",
-        "evidence_authority",
+        "evidence_authority", "execution_lineage",
     }
     if not isinstance(receipt, dict) or set(receipt) != expected_keys:
         raise PersistedReceiptError("persisted provider receipt schema mismatch")
@@ -64,6 +64,8 @@ def verify_persisted_receipt(
         effect, _contract = _load_owned_effect(aios_dir, receipt["effect_id"], actor, "receipt verification")
         if effect.get("state") != receipt["outcome"]:
             raise PersistedReceiptError("receipt outcome differs from authoritative terminal effect")
+        if receipt["execution_lineage"] != effect.get("execution_lineage"):
+            raise PersistedReceiptError("persisted receipt lineage differs from authoritative effect lineage")
         for key in ("effect_id", "contract_id", "permit_id", "attempt_id", "provider"):
             expected = effect.get(key) if key != "provider" else effect.get("provider")
             if receipt.get(key) != expected:
