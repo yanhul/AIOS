@@ -481,6 +481,12 @@ def issue_retry_authorization(aios_dir, effect_id, actor, attempt, issuer, reaso
     ``effect.retry.approve`` scope and must prove possession of its registered
     secret. It must differ from the executing actor (separation of duties).
     """
+    # The current retry signer is symmetric HMAC and executes inside the AIOS
+    # trust boundary. Production must not use it as a substitute for an
+    # independently operated issuer. Keep UNKNOWN retries fail-closed until
+    # the external Ed25519 issuer/verifier protocol is integrated.
+    if os.environ.get("AIOS_REQUIRE_EXECUTION_LINEAGE", "").lower() == "true":
+        raise TransitionError("production UNKNOWN retry is blocked until an independent public-key retry issuer is integrated")
     _validate_strings(("issuer", issuer), ("reason", reason))
     if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 2:
         raise ValueError("retry attempt must be an integer >= 2")
@@ -589,6 +595,12 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
     effect CAS, the create-once consumption record and the unchanged issued
     record are all checked under the mutation lock in one commit batch.
     """
+    # Never let the in-process HMAC keyring authorize production retries.
+    # AIOS_REQUIRE_EXECUTION_LINEAGE is the production-mode switch today;
+    # an external Ed25519 issuer protocol must replace this guard before
+    # production retry can be enabled.
+    if os.environ.get("AIOS_REQUIRE_EXECUTION_LINEAGE", "").lower() == "true":
+        raise TransitionError("production UNKNOWN retry is blocked until an independent public-key retry issuer is integrated")
     _validate_strings(("effect_id", effect_id), ("actor", actor),
                       ("attempt_id", attempt_id), ("provider", provider))
     if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 2:
