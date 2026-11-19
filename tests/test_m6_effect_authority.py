@@ -182,3 +182,31 @@ def test_production_dispatch_rejects_lineage_for_wrong_policy(tmp_path, monkeypa
     with pytest.raises(TransitionError, match="policy_revision"):
         dispatch(str(tmp_path), effect["effect_id"], "agent-1", attempt_id,
                  "provider-1", lineage=lineage)
+
+
+def test_production_unknown_retry_fails_closed_until_independent_issuer(tmp_path, monkeypatch):
+    from core.effect_authority import issue_retry_authorization, retry_dispatch, unknown
+
+    effect = _effect(tmp_path)
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    dispatch(str(tmp_path), effect["effect_id"], "agent-1", attempt_id, "provider-1")
+    unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
+    monkeypatch.setenv("AIOS_REQUIRE_EXECUTION_LINEAGE", "true")
+
+    with pytest.raises(TransitionError, match="independent public-key retry issuer"):
+        issue_retry_authorization(
+            str(tmp_path), effect["effect_id"], "agent-1", 2,
+            "operator:test", "production retry must remain blocked",
+            issuer_secret="test-operator-secret-0001",
+        )
+    with pytest.raises(TransitionError, match="independent public-key retry issuer"):
+        retry_dispatch(
+            str(tmp_path), effect["effect_id"], "agent-1",
+            f"{effect['effect_id']}:attempt:2", "provider-1", 2,
+            retry_authorization="RA-" + "0" * 32,
+        )
+
+    import json
+    persisted = json.loads((tmp_path / "effects" / (effect["effect_id"] + ".json")).read_text())
+    assert persisted["state"] == "UNKNOWN"
+    assert persisted["attempt"] == 1
