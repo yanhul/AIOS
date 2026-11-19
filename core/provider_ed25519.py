@@ -56,14 +56,15 @@ def receipt_digest(observation) -> str:
 
 
 def ed25519_payload(*, key_id, receipt_id, effect_id, contract_id, permit_id, attempt_id, provider,
-                    provider_operation_id, outcome, observation, issued_at, expires_at) -> bytes:
+                    provider_operation_id, outcome, observation, issued_at, expires_at, lineage_digest=None) -> bytes:
     """Canonical bytes signed by the workload and rebuilt by the verifier from trusted state."""
     return canonical_json({
         "type": ED25519_RECEIPT_TYPE, "algorithm": ED25519_ALGORITHM, "key_id": key_id,
         "receipt_id": receipt_id, "effect_id": effect_id, "contract_id": contract_id,
         "permit_id": permit_id, "attempt_id": attempt_id, "provider": provider,
         "provider_operation_id": provider_operation_id, "outcome": outcome,
-        "receipt_digest": receipt_digest(observation), "issued_at": issued_at, "expires_at": expires_at,
+        "receipt_digest": receipt_digest(observation), "lineage_digest": lineage_digest,
+        "issued_at": issued_at, "expires_at": expires_at,
     }).encode("utf-8")
 
 
@@ -164,7 +165,8 @@ class Ed25519ReceiptSigner:
             key_id=self.key_id, receipt_id=auth["receipt_id"], effect_id=effect["effect_id"],
             contract_id=auth["contract_id"], permit_id=auth["permit_id"], attempt_id=attempt_id,
             provider=self.provider, provider_operation_id=provider_operation_id, outcome=outcome,
-            observation=observation, issued_at=issued_at, expires_at=auth["expires_at"])
+            observation=observation, issued_at=issued_at, expires_at=auth["expires_at"],
+            lineage_digest=(effect.get("execution_lineage") or {}).get("lineage", {}).get("lineage_digest"))
         auth["signature"] = self._key.sign(payload).hex()
         return auth
 
