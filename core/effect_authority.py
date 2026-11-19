@@ -606,8 +606,8 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
     if attempt_id != _attempt_id(effect_id, attempt):
         raise ValueError("attempt_id does not match retry attempt")
     require_lineage = os.environ.get("AIOS_REQUIRE_EXECUTION_LINEAGE", "").lower() == "true"
-    if lineage is None and require_lineage:
-        raise TransitionError("production retry dispatch requires execution-substrate lineage")
+    if lineage is None and (require_lineage or current.get("execution_lineage") is not None):
+        raise TransitionError("retry dispatch requires fresh execution-substrate lineage")
     lineage_binding = None
     if lineage is not None:
         try:
