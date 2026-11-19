@@ -123,3 +123,55 @@ def test_terminal_provider_receipt_is_persisted_immutably(tmp_path):
     assert persisted["outcome"] == "OBSERVED_SUCCESS"
     assert persisted["authentication"] == supplied["authentication"]
     assert persisted["evidence"] == done["provider_observation"]["evidence"]
+
+
+
+def test_production_dispatch_requires_and_persists_contract_bound_lineage(tmp_path, monkeypatch):
+    import json
+    effect = _effect(tmp_path)
+    monkeypatch.setenv("AIOS_REQUIRE_EXECUTION_LINEAGE", "true")
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    with pytest.raises(TransitionError, match="requires execution-substrate lineage"):
+        dispatch(str(tmp_path), effect["effect_id"], "agent-1", attempt_id, "provider-1")
+    contract = __import__("core.authority", fromlist=["load_contract"]).load_contract(
+        str(tmp_path), effect["contract_id"])
+    lineage = {
+        "policy_revision": contract["policy_digest"],
+        "environment_revision": "deployment:prod:sha256:abc",
+        "capability_snapshot": {
+            "capabilities": contract["capabilities"],
+            "policy_digest": contract["policy_digest"],
+        },
+        "provider_revision": "1",
+        "attempt_id": attempt_id,
+        "trajectory_id": "trajectory:prod:001",
+    }
+    from core.execution_lineage import ExecutionLineage
+    lineage["lineage_digest"] = ExecutionLineage(**lineage).digest
+    dispatched = dispatch(str(tmp_path), effect["effect_id"], "agent-1", attempt_id,
+                          "provider-1", lineage=lineage)
+    assert dispatched["execution_lineage"]["contract_id"] == effect["contract_id"]
+    assert dispatched["execution_lineage"]["permit_id"] == effect["permit_id"]
+    assert dispatched["execution_lineage"]["lineage"]["trajectory_id"] == "trajectory:prod:001"
+    assert dispatched["execution_lineage"]["binding_digest"]
+    persisted = json.loads((tmp_path / "effects" / (effect["effect_id"] + ".json")).read_text())
+    assert persisted["execution_lineage"] == dispatched["execution_lineage"]
+
+
+def test_production_dispatch_rejects_lineage_for_wrong_policy(tmp_path, monkeypatch):
+    from core.execution_lineage import ExecutionLineage
+    effect = _effect(tmp_path)
+    monkeypatch.setenv("AIOS_REQUIRE_EXECUTION_LINEAGE", "true")
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    lineage = {
+        "policy_revision": "policy:forged",
+        "environment_revision": "deployment:prod",
+        "capability_snapshot": {"capabilities": ["provider-1@1"], "policy_digest": "policy:forged"},
+        "provider_revision": "1",
+        "attempt_id": attempt_id,
+        "trajectory_id": "trajectory:1",
+    }
+    lineage["lineage_digest"] = ExecutionLineage(**lineage).digest
+    with pytest.raises(TransitionError, match="policy_revision"):
+        dispatch(str(tmp_path), effect["effect_id"], "agent-1", attempt_id,
+                 "provider-1", lineage=lineage)
