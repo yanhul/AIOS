@@ -62,4 +62,38 @@ def publish_dispatch_outbox_item(
     return dict(published, task_id=task_id)
 
 
-__all__ = ["publish_dispatch_outbox_item"]
+
+def reconcile_dispatch_outbox_batch(
+    *, store: Any, client: Any, project: str, location: str, queue: str,
+    target_url: str, oidc_service_account: str, lease_owner: str, now: float,
+    limit: int = 50, task_ttl_seconds: int = 300,
+) -> dict[str, Any]:
+    """Publish a bounded batch of pending/expired outbox obligations."""
+    candidates = store.list_dispatch_outbox_candidates(now=now, limit=limit)
+    published: list[str] = []
+    failed: list[dict[str, str]] = []
+    for item in candidates:
+        effect_id, attempt_id = item.get("effect_id"), item.get("attempt_id")
+        if not isinstance(effect_id, str) or not isinstance(attempt_id, str):
+            failed.append({"task_id": str(item.get("task_id", "")), "error": "invalid_outbox_identity"})
+            continue
+        try:
+            result = publish_dispatch_outbox_item(
+                store=store, client=client, project=project, location=location,
+                queue=queue, target_url=target_url,
+                oidc_service_account=oidc_service_account,
+                effect_id=effect_id, attempt_id=attempt_id,
+                lease_owner=lease_owner, now=now,
+                task_ttl_seconds=task_ttl_seconds,
+            )
+            published.append(str(result.get("task_id", item.get("task_id", ""))))
+        except Exception as exc:
+            failed.append({
+                "task_id": str(item.get("task_id", "")),
+                "error": type(exc).__name__,
+            })
+    return {"scanned": len(candidates), "published": published, "failed": failed}
+
+
+__all__ = ["publish_dispatch_outbox_item", "reconcile_dispatch_outbox_batch"]
+
