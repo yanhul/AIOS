@@ -86,6 +86,8 @@ def _verify_caller(environ: Mapping[str, Any], *, audience: str, expected_email:
 def create_production_app(*, environ: Mapping[str, str] | None = None):
     """Compose production adapters; all external configuration is explicit."""
     env = os.environ if environ is None else environ
+    if env.get("AIOS_REQUIRE_EXECUTION_LINEAGE", "").lower() != "true":
+        raise CloudRunWorkerConfigurationError("AIOS_REQUIRE_EXECUTION_LINEAGE=true is required")
     store = create_firestore_effect_store(environ=dict(env))
     project_id = _required(env, "AIOS_FIRESTORE_PROJECT_ID")
     trust_anchor_raw = _required(env, "AIOS_AUTHORITY_TRUST_ANCHOR")
@@ -112,6 +114,12 @@ def create_production_app(*, environ: Mapping[str, str] | None = None):
         if not isinstance(authority_digests, Mapping) or set(authority_digests) != required_keys:
             raise PermissionError("durable effect has no complete signed authority references; DENY")
         bundle = resolver.resolve(**authority_digests)
+        from .execution_lineage import verify_effect_lineage
+        verify_effect_lineage(
+            effect.get("execution_lineage"), bundle["contract"],
+            effect.get("contract_id"), effect.get("permit_id"),
+            effect.get("provider"), effect.get("attempt_id"),
+        )
         provider = effect.get("provider")
         matches = [
             capability for key, capability in bundle["capabilities"].items()
