@@ -39,11 +39,13 @@ def test_dispatch_envelope_has_stable_task_identity():
     second = publish_dispatch_task(
         client=client, project="test", location="asia-southeast1", queue="aios",
         target_url="https://worker.example/dispatch",
-        oidc_service_account="worker@test.iam.gserviceaccount.com", payload=payload,
+        oidc_service_account="worker@test.iam.gserviceaccount.com",
+        oidc_audience="https://worker.example", payload=payload,
     )
     assert first == second
     assert len(client.requests) == 2
     assert client.requests[0]["task"]["http_request"]["oidc_token"]["service_account_email"].startswith("worker@")
+    assert client.requests[0]["task"]["http_request"]["oidc_token"]["audience"] == "https://worker.example"
 
 
 def test_ambiguous_enqueue_is_not_silently_retried_with_new_identity():
@@ -55,7 +57,8 @@ def test_ambiguous_enqueue_is_not_silently_retried_with_new_identity():
         publish_dispatch_task(
             client=FakeCloudTasks(fail=True), project="test", location="us-central1",
             queue="aios", target_url="https://worker.example/dispatch",
-            oidc_service_account="worker@test.iam.gserviceaccount.com", payload=payload,
+            oidc_service_account="worker@test.iam.gserviceaccount.com",
+        oidc_audience="https://worker.example", payload=payload,
         )
 
 
@@ -69,7 +72,8 @@ def test_rejects_non_https_or_untrusted_task_shape():
         publish_dispatch_task(
             client=client, project="test", location="us-central1", queue="aios",
             target_url="http://worker.example/dispatch",
-            oidc_service_account="worker@test.iam.gserviceaccount.com", payload=payload,
+            oidc_service_account="worker@test.iam.gserviceaccount.com",
+        oidc_audience="https://worker.example", payload=payload,
         )
 
 
@@ -88,6 +92,7 @@ def test_cloud_tasks_already_exists_confirms_same_deterministic_task():
     task_id = publish_dispatch_task(
         client=ExistingTaskClient(), project="test", location="asia-southeast1",
         queue="aios", target_url="https://worker.example/dispatch",
-        oidc_service_account="worker@test.iam.gserviceaccount.com", payload=payload,
+        oidc_service_account="worker@test.iam.gserviceaccount.com",
+        oidc_audience="https://worker.example", payload=payload,
     )
     assert task_id.startswith("aios-")
