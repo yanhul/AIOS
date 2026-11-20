@@ -5,7 +5,7 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from core.contract import contract_identity, issue_permit
+from core.contract import issue_permit
 from core.attestation import issue_attestation
 from core.firestore_authority import FirestoreAuthorityStore, record_digest
 from core.firestore_authority_resolver import (
@@ -13,6 +13,8 @@ from core.firestore_authority_resolver import (
 )
 from core.mutation import canonical_json
 from core.policy_registry import policy_digest as governing_policy_digest
+
+ATTESTATION_SECRET = "ci-fixture-key-material"
 
 
 class Snapshot:
@@ -70,7 +72,7 @@ def signed_fixture():
         "policy_digest": policy["policy_digest"],
     }
     permit = issue_permit(contract, "ci-test-issuer")
-    attestation = issue_attestation(contract, permit, "ci-fixture-key-material")
+    attestation = issue_attestation(contract, permit, ATTESTATION_SECRET)
 
     def put(kind, ident, record):
         envelope = {
@@ -91,35 +93,52 @@ def signed_fixture():
         "policy": put("GOVERNING_POLICY", "policy-1", policy),
         "capability": put("CAPABILITY", "worker-1", cap),
     }
-    return FirestoreAuthorityResolver(store, trust_anchor=anchor), digests
+    return FirestoreAuthorityResolver(
+        store, trust_anchor=anchor, attestation_secret=ATTESTATION_SECRET
+    ), digests
+
+
+def _resolve(resolver, d, **overrides):
+    args = {
+        "contract_digest": d["contract"], "permit_digest": d["permit"],
+        "attestation_digest": d["attestation"], "policy_digest": d["policy"],
+        "capability_digests": {"worker@1.0.0": d["capability"]},
+    }
+    args.update(overrides)
+    return resolver.resolve(**args)
 
 
 def test_resolves_complete_signed_cross_bound_authority_bundle():
     resolver, d = signed_fixture()
-    result = resolver.resolve(
-        contract_digest=d["contract"], permit_digest=d["permit"],
-        attestation_digest=d["attestation"], policy_digest=d["policy"],
-        capability_digests={"worker@1.0.0": d["capability"]},
-    )
+    result = _resolve(resolver, d)
     assert result["authority_backend"] == "firestore-ed25519"
     assert result["capabilities"]["worker@1.0.0"]["status"] == "ACTIVE"
+
+
+def test_rejects_missing_attestation_verification_secret():
+    resolver, _ = signed_fixture()
+    with pytest.raises(FirestoreAuthorityResolutionError, match="secret"):
+        FirestoreAuthorityResolver(resolver._store, trust_anchor=resolver._trust_anchor, attestation_secret="")
+
+
+def test_rejects_tampered_hmac_attestation_even_when_outer_record_is_signed():
+    resolver, d = signed_fixture()
+    attestation = resolver._read(d["attestation"], "EXECUTION_PERMIT_ATTESTATION")
+    attestation["signature"] = "0" * 64
+    from core.attestation import verify_attestation
+    contract = resolver._read(d["contract"], "EXECUTION_CONTRACT")
+    permit = resolver._read(d["permit"], "EXECUTION_PERMIT")
+    with pytest.raises(ValueError, match="signature mismatch"):
+        verify_attestation(contract, permit, attestation, ATTESTATION_SECRET)
 
 
 def test_rejects_missing_capability_or_wrong_capability_binding():
     resolver, d = signed_fixture()
     with pytest.raises(FirestoreAuthorityResolutionError, match="capability digest map"):
-        resolver.resolve(
-            contract_digest=d["contract"], permit_digest=d["permit"],
-            attestation_digest=d["attestation"], policy_digest=d["policy"],
-            capability_digests={},
-        )
+        _resolve(resolver, d, capability_digests={})
 
 
 def test_rejects_policy_artifact_not_bound_by_contract():
     resolver, d = signed_fixture()
     with pytest.raises(FirestoreAuthorityResolutionError, match="POLICY authority lookup"):
-        resolver.resolve(
-            contract_digest=d["contract"], permit_digest=d["permit"],
-            attestation_digest=d["attestation"], policy_digest="0" * 64,
-            capability_digests={"worker@1.0.0": d["capability"]},
-        )
+        _resolve(resolver, d, policy_digest="0" * 64)
