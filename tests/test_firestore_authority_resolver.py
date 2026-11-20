@@ -11,6 +11,7 @@ from core.firestore_authority_resolver import (
     FirestoreAuthorityResolutionError, FirestoreAuthorityResolver,
 )
 from core.mutation import canonical_json
+from core.policy_registry import policy_digest as governing_policy_digest
 
 
 class Snapshot:
@@ -56,7 +57,8 @@ def signed_fixture():
     client = Client()
     store = FirestoreAuthorityStore(client, project_id="resolver-test")
 
-    policy = {"policy_id": "policy-test", "rules": []}
+    policy_content = {"policy_type": "GOVERNING_POLICY", "policy_id": "policy-test", "rules": []}
+    policy = {**policy_content, "policy_digest": governing_policy_digest(policy_content)}
     cap = {"capability_id": "worker", "version": "1.0.0", "status": "ACTIVE"}
     contract = {
         "contract_type": "EXECUTION_CONTRACT", "task_id": "task-1",
@@ -64,7 +66,7 @@ def signed_fixture():
         "input_digest": "a" * 64, "allowed_effects": ["external_effect"],
         "evidence_required": ["receipt"], "max_attempts": 1,
         "terminal_states": ["OBSERVED_SUCCESS", "OBSERVED_FAILURE"],
-        "policy_digest": record_digest(policy),
+        "policy_digest": policy["policy_digest"],
     }
     permit = issue_permit(contract, "ci-test-issuer")
     attestation = {
@@ -116,9 +118,9 @@ def test_rejects_missing_capability_or_wrong_capability_binding():
         )
 
 
-def test_rejects_policy_digest_not_bound_by_contract():
+def test_rejects_policy_artifact_not_bound_by_contract():
     resolver, d = signed_fixture()
-    with pytest.raises(FirestoreAuthorityResolutionError, match="policy digest"):
+    with pytest.raises(FirestoreAuthorityResolutionError, match="POLICY authority lookup"):
         resolver.resolve(
             contract_digest=d["contract"], permit_digest=d["permit"],
             attestation_digest=d["attestation"], policy_digest="0" * 64,
