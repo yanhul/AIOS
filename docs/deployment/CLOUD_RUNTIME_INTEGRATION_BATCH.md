@@ -51,9 +51,9 @@ The runtime must fail closed:
 - Reproduction: inspect `core/runtime.py`, the production runbook and preflight; there is
   no production cloud adapter/entrypoint in the audited tree.
 - Required implementation: define a narrow adapter contract that obtains workload identity
-  from the selected cloud platform's authenticated identity mechanism; bind immutable image
-  digest, environment revision, attempt ID and trajectory ID. Never accept caller-provided
-  identity strings as authentication.
+  from the selected cloud platform's authenticated identity mechanism; bind immutable
+  image digest, environment revision, attempt ID and trajectory ID. Never accept caller-
+  provided identity strings as authentication.
 - Closure: negative tests for absent, malformed, stale, wrong-audience, wrong-subject and
   cross-environment identity; positive test against the platform's real identity token
   verifier; lineage tests for initial and retry dispatch.
@@ -193,3 +193,65 @@ Do not create the project or any billable resource until all are true:
 6. The repository's CR-1 through CR-6 implementation gates and authority-store integration plan remain intact.
 
 No service account keys, API keys, reviewer private keys or provider secrets may be placed in GitHub, CI variables without protected environment controls, container images or chat.
+
+
+## GCP provisioning evidence update — 2026-11-20
+
+The owner has since supplied CLI/console evidence for the following state. This section
+supersedes the earlier "project not yet created" and "no project/billing/IAM evidence"
+statements above; it does not claim a live runtime deployment.
+
+- A dedicated GCP project exists and reports lifecycle `ACTIVE`.
+- The project billingInfo reports `billingEnabled: true` and a non-empty billing account name.
+- The authenticated project principal reports `roles/owner` on that project.
+- The linked billing account reports `open: true`; the principal reports `roles/billing.admin`
+  on that billing account.
+- The following APIs are enabled: `run.googleapis.com`,
+  `artifactregistry.googleapis.com`, and `secretmanager.googleapis.com`.
+- An Artifact Registry Docker repository named `aios-runtime` exists in
+  `asia-southeast1`, with Google-managed encryption and zero stored image data at the
+  time of the supplied listing.
+- The owner created a monthly VND 100,000 budget with 50%, 80%, and 100% current-spend
+  thresholds. The returned budget has `ownershipScope: BILLING_ACCOUNT`, not a
+  project-only scope. Therefore it is not evidence of a project-isolated cost budget;
+  project-scoped cost control remains OPEN. The budget is an alerting control, not a
+  guaranteed hard spending cap.
+- The repository project ID and billing account ID are intentionally not copied into
+  this public repository document. They must be supplied to deployment tooling through
+  protected configuration, not committed as secrets or treated as trust anchors.
+
+### Current repository/runtime audit
+
+The audited `main` tree has a Python CLI entrypoint (`aios.py` -> `cli/aios.py`).
+The CLI supports bounded local `inspect` and `snapshot` commands and describes itself
+as standard-library-only. The inspected tree has no HTTP application entrypoint,
+Dockerfile, dependency lockfile, or Cloud Run deployment manifest. AIOS state is stored
+on the local filesystem under the project state directory. Consequently:
+- A Cloud Run Service must not be invented by wrapping the CLI in a guessed HTTP server.
+- A Cloud Run Job is not production-safe merely because the CLI can execute: state
+  durability, substrate-supplied identity/lineage, authenticated receipts and restart
+  reconciliation must first be bound to a real durable authority store and execution
+  substrate.
+- Do not deploy a container that reports healthy while production authority preflight
+  or durable-state requirements are unsatisfied.
+
+### Remaining blockers after GCP foundation provisioning
+
+1. **CR-1 identity/substrate adapter:** no verified Cloud Run identity-token verifier
+   and immutable execution-lineage adapter.
+2. **CR-2 OCI packaging:** no reproducible image/build contract or deployable application
+   entrypoint; no SBOM/vulnerability evidence.
+3. **CR-3 trust provisioning:** no protected production trust roots, real independent
+   reviewer attestation, or verified Secret Manager references/readback.
+4. **CR-4 retry issuer:** production preflight and retry implementation remain inconsistent;
+   HMAC retry authority must not be substituted for the required independently operated
+   asymmetric issuer.
+5. **CR-5 durable state:** local filesystem state is not yet integrated with a durable
+   external authority store; crash/restart and duplicate-effect conformance on Cloud Run
+   are unproven.
+6. **CR-6 operations/promotion:** no live deployment, alerting/rollback drill, or
+   authenticated authority-store restore evidence.
+
+**Current decision: GCP FOUNDATION PROVISIONED; AIOS RUNTIME DEPLOYMENT BLOCKED.**
+No Cloud Run service/job, container image, service account, production secret, provider
+dispatch, retry, or promotion was created by this update.
