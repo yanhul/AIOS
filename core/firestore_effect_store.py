@@ -227,6 +227,8 @@ class FirestoreEffectStore:
         required = ("receipt_id", "provider", "provider_operation_id", "outcome",
                     "observation", "observation_digest")
         receipt_record = {key: receipt.get(key) for key in required}
+        if receipt.get("evidence") is not None:
+            receipt_record["evidence"] = receipt.get("evidence")
         if any(value is None for value in receipt_record.values()):
             raise ValueError("verified receipt schema is incomplete")
         if receipt_record["outcome"] not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
@@ -246,7 +248,18 @@ class FirestoreEffectStore:
             existing_receipt = _data(receipt_ref.get(transaction=tx))
             if current is None or attempt is None:
                 raise EffectStoreConflict("receipt requires durable effect and attempt")
-            if current.get("revision") != expected_revision or current.get("state") not in ("DISPATCHED", "UNKNOWN"):
+            if current.get("revision") != expected_revision:
+                # Crash after commit but before acknowledgement: accept exact readback only.
+                if current.get("state") == receipt_record["outcome"] and existing_receipt is not None:
+                    expected_receipt = {"record_type": "AIOS_TERMINAL_PROVIDER_RECEIPT",
+                                        **receipt_record, "effect_id": effect_id, "attempt_id": attempt_id,
+                                        "contract_id": current["contract_id"], "permit_id": current["permit_id"],
+                                        "authentication": dict(verified_authentication),
+                                        "lineage_digest": (current.get("execution_lineage") or {}).get("lineage_digest")}
+                    if existing_receipt == expected_receipt:
+                        return current
+                raise EffectStoreConflict("receipt terminal CAS failed")
+            if current.get("state") not in ("DISPATCHED", "UNKNOWN"):
                 raise EffectStoreConflict("receipt terminal CAS failed")
             if current.get("attempt_id") != attempt_id or attempt.get("attempt_id") != attempt_id:
                 raise EffectStoreConflict("receipt attempt binding mismatch")
@@ -257,6 +270,7 @@ class FirestoreEffectStore:
             terminal = dict(current, state=receipt_record["outcome"],
                             provider_operation_id=receipt_record["provider_operation_id"],
                             provider_observation=receipt_record["observation"],
+                            provider_evidence=receipt_record.get("evidence"),
                             provider_receipt_id=receipt_id,
                             provider_authentication=dict(verified_authentication),
                             observation_digest=receipt_record["observation_digest"],
@@ -288,7 +302,7 @@ class FirestoreEffectStore:
         attempt = self.get_attempt(effect_id, attempt_id)
         if effect is None or attempt is None:
             raise EffectStoreConflict("resume requires durable effect and attempt")
-        if (effect.get("state") not in ("DISPATCHED", "UNKNOWN")
+        if (effect.get("state") not in ("DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE")
                 or effect.get("attempt_id") != attempt_id
                 or attempt.get("attempt_id") != attempt_id
                 or effect.get("provider") != attempt.get("provider")):
