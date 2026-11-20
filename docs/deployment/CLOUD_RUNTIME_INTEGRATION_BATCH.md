@@ -255,3 +255,15 @@ on the local filesystem under the project state directory. Consequently:
 **Current decision: GCP FOUNDATION PROVISIONED; AIOS RUNTIME DEPLOYMENT BLOCKED.**
 No Cloud Run service/job, container image, service account, production secret, provider
 dispatch, retry, or promotion was created by this update.
+
+
+### Authority-store dependency audit — 2026-11-20
+
+The connected private repository `yanhul/aios-authority-store` was also inspected.
+Its current README explicitly reports **NOT READY / NOT VERIFIED** and states that
+no issuer is provisioned, no workflow run or authority issuance/readback has passed,
+and the independent mutation → receipt → evidence → crash/recovery E2E is incomplete.
+Therefore it cannot currently be treated as an operational durable authority store
+or used as a production endpoint. Do not create Cloud Run secrets or service-account
+permissions for an assumed endpoint. CR-3 and CR-5 remain BLOCKED until the issuer,
+read-only consumer boundary, immutable readback, and recovery evidence exist.
