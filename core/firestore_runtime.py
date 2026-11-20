@@ -172,10 +172,12 @@ class FirestoreDurableRuntime:
                         raise LedgerConflict(f"effect identity conflict for {key}")
                 if old_effect.get("current_attempt_id") not in (None, attempt_id):
                     raise LedgerConflict("effect already has a different current attempt")
-                if old_effect.get("state") in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
-                    raise LedgerConflict("terminal effect cannot be dispatched again")
+                if old_effect.get("state") != "DISPATCHED":
+                    raise LedgerConflict("existing effect is not in DISPATCHED state; refusing to reopen it")
             if old_attempt is not None and old_attempt != attempt_identity:
                 raise LedgerConflict("attempt identity/idempotency key conflict")
+            if old_attempt is not None and old_attempt.get("state") != "DISPATCHED":
+                raise LedgerConflict("existing attempt is not DISPATCHED; refusing to reopen it")
             if old_event is not None and old_event != event_record:
                 raise LedgerConflict("deterministic dispatch event conflict")
 
