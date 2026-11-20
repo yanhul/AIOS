@@ -296,6 +296,85 @@ class FirestoreEffectStore:
             return terminal
         return self._confirmed("verified receipt transaction", body)
 
+    def consume_retry_authorization(self, *, authorization: Mapping[str, Any],
+                                    issuer_keyring: Any, not_applied_verifier: Callable[..., bool],
+                                    now: float | None = None) -> dict[str, Any]:
+        """Atomically consume an independently signed retry grant exactly once.
+
+        Signature/proof validation occurs before the transaction; the transaction
+        then re-reads and re-binds the exact UNKNOWN state before consuming nonce
+        and returning the effect to PLANNED. No attempt is executed here.
+        """
+        import time
+        from .retry_issuer import RetryAuthorizationRejected, effect_state_digest
+
+        if not isinstance(authorization, Mapping):
+            raise ValueError("authorization must be a mapping")
+        effect_id = _text(authorization.get("effect_id"), "authorization.effect_id")
+        attempt_id = _text(authorization.get("attempt_id"), "authorization.attempt_id")
+        effect = self.get_effect(effect_id)
+        attempt = self.get_attempt(effect_id, attempt_id)
+        if effect is None or attempt is None:
+            raise EffectStoreConflict("retry requires existing effect and attempt")
+        claims = issuer_keyring.verify(
+            authorization, now=time.time() if now is None else now,
+            effect=effect, attempt=attempt, not_applied_verifier=not_applied_verifier,
+        )
+        nonce_key = sha256((claims["issuer_id"] + "\0" + claims["nonce"]).encode()).hexdigest()
+        nonce_ref = self.client.collection("retry_authorization_consumptions").document(nonce_key)
+        effect_ref = self._effect_ref(effect_id)
+        attempt_ref = self._attempt_ref(effect_id, attempt_id)
+        event_id = _digest({"event": "RETRY_AUTHORIZATION_CONSUMED",
+                            "effect_id": effect_id, "attempt_id": attempt_id,
+                            "issuer_id": claims["issuer_id"], "nonce": claims["nonce"]})
+
+        def body(tx: Any) -> dict[str, Any]:
+            current = _data(effect_ref.get(transaction=tx))
+            current_attempt = _data(attempt_ref.get(transaction=tx))
+            consumed = _data(nonce_ref.get(transaction=tx))
+            if consumed is not None:
+                raise EffectStoreConflict("retry authorization nonce already consumed")
+            if current is None or current_attempt is None:
+                raise EffectStoreConflict("retry effect/attempt disappeared")
+            if current.get("state") != "UNKNOWN" or current_attempt.get("state") != "UNKNOWN":
+                raise EffectStoreConflict("retry requires current UNKNOWN effect and attempt")
+            if (current.get("attempt_id") != attempt_id
+                    or current_attempt.get("attempt_id") != attempt_id
+                    or current.get("revision") != claims["state_revision"]
+                    or effect_state_digest(current) != claims["state_digest"]):
+                raise EffectStoreConflict("retry authorization became stale before transaction commit")
+            if current.get("attempt") != claims["attempt_number"]:
+                raise EffectStoreConflict("retry attempt number binding mismatch")
+            if current.get("attempt", 0) >= current.get("max_attempts", 0):
+                raise EffectStoreConflict("retry exceeds effect max_attempts")
+            consumed_record = {
+                "record_type": "AIOS_RETRY_AUTHORIZATION_CONSUMPTION",
+                "issuer_id": claims["issuer_id"], "key_id": claims["key_id"],
+                "nonce": claims["nonce"], "effect_id": effect_id,
+                "attempt_id": attempt_id, "state_digest": claims["state_digest"],
+                "not_applied_proof_digest": claims["not_applied_proof_digest"],
+                "authorization_digest": _digest(dict(authorization)),
+            }
+            updated = dict(current, state="PLANNED", revision=current["revision"] + 1,
+                           retry_authorization_digest=_digest(dict(authorization)),
+                           retry_authorization_issuer=claims["issuer_id"])
+            updated.pop("unknown_reason", None)
+            tx.create(nonce_ref, consumed_record)
+            tx.set(effect_ref, updated)
+            tx.create(self._event_ref(effect_id, event_id), {
+                "event_type": "RETRY_AUTHORIZATION_CONSUMED",
+                "effect_id": effect_id, "attempt_id": attempt_id,
+                "issuer_id": claims["issuer_id"],
+                "authorization_digest": consumed_record["authorization_digest"],
+                "not_applied_proof_digest": claims["not_applied_proof_digest"],
+                "from_revision": current["revision"], "to_revision": updated["revision"],
+            })
+            return updated
+        try:
+            return self._confirmed("retry authorization consumption transaction", body)
+        except RetryAuthorizationRejected as exc:
+            raise EffectStoreConflict("retry authorization rejected; DENY") from exc
+
     def resume_same_attempt(self, *, effect_id: str, attempt_id: str) -> dict[str, Any]:
         """Read exact ambiguous attempt; caller must reconcile provider, never execute it."""
         effect = self.get_effect(effect_id)
