@@ -46,12 +46,18 @@ def test_restart_after_dispatch_commit_recovers_same_attempt_without_new_dispatc
         effect_id=effect_id, attempt_id=attempt_id, provider="provider-fixture",
         expected_revision=0,
     )
+    # dispatch() returns the updated effect record; the idempotency key belongs
+    # to the separate immutable attempt record.
+    committed_attempt = store.get_attempt(effect_id, attempt_id)
+    assert dispatched["state"] == "DISPATCHED"
+    assert committed_attempt is not None
+    assert committed_attempt["idempotency_key"]
 
     # Recreate client/store to model a new worker process after a crash.
     restarted = make_store()
     recovered = restarted.resume_same_attempt(effect_id=effect_id, attempt_id=attempt_id)
     assert recovered["effect"]["state"] == "DISPATCHED"
-    assert recovered["attempt"]["idempotency_key"] == dispatched["idempotency_key"]
+    assert recovered["attempt"]["idempotency_key"] == committed_attempt["idempotency_key"]
     assert restarted.get_effect(effect_id)["attempt_id"] == attempt_id
     with pytest.raises(EffectStoreConflict):
         restarted.dispatch(
