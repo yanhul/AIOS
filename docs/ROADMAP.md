@@ -94,7 +94,7 @@ Status: M1 + M1.5 implemented; M2/M3 foundations implemented; absorbed execution
 - Append-only experience records bind task, capability/version, contributor, outcome, run, source commit, artifact digest and evidence references.
 - PASS experiences require exact effect -> attempt -> receipt lineage, an independent verifier, a linked evaluation and VERIFIED_DIGITAL/VERIFIED_PHYSICAL status.
 - BLOCKED and INCONCLUSIVE experiences are retained as negative evidence; they cannot be promoted to success.
-- Records and audit events commit atomically through the shared local mutation kernel; content identities are deterministic and tampering is detected on load.
+- Records and audit events commit atomically through the shared local mutation kernel; content identities are deterministic and record/event mismatches are detected on load. This is not a cryptographic defense against a privileged coordinated rewrite.
 - Remaining: Firestore-backed experience repository, contribution aggregation from verified outcomes, capability relationship graph, and multi-rollout attribution.
 
 ### M11 — Capability evolution (PARTIAL IMPLEMENTATION)
