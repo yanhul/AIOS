@@ -1,0 +1,3 @@
+# Runtime dependency for the Firestore-backed effect store.
+# Keep this exact pin until a hash-locked full dependency set is generated.
+google-cloud-firestore==2.21.0
