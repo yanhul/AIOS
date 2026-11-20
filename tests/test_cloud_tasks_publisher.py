@@ -70,3 +70,23 @@ def test_rejects_non_https_or_untrusted_task_shape():
             target_url="http://worker.example/dispatch",
             oidc_service_account="worker@test.iam.gserviceaccount.com", payload=payload,
         )
+
+
+def test_cloud_tasks_already_exists_confirms_same_deterministic_task():
+    class AlreadyExists(Exception):
+        code = 409
+
+    class ExistingTaskClient(FakeCloudTasks):
+        def create_task(self, request):
+            raise AlreadyExists("task already exists")
+
+    payload = build_dispatch_envelope(
+        effect_id="EF-1", attempt_id="EF-1:attempt:1",
+        expected_revision=1, issued_at=100, expires_at=200,
+    )
+    task_id = publish_dispatch_task(
+        client=ExistingTaskClient(), project="test", location="asia-southeast1",
+        queue="aios", target_url="https://worker.example/dispatch",
+        oidc_service_account="worker@test.iam.gserviceaccount.com", payload=payload,
+    )
+    assert task_id.startswith("aios-")
