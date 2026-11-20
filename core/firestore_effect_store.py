@@ -429,10 +429,12 @@ class FirestoreEffectStore:
             remaining = max(0, limit - len(pending))
             expired = []
             if remaining:
-                expired = list(
-                    collection.where("state", "==", "LEASED")
-                    .where("lease_until", "<=", now).limit(remaining).stream()
-                )
+                # Query only the lease_until single-field index, then filter
+                # state locally to avoid requiring a composite index at rollout.
+                expired = [
+                    snapshot for snapshot in collection.where("lease_until", "<=", now).stream()
+                    if (_data(snapshot) or {}).get("state") == "LEASED"
+                ][:remaining]
             return [record for snapshot in pending + expired
                     if (record := _data(snapshot)) is not None]
         except Exception as exc:
