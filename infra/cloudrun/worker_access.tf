@@ -53,6 +53,24 @@ resource "google_cloud_tasks_queue_iam_member" "worker_enqueue" {
 # Google-managed service agents need permission to mint the OIDC tokens used
 # by Cloud Tasks and Cloud Scheduler. These grants are scoped to the two
 # dedicated invoker service accounts, not the project.
+resource "google_service_account_iam_member" "worker_can_act_as_cloud_tasks_invoker" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${var.cloud_tasks_invoker_email}"
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${var.worker_runtime_service_account_email}"
+}
+
+data "google_secret_manager_secret" "authority_attestation" {
+  project   = var.project_id
+  secret_id = var.authority_attestation_secret_id
+}
+
+resource "google_secret_manager_secret_iam_member" "worker_authority_attestation" {
+  project   = var.project_id
+  secret_id = data.google_secret_manager_secret.authority_attestation.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.worker_runtime_service_account_email}"
+}
+
 resource "google_service_account_iam_member" "cloud_tasks_token_creator" {
   service_account_id = "projects/${var.project_id}/serviceAccounts/${var.cloud_tasks_invoker_email}"
   role               = "roles/iam.serviceAccountTokenCreator"
@@ -153,5 +171,10 @@ variable "scheduler_schedule" {
 
 variable "scheduler_time_zone" {
   description = "IANA time zone for the supplied scheduler schedule."
+  type        = string
+}
+
+variable "authority_attestation_secret_id" {
+  description = "Name of the existing Secret Manager secret containing the authority attestation HMAC key."
   type        = string
 }
