@@ -11,6 +11,7 @@ from typing import Any
 
 from .contract import contract_identity, validate_contract, verify_permit
 from .firestore_authority import AuthorityStoreError, FirestoreAuthorityStore
+from .policy_registry import policy_digest as governing_policy_digest
 
 
 class FirestoreAuthorityResolutionError(PermissionError):
@@ -79,8 +80,12 @@ class FirestoreAuthorityResolver:
                 "algorithm": "Ed25519",
             }:
                 raise ValueError("signed Ed25519 attestation binding mismatch")
-            if contract["policy_digest"] != policy_digest:
-                raise ValueError("contract policy digest does not select resolved policy")
+            if policy.get("policy_digest") != contract["policy_digest"]:
+                raise ValueError("contract policy digest does not bind resolved policy")
+            policy_content = dict(policy)
+            policy_content.pop("policy_digest", None)
+            if governing_policy_digest(policy_content) != contract["policy_digest"]:
+                raise ValueError("resolved governing policy content digest mismatch")
             if set(capability_digests) != set(contract["capabilities"]):
                 raise ValueError("capability digest map differs from contract")
             capabilities: dict[str, dict[str, Any]] = {}
