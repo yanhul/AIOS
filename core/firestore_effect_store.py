@@ -188,9 +188,8 @@ class FirestoreEffectStore:
             from .cloud_tasks_contract import deterministic_task_name, dispatch_event_digest
             task_id = deterministic_task_name(effect_id, attempt_id)
             outbox_ref = self._outbox_ref(task_id)
-            existing_outbox = _data(outbox_ref.get(transaction=tx))
-            if existing_outbox is not None:
-                raise EffectStoreConflict("dispatch outbox identity already exists")
+            # tx.create carries the non-existence precondition atomically; do
+            # not add an extra transactional read/lock for this deterministic ID.
             outbox = {
                 "schema": "aios.dispatch-outbox.v1",
                 "task_id": task_id,
