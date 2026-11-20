@@ -112,3 +112,52 @@ def test_concurrent_dispatch_cas_has_one_winner():
 
     assert sorted(outcomes) == ["COMMITTED", "CONFLICT"]
     assert store.get_effect(effect_id)["revision"] == 1
+
+
+def test_dispatch_outbox_is_atomic_leased_and_survives_restart():
+    from core.cloud_tasks_contract import deterministic_task_name
+
+    store = make_store()
+    effect_id, effect = make_effect()
+    store.create_effect(effect)
+    attempt_id = effect_id + ":attempt:1"
+    store.dispatch(
+        effect_id=effect_id, attempt_id=attempt_id,
+        provider="provider-fixture", expected_revision=0,
+    )
+
+    # The outbox record is visible only after the same dispatch transaction
+    # has committed the effect and attempt.
+    outbox = store.get_dispatch_outbox(effect_id=effect_id, attempt_id=attempt_id)
+    assert outbox is not None
+    assert outbox["state"] == "PENDING"
+    assert outbox["task_id"] == deterministic_task_name(effect_id, attempt_id)
+    assert outbox["expected_revision"] == 1
+    assert store.get_effect(effect_id)["state"] == "DISPATCHED"
+    assert store.get_attempt(effect_id, attempt_id)["state"] == "DISPATCHED"
+
+    claimed = store.claim_dispatch_outbox(
+        effect_id=effect_id, attempt_id=attempt_id,
+        lease_owner="publisher-a", now=1000, lease_seconds=30,
+    )
+    assert claimed["state"] == "LEASED"
+    assert claimed["lease_generation"] == 1
+    with pytest.raises(EffectStoreConflict):
+        store.claim_dispatch_outbox(
+            effect_id=effect_id, attempt_id=attempt_id,
+            lease_owner="publisher-b", now=1010, lease_seconds=30,
+        )
+
+    # A restarted publisher can reclaim after the lease expires.
+    reclaimed = make_store().claim_dispatch_outbox(
+        effect_id=effect_id, attempt_id=attempt_id,
+        lease_owner="publisher-b", now=1031, lease_seconds=30,
+    )
+    assert reclaimed["state"] == "LEASED"
+    assert reclaimed["lease_generation"] == 2
+    published = make_store().mark_dispatch_outbox_published(
+        effect_id=effect_id, attempt_id=attempt_id,
+        lease_owner="publisher-b", published_at=1032,
+    )
+    assert published["state"] == "PUBLISHED"
+    assert store.get_dispatch_outbox(effect_id=effect_id, attempt_id=attempt_id)["state"] == "PUBLISHED"
