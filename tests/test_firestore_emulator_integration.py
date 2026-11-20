@@ -219,3 +219,71 @@ def test_cloud_tasks_redelivery_after_worker_crash_never_executes_new_attempt():
     assert terminal[0] == 204
     assert terminal[1]["status"] == "ACK_TERMINAL"
     assert store.get_effect(effect_id)["attempt"] == 1
+
+
+def test_crash_after_simulated_provider_effect_reconciles_same_attempt_only():
+    import time
+    from core.cloud_tasks_contract import SCHEMA, dispatch_event_digest
+    from core.cloud_tasks_worker import handle_dispatch_delivery
+
+    store = make_store()
+    effect_id, effect = make_effect()
+    store.create_effect(effect)
+    attempt_id = effect_id + ":attempt:1"
+    store.dispatch(
+        effect_id=effect_id, attempt_id=attempt_id,
+        provider="provider-fixture", expected_revision=0,
+    )
+    attempt = store.get_attempt(effect_id, attempt_id)
+    # Represents a side effect completed before the old worker crashed.
+    # The new worker may only query this fake provider state by the existing
+    # idempotency key; it must not invoke the provider again.
+    fake_provider_state = {
+        attempt["idempotency_key"]: {"operation_id": "fake-op-1", "outcome": "done"}
+    }
+    provider_invocations = 1
+    reconciliation_reads = []
+    now = time.time()
+    task = {
+        "schema": SCHEMA, "effect_id": effect_id, "attempt_id": attempt_id,
+        "expected_revision": 1,
+        "dispatch_event_digest": dispatch_event_digest(effect_id, attempt_id),
+        "issued_at": now - 5, "expires_at": now + 300,
+    }
+
+    def read_only_reconcile(*, effect, attempt):
+        assert effect["attempt_id"] == attempt_id
+        assert attempt["attempt_id"] == attempt_id
+        reconciliation_reads.append(attempt["idempotency_key"])
+        observed = fake_provider_state.get(attempt["idempotency_key"])
+        assert observed is not None
+        if len(reconciliation_reads) == 1:
+            # Simulate another crash after provider read but before receipt commit.
+            return None
+        receipt = {
+            "receipt_id": "PR-" + uuid.uuid4().hex,
+            "provider": "provider-fixture",
+            "provider_operation_id": observed["operation_id"],
+            "outcome": "OBSERVED_SUCCESS",
+            "observation": {"outcome": observed["outcome"]},
+            "observation_digest": "sha256:fake-provider-observation",
+        }
+        store.record_verified_receipt(
+            effect_id=effect_id, attempt_id=attempt_id, receipt=receipt,
+            verified_authentication={"algorithm": "fixture-verified"},
+            expected_revision=1,
+        )
+
+    first = handle_dispatch_delivery(
+        task, store=store, now=now, reconcile_same_attempt=read_only_reconcile,
+    )
+    second = handle_dispatch_delivery(
+        task, store=make_store(), now=now + 1,
+        reconcile_same_attempt=read_only_reconcile,
+    )
+    assert first[0] == 503
+    assert second[0] == 204
+    assert reconciliation_reads == [attempt["idempotency_key"]] * 2
+    assert provider_invocations == 1
+    assert store.get_effect(effect_id)["attempt"] == 1
+    assert store.get_effect(effect_id)["state"] == "OBSERVED_SUCCESS"
