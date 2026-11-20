@@ -16,7 +16,7 @@ from .cloud_tasks_publisher import (
 def publish_dispatch_outbox_item(
     *, store: Any, client: Any, project: str, location: str, queue: str,
     target_url: str, oidc_service_account: str, effect_id: str, attempt_id: str,
-    lease_owner: str, now: float, task_ttl_seconds: int = 300,
+    lease_owner: str, now: float, lease_seconds: int, task_ttl_seconds: int,
 ) -> dict[str, Any]:
     """Publish one committed outbox item and persist acknowledgement.
 
@@ -27,7 +27,7 @@ def publish_dispatch_outbox_item(
         raise ValueError("task_ttl_seconds must be a positive integer")
     claimed = store.claim_dispatch_outbox(
         effect_id=effect_id, attempt_id=attempt_id, lease_owner=lease_owner,
-        now=now,
+        now=now, lease_seconds=lease_seconds,
     )
     if claimed.get("state") == "PUBLISHED":
         return claimed
@@ -65,8 +65,8 @@ def publish_dispatch_outbox_item(
 
 def reconcile_dispatch_outbox_batch(
     *, store: Any, client: Any, project: str, location: str, queue: str,
-    target_url: str, oidc_service_account: str, lease_owner: str, now: float,
-    limit: int = 50, task_ttl_seconds: int = 300,
+    target_url: str, oidc_service_account: str, lease_owner: str, now: float, lease_seconds: int,
+    limit: int, task_ttl_seconds: int,
 ) -> dict[str, Any]:
     """Publish a bounded batch of pending/expired outbox obligations."""
     candidates = store.list_dispatch_outbox_candidates(now=now, limit=limit)
@@ -83,7 +83,7 @@ def reconcile_dispatch_outbox_batch(
                 queue=queue, target_url=target_url,
                 oidc_service_account=oidc_service_account,
                 effect_id=effect_id, attempt_id=attempt_id,
-                lease_owner=lease_owner, now=now,
+                lease_owner=lease_owner, now=now, lease_seconds=lease_seconds,
                 task_ttl_seconds=task_ttl_seconds,
             )
             published.append(str(result.get("task_id", item.get("task_id", ""))))
