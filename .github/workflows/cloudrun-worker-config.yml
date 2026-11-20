@@ -1,0 +1,27 @@
+name: Cloud Run Worker Config Gate
+
+on:
+  pull_request:
+    branches:
+      - integration/firestore-execution-ledger-v1
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive infra/cloudrun
+      - name: Initialize without backend or credentials
+        run: terraform -chdir=infra/cloudrun init -backend=false -input=false
+      - name: Validate Cloud Run IAM and Scheduler configuration
+        run: terraform -chdir=infra/cloudrun validate
