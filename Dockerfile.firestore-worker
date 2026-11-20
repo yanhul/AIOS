@@ -11,6 +11,7 @@ RUN groupadd --system aios && useradd --system --gid aios --home-dir /nonexisten
 COPY requirements-firestore.txt /app/requirements-firestore.txt
 RUN python -m pip install --no-cache-dir --requirement /app/requirements-firestore.txt
 COPY core /app/core
+COPY worker_wsgi.py /app/worker_wsgi.py
 USER aios:aios
-# No command is provided until the production worker/authority lifecycle is implemented.
-# This image is a dependency/build artifact only and must not be deployed as-is.
+EXPOSE 8080
+CMD ["gunicorn", "--bind=0.0.0.0:8080", "--workers=1", "--threads=8", "--timeout=60", "worker_wsgi:app"]
