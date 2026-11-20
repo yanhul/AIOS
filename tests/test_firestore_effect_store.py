@@ -83,6 +83,7 @@ def planned_effect():
         "actor": "worker",
         "effect_type": "external_effect",
         "policy_digest": "sha256:policy",
+        "max_attempts": 1,
         "state": "PLANNED",
     }
 
