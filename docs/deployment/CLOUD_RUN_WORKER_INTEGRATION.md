@@ -26,6 +26,7 @@ service-level roles/run.invoker on the same service.
 The Cloud Run service must set these values explicitly:
 
 - AIOS_REQUIRE_FIRESTORE_EFFECT_STORE=true
+- AIOS_REQUIRE_EXECUTION_LINEAGE=true
 - AIOS_FIRESTORE_PROJECT_ID
 - AIOS_AUTHORITY_TRUST_ANCHOR (JSON Ed25519 public-key trust anchor)
 - AIOS_AUTHORITY_ATTESTATION_SECRET (injected from Secret Manager; never baked
@@ -82,8 +83,9 @@ are rejected by the production reconciler.
 ## Terraform scope
 
 infra/cloudrun/worker_access.tf:
-- binds roles/run.invoker to the two dedicated invoker service accounts on an
-  existing Cloud Run service;
+- owns the complete roles/run.invoker binding on an existing Cloud Run service,
+  allowing only the two dedicated invoker service accounts and removing
+  allUsers/other unlisted invokers;
 - grants roles/datastore.user to the existing worker runtime identity;
 - grants roles/cloudtasks.enqueuer on an existing queue;
 - grants Secret Manager access to one named existing attestation secret;
