@@ -151,7 +151,7 @@ def create_production_app(*, environ: Mapping[str, str] | None = None):
             store=store, client=tasks_client,
             project=cloud_tasks_project, location=cloud_tasks_location,
             queue=cloud_tasks_queue, target_url=target_url,
-            oidc_service_account=task_service_account,
+            oidc_service_account=task_service_account, oidc_audience=service_url,
             lease_owner=f"{env.get('K_SERVICE', 'aios-worker')}:{env.get('K_REVISION', 'local')}:{uuid.uuid4().hex}",
             now=time.time(), lease_seconds=lease_seconds,
             limit=batch_limit, task_ttl_seconds=task_ttl_seconds,
