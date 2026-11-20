@@ -31,6 +31,8 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
         with:
           version: "511.0.0"
+      - name: Install Firestore Emulator component
+        run: gcloud components install cloud-firestore-emulator --quiet
       - name: Start Firestore Emulator
         run: |
           mkdir -p "$RUNNER_TEMP/firestore-emulator"
@@ -40,7 +42,7 @@ jobs:
             >"$RUNNER_TEMP/firestore-emulator/emulator.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/firestore-emulator/pid"
           for i in $(seq 1 60); do
-            if curl --silent --fail http://127.0.0.1:8080/ >/dev/null; then exit 0; fi
+            if python -c "import socket; s=socket.create_connection((\"127.0.0.1\",8080),timeout=1); s.close()" 2>/dev/null; then exit 0; fi
             sleep 1
           done
           cat "$RUNNER_TEMP/firestore-emulator/emulator.log"
