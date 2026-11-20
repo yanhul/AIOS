@@ -89,6 +89,7 @@ def test_batch_reconciler_scans_and_publishes_bounded_outbox_items():
         store=store, client=client, project="emulator", location="asia-southeast1",
         queue="aios", target_url="https://worker.example/dispatch",
         oidc_service_account="worker@emulator.iam.gserviceaccount.com",
+        oidc_audience="https://worker.example",
         lease_owner="publisher-batch", now=1000, lease_seconds=30,
         limit=10, task_ttl_seconds=300,
     )
