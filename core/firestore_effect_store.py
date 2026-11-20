@@ -89,6 +89,9 @@ class FirestoreEffectStore:
     def _event_ref(self, effect_id: str, event_id: str) -> Any:
         return self._effect_ref(effect_id).collection("events").document(event_id)
 
+    def _outbox_ref(self, task_id: str) -> Any:
+        return self.client.collection("dispatch_outbox").document(_text(task_id, "task_id"))
+
     def _confirmed(self, label: str, callback: Callable[[Any], Any]) -> Any:
         try:
             return self._run(self.client, callback)
@@ -179,9 +182,29 @@ class FirestoreEffectStore:
                      "attempt_id": attempt_id, "attempt_number": attempt_number,
                      "provider": provider, "idempotency_key": idempotency_key,
                      "from_revision": expected_revision, "to_revision": expected_revision + 1}
+            # The durable outbox record is committed atomically with the
+            # effect/attempt dispatch intent. A process crash after this commit
+            # cannot lose the obligation to enqueue the deterministic task.
+            from .cloud_tasks_contract import deterministic_task_name, dispatch_event_digest
+            task_id = deterministic_task_name(effect_id, attempt_id)
+            outbox_ref = self._outbox_ref(task_id)
+            existing_outbox = _data(outbox_ref.get(transaction=tx))
+            if existing_outbox is not None:
+                raise EffectStoreConflict("dispatch outbox identity already exists")
+            outbox = {
+                "schema": "aios.dispatch-outbox.v1",
+                "task_id": task_id,
+                "effect_id": effect_id,
+                "attempt_id": attempt_id,
+                "expected_revision": expected_revision + 1,
+                "dispatch_event_digest": dispatch_event_digest(effect_id, attempt_id),
+                "state": "PENDING",
+                "lease_generation": 0,
+            }
             tx.set(ref, updated)
             tx.create(attempt_ref, attempt)
             tx.create(event_ref, event)
+            tx.create(outbox_ref, outbox)
             return updated
         return self._confirmed("dispatch intent transaction", body)
 
@@ -387,3 +410,80 @@ class FirestoreEffectStore:
                 or effect.get("provider") != attempt.get("provider")):
             raise EffectStoreConflict("resume exact-attempt binding/state mismatch")
         return {"effect": effect, "attempt": attempt}
+
+    def get_dispatch_outbox(self, *, effect_id: str, attempt_id: str) -> dict[str, Any] | None:
+        from .cloud_tasks_contract import deterministic_task_name
+        task_id = deterministic_task_name(effect_id, attempt_id)
+        try:
+            return _data(self._outbox_ref(task_id).get())
+        except Exception as exc:
+            raise EffectStoreUnavailable("dispatch outbox readback was not confirmed") from exc
+
+    def claim_dispatch_outbox(self, *, effect_id: str, attempt_id: str,
+                              lease_owner: str, now: float, lease_seconds: int = 60) -> dict[str, Any]:
+        """Lease one durable enqueue obligation; never changes effect/attempt state."""
+        from .cloud_tasks_contract import deterministic_task_name
+        lease_owner = _text(lease_owner, "lease_owner")
+        if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, int) or lease_seconds < 1:
+            raise ValueError("lease_seconds must be a positive integer")
+        task_id = deterministic_task_name(effect_id, attempt_id)
+        ref = self._outbox_ref(task_id)
+
+        def body(tx: Any) -> dict[str, Any]:
+            record = _data(ref.get(transaction=tx))
+            if record is None:
+                raise EffectStoreConflict("dispatch outbox record is missing")
+            if record.get("effect_id") != effect_id or record.get("attempt_id") != attempt_id:
+                raise EffectStoreConflict("dispatch outbox identity mismatch")
+            if record.get("state") == "PUBLISHED":
+                return record
+            if (record.get("state") == "LEASED" and record.get("lease_until", 0) > now
+                    and record.get("lease_owner") != lease_owner):
+                raise EffectStoreConflict("dispatch outbox is leased by another publisher")
+            updated = dict(record, state="LEASED", lease_owner=lease_owner,
+                           lease_until=now + lease_seconds,
+                           lease_generation=record.get("lease_generation", 0) + 1)
+            tx.set(ref, updated)
+            return updated
+        return self._confirmed("dispatch outbox lease transaction", body)
+
+    def mark_dispatch_outbox_published(self, *, effect_id: str, attempt_id: str,
+                                       lease_owner: str, published_at: float) -> dict[str, Any]:
+        from .cloud_tasks_contract import deterministic_task_name
+        task_id = deterministic_task_name(effect_id, attempt_id)
+        ref = self._outbox_ref(task_id)
+
+        def body(tx: Any) -> dict[str, Any]:
+            record = _data(ref.get(transaction=tx))
+            if record is None:
+                raise EffectStoreConflict("dispatch outbox record is missing")
+            if record.get("state") == "PUBLISHED":
+                return record
+            if record.get("state") != "LEASED" or record.get("lease_owner") != lease_owner:
+                raise EffectStoreConflict("dispatch outbox lease ownership mismatch")
+            updated = dict(record, state="PUBLISHED", published_at=published_at)
+            updated.pop("lease_owner", None)
+            updated.pop("lease_until", None)
+            tx.set(ref, updated)
+            return updated
+        return self._confirmed("dispatch outbox publish acknowledgement transaction", body)
+
+    def release_dispatch_outbox(self, *, effect_id: str, attempt_id: str,
+                                lease_owner: str, error: str) -> dict[str, Any]:
+        from .cloud_tasks_contract import deterministic_task_name
+        task_id = deterministic_task_name(effect_id, attempt_id)
+        ref = self._outbox_ref(task_id)
+
+        def body(tx: Any) -> dict[str, Any]:
+            record = _data(ref.get(transaction=tx))
+            if record is None:
+                raise EffectStoreConflict("dispatch outbox record is missing")
+            if record.get("state") != "LEASED" or record.get("lease_owner") != lease_owner:
+                raise EffectStoreConflict("dispatch outbox lease ownership mismatch")
+            updated = dict(record, state="PENDING",
+                           last_error_digest=sha256(_text(error, "error").encode()).hexdigest())
+            updated.pop("lease_owner", None)
+            updated.pop("lease_until", None)
+            tx.set(ref, updated)
+            return updated
+        return self._confirmed("dispatch outbox release transaction", body)
