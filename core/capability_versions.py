@@ -31,7 +31,7 @@ __all__ = [
 
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
-_SEMVER = re.compile(r"^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")
+_SEMVER = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 
 
 class CapabilityEvolutionError(MutationError):
