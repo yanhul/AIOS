@@ -11,7 +11,7 @@ from typing import Any
 
 from .contract import contract_identity, validate_contract, verify_permit
 from .firestore_authority import AuthorityStoreError, FirestoreAuthorityStore
-from .policy_registry import policy_digest as governing_policy_digest
+from .policy_registry import POLICY_TYPE, policy_digest as governing_policy_digest
 
 
 class FirestoreAuthorityResolutionError(PermissionError):
@@ -65,7 +65,7 @@ class FirestoreAuthorityResolver:
         contract = self._read(contract_digest, "EXECUTION_CONTRACT")
         permit = self._read(permit_digest, "EXECUTION_PERMIT")
         attestation = self._read(attestation_digest, "EXECUTION_PERMIT_ATTESTATION")
-        policy = self._read(policy_digest, "POLICY")
+        policy = self._read(policy_digest, POLICY_TYPE)
         try:
             validate_contract(contract)
             cid = contract_identity(contract)
@@ -77,9 +77,10 @@ class FirestoreAuthorityResolver:
                 "contract_id": cid,
                 "permit_id": permit["permit_id"],
                 "issuer": permit["issuer"],
-                "algorithm": "Ed25519",
-            }:
-                raise ValueError("signed Ed25519 attestation binding mismatch")
+                "algorithm": "HMAC-SHA256",
+                "signature": attestation.get("signature"),
+            } or not isinstance(attestation.get("signature"), str) or len(attestation["signature"]) != 64:
+                raise ValueError("issuer attestation binding/schema mismatch")
             if policy.get("policy_digest") != contract["policy_digest"]:
                 raise ValueError("contract policy digest does not bind resolved policy")
             policy_content = dict(policy)
