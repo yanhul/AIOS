@@ -78,7 +78,7 @@ def validate_dispatch_task(
         raise DispatchTaskRejected("task effect binding mismatch")
     if effect.get("attempt_id") != attempt_id or attempt.get("attempt_id") != attempt_id:
         raise DispatchTaskRejected("task attempt binding mismatch")
-    if effect.get("revision") != revision or attempt.get("state") not in {
+    if (not isinstance(effect.get("revision"), int) or effect.get("revision") < revision\n            or attempt.get("state") not in {
         "DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE"
     }:
         raise DispatchTaskRejected("task revision or attempt state is stale")
