@@ -117,12 +117,14 @@ class FirestoreEffectStore:
                 raise ValueError("effect.authority_digests must contain the complete signed authority bundle")
             for key in required_authority_keys - {"capability_digests"}:
                 record_value = authority_digests.get(key)
-                if not isinstance(record_value, str) or len(record_value) != 64:
+                if (not isinstance(record_value, str) or len(record_value) != 64
+                        or any(ch not in "0123456789abcdef" for ch in record_value)):
                     raise ValueError(f"effect.authority_digests.{key} must be a SHA-256 hex digest")
             capabilities = dict(authority_digests["capability_digests"])
             if not capabilities or any(
                 not isinstance(k, str) or not k.strip()
                 or not isinstance(v, str) or len(v) != 64
+                or any(ch not in "0123456789abcdef" for ch in v)
                 for k, v in capabilities.items()
             ):
                 raise ValueError("effect.authority_digests.capability_digests is invalid")
