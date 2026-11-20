@@ -163,3 +163,59 @@ def test_dispatch_outbox_is_atomic_leased_and_survives_restart():
     )
     assert published["state"] == "PUBLISHED"
     assert store.get_dispatch_outbox(effect_id=effect_id, attempt_id=attempt_id)["state"] == "PUBLISHED"
+
+
+def test_cloud_tasks_redelivery_after_worker_crash_never_executes_new_attempt():
+    import time
+    from core.cloud_tasks_contract import SCHEMA, dispatch_event_digest
+    from core.cloud_tasks_worker import handle_dispatch_delivery
+
+    store = make_store()
+    effect_id, effect = make_effect()
+    store.create_effect(effect)
+    attempt_id = effect_id + ":attempt:1"
+    store.dispatch(
+        effect_id=effect_id, attempt_id=attempt_id,
+        provider="provider-fixture", expected_revision=0,
+    )
+    now = time.time()
+    task = {
+        "schema": SCHEMA, "effect_id": effect_id, "attempt_id": attempt_id,
+        "expected_revision": 1,
+        "dispatch_event_digest": dispatch_event_digest(effect_id, attempt_id),
+        "issued_at": now - 5, "expires_at": now + 300,
+    }
+    provider_calls = []
+
+    # Process died after dispatch commit. Both the original delivery and its
+    # redelivery can only resume this exact attempt; no provider adapter is
+    # injected, so the endpoint fails closed and asks Cloud Tasks to retry.
+    first = handle_dispatch_delivery(task, store=store, now=now)
+    second = handle_dispatch_delivery(task, store=make_store(), now=now + 1)
+    assert first[0] == second[0] == 503
+    assert first[1]["status"] == "RECONCILIATION_ADAPTER_UNAVAILABLE"
+    assert second[1]["status"] == "RECONCILIATION_ADAPTER_UNAVAILABLE"
+    assert provider_calls == []
+    assert store.get_effect(effect_id)["state"] == "DISPATCHED"
+    assert store.get_effect(effect_id)["attempt"] == 1
+    assert store.get_attempt(effect_id, attempt_id)["attempt_number"] == 1
+
+    # Once a separately verified terminal receipt is durably committed, a
+    # redelivered copy of this task is acknowledged without reconciliation.
+    receipt = {
+        "receipt_id": "PR-" + uuid.uuid4().hex,
+        "provider": "provider-fixture",
+        "provider_operation_id": "operation-fixture",
+        "outcome": "OBSERVED_SUCCESS",
+        "observation": {"status": "done"},
+        "observation_digest": "sha256:emulator-terminal",
+    }
+    store.record_verified_receipt(
+        effect_id=effect_id, attempt_id=attempt_id, receipt=receipt,
+        verified_authentication={"algorithm": "fixture-verified"},
+        expected_revision=1,
+    )
+    terminal = handle_dispatch_delivery(task, store=make_store(), now=now + 2)
+    assert terminal[0] == 204
+    assert terminal[1]["status"] == "ACK_TERMINAL"
+    assert store.get_effect(effect_id)["attempt"] == 1
