@@ -1,6 +1,6 @@
 # Firestore authoritative effects batch
 
-Status: **FIRESTORE-FIRST API PATH + FAIL-CLOSED PRODUCTION GUARD ADDED — WORKER FACTORY/DEPLOYMENT NOT WIRED; TESTS NOT EXECUTED**
+Status: **FIRESTORE EMULATOR GATE PASS; FULL REPOSITORY TEST SUITE PASS LOCALLY; PRODUCTION WORKER BLOCKED BY NON-DURABLE AUTHORITY**
 
 Branch: `integration/firestore-authoritative-effects-v1`
 Parent: PR #144 head `2429dbc67e8b7e15c817256c90faf658c313ffb0`
@@ -31,7 +31,7 @@ The store accepts a receipt only through `record_verified_receipt()`, which is d
 2. **No production worker wiring.** No Cloud Run entrypoint, workload identity adapter, service account, or deployment manifest was added.
 3. **No retry path.** Firestore retry is intentionally absent until independent asymmetric retry issuance and durable authenticated NOT_APPLIED reconciliation are integrated. The current production HMAC retry path remains blocked.
 4. **No Firestore SDK dependency/build lock/OCI image** is declared in this branch.
-5. **No emulator or live-cloud tests were executed.** Tests use an in-memory transaction double; it is not evidence of Firestore transaction semantics, IAM behavior, or crash durability.
+5. **Emulator evidence is limited to the tested state transitions.** GitHub Actions run #44706519557 completed successfully; official Firestore SDK integration tests reported 3 passed, covering restart/same-attempt recovery, UNKNOWN blocking a new attempt, and concurrent dispatch CAS. This does not establish live GCP IAM, ADC/workload identity, database configuration, or Cloud Run behavior.
 6. **No GCP resources were created or changed.** No Firestore API/database, IAM binding, Cloud Run Job, secret, or image was provisioned.
 
 ## Required gates before Cloud Run
@@ -45,3 +45,14 @@ The store accepts a receipt only through `record_verified_receipt()`, which is d
 - Obtain explicit approval for database ID, location, edition, backup/retention and spend before provisioning any billable database.
 
 **Decision:** code path is present for review, but the existing AIOS default path has not yet been replaced. Do not merge, deploy or promote based on this branch alone.
+
+
+## Independent repository test audit — 2026-11-20
+
+- A clean clone of the PR head was tested outside GitHub Actions in a separate Linux environment.
+- Initial full-suite execution exposed 8 failures in `tests/test_firestore_effect_store.py`: the fixture omitted the now-required `max_attempts` field, and the idempotency-key assertion encoded a literal backslash-zero instead of the NUL separator used by the implementation.
+- Both test defects were corrected. The complete local suite then reported **851 passed, 19 skipped, 1 warning**.
+- The Firestore Emulator integration gate separately reported **3 passed** in workflow run #44706519557.
+- The workflow now runs the complete repository test suite with the emulator active, not only the three emulator-specific tests. That new CI execution remains pending; local success is not represented as a GitHub Actions result.
+
+The authority backend, Ed25519 issuer/trust-anchor integration, reproducible OCI build, ADC validation against GCP, and Cloud Run execution remain unimplemented or unverified. Keep the worker deployment blocked.
