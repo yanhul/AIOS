@@ -57,6 +57,7 @@ def args(store, client):
         store=store, client=client, project="emulator", location="asia-southeast1",
         queue="aios", target_url="https://worker.example/dispatch",
         oidc_service_account="worker@emulator.iam.gserviceaccount.com",
+        oidc_audience="https://worker.example",
         effect_id="EF-outbox-1", attempt_id="EF-outbox-1:attempt:1",
         lease_owner="publisher-1", now=1000, lease_seconds=30,
         task_ttl_seconds=300,
