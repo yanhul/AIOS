@@ -33,7 +33,8 @@ def test_dispatch_envelope_has_stable_task_identity():
     first = publish_dispatch_task(
         client=client, project="test", location="asia-southeast1", queue="aios",
         target_url="https://worker.example/dispatch",
-        oidc_service_account="worker@test.iam.gserviceaccount.com", payload=payload,
+        oidc_service_account="worker@test.iam.gserviceaccount.com",
+        oidc_audience="https://worker.example", payload=payload,
     )
     second = publish_dispatch_task(
         client=client, project="test", location="asia-southeast1", queue="aios",
