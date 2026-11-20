@@ -26,7 +26,7 @@ def _authorized_context(aios_dir, contract_id, permit_id, actor, adapter):
     authorize(aios_dir, contract_id, permit_id)
     contract = load_contract(aios_dir, contract_id)
     permit = load_permit(aios_dir, permit_id)
-    if contract.get("actor") != actor or permit.get("actor") not in (None, actor):
+    if contract.get("actor") != actor or permit.get("actor") != actor:
         raise PermissionError("actor does not match authorized contract/permit")
     provider = _text(getattr(adapter, "name", None), "adapter.name")
     if not _provider_authorized(contract, provider):
