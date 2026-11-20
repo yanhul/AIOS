@@ -287,3 +287,60 @@ def test_crash_after_simulated_provider_effect_reconciles_same_attempt_only():
     assert provider_invocations == 1
     assert store.get_effect(effect_id)["attempt"] == 1
     assert store.get_effect(effect_id)["state"] == "OBSERVED_SUCCESS"
+
+
+
+def test_provider_operation_id_is_bound_immutably_to_exact_attempt():
+    store = make_store()
+    effect_id, effect = make_effect()
+    store.create_effect(effect)
+    attempt_id = effect_id + ":attempt:1"
+    store.dispatch(
+        effect_id=effect_id, attempt_id=attempt_id, provider="gemini",
+        expected_revision=0,
+    )
+
+    bound = store.bind_provider_operation_id(
+        effect_id=effect_id, attempt_id=attempt_id, provider="gemini",
+        provider_operation_id="v1_interaction_fixture_001",
+    )
+    assert bound["provider_operation_id"] == "v1_interaction_fixture_001"
+    assert bound["provider_operation_provider"] == "gemini"
+
+    # A restarted worker reads the persisted provider ID and can GET that
+    # exact operation; repeating the same bind is idempotent.
+    restarted = make_store()
+    recovered = restarted.resume_same_attempt(effect_id=effect_id, attempt_id=attempt_id)
+    assert recovered["attempt"]["provider_operation_id"] == "v1_interaction_fixture_001"
+    assert restarted.bind_provider_operation_id(
+        effect_id=effect_id, attempt_id=attempt_id, provider="gemini",
+        provider_operation_id="v1_interaction_fixture_001",
+    ) == recovered["attempt"]
+
+    # A different provider ID or provider cannot overwrite the first binding.
+    with pytest.raises(EffectStoreConflict, match="immutable"):
+        restarted.bind_provider_operation_id(
+            effect_id=effect_id, attempt_id=attempt_id, provider="gemini",
+            provider_operation_id="v1_interaction_fixture_002",
+        )
+    with pytest.raises(EffectStoreConflict, match="mismatch"):
+        restarted.bind_provider_operation_id(
+            effect_id=effect_id, attempt_id=attempt_id, provider="other-provider",
+            provider_operation_id="v1_interaction_fixture_001",
+        )
+
+
+def test_provider_operation_id_binding_rejects_cross_attempt_identity():
+    store = make_store()
+    effect_id, effect = make_effect()
+    store.create_effect(effect)
+    attempt_id = effect_id + ":attempt:1"
+    store.dispatch(
+        effect_id=effect_id, attempt_id=attempt_id, provider="gemini",
+        expected_revision=0,
+    )
+    with pytest.raises(EffectStoreConflict, match="requires durable effect and attempt"):
+        store.bind_provider_operation_id(
+            effect_id=effect_id, attempt_id=effect_id + ":attempt:2", provider="gemini",
+            provider_operation_id="v1_interaction_fixture_001",
+        )
