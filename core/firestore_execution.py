@@ -22,10 +22,27 @@ from .effect_authority import (
 from .runtime import ProviderReceipt, _provider_authorized, _text, validate_receipt
 
 
-def _authorized_context(aios_dir, contract_id, permit_id, actor, adapter):
-    authorize(aios_dir, contract_id, permit_id)
-    contract = load_contract(aios_dir, contract_id)
-    permit = load_permit(aios_dir, permit_id)
+def _authorized_context(aios_dir, contract_id, permit_id, actor, adapter, *,
+                        authority_resolver=None, authority_digests=None):
+    if authority_resolver is not None:
+        if not isinstance(authority_digests, dict) or set(authority_digests) != {
+            "contract_digest", "permit_digest", "attestation_digest",
+            "policy_digest", "capability_digests",
+        }:
+            raise PermissionError("complete Firestore authority digest bundle required; DENY")
+        bundle = authority_resolver.resolve(**authority_digests)
+        contract, permit = bundle["contract"], bundle["permit"]
+        from .contract import contract_identity
+        if contract_identity(contract) != contract_id:
+            raise PermissionError("Firestore contract identity differs from requested contract; DENY")
+        if permit.get("permit_id") != permit_id:
+            raise PermissionError("Firestore permit identity differs from requested permit; DENY")
+        if bundle.get("authority_backend") != "firestore-ed25519":
+            raise PermissionError("unverified authority backend; DENY")
+    else:
+        authorize(aios_dir, contract_id, permit_id)
+        contract = load_contract(aios_dir, contract_id)
+        permit = load_permit(aios_dir, permit_id)
     if contract.get("actor") != actor or permit.get("actor") != actor:
         raise PermissionError("actor does not match authorized contract/permit")
     provider = _text(getattr(adapter, "name", None), "adapter.name")
@@ -71,12 +88,16 @@ def _verified_receipt(effect, receipt, outcome, *, provider_keyring, provider_pu
 
 def execute_firestore_effect(
     aios_dir, store, contract_id, permit_id, logical_operation_id, actor, adapter,
-    *, provider_keyring=None, provider_public_keyring=None, now=None, lineage=None
+    *, provider_keyring=None, provider_public_keyring=None, now=None, lineage=None,
+    authority_resolver=None, authority_digests=None
 ):
     """Create, dispatch, execute once, verify receipt, and commit terminal state."""
     _text(logical_operation_id, "logical_operation_id")
     _text(actor, "actor")
-    contract, provider = _authorized_context(aios_dir, contract_id, permit_id, actor, adapter)
+    contract, provider = _authorized_context(
+        aios_dir, contract_id, permit_id, actor, adapter,
+        authority_resolver=authority_resolver, authority_digests=authority_digests
+    )
     effect_id = effect_id_for(contract_id, logical_operation_id, actor)
     effect = store.create_effect({
         "effect_id": effect_id,
@@ -132,7 +153,8 @@ def execute_firestore_effect(
 
 def resume_firestore_effect(
     aios_dir, store, effect_id, attempt_id, actor, adapter,
-    *, provider_keyring=None, provider_public_keyring=None, now=None
+    *, provider_keyring=None, provider_public_keyring=None, now=None,
+    authority_resolver=None, authority_digests=None
 ):
     """Recover one exact attempt via provider reconciliation; never re-execute."""
     _text(actor, "actor")
@@ -145,7 +167,8 @@ def resume_firestore_effect(
     if effect.get("actor") != actor:
         raise PermissionError("resume actor does not own durable effect")
     contract, provider = _authorized_context(
-        aios_dir, effect["contract_id"], effect["permit_id"], actor, adapter
+        aios_dir, effect["contract_id"], effect["permit_id"], actor, adapter,
+        authority_resolver=authority_resolver, authority_digests=authority_digests
     )
     if effect.get("provider") != provider:
         raise PermissionError("resume provider does not match durable dispatched provider")
