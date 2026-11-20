@@ -100,6 +100,12 @@ class FirestoreEffectStore:
     def create_effect(self, effect: Mapping[str, Any]) -> dict[str, Any]:
         required = ("effect_id", "contract_id", "permit_id", "actor", "effect_type", "policy_digest")
         record = {key: _text(effect.get(key), f"effect.{key}") for key in required}
+        if effect.get("logical_operation_id") is not None:
+            record["logical_operation_id"] = _text(effect.get("logical_operation_id"), "effect.logical_operation_id")
+        max_attempts = effect.get("max_attempts")
+        if not isinstance(max_attempts, int) or isinstance(max_attempts, bool) or max_attempts < 1:
+            raise ValueError("effect.max_attempts must be a positive integer")
+        record["max_attempts"] = max_attempts
         if effect.get("state") != "PLANNED":
             raise ValueError("new durable effect must be PLANNED")
         record.update({"state": "PLANNED", "attempt": 0, "revision": 0})
@@ -240,10 +246,12 @@ class FirestoreEffectStore:
             existing_receipt = _data(receipt_ref.get(transaction=tx))
             if current is None or attempt is None:
                 raise EffectStoreConflict("receipt requires durable effect and attempt")
-            if current.get("revision") != expected_revision or current.get("state") != "DISPATCHED":
+            if current.get("revision") != expected_revision or current.get("state") not in ("DISPATCHED", "UNKNOWN"):
                 raise EffectStoreConflict("receipt terminal CAS failed")
             if current.get("attempt_id") != attempt_id or attempt.get("attempt_id") != attempt_id:
                 raise EffectStoreConflict("receipt attempt binding mismatch")
+            if attempt.get("state") not in ("DISPATCHED", "UNKNOWN"):
+                raise EffectStoreConflict("receipt attempt is already terminal")
             if current.get("provider") != receipt_record["provider"] or attempt.get("provider") != receipt_record["provider"]:
                 raise EffectStoreConflict("receipt provider binding mismatch")
             terminal = dict(current, state=receipt_record["outcome"],
