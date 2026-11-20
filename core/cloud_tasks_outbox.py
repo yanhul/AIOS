@@ -15,7 +15,7 @@ from .cloud_tasks_publisher import (
 
 def publish_dispatch_outbox_item(
     *, store: Any, client: Any, project: str, location: str, queue: str,
-    target_url: str, oidc_service_account: str, effect_id: str, attempt_id: str,
+    target_url: str, oidc_service_account: str, oidc_audience: str, effect_id: str, attempt_id: str,
     lease_owner: str, now: float, lease_seconds: int, task_ttl_seconds: int,
 ) -> dict[str, Any]:
     """Publish one committed outbox item and persist acknowledgement.
@@ -40,7 +40,7 @@ def publish_dispatch_outbox_item(
         task_id = publish_dispatch_task(
             client=client, project=project, location=location, queue=queue,
             target_url=target_url, oidc_service_account=oidc_service_account,
-            payload=payload,
+            oidc_audience=oidc_audience, payload=payload,
         )
     except Exception as exc:
         try:
@@ -65,7 +65,7 @@ def publish_dispatch_outbox_item(
 
 def reconcile_dispatch_outbox_batch(
     *, store: Any, client: Any, project: str, location: str, queue: str,
-    target_url: str, oidc_service_account: str, lease_owner: str, now: float, lease_seconds: int,
+    target_url: str, oidc_service_account: str, oidc_audience: str, lease_owner: str, now: float, lease_seconds: int,
     limit: int, task_ttl_seconds: int,
 ) -> dict[str, Any]:
     """Publish a bounded batch of pending/expired outbox obligations."""
@@ -81,7 +81,7 @@ def reconcile_dispatch_outbox_batch(
             result = publish_dispatch_outbox_item(
                 store=store, client=client, project=project, location=location,
                 queue=queue, target_url=target_url,
-                oidc_service_account=oidc_service_account,
+                oidc_service_account=oidc_service_account, oidc_audience=oidc_audience,
                 effect_id=effect_id, attempt_id=attempt_id,
                 lease_owner=lease_owner, now=now, lease_seconds=lease_seconds,
                 task_ttl_seconds=task_ttl_seconds,
