@@ -183,7 +183,8 @@ class FirestoreDurableRuntime:
 
             # All reads occur before writes. Firestore retries the transaction on
             # contention; deterministic IDs make a repeated call idempotent.
-            transaction.set(effect_ref, effect_record)
+            if old_effect is None:
+                transaction.create(effect_ref, effect_record)
             if old_attempt is None:
                 transaction.create(attempt_ref, attempt_identity)
             if old_event is None:
