@@ -105,6 +105,31 @@ class FirestoreEffectStore:
         record = {key: _text(effect.get(key), f"effect.{key}") for key in required}
         if effect.get("logical_operation_id") is not None:
             record["logical_operation_id"] = _text(effect.get("logical_operation_id"), "effect.logical_operation_id")
+        authority_digests = effect.get("authority_digests")
+        if authority_digests is not None:
+            required_authority_keys = {
+                "contract_digest", "permit_digest", "attestation_digest",
+                "policy_digest", "capability_digests",
+            }
+            if (not isinstance(authority_digests, Mapping)
+                    or set(authority_digests) != required_authority_keys
+                    or not isinstance(authority_digests.get("capability_digests"), Mapping)):
+                raise ValueError("effect.authority_digests must contain the complete signed authority bundle")
+            for key in required_authority_keys - {"capability_digests"}:
+                record_value = authority_digests.get(key)
+                if not isinstance(record_value, str) or len(record_value) != 64:
+                    raise ValueError(f"effect.authority_digests.{key} must be a SHA-256 hex digest")
+            capabilities = dict(authority_digests["capability_digests"])
+            if not capabilities or any(
+                not isinstance(k, str) or not k.strip()
+                or not isinstance(v, str) or len(v) != 64
+                for k, v in capabilities.items()
+            ):
+                raise ValueError("effect.authority_digests.capability_digests is invalid")
+            record["authority_digests"] = {
+                **{key: authority_digests[key] for key in required_authority_keys - {"capability_digests"}},
+                "capability_digests": capabilities,
+            }
         max_attempts = effect.get("max_attempts")
         if not isinstance(max_attempts, int) or isinstance(max_attempts, bool) or max_attempts < 1:
             raise ValueError("effect.max_attempts must be a positive integer")
