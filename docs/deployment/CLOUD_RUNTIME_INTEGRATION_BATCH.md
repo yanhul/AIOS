@@ -122,3 +122,74 @@ by this batch record.
 - Network/egress constraints and operational owner.
 
 Until these are provided, the correct state is **BLOCKED — CLOUD SUBSTRATE NOT PROVISIONED**.
+
+
+## Selected platform: Google Cloud Run
+
+Owner selection recorded:
+- Provider: Google Cloud
+- Runtime: Cloud Run
+- Region: `asia-southeast1` (Singapore)
+- Project: not yet created
+- Provisioning state: **BLOCKED — no project/billing/IAM evidence**
+
+Platform-specific constraints:
+- Use a dedicated user-managed Cloud Run service account as runtime identity; never use a downloaded service-account key.
+- Deploy only an immutable Artifact Registry image digest, not a mutable tag.
+- Keep the service private by default; grant invocation only to the explicitly authorized caller.
+- Store authority/provider secrets in Secret Manager and grant the runtime identity access only to the exact required secrets.
+- The deployer needs Cloud Run deployment permissions, Artifact Registry read access, and `iam.serviceAccounts.actAs` on the selected runtime service account. The runtime identity receives only the permissions required by its actual authority-store/provider calls.
+- Cloud Run workload identity proves the Google service account principal to Google APIs. AIOS must still verify the platform-issued identity token's signature, issuer, audience, subject and environment binding; caller-supplied identity claims are never authentication.
+
+### GCP preflight — read-only, before project creation
+
+Run these only after installing/authenticating `gcloud`. They inspect the currently authenticated account and visible resources; they do not create a project or enable APIs:
+
+```sh
+gcloud auth list
+gcloud config list
+gcloud projects list
+gcloud organizations list
+gcloud billing accounts list
+```
+
+Required authorization evidence:
+- Project creation requires `resourcemanager.projects.create`, commonly via `roles/resourcemanager.projectCreator` on the parent organization/folder. A user-created project normally grants its creator Owner on that project.
+- To create the project already linked to a billing account, the creator needs Project Creator plus `roles/billing.user` on that billing account. If linking billing later, the caller needs Billing Account User on the billing account and Project Billing Manager on the project (or equivalent permissions).
+- A visible billing account is not proof that it is open, funded, or usable. Confirm its status and payment profile in the Billing console before provisioning.
+- If an organization/folder is selected, record its ID and applicable organization policies; do not silently create the project under an unintended parent.
+
+A successful list command is not a complete IAM permission test. Before mutation, record the authenticated principal, selected parent, effective roles/permissions, billing account status, and explicit owner approval for project creation and billing linkage.
+
+### Cost gate
+
+Cloud Run is usage-priced and region-dependent. Google publishes a monthly free tier, but it is calculated using the stated reference region pricing and aggregated across projects on a billing account; it is not a guaranteed zero-cost allowance for this Singapore deployment. Artifact Registry storage, Secret Manager usage, network egress, logging/monitoring, builds and any always-on/minimum instances can also incur charges.
+
+Before provisioning, produce a workload estimate with explicit assumptions for:
+- request/job count and duration;
+- CPU, memory, concurrency and maximum instances;
+- minimum instances (default to zero);
+- image/storage size and retention;
+- Secret Manager versions/accesses;
+- log volume/retention and outbound network traffic;
+- build frequency and artifact retention.
+
+Use the official Cloud Run pricing page and Pricing Calculator with `asia-southeast1` selected. Do not publish a monthly cost number until those workload inputs and regional rates are known.
+
+Budget controls:
+- Create a project-scoped monthly Cloud Run spend-cap budget if the billing account and service are eligible; configure a separate alerts budget for other billable services.
+- A normal alerts-only budget is not a hard spending cap. Even spend caps use estimated costs and enforcement is not instantaneous; they do not guarantee that no overage can occur.
+- Keep Cloud Run minimum instances at zero, cap maximum instances, use request-based billing unless the runtime contract proves otherwise, and restrict egress.
+- Do not enable unrelated APIs, create GPUs, provision databases, or add paid networking components in this batch without a separately reviewed requirement.
+
+### Provisioning stop conditions
+
+Do not create the project or any billable resource until all are true:
+1. Authenticated Google principal and intended parent are identified.
+2. Project Creator permission is verified.
+3. A valid billing account/payment profile is confirmed, with the required billing-link permissions.
+4. The owner approves the project ID/name and billing linkage.
+5. A Singapore-region cost estimate and budget/spend-cap plan are reviewed and approved.
+6. The repository's CR-1 through CR-6 implementation gates and authority-store integration plan remain intact.
+
+No service account keys, API keys, reviewer private keys or provider secrets may be placed in GitHub, CI variables without protected environment controls, container images or chat.
