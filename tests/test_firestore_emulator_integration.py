@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from google.cloud import firestore
+from google.auth.credentials import AnonymousCredentials
 
 from core.firestore_effect_store import EffectStoreConflict, FirestoreEffectStore
 
@@ -17,7 +18,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def make_store():
-    client = firestore.Client(project=PROJECT)
+    client = firestore.Client(project=PROJECT, credentials=AnonymousCredentials())
     return FirestoreEffectStore(client, project_id=PROJECT)
 
 
