@@ -109,6 +109,7 @@ def execute_firestore_effect(
         "policy_digest": contract["policy_digest"],
         "max_attempts": contract["max_attempts"],
         "state": "PLANNED",
+        **({"authority_digests": dict(authority_digests)} if authority_resolver is not None else {}),
     })
     if effect.get("state") != "PLANNED":
         raise RuntimeError(
@@ -166,6 +167,8 @@ def resume_firestore_effect(
         return effect
     if effect.get("actor") != actor:
         raise PermissionError("resume actor does not own durable effect")
+    if authority_resolver is not None and authority_digests is None:
+        authority_digests = effect.get("authority_digests")
     contract, provider = _authorized_context(
         aios_dir, effect["contract_id"], effect["permit_id"], actor, adapter,
         authority_resolver=authority_resolver, authority_digests=authority_digests
