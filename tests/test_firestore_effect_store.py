@@ -114,7 +114,7 @@ def test_dispatch_intent_and_idempotency_key_survive_worker_crash():
     assert recovered["effect"]["state"] == "DISPATCHED"
     assert recovered["attempt"]["idempotency_key"] == (
         "aios-" + __import__("hashlib").sha256(
-            b"EF-crash-001\\0EF-crash-001:attempt:1"
+            b"EF-crash-001\0EF-crash-001:attempt:1"
         ).hexdigest()
     )
     assert recovered["effect"]["attempt_id"] == dispatched["attempt_id"]
