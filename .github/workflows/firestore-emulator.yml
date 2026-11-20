@@ -1,0 +1,61 @@
+name: Firestore Emulator Gate
+
+on:
+  pull_request:
+    branches:
+      - integration/firestore-execution-ledger-v1
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firestore-emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install Firestore SDK and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-firestore.txt pytest cryptography PyYAML
+      - name: Install Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: "511.0.0"
+      - name: Start Firestore Emulator
+        run: |
+          mkdir -p "$RUNNER_TEMP/firestore-emulator"
+          gcloud emulators firestore start \
+            --host-port=127.0.0.1:8080 \
+            --project=aios-emulator-test \
+            >"$RUNNER_TEMP/firestore-emulator/emulator.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/firestore-emulator/pid"
+          for i in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:8080/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/firestore-emulator/emulator.log"
+          exit 1
+      - name: Run Firestore SDK integration tests
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+          GOOGLE_CLOUD_PROJECT: aios-emulator-test
+          AIOS_FIRESTORE_PROJECT_ID: aios-emulator-test
+        run: python -m pytest -q tests/test_firestore_emulator_integration.py
+      - name: Preserve emulator logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firestore-emulator-${{ github.run_id }}
+          path: ${{ runner.temp }}/firestore-emulator/
+          if-no-files-found: warn
+          retention-days: 14
