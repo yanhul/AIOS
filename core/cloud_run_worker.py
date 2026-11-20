@@ -139,9 +139,11 @@ def create_production_app(*, environ: Mapping[str, str] | None = None):
         raise CloudRunWorkerConfigurationError("AIOS_CLOUD_TASKS_TARGET_URL must be the HTTPS /dispatch URL")
     task_service_account = _required(env, "AIOS_CLOUD_TASKS_INVOKER_EMAIL")
     scheduler_service_account = _required(env, "AIOS_SCHEDULER_INVOKER_EMAIL")
-    service_url = _required(env, "AIOS_CLOUD_RUN_SERVICE_URL")
-    if not service_url.startswith("https://"):
-        raise CloudRunWorkerConfigurationError("AIOS_CLOUD_RUN_SERVICE_URL must use HTTPS")
+    service_url = _required(env, "AIOS_CLOUD_RUN_SERVICE_URL").rstrip("/")
+    if not service_url.startswith("https://") or "/" in service_url[len("https://"):]:
+        raise CloudRunWorkerConfigurationError("AIOS_CLOUD_RUN_SERVICE_URL must be the HTTPS base service URI")
+    if target_url != service_url + "/dispatch":
+        raise CloudRunWorkerConfigurationError("AIOS_CLOUD_TASKS_TARGET_URL must equal service URI plus /dispatch")
     lease_seconds = _positive_int(env, "AIOS_OUTBOX_LEASE_SECONDS")
     task_ttl_seconds = _positive_int(env, "AIOS_OUTBOX_TASK_TTL_SECONDS")
     batch_limit = _positive_int(env, "AIOS_OUTBOX_BATCH_LIMIT")
