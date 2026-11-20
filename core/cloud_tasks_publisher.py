@@ -73,8 +73,13 @@ def publish_dispatch_task(*, client: Any, project: str, location: str, queue: st
     try:
         client.create_task(request={"parent": parent, "task": task})
     except Exception as exc:
-        # ALREADY_EXISTS can mean the previous enqueue succeeded. Caller must
-        # reconcile this exact task name; do not generate a new task/attempt.
+        # Cloud Tasks ALREADY_EXISTS is positive evidence that this exact
+        # deterministic task resource already exists. Its name binds the same
+        # effect/attempt; do not create another task identity.
+        code = getattr(exc, "code", None)
+        code = code() if callable(code) else code
+        if code == 409 or getattr(code, "value", None) == 6 or type(exc).__name__ == "AlreadyExists":
+            return task_id
         raise CloudTasksPublishError(
             f"Cloud Tasks enqueue unconfirmed for deterministic task {task_id}; reconcile before retry"
         ) from exc
