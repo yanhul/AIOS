@@ -291,6 +291,7 @@ def _append_decision(aios_dir: str, record: dict[str, Any], actor: str, action: 
 def promote_candidate(
     aios_dir: str, *, candidate_id: str, approver: str,
     evidence_verifier: Callable[[list[str]], bool],
+    evaluation_verifier: Callable[[Mapping[str, Any], Mapping[str, Any]], bool],
     promotion_authorizer: Callable[[Mapping[str, Any], Mapping[str, Any], str], bool],
 ) -> dict[str, Any]:
     """Promote only with three distinct actors, verified evidence and authority."""
@@ -303,8 +304,10 @@ def promote_candidate(
         raise CapabilityEvolutionError("latest candidate evaluation is not PASS")
     if len({candidate["proposer"], evaluation["evaluator"], approver}) != 3:
         raise CapabilityEvolutionError("proposer, evaluator and approver must be three distinct identities")
-    if not callable(evidence_verifier) or not callable(promotion_authorizer):
-        raise CapabilityEvolutionError("independent evidence verifier and promotion authorizer are required")
+    if not callable(evidence_verifier) or not callable(evaluation_verifier) or not callable(promotion_authorizer):
+        raise CapabilityEvolutionError("independent evidence verifier, evaluation verifier and promotion authorizer are required")
+    if evaluation_verifier(candidate, evaluation) is not True:
+        raise CapabilityEvolutionError("candidate evaluation provenance was not independently verified")
     refs = sorted(set(candidate["evidence_refs"] + evaluation["evidence_refs"]))
     if evidence_verifier(refs) is not True:
         raise CapabilityEvolutionError("candidate evidence is not independently verified")
