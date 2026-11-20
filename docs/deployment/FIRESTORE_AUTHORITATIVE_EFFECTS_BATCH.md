@@ -1,6 +1,6 @@
 # Firestore authoritative effects batch
 
-Status: **IMPLEMENTED AS AN ISOLATED FIRESTORE-FIRST EXECUTION PATH — NOT YET THE DEFAULT AIOS PATH; TESTS NOT EXECUTED**
+Status: **FIRESTORE-FIRST API PATH + FAIL-CLOSED PRODUCTION GUARD ADDED — WORKER FACTORY/DEPLOYMENT NOT WIRED; TESTS NOT EXECUTED**
 
 Branch: `integration/firestore-authoritative-effects-v1`
 Parent: PR #144 head `2429dbc67e8b7e15c817256c90faf658c313ffb0`
@@ -27,7 +27,7 @@ The store accepts a receipt only through `record_verified_receipt()`, which is d
 
 ## Important remaining integration blockers
 
-1. **Existing default path is unchanged.** `core.runtime.execute()` and `core.effect_authority` still use filesystem-backed effect state. This branch adds explicit `execute_firestore_effect()` / `resume_firestore_effect()` entrypoints but does not silently redirect the old API or fall back between stores. Production must select the Firestore path explicitly through a reviewed worker entrypoint/runtime factory.
+1. **Worker factory/deployment is not wired.** `core.runtime.execute()` and `resume_attempt()` now accept an injected `effect_store` and route through Firestore. With `AIOS_REQUIRE_FIRESTORE_EFFECT_STORE=true`, the legacy filesystem path is rejected (no fallback). However, no production worker factory currently constructs/injects the Firestore client using ADC and enables this guard; `core.effect_authority` legacy functions remain available for local/dev and other direct callers.
 2. **No production worker wiring.** No Cloud Run entrypoint, workload identity adapter, service account, or deployment manifest was added.
 3. **No retry path.** Firestore retry is intentionally absent until independent asymmetric retry issuance and durable authenticated NOT_APPLIED reconciliation are integrated. The current production HMAC retry path remains blocked.
 4. **No Firestore SDK dependency/build lock/OCI image** is declared in this branch.
@@ -36,7 +36,7 @@ The store accepts a receipt only through `record_verified_receipt()`, which is d
 
 ## Required gates before Cloud Run
 
-- Wire the Firestore-first entrypoints as the only production effect-state path; prevent production use of filesystem-backed `execute()`.
+- Add the production worker factory that constructs Firestore client with ADC, injects `FirestoreEffectStore`, and sets `AIOS_REQUIRE_FIRESTORE_EFFECT_STORE=true`; ensure all production entrypoints go through the guarded runtime API and no direct filesystem authority calls remain.
 - Add pinned `google-cloud-firestore` dependency, reproducible non-root OCI build and Cloud Run Job entrypoint using ADC/workload identity.
 - Run repository unit tests and Firestore Emulator tests with concurrent CAS, transaction retry, crash/restart and receipt replay.
 - Verify provider idempotency-key lookup/reconciliation and signed receipts with a real non-production provider test double or sandbox.
