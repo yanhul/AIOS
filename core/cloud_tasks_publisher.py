@@ -41,7 +41,7 @@ def build_dispatch_envelope(*, effect_id: str, attempt_id: str,
 
 def publish_dispatch_task(*, client: Any, project: str, location: str, queue: str,
                           target_url: str, oidc_service_account: str,
-                          payload: Mapping[str, Any]) -> str:
+                          oidc_audience: str, payload: Mapping[str, Any]) -> str:
     """Enqueue a committed dispatch reference using deterministic task naming.
 
     The injected client is the official Cloud Tasks client in production. Tests
@@ -54,6 +54,8 @@ def publish_dispatch_task(*, client: Any, project: str, location: str, queue: st
             raise ValueError(f"{label} is required")
     if not isinstance(target_url, str) or not target_url.startswith("https://"):
         raise ValueError("target_url must use HTTPS")
+    if not isinstance(oidc_audience, str) or not oidc_audience.startswith("https://"):
+        raise ValueError("oidc_audience must use HTTPS")
     if not isinstance(payload, Mapping) or payload.get("schema") != SCHEMA:
         raise ValueError("valid dispatch envelope required")
     task_id = deterministic_task_name(payload.get("effect_id"), payload.get("attempt_id"))
@@ -67,7 +69,7 @@ def publish_dispatch_task(*, client: Any, project: str, location: str, queue: st
             "url": target_url,
             "headers": {"Content-Type": "application/json"},
             "body": body,
-            "oidc_token": {"service_account_email": oidc_service_account},
+            "oidc_token": {"service_account_email": oidc_service_account, "audience": oidc_audience},
         },
     }
     try:
