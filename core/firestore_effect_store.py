@@ -418,7 +418,7 @@ class FirestoreEffectStore:
         except Exception as exc:
             raise EffectStoreUnavailable("dispatch outbox readback was not confirmed") from exc
 
-    def list_dispatch_outbox_candidates(self, *, now: float, limit: int = 100) -> list[dict[str, Any]]:
+    def list_dispatch_outbox_candidates(self, *, now: float, limit: int) -> list[dict[str, Any]]:
         """List pending and expired-lease obligations for a periodic reconciler."""
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
             raise ValueError("limit must be an integer from 1 to 500")
@@ -440,7 +440,7 @@ class FirestoreEffectStore:
             raise EffectStoreUnavailable("dispatch outbox scan was not confirmed") from exc
 
     def claim_dispatch_outbox(self, *, effect_id: str, attempt_id: str,
-                              lease_owner: str, now: float, lease_seconds: int = 60) -> dict[str, Any]:
+                              lease_owner: str, now: float, lease_seconds: int) -> dict[str, Any]:
         """Lease one durable enqueue obligation; never changes effect/attempt state."""
         from .cloud_tasks_contract import deterministic_task_name
         lease_owner = _text(lease_owner, "lease_owner")
