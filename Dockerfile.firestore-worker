@@ -1,0 +1,15 @@
+# Minimal non-root OCI image for the AIOS Firestore worker.
+# Build is intentionally separate from Cloud Run deployment; no resources are provisioned.
+FROM python:3.12.8-slim-bookworm
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    AIOS_REQUIRE_FIRESTORE_EFFECT_STORE=true
+WORKDIR /app
+RUN groupadd --system aios && useradd --system --gid aios --home-dir /nonexistent aios
+COPY requirements-firestore.txt /app/requirements-firestore.txt
+RUN python -m pip install --no-cache-dir --requirement /app/requirements-firestore.txt
+COPY core /app/core
+USER aios:aios
+# No command is provided until durable authority resolution is implemented.
+# This image is a dependency/build artifact only and must not be deployed as-is.
