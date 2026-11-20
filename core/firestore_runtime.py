@@ -170,8 +170,10 @@ class FirestoreDurableRuntime:
                 for key, value in effect_identity.items():
                     if old_effect.get(key) != value:
                         raise LedgerConflict(f"effect identity conflict for {key}")
-                if old_effect.get("current_attempt_id") not in (None, attempt_id):
-                    raise LedgerConflict("effect already has a different current attempt")
+                if old_effect.get("current_attempt_id") != attempt_id:
+                    raise LedgerConflict("effect already has a different or missing current attempt")
+                if old_effect.get("lineage_digest") != effect_identity.get("lineage_digest"):
+                    raise LedgerConflict("effect execution-lineage binding conflict")
                 if old_effect.get("state") != "DISPATCHED":
                     raise LedgerConflict("existing effect is not in DISPATCHED state; refusing to reopen it")
             if old_attempt is not None and old_attempt != attempt_identity:
