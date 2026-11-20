@@ -23,7 +23,7 @@ def fixture(state="DISPATCHED", attempt_state="DISPATCHED"):
         },
         {
             "effect_id": effect_id, "attempt_id": attempt_id,
-            "revision": 1, "state": state,
+            "revision": 2 if state in {"UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE"} else 1, "state": state,
         },
         {
             "effect_id": effect_id, "attempt_id": attempt_id,
