@@ -374,3 +374,27 @@ def test_dispatch_creates_durable_outbox_and_enforces_single_publisher_lease():
     )
     assert published["state"] == "PUBLISHED"
     assert store.get_effect("EF-crash-001")["state"] == "DISPATCHED"
+
+
+def test_effect_persists_complete_signed_authority_digest_bundle_immutably():
+    store, client = make_store()
+    effect = planned_effect()
+    authority = {
+        "contract_digest": "a" * 64,
+        "permit_digest": "b" * 64,
+        "attestation_digest": "c" * 64,
+        "policy_digest": "d" * 64,
+        "capability_digests": {"provider-a@1.0.0": "e" * 64},
+    }
+    effect["authority_digests"] = authority
+    created = store.create_effect(effect)
+    assert created["authority_digests"] == authority
+    assert client.data["effects/EF-crash-001"]["authority_digests"] == authority
+
+
+def test_effect_rejects_incomplete_authority_digest_bundle():
+    store, _client = make_store()
+    effect = planned_effect()
+    effect["authority_digests"] = {"contract_digest": "a" * 64}
+    with pytest.raises(ValueError, match="complete signed authority bundle"):
+        store.create_effect(effect)
