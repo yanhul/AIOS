@@ -8,6 +8,7 @@ been transactionally committed.
 """
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from .authority import authorize, load_contract, load_permit
@@ -98,6 +99,8 @@ def execute_firestore_effect(
         aios_dir, contract_id, permit_id, actor, adapter,
         authority_resolver=authority_resolver, authority_digests=authority_digests
     )
+    if os.environ.get("AIOS_REQUIRE_EXECUTION_LINEAGE", "").lower() == "true" and lineage is None:
+        raise PermissionError("production Firestore execution requires verified execution lineage; DENY")
     effect_id = effect_id_for(contract_id, logical_operation_id, actor)
     effect = store.create_effect({
         "effect_id": effect_id,
