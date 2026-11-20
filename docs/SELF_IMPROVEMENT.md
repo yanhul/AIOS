@@ -27,8 +27,10 @@ or promotion rules. The control plane remains authoritative.
 
 PASS is rejected unless effect -> attempt -> receipt is complete, evidence refs
 exist, verifier differs from contributor, an evaluation is linked, and the
-verification level is VERIFIED_DIGITAL or VERIFIED_PHYSICAL. Negative outcomes
-remain recorded and are not rewritten as success.
+verification level is VERIFIED_DIGITAL or VERIFIED_PHYSICAL. A trusted
+pass-evidence callback must independently validate the receipt, evidence and
+evaluation references and return exactly true. Negative outcomes remain
+recorded and are not rewritten as success.
 
 The experience and its audit event are committed in one shared mutation batch.
 Loading checks content identity and the matching audit event. The current store
