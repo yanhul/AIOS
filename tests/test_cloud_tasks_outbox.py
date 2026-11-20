@@ -1,6 +1,8 @@
 import pytest
 
-from core.cloud_tasks_outbox import publish_dispatch_outbox_item
+from core.cloud_tasks_outbox import (
+    publish_dispatch_outbox_item, reconcile_dispatch_outbox_batch,
+)
 from core.cloud_tasks_publisher import CloudTasksPublishError
 
 
@@ -76,3 +78,17 @@ def test_ambiguous_enqueue_releases_same_outbox_for_reconciliation():
     assert store.released is True
     assert store.record["state"] == "PENDING"
     assert store.published is False
+
+
+def test_batch_reconciler_scans_and_publishes_bounded_outbox_items():
+    store, client = Store(), Tasks()
+    store.list_dispatch_outbox_candidates = lambda **kwargs: [dict(store.record)]
+    result = reconcile_dispatch_outbox_batch(
+        store=store, client=client, project="emulator", location="asia-southeast1",
+        queue="aios", target_url="https://worker.example/dispatch",
+        oidc_service_account="worker@emulator.iam.gserviceaccount.com",
+        lease_owner="publisher-batch", now=1000, limit=10,
+    )
+    assert result["scanned"] == 1
+    assert len(result["published"]) == 1
+    assert result["failed"] == []
