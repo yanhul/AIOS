@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import os
 from typing import Any, Callable, Mapping
 
 
@@ -177,6 +178,9 @@ class FirestoreEffectStore:
                  expected_revision: int, lineage: Mapping[str, Any] | None = None) -> dict[str, Any]:
         provider = _text(provider, "provider")
         attempt_id = _text(attempt_id, "attempt_id")
+        if (os.environ.get("AIOS_REQUIRE_EXECUTION_LINEAGE", "").lower() == "true"
+                and (not isinstance(lineage, Mapping) or not lineage)):
+            raise EffectStoreConflict("production dispatch requires immutable execution lineage")
         ref = self._effect_ref(effect_id)
         attempt_ref = self._attempt_ref(effect_id, attempt_id)
         event_id = _digest({"event": "DISPATCHED", "effect_id": effect_id, "attempt_id": attempt_id})
