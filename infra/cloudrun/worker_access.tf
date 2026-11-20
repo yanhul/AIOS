@@ -17,23 +17,17 @@ data "google_project" "current" {
   project_id = var.project_id
 }
 
-# Cloud Tasks is the only identity allowed to invoke /dispatch.
-resource "google_cloud_run_v2_service_iam_member" "cloud_tasks_invoker" {
+# Own the complete run.invoker binding for this service. This removes
+# allUsers and any other unlisted invokers; review the plan before applying.
+resource "google_cloud_run_v2_service_iam_binding" "private_invokers" {
   project  = var.project_id
   location = var.region
   name     = var.worker_service_name
   role     = "roles/run.invoker"
-  member   = "serviceAccount:${var.cloud_tasks_invoker_email}"
-}
-
-# Cloud Scheduler can invoke only the outbox reconciliation route at the
-# application layer; the WSGI app independently verifies this caller identity.
-resource "google_cloud_run_v2_service_iam_member" "scheduler_invoker" {
-  project  = var.project_id
-  location = var.region
-  name     = var.worker_service_name
-  role     = "roles/run.invoker"
-  member   = "serviceAccount:${var.scheduler_invoker_email}"
+  members = [
+    "serviceAccount:${var.cloud_tasks_invoker_email}",
+    "serviceAccount:${var.scheduler_invoker_email}",
+  ]
 }
 
 resource "google_project_iam_member" "worker_firestore" {
@@ -105,7 +99,7 @@ resource "google_cloud_scheduler_job" "outbox_reconciler" {
   }
 
   depends_on = [
-    google_cloud_run_v2_service_iam_member.scheduler_invoker,
+    google_cloud_run_v2_service_iam_binding.private_invokers,
     google_service_account_iam_member.scheduler_token_creator,
   ]
 }
