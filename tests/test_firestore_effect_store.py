@@ -201,3 +201,41 @@ def test_missing_effect_or_attempt_fails_closed_on_recovery():
     store, _client = make_store()
     with pytest.raises(EffectStoreConflict):
         store.resume_same_attempt(effect_id="missing", attempt_id="missing:attempt:1")
+
+def test_terminal_receipt_commit_is_idempotent_after_acknowledgement_crash():
+    store, client = make_store()
+    dispatch(store)
+    receipt = {
+        "receipt_id": "PR-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "provider": "provider-a",
+        "provider_operation_id": "op-ack",
+        "outcome": "OBSERVED_SUCCESS",
+        "observation": {"ok": True},
+        "observation_digest": "sha256:ack",
+    }
+    kwargs = dict(
+        effect_id="EF-crash-001",
+        attempt_id="EF-crash-001:attempt:1",
+        receipt=receipt,
+        verified_authentication={"algorithm": "Ed25519", "key_id": "provider-key-1"},
+        expected_revision=1,
+    )
+    first = store.record_verified_receipt(**kwargs)
+    # Simulate retry after the process died after Firestore commit but before
+    # the caller received its acknowledgement.
+    second = store.record_verified_receipt(**kwargs)
+    assert second == first
+    assert second["revision"] == 2
+    assert len([key for key in client.data if key.startswith("provider_receipts/")]) == 1
+
+
+def test_failed_transaction_does_not_partially_commit():
+    store, client = make_store()
+    store.create_effect(planned_effect())
+    before = deepcopy(client.data)
+    with pytest.raises(EffectStoreConflict):
+        store.dispatch(effect_id="EF-crash-001",
+                       attempt_id="wrong-attempt",
+                       provider="provider-a", expected_revision=0)
+    assert client.data == before
+
