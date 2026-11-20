@@ -428,6 +428,54 @@ class FirestoreEffectStore:
         except RetryAuthorizationRejected as exc:
             raise EffectStoreConflict("retry authorization rejected; DENY") from exc
 
+    def bind_provider_operation_id(self, *, effect_id: str, attempt_id: str,
+                                   provider: str, provider_operation_id: str) -> dict[str, Any]:
+        """Durably bind a provider-created operation to this exact attempt.
+
+        This is a post-create persistence boundary, not provider idempotency:
+        if the process dies after provider acceptance but before this transaction,
+        the operation remains unaddressable and must stay UNKNOWN.
+        """
+        provider = _text(provider, "provider")
+        provider_operation_id = _text(provider_operation_id, "provider_operation_id")
+        effect_ref = self._effect_ref(effect_id)
+        attempt_ref = self._attempt_ref(effect_id, attempt_id)
+        event_id = _digest({"event": "PROVIDER_OPERATION_BOUND", "effect_id": effect_id,
+                            "attempt_id": attempt_id, "provider": provider,
+                            "provider_operation_id": provider_operation_id})
+        event_ref = self._event_ref(effect_id, event_id)
+        event = {"event_type": "PROVIDER_OPERATION_BOUND", "effect_id": effect_id,
+                 "attempt_id": attempt_id, "provider": provider,
+                 "provider_operation_id": provider_operation_id,
+                 "operation_id_digest": sha256(provider_operation_id.encode()).hexdigest()}
+
+        def body(tx: Any) -> dict[str, Any]:
+            effect = _data(effect_ref.get(transaction=tx))
+            attempt = _data(attempt_ref.get(transaction=tx))
+            existing_event = _data(event_ref.get(transaction=tx))
+            if effect is None or attempt is None:
+                raise EffectStoreConflict("provider operation binding requires durable effect and attempt")
+            if (effect.get("attempt_id") != attempt_id or attempt.get("attempt_id") != attempt_id
+                    or effect.get("provider") != provider or attempt.get("provider") != provider
+                    or effect.get("state") not in ("DISPATCHED", "UNKNOWN")
+                    or attempt.get("state") not in ("DISPATCHED", "UNKNOWN")):
+                raise EffectStoreConflict("provider operation binding effect/attempt/provider mismatch")
+            old_id = attempt.get("provider_operation_id")
+            if old_id is not None:
+                if old_id != provider_operation_id or attempt.get("provider_operation_provider") != provider:
+                    raise EffectStoreConflict("provider operation ID is immutable and already bound")
+                if existing_event != event:
+                    raise EffectStoreConflict("provider operation binding event missing or conflicting")
+                return attempt
+            if existing_event is not None:
+                raise EffectStoreConflict("orphan provider operation binding event")
+            updated = dict(attempt, provider_operation_id=provider_operation_id,
+                           provider_operation_provider=provider)
+            tx.set(attempt_ref, updated)
+            tx.create(event_ref, event)
+            return updated
+        return self._confirmed("provider operation binding transaction", body)
+
     def resume_same_attempt(self, *, effect_id: str, attempt_id: str) -> dict[str, Any]:
         """Read exact ambiguous attempt; caller must reconcile provider, never execute it."""
         effect = self.get_effect(effect_id)
