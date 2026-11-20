@@ -138,6 +138,10 @@ def resume_firestore_effect(
     _text(actor, "actor")
     recovered = store.resume_same_attempt(effect_id=effect_id, attempt_id=attempt_id)
     effect = recovered["effect"]
+    if effect.get("state") in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
+        # A worker may die after terminal commit but before acknowledgement.
+        # The durable receipt/state is authoritative; never call provider again.
+        return effect
     if effect.get("actor") != actor:
         raise PermissionError("resume actor does not own durable effect")
     contract, provider = _authorized_context(
