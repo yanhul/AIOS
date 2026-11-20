@@ -77,7 +77,7 @@ def signed_fixture():
         envelope = {
             "type": "AIOS_AUTHORITY_SIGNATURE", "algorithm": "Ed25519",
             "key_id": key_id, "principal": "ci-test-issuer",
-            "record_digest": record_digest(record), "issued_at": 100, "expires_at": 500,
+            "record_digest": record_digest(record), "issued_at": 1, "expires_at": 4102444800,
         }
         envelope["signature"] = private.sign(canonical_json(envelope).encode()).hex()
         return store.put_immutable(
