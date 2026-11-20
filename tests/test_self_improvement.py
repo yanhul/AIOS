@@ -219,6 +219,7 @@ def test_failed_latest_evaluation_blocks_promotion(tmp_path):
         promote_candidate(
             root, candidate_id=candidate_id, approver="independent-approver",
             evidence_verifier=lambda refs: True,
+            evaluation_verifier=lambda candidate, evaluation: True,
             promotion_authorizer=lambda candidate, evaluation, actor: True,
         )
 
@@ -250,6 +251,7 @@ def test_stale_candidate_cannot_replace_new_active_version(tmp_path):
         promote_candidate(
             root, candidate_id=second_id, approver="approver-2",
             evidence_verifier=lambda refs: True,
+            evaluation_verifier=lambda candidate, evaluation: True,
             promotion_authorizer=lambda candidate, evaluation, actor: True,
         )
 
@@ -266,6 +268,7 @@ def test_rollback_rejects_version_not_in_history(tmp_path):
     promote_candidate(
         root, candidate_id=candidate_id, approver="independent-approver",
         evidence_verifier=lambda refs: True,
+        evaluation_verifier=lambda candidate, evaluation: True,
         promotion_authorizer=lambda candidate, evaluation, actor: True,
     )
     with pytest.raises(CapabilityEvolutionError, match="previously active"):
@@ -273,4 +276,35 @@ def test_rollback_rejects_version_not_in_history(tmp_path):
             root, capability_id="research.deep", target_version="9.9.9",
             approver="rollback-approver", evidence_verifier=lambda refs: True,
             rollback_authorizer=lambda capability, current, target: True,
+        )
+
+
+def test_pass_experience_rejects_unverified_evidence_callback(tmp_path):
+    with pytest.raises(ExperienceError, match="not independently verified"):
+        record_experience(
+            state_dir(tmp_path),
+            **experience_args(
+                outcome="PASS", effect_id="EF-1", attempt_id="AT-1", receipt_id="RC-1",
+                verifier="independent-verifier", evaluation_id="EVAL-1",
+                verification_status="VERIFIED_DIGITAL",
+                pass_evidence_verifier=lambda claim: None,
+            ),
+        )
+
+
+def test_evaluation_provenance_must_be_verified_before_promotion(tmp_path):
+    root = state_dir(tmp_path)
+    candidate_id = propose_candidate(root, **candidate_args())["candidate_id"]
+    evaluate_candidate(
+        root, candidate_id=candidate_id, evaluator="independent-evaluator",
+        evaluator_version="verifier@1", verdict="PASS",
+        test_suite_digest=sha("tests"), comparison_digest=sha("comparison"),
+        evidence_refs=["EV-EVAL-1"], run_id="run-eval", actor="aios-ledger",
+    )
+    with pytest.raises(CapabilityEvolutionError, match="provenance"):
+        promote_candidate(
+            root, candidate_id=candidate_id, approver="independent-approver",
+            evidence_verifier=lambda refs: True,
+            evaluation_verifier=lambda candidate, evaluation: False,
+            promotion_authorizer=lambda candidate, evaluation, actor: True,
         )
