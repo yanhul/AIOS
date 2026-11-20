@@ -287,7 +287,10 @@ def test_retry_authorization_nonce_consumed_once_and_returns_effect_to_planned()
     assert resumed["attempt"] == 1
     assert len([key for key in client.data if key.startswith("retry_authorization_consumptions/")]) == 1
 
-    with pytest.raises(EffectStoreConflict, match="nonce already consumed"):
+    # A replay is denied before entering the transaction because the
+    # first consumption already moved the effect out of UNKNOWN.
+    from core.retry_issuer import RetryAuthorizationRejected
+    with pytest.raises(RetryAuthorizationRejected, match="UNKNOWN"):
         store.consume_retry_authorization(
             authorization=authorization, issuer_keyring=keyring,
             not_applied_verifier=verify_proof, now=150,
@@ -327,7 +330,8 @@ def test_retry_authorization_without_verified_not_applied_proof_is_denied():
     keyring = RetryIssuerKeyring({"independent": {
         "key_id": key_id, "public_key": public_hex, "revoked": False,
     }})
-    with pytest.raises(EffectStoreConflict, match="rejected"):
+    from core.retry_issuer import RetryAuthorizationRejected
+    with pytest.raises(RetryAuthorizationRejected, match="NOT_APPLIED"):
         store.consume_retry_authorization(
             authorization=authorization, issuer_keyring=keyring,
             not_applied_verifier=lambda **_kwargs: False, now=150,
