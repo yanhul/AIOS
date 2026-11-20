@@ -419,6 +419,25 @@ class FirestoreEffectStore:
         except Exception as exc:
             raise EffectStoreUnavailable("dispatch outbox readback was not confirmed") from exc
 
+    def list_dispatch_outbox_candidates(self, *, now: float, limit: int = 100) -> list[dict[str, Any]]:
+        """List pending and expired-lease obligations for a periodic reconciler."""
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
+            raise ValueError("limit must be an integer from 1 to 500")
+        try:
+            collection = self.client.collection("dispatch_outbox")
+            pending = list(collection.where("state", "==", "PENDING").limit(limit).stream())
+            remaining = max(0, limit - len(pending))
+            expired = []
+            if remaining:
+                expired = list(
+                    collection.where("state", "==", "LEASED")
+                    .where("lease_until", "<=", now).limit(remaining).stream()
+                )
+            return [record for snapshot in pending + expired
+                    if (record := _data(snapshot)) is not None]
+        except Exception as exc:
+            raise EffectStoreUnavailable("dispatch outbox scan was not confirmed") from exc
+
     def claim_dispatch_outbox(self, *, effect_id: str, attempt_id: str,
                               lease_owner: str, now: float, lease_seconds: int = 60) -> dict[str, Any]:
         """Lease one durable enqueue obligation; never changes effect/attempt state."""
