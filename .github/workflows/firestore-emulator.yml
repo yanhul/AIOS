@@ -13,7 +13,7 @@ permissions:
 jobs:
   firestore-emulator:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -59,6 +59,8 @@ jobs:
           GOOGLE_CLOUD_PROJECT: aios-emulator-test
           AIOS_FIRESTORE_PROJECT_ID: aios-emulator-test
         run: python -m pytest -q
+      - name: Build pinned worker OCI image (no push, no deployment)
+        run: docker build --pull=false --file Dockerfile.firestore-worker --tag aios-firestore-worker:ci .
       - name: Preserve emulator logs
         if: always()
         uses: actions/upload-artifact@v4
