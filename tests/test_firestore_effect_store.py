@@ -240,3 +240,95 @@ def test_failed_transaction_does_not_partially_commit():
                        provider="provider-a", expected_revision=0)
     assert client.data == before
 
+
+
+def test_retry_authorization_nonce_consumed_once_and_returns_effect_to_planned():
+    import hashlib
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from core.retry_issuer import SCHEMA, RetryIssuerKeyring, canonical_payload, effect_state_digest
+
+    store, client = make_store()
+    store.create_effect(dict(planned_effect(), max_attempts=2))
+    store.dispatch(effect_id="EF-crash-001", attempt_id="EF-crash-001:attempt:1",
+                   provider="provider-a", expected_revision=0)
+    unknown = store.mark_unknown(effect_id="EF-crash-001",
+                                 attempt_id="EF-crash-001:attempt:1",
+                                 reason="ambiguous provider outcome", expected_revision=1)
+    attempt = store.get_attempt("EF-crash-001", "EF-crash-001:attempt:1")
+
+    private = Ed25519PrivateKey.generate()
+    public_hex = private.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    ).hex()
+    key_id = "retry-ed25519:" + hashlib.sha256(bytes.fromhex(public_hex)).hexdigest()[:32]
+    payload = {
+        "schema": SCHEMA, "issuer_id": "independent", "key_id": key_id,
+        "effect_id": unknown["effect_id"], "contract_id": unknown["contract_id"],
+        "permit_id": unknown["permit_id"], "actor": unknown["actor"],
+        "provider": unknown["provider"], "attempt_id": unknown["attempt_id"],
+        "attempt_number": unknown["attempt"], "state": "UNKNOWN",
+        "state_revision": unknown["revision"], "state_digest": effect_state_digest(unknown),
+        "not_applied_proof_digest": "c" * 64, "nonce": "single-use-nonce-0001",
+        "issued_at": 100.0, "expires_at": 200.0, "policy_digest": unknown["policy_digest"],
+    }
+    authorization = dict(payload, signature=private.sign(canonical_payload(payload)).hex())
+    keyring = RetryIssuerKeyring({"independent": {
+        "key_id": key_id, "public_key": public_hex, "revoked": False,
+    }})
+    verify_proof = lambda **kwargs: kwargs["proof_digest"] == "c" * 64
+
+    resumed = store.consume_retry_authorization(
+        authorization=authorization, issuer_keyring=keyring,
+        not_applied_verifier=verify_proof, now=150,
+    )
+    assert resumed["state"] == "PLANNED"
+    assert resumed["revision"] == unknown["revision"] + 1
+    assert resumed["attempt"] == 1
+    assert len([key for key in client.data if key.startswith("retry_authorization_consumptions/")]) == 1
+
+    with pytest.raises(EffectStoreConflict, match="nonce already consumed"):
+        store.consume_retry_authorization(
+            authorization=authorization, issuer_keyring=keyring,
+            not_applied_verifier=verify_proof, now=150,
+        )
+
+
+def test_retry_authorization_without_verified_not_applied_proof_is_denied():
+    import hashlib
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from core.retry_issuer import SCHEMA, RetryIssuerKeyring, canonical_payload, effect_state_digest
+
+    store, _client = make_store()
+    store.create_effect(dict(planned_effect(), max_attempts=2))
+    store.dispatch(effect_id="EF-crash-001", attempt_id="EF-crash-001:attempt:1",
+                   provider="provider-a", expected_revision=0)
+    unknown = store.mark_unknown(effect_id="EF-crash-001",
+                                 attempt_id="EF-crash-001:attempt:1",
+                                 reason="ambiguous", expected_revision=1)
+    attempt = store.get_attempt("EF-crash-001", "EF-crash-001:attempt:1")
+    private = Ed25519PrivateKey.generate()
+    public_hex = private.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    ).hex()
+    key_id = "retry-ed25519:" + hashlib.sha256(bytes.fromhex(public_hex)).hexdigest()[:32]
+    payload = {
+        "schema": SCHEMA, "issuer_id": "independent", "key_id": key_id,
+        "effect_id": unknown["effect_id"], "contract_id": unknown["contract_id"],
+        "permit_id": unknown["permit_id"], "actor": unknown["actor"],
+        "provider": unknown["provider"], "attempt_id": unknown["attempt_id"],
+        "attempt_number": unknown["attempt"], "state": "UNKNOWN",
+        "state_revision": unknown["revision"], "state_digest": effect_state_digest(unknown),
+        "not_applied_proof_digest": "d" * 64, "nonce": "single-use-nonce-0002",
+        "issued_at": 100.0, "expires_at": 200.0, "policy_digest": unknown["policy_digest"],
+    }
+    authorization = dict(payload, signature=private.sign(canonical_payload(payload)).hex())
+    keyring = RetryIssuerKeyring({"independent": {
+        "key_id": key_id, "public_key": public_hex, "revoked": False,
+    }})
+    with pytest.raises(EffectStoreConflict, match="rejected"):
+        store.consume_retry_authorization(
+            authorization=authorization, issuer_keyring=keyring,
+            not_applied_verifier=lambda **_kwargs: False, now=150,
+        )
