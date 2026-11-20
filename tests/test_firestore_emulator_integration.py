@@ -133,6 +133,8 @@ def test_dispatch_outbox_is_atomic_leased_and_survives_restart():
     assert outbox["state"] == "PENDING"
     assert outbox["task_id"] == deterministic_task_name(effect_id, attempt_id)
     assert outbox["expected_revision"] == 1
+    candidates = store.list_dispatch_outbox_candidates(now=1000, limit=20)
+    assert any(item["task_id"] == outbox["task_id"] for item in candidates)
     assert store.get_effect(effect_id)["state"] == "DISPATCHED"
     assert store.get_attempt(effect_id, attempt_id)["state"] == "DISPATCHED"
 
