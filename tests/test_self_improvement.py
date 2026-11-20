@@ -98,6 +98,7 @@ def test_pass_experience_accepts_complete_independent_lineage(tmp_path):
             outcome="PASS", effect_id="EF-1", attempt_id="AT-1", receipt_id="RC-1",
             verifier="independent-verifier", evaluation_id="EVAL-1",
             verification_status="VERIFIED_DIGITAL",
+            pass_evidence_verifier=lambda claim: True,
         ),
     )
     stored = load_experiences(root)[result["experience_id"]]
@@ -127,6 +128,7 @@ def test_candidate_is_not_active_until_independent_evaluation_and_authority(tmp_
         promote_candidate(
             root, candidate_id=candidate_id, approver="approver",
             evidence_verifier=lambda refs: True,
+            evaluation_verifier=lambda candidate, evaluation: True,
             promotion_authorizer=lambda candidate, evaluation, actor: True,
         )
 
@@ -156,18 +158,21 @@ def test_promotion_requires_three_distinct_identities_and_exact_true_callbacks(t
         promote_candidate(
             root, candidate_id=candidate_id, approver="independent-evaluator",
             evidence_verifier=lambda refs: True,
+            evaluation_verifier=lambda candidate, evaluation: True,
             promotion_authorizer=lambda candidate, evaluation, actor: True,
         )
     with pytest.raises(CapabilityEvolutionError, match="not independently verified"):
         promote_candidate(
             root, candidate_id=candidate_id, approver="independent-approver",
             evidence_verifier=lambda refs: None,
+            evaluation_verifier=lambda candidate, evaluation: True,
             promotion_authorizer=lambda candidate, evaluation, actor: True,
         )
     with pytest.raises(PermissionError, match="denied"):
         promote_candidate(
             root, candidate_id=candidate_id, approver="independent-approver",
             evidence_verifier=lambda refs: True,
+            evaluation_verifier=lambda candidate, evaluation: True,
             promotion_authorizer=lambda candidate, evaluation, actor: None,
         )
 
@@ -184,6 +189,7 @@ def test_promotion_and_rollback_are_append_only_and_authorized(tmp_path):
     promoted = promote_candidate(
         root, candidate_id=candidate_id, approver="independent-approver",
         evidence_verifier=lambda refs: True,
+        evaluation_verifier=lambda candidate, evaluation_record: True,
         promotion_authorizer=lambda candidate, evaluation_record, actor: True,
     )
     assert promoted["status"] == "PROMOTED"
@@ -228,6 +234,7 @@ def test_stale_candidate_cannot_replace_new_active_version(tmp_path):
     promote_candidate(
         root, candidate_id=first_id, approver="approver-1",
         evidence_verifier=lambda refs: True,
+        evaluation_verifier=lambda candidate, evaluation: True,
         promotion_authorizer=lambda candidate, evaluation, actor: True,
     )
     second_id = propose_candidate(
