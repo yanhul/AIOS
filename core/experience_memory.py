@@ -13,7 +13,7 @@ import hashlib
 import json
 import os
 import re
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from .mutation import (
     MutationError,
@@ -111,6 +111,7 @@ def record_experience(
     effect_id: str | None = None, attempt_id: str | None = None,
     receipt_id: str | None = None, verifier: str | None = None,
     evaluation_id: str | None = None, verification_status: str | None = None,
+    pass_evidence_verifier: Callable[[Mapping[str, Any]], bool] | None = None,
     summary: str = "",
 ) -> dict[str, Any]:
     """Append an immutable task/capability/outcome record.
@@ -153,6 +154,26 @@ def record_experience(
         raise ExperienceError("verification_status is not a recognized verification level")
     if not isinstance(summary, str):
         raise ExperienceError("summary must be a string")
+    if outcome == "PASS":
+        if not callable(pass_evidence_verifier):
+            raise ExperienceError("PASS requires a trusted evidence/receipt/evaluation verifier")
+        verification_claim = {
+            "capability_id": capability_id,
+            "capability_version": capability_version,
+            "task_id": task_id,
+            "evidence_refs": refs,
+            "run_id": run_id,
+            "source_commit": source_commit,
+            "artifact_digest": artifact_digest,
+            "effect_id": effect_id,
+            "attempt_id": attempt_id,
+            "receipt_id": receipt_id,
+            "verifier": verifier,
+            "evaluation_id": evaluation_id,
+            "verification_status": verification_status,
+        }
+        if pass_evidence_verifier(verification_claim) is not True:
+            raise ExperienceError("PASS evidence, receipt lineage or evaluation was not independently verified")
 
     record: dict[str, Any] = {
         "record_type": "EXPERIENCE",
