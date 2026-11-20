@@ -1,14 +1,15 @@
 """Firestore-backed, Ed25519-verified authority resolution.
 
 Every artifact is independently signed and immutable. This resolver performs
-domain validation and cross-binding; it deliberately does not issue permits,
-create trust anchors, or call providers.
+domain validation, HMAC attestation verification, and cross-binding; it does
+not issue permits, create trust anchors, or call providers.
 """
 from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any
 
+from .attestation import verify_attestation
 from .contract import contract_identity, validate_contract, verify_permit
 from .firestore_authority import AuthorityStoreError, FirestoreAuthorityStore
 from .policy_registry import POLICY_TYPE, policy_digest as governing_policy_digest
@@ -26,11 +27,15 @@ class FirestoreAuthorityResolver:
         store: FirestoreAuthorityStore,
         *,
         trust_anchor: Mapping[str, Mapping[str, Any]],
+        attestation_secret: str,
     ) -> None:
         if not isinstance(trust_anchor, Mapping) or not trust_anchor:
             raise FirestoreAuthorityResolutionError("pinned trust anchor required; DENY")
+        if not isinstance(attestation_secret, str) or len(attestation_secret) < 16:
+            raise FirestoreAuthorityResolutionError("trusted attestation verification secret required; DENY")
         self._store = store
         self._trust_anchor = trust_anchor
+        self._attestation_secret = attestation_secret
 
     def _read(self, digest: str, record_type: str) -> dict[str, Any]:
         try:
@@ -72,15 +77,7 @@ class FirestoreAuthorityResolver:
             if cid != contract.get("contract_id", cid):
                 raise ValueError("contract identity mismatch")
             verify_permit(contract, permit)
-            if attestation != {
-                "attestation_type": "EXECUTION_PERMIT_ATTESTATION",
-                "contract_id": cid,
-                "permit_id": permit["permit_id"],
-                "issuer": permit["issuer"],
-                "algorithm": "HMAC-SHA256",
-                "signature": attestation.get("signature"),
-            } or not isinstance(attestation.get("signature"), str) or len(attestation["signature"]) != 64:
-                raise ValueError("issuer attestation binding/schema mismatch")
+            verify_attestation(contract, permit, attestation, self._attestation_secret)
             if policy.get("policy_digest") != contract["policy_digest"]:
                 raise ValueError("contract policy digest does not bind resolved policy")
             policy_content = dict(policy)
