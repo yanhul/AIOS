@@ -1,0 +1,65 @@
+"""Durable Firestore dispatch-outbox publisher.
+
+A batch runner can scan Firestore outbox candidates and call
+publish_dispatch_outbox_item. The deterministic task identity makes a retry
+safe after a crash between Cloud Tasks acceptance and Firestore acknowledgement.
+"""
+from __future__ import annotations
+
+from typing import Any
+
+from .cloud_tasks_publisher import (
+    CloudTasksPublishError, build_dispatch_envelope, publish_dispatch_task,
+)
+
+
+def publish_dispatch_outbox_item(
+    *, store: Any, client: Any, project: str, location: str, queue: str,
+    target_url: str, oidc_service_account: str, effect_id: str, attempt_id: str,
+    lease_owner: str, now: float, task_ttl_seconds: int = 300,
+) -> dict[str, Any]:
+    """Publish one committed outbox item and persist acknowledgement.
+
+    If enqueue is ambiguous, the lease is released and the same deterministic
+    task identity remains pending. No new effect attempt is allocated.
+    """
+    if isinstance(task_ttl_seconds, bool) or not isinstance(task_ttl_seconds, int) or task_ttl_seconds < 1:
+        raise ValueError("task_ttl_seconds must be a positive integer")
+    claimed = store.claim_dispatch_outbox(
+        effect_id=effect_id, attempt_id=attempt_id, lease_owner=lease_owner,
+        now=now,
+    )
+    if claimed.get("state") == "PUBLISHED":
+        return claimed
+    payload = build_dispatch_envelope(
+        effect_id=effect_id, attempt_id=attempt_id,
+        expected_revision=claimed["expected_revision"],
+        issued_at=now, expires_at=now + task_ttl_seconds,
+    )
+    try:
+        task_id = publish_dispatch_task(
+            client=client, project=project, location=location, queue=queue,
+            target_url=target_url, oidc_service_account=oidc_service_account,
+            payload=payload,
+        )
+    except Exception as exc:
+        try:
+            store.release_dispatch_outbox(
+                effect_id=effect_id, attempt_id=attempt_id,
+                lease_owner=lease_owner, error=type(exc).__name__,
+            )
+        except Exception as release_exc:
+            raise CloudTasksPublishError(
+                "enqueue outcome and outbox lease release are both unconfirmed; reconcile same task identity"
+            ) from release_exc
+        if isinstance(exc, CloudTasksPublishError):
+            raise
+        raise CloudTasksPublishError("outbox enqueue failed; reconcile same task identity") from exc
+    published = store.mark_dispatch_outbox_published(
+        effect_id=effect_id, attempt_id=attempt_id,
+        lease_owner=lease_owner, published_at=now,
+    )
+    return dict(published, task_id=task_id)
+
+
+__all__ = ["publish_dispatch_outbox_item"]
