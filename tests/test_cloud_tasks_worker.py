@@ -82,3 +82,36 @@ def test_mismatched_firestore_identity_is_rejected():
     status, body = handle_dispatch_delivery(payload(), store=store, now=150)
     assert status == 400
     assert body["status"] == "REJECTED"
+
+
+def test_wsgi_dispatch_route_requires_task_name_and_acks_terminal_duplicate():
+    import io
+    import json
+    import time
+    from core.cloud_tasks_contract import deterministic_task_name
+    from core.cloud_tasks_worker import create_app
+
+    store = Store("OBSERVED_SUCCESS")
+    now = time.time()
+    body = payload()
+    body["issued_at"] = now - 10
+    body["expires_at"] = now + 60
+    task_name = "projects/test/locations/asia-southeast1/queues/aios/tasks/" + deterministic_task_name(
+        body["effect_id"], body["attempt_id"]
+    )
+    app = create_app(store_factory=lambda: store)
+    captured = {}
+
+    def start_response(status, headers):
+        captured["status"] = status
+        captured["headers"] = headers
+
+    environ = {
+        "REQUEST_METHOD": "POST", "PATH_INFO": "/dispatch",
+        "CONTENT_LENGTH": str(len(json.dumps(body).encode())),
+        "wsgi.input": io.BytesIO(json.dumps(body).encode()),
+        "HTTP_X_CLOUDTASKS_TASKNAME": task_name,
+    }
+    response = b"".join(app(environ, start_response))
+    assert captured["status"].startswith("204")
+    assert response == b""
