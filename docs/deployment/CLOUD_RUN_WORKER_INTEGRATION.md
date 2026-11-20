@@ -105,3 +105,36 @@ CI validates Python tests, Firestore Emulator integration, Docker build and
 Terraform formatting/validation. This is not proof of Cloud Run IAM, token
 verification against live Google identities, Scheduler delivery, or provider
 reconciliation in GCP. No staging/production apply has been run.
+
+## Selected provider: Gemini Developer API (design decision; adapter not implemented)
+
+Gemini Developer API is the selected model provider. For asynchronous work, prefer
+its Interactions API with `background=true`: creation returns an interaction ID,
+and `GET /v1beta/interactions/{id}` retrieves the interaction status/result.
+See the official [background execution guide](https://ai.google.dev/gemini-api/docs/background-execution)
+and [getting started guide](https://ai.google.dev/gemini-api/docs/get-started).
+
+This API capability is not, by itself, an exactly-once execution guarantee or a
+provider-signed AIOS receipt. Recovery by GET is possible only after the
+interaction ID has been durably bound to the exact Firestore attempt. A crash
+after Gemini accepts the create request but before that ID is committed leaves
+an ambiguous attempt; AIOS must keep it UNKNOWN and must not submit a replacement
+request automatically. The current Firestore execution path does not yet persist
+an interaction ID before treating the provider operation as recoverable.
+
+Before a Gemini adapter can be enabled, implementation and tests must establish:
+1. a Firestore CAS binding of the returned interaction ID to one immutable
+   effect/attempt, rejecting conflicting IDs;
+2. crash tests at the boundary between Gemini create and Firestore ID commit;
+3. read-only GET reconciliation for that persisted ID, mapping only confirmed
+   terminal states and retaining UNKNOWN for missing/inaccessible/inconclusive
+   results;
+4. a trusted receipt-attestation design compatible with AIOS provider receipt
+   verification. Gemini's returned interaction object is not to be represented
+   as a Gemini-signed Ed25519 receipt;
+5. explicit handling of create-request timeouts: no blind resubmission, because
+   a client-generated AIOS idempotency key is not evidence that Gemini deduplicates
+   create requests.
+
+No Gemini API key is present in this repository, no Gemini request has been
+made, and no adapter or production secret has been created by this decision.
