@@ -201,9 +201,15 @@ class FirestoreDurableRuntime:
         return self._persist(effect, attempt_id, 1)
 
     def retry(self, *, effect: Mapping[str, Any], attempt_id: str, attempt: int) -> RuntimeSubmission:
-        # AIOS must have already authorized and persisted this retry. This method
-        # records that exact attempt; it does not issue or validate retry authority.
-        return self._persist(effect, attempt_id, attempt)
+        # The current AIOS DurableRuntime protocol does not provide the previous
+        # attempt's durable UNKNOWN transition or a Firestore-verifiable,
+        # signed NOT_APPLIED proof. Recording a new attempt here would therefore
+        # bypass the ledger's retry gate. Keep retries disabled until that
+        # evidence is part of the adapter contract.
+        raise LedgerConflict(
+            "Firestore retry is blocked: durable UNKNOWN + authenticated NOT_APPLIED "
+            "reconciliation must be integrated before a new attempt can be recorded"
+        )
 
     def resume(self, *, effect: Mapping[str, Any], attempt_id: str) -> RuntimeSubmission:
         effect_id = _required_text(effect.get("effect_id"), "effect.effect_id")
