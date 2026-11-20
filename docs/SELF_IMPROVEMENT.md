@@ -33,9 +33,13 @@ evaluation references and return exactly true. Negative outcomes remain
 recorded and are not rewritten as success.
 
 The experience and its audit event are committed in one shared mutation batch.
-Loading checks content identity and the matching audit event. The current store
-uses the local `.aios` state tree and the shared filesystem mutation lock; it
-does not claim multi-host/Firestore durability.
+Loading checks content identity and the matching audit event. This detects
+record/event mismatch and accidental or unilateral edits; it is not a
+cryptographic defense against a privileged actor rewriting both files. The
+local store does not sign records or establish actor authenticity. It uses the
+local `.aios` state tree and shared filesystem mutation lock, and does not
+claim multi-host/Firestore durability. Production identity and receipt
+authenticity must be supplied by trusted authority/evidence callbacks.
 
 ## 3. M11: candidate and version lifecycle
 
@@ -46,8 +50,9 @@ does not claim multi-host/Firestore durability.
 2. `evaluate_candidate`: independent evaluator identity/version, PASS/FAIL/
    INCONCLUSIVE verdict, test-suite digest, comparison digest and evidence.
 3. `promote_candidate`: requires latest evaluation PASS, distinct proposer,
-   evaluator and approver, evidence verifier returning exactly true, a fresh
-   base version, and an AIOS promotion authorizer returning exactly true.
+   evaluator and approver, independent evaluation-provenance verification,
+   evidence verifier returning exactly true, a fresh base version, and an
+   AIOS promotion authorizer returning exactly true.
 4. `rollback_capability`: separately authorized append-only rollback to a
    version present in the capability's prior decision history.
 
@@ -74,7 +79,8 @@ provide a Firestore adapter, cross-host locking, automatic CI artifact
 discovery, statistical contribution/credit assignment, or a relationship graph.
 Those remain required before M10/M11 can be declared operationally complete.
 
-A green unit test suite proves only the tested local invariants. It does not
-prove production identity custody, Firestore durability, provider correctness,
-or safe rollout. Missing or inconclusive evidence must remain BLOCKED or
+A green unit test suite proves only the tested local invariants. Local content
+hashes and audit events are not signatures and do not resist a privileged,
+coordinated rewrite of both record and event. Tests do not prove production
+identity custody, Firestore durability, provider correctness, or safe rollout. Missing or inconclusive evidence must remain BLOCKED or
 INCONCLUSIVE.
