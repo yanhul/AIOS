@@ -58,7 +58,8 @@ def args(store, client):
         queue="aios", target_url="https://worker.example/dispatch",
         oidc_service_account="worker@emulator.iam.gserviceaccount.com",
         effect_id="EF-outbox-1", attempt_id="EF-outbox-1:attempt:1",
-        lease_owner="publisher-1", now=1000,
+        lease_owner="publisher-1", now=1000, lease_seconds=30,
+        task_ttl_seconds=300,
     )
 
 
@@ -87,7 +88,8 @@ def test_batch_reconciler_scans_and_publishes_bounded_outbox_items():
         store=store, client=client, project="emulator", location="asia-southeast1",
         queue="aios", target_url="https://worker.example/dispatch",
         oidc_service_account="worker@emulator.iam.gserviceaccount.com",
-        lease_owner="publisher-batch", now=1000, limit=10,
+        lease_owner="publisher-batch", now=1000, lease_seconds=30,
+        limit=10, task_ttl_seconds=300,
     )
     assert result["scanned"] == 1
     assert len(result["published"]) == 1
