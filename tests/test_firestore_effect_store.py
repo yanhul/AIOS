@@ -336,3 +336,41 @@ def test_retry_authorization_without_verified_not_applied_proof_is_denied():
             authorization=authorization, issuer_keyring=keyring,
             not_applied_verifier=lambda **_kwargs: False, now=150,
         )
+
+
+def test_dispatch_creates_durable_outbox_and_enforces_single_publisher_lease():
+    from core.cloud_tasks_contract import deterministic_task_name
+
+    store, client = make_store()
+    dispatch(store)
+    task_id = deterministic_task_name("EF-crash-001", "EF-crash-001:attempt:1")
+    outbox_path = "dispatch_outbox/" + task_id
+    assert client.data[outbox_path]["state"] == "PENDING"
+    assert client.data[outbox_path]["expected_revision"] == 1
+
+    claimed = store.claim_dispatch_outbox(
+        effect_id="EF-crash-001", attempt_id="EF-crash-001:attempt:1",
+        lease_owner="publisher-a", now=100, lease_seconds=30,
+    )
+    assert claimed["state"] == "LEASED"
+    with pytest.raises(EffectStoreConflict, match="leased"):
+        store.claim_dispatch_outbox(
+            effect_id="EF-crash-001", attempt_id="EF-crash-001:attempt:1",
+            lease_owner="publisher-b", now=110, lease_seconds=30,
+        )
+    released = store.release_dispatch_outbox(
+        effect_id="EF-crash-001", attempt_id="EF-crash-001:attempt:1",
+        lease_owner="publisher-a", error="simulated enqueue timeout",
+    )
+    assert released["state"] == "PENDING"
+    reclaimed = store.claim_dispatch_outbox(
+        effect_id="EF-crash-001", attempt_id="EF-crash-001:attempt:1",
+        lease_owner="publisher-b", now=111, lease_seconds=30,
+    )
+    assert reclaimed["state"] == "LEASED"
+    published = store.mark_dispatch_outbox_published(
+        effect_id="EF-crash-001", attempt_id="EF-crash-001:attempt:1",
+        lease_owner="publisher-b", published_at=112,
+    )
+    assert published["state"] == "PUBLISHED"
+    assert store.get_effect("EF-crash-001")["state"] == "DISPATCHED"
