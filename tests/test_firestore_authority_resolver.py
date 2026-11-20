@@ -6,6 +6,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from core.contract import contract_identity, issue_permit
+from core.attestation import issue_attestation
 from core.firestore_authority import FirestoreAuthorityStore, record_digest
 from core.firestore_authority_resolver import (
     FirestoreAuthorityResolutionError, FirestoreAuthorityResolver,
@@ -69,11 +70,7 @@ def signed_fixture():
         "policy_digest": policy["policy_digest"],
     }
     permit = issue_permit(contract, "ci-test-issuer")
-    attestation = {
-        "attestation_type": "EXECUTION_PERMIT_ATTESTATION",
-        "contract_id": contract_identity(contract), "permit_id": permit["permit_id"],
-        "issuer": permit["issuer"], "algorithm": "Ed25519",
-    }
+    attestation = issue_attestation(contract, permit, "ci-fixture-key-material")
 
     def put(kind, ident, record):
         envelope = {
@@ -91,7 +88,7 @@ def signed_fixture():
         "contract": put("EXECUTION_CONTRACT", "contract-1", contract),
         "permit": put("EXECUTION_PERMIT", "permit-1", permit),
         "attestation": put("EXECUTION_PERMIT_ATTESTATION", "attestation-1", attestation),
-        "policy": put("POLICY", "policy-1", policy),
+        "policy": put("GOVERNING_POLICY", "policy-1", policy),
         "capability": put("CAPABILITY", "worker-1", cap),
     }
     return FirestoreAuthorityResolver(store, trust_anchor=anchor), digests
