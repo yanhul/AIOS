@@ -82,3 +82,44 @@ def test_execution_rejects_incomplete_firestore_digest_bundle():
             "/unused", "CT-any", "PT-any", "ci-issuer", Adapter(),
             authority_resolver=Mock(), authority_digests={"contract_digest": "1" * 64},
         )
+
+
+def test_firestore_execution_persists_authority_digest_bundle_for_worker_recovery():
+    from core.firestore_execution import execute_firestore_effect
+
+    contract = _contract()
+    resolver = Mock()
+    resolver.resolve.return_value = {
+        "contract": contract,
+        "permit": {"permit_id": "PT-ci", "actor": "ci-issuer"},
+        "authority_backend": "firestore-ed25519",
+    }
+    store = Mock()
+    store.create_effect.return_value = {
+        "effect_id": "EF-ci", "state": "PLANNED", "revision": 0,
+        "attempt": 0, "actor": "ci-issuer",
+    }
+    store.dispatch.return_value = {
+        "effect_id": "EF-ci", "state": "DISPATCHED", "revision": 1,
+        "attempt": 1, "attempt_id": "EF-ci:attempt:1",
+        "actor": "ci-issuer", "provider": "ci-test-provider",
+        "contract_id": contract_identity(contract), "permit_id": "PT-ci",
+    }
+
+    class AmbiguousAdapter:
+        name = "ci-test-provider"
+
+        def execute(self, **kwargs):
+            raise TimeoutError("simulated worker crash")
+
+    with patch("core.firestore_execution._authorized_context", return_value=(contract, "ci-test-provider")), \
+         patch("core.firestore_execution.effect_id_for", return_value="EF-ci"):
+        execute_firestore_effect(
+            None, store, contract_identity(contract), "PT-ci", "operation-1",
+            "ci-issuer", AmbiguousAdapter(), authority_resolver=resolver,
+            authority_digests=_digests(),
+        )
+
+    created = store.create_effect.call_args.args[0]
+    assert created["authority_digests"] == _digests()
+    store.mark_unknown.assert_called_once()
