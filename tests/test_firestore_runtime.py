@@ -158,3 +158,16 @@ def test_submission_rejects_non_dispatched_or_wrong_attempt():
 
     with pytest.raises(ValueError, match="deterministic"):
         runtime.submit(effect=make_effect(), attempt_id="caller-invented-attempt")
+
+def test_submit_never_reopens_unknown_effect():
+    runtime, client = make_runtime()
+    effect = make_effect()
+    attempt_id = "EF-test-001:attempt:1"
+    runtime.submit(effect=effect, attempt_id=attempt_id)
+    client.data["effects/EF-test-001"]["state"] = "UNKNOWN"
+
+    with pytest.raises(LedgerConflict, match="refusing to reopen"):
+        runtime.submit(effect=effect, attempt_id=attempt_id)
+
+    assert client.data["effects/EF-test-001"]["state"] == "UNKNOWN"
+
