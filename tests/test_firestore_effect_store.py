@@ -398,3 +398,14 @@ def test_effect_rejects_incomplete_authority_digest_bundle():
     effect["authority_digests"] = {"contract_digest": "a" * 64}
     with pytest.raises(ValueError, match="complete signed authority bundle"):
         store.create_effect(effect)
+
+
+def test_production_dispatch_rejects_missing_execution_lineage(monkeypatch):
+    monkeypatch.setenv("AIOS_REQUIRE_EXECUTION_LINEAGE", "true")
+    store, _client = make_store()
+    store.create_effect(planned_effect())
+    with pytest.raises(EffectStoreConflict, match="execution lineage"):
+        store.dispatch(
+            effect_id="EF-crash-001", attempt_id="EF-crash-001:attempt:1",
+            provider="provider-a", expected_revision=0,
+        )
