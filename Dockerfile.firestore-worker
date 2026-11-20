@@ -11,6 +11,7 @@ RUN groupadd --system aios && useradd --system --gid aios --home-dir /nonexisten
 COPY requirements-firestore.txt /app/requirements-firestore.txt
 RUN python -m pip install --no-cache-dir --requirement /app/requirements-firestore.txt
 COPY core /app/core
+COPY aios_worker_adapters /app/aios_worker_adapters
 COPY worker_wsgi.py /app/worker_wsgi.py
 USER aios:aios
 EXPOSE 8080
