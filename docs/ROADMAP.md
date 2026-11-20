@@ -90,20 +90,20 @@ Status: M1 + M1.5 implemented; M2/M3 foundations implemented; absorbed execution
 - **Absorbed:** fine-grained test/rubric results are provenance-bound; reward/score is a signal, not promotion authority.
 - **Absorbed:** evaluator/grader is a bounded capability and cannot become a second control plane.
 
-### M10 — Experience / contribution / relationship memory
-- Record task -> capability -> action -> evidence -> result lineage.
-- Measure contribution/utility from verified outcomes.
-- Preserve negative evidence and failure history.
-- Learn capability relationships without treating model memory as truth.
-- **Reserved:** group/trajectory/attempt identity for future attribution and multi-rollout learning.
+### M10 — Experience / contribution / relationship memory (PARTIAL IMPLEMENTATION)
+- Append-only experience records bind task, capability/version, contributor, outcome, run, source commit, artifact digest and evidence references.
+- PASS experiences require exact effect -> attempt -> receipt lineage, an independent verifier, a linked evaluation and VERIFIED_DIGITAL/VERIFIED_PHYSICAL status.
+- BLOCKED and INCONCLUSIVE experiences are retained as negative evidence; they cannot be promoted to success.
+- Records and audit events commit atomically through the shared local mutation kernel; content identities are deterministic and record/event mismatches are detected on load. This is not a cryptographic defense against a privileged coordinated rewrite.
+- Remaining: Firestore-backed experience repository, contribution aggregation from verified outcomes, capability relationship graph, and multi-rollout attribution.
 
-### M11 — Capability evolution
-- Candidate capability/version generation.
-- Regression and comparative evaluation.
-- Evidence review and promotion gate.
-- Versioned rollback.
-- No self-promotion.
-- **Reserved:** agentic/in-group credit assignment interface; algorithm remains research until independently specified and verified.
+### M11 — Capability evolution (PARTIAL IMPLEMENTATION)
+- Append-only candidate records bind capability ID, base/candidate semantic versions, source commit, patch digest, change summary, run and evidence.
+- Independent evaluation records bind evaluator identity/version, verdict, test-suite digest, comparison digest and evidence.
+- Promotion requires PASS, three distinct proposer/evaluator/approver identities, independently verified evidence, a fresh base version and an explicit AIOS authorization callback returning exactly true.
+- Rollback is an append-only, separately authorized decision to a version present in prior promotion history.
+- No self-promotion; reward/score is not promotion authority.
+- Remaining: Firestore-backed candidate/evaluation/decision store, automatic CI artifact ingestion, active capability-registry integration, and deployment/rollback orchestration.
 
 ## Phase D — Real-world AIOS
 

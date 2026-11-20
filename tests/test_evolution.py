@@ -1,8 +1,8 @@
 # AIOS-CONTRACT: evolution cannot bypass evaluation or authorization
 # AIOS-REGRESSION: admission/promotion require explicit predecessor evidence
 # AIOS-OWNER: AIOS control-plane evolution authority
-# AIOS-COVERAGE-GAP: TRY adapter referenced an evolution API absent from current core
-# AIOS-BASELINE: no strict compatibility facade existed
+# AIOS-COVERAGE-GAP: fail-closed promotion authorization return semantics
+# AIOS-BASELINE: governed TRY admission facade
 import pytest
 from core.evolution import Candidate, EvaluationEvidence, admit, promote, record_evaluation, transition
 
@@ -31,3 +31,11 @@ def test_authorization_denial_blocks_promotion():
     c=record_evaluation(c,evidence(),evaluator_digest="eval:v1")
     c=admit(c)
     with pytest.raises(PermissionError): promote(c,authorize=lambda _: False)
+
+@pytest.mark.parametrize("result", [None, 0, 1, "yes", {}])
+def test_non_boolean_or_ambiguous_authorization_result_fails_closed(result):
+    c=transition(candidate(),"CHALLENGER")
+    c=record_evaluation(c,evidence(),evaluator_digest="eval:v1")
+    c=admit(c)
+    with pytest.raises(PermissionError,match="exactly True"):
+        promote(c,authorize=lambda _: result)

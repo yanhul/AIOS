@@ -74,8 +74,10 @@ def admit(candidate:Candidate,*,required_status:str="PASS")->Candidate:
 def promote(candidate:Candidate,*,authorize:Callable[[Candidate],Any])->Candidate:
     if candidate.state!="ADMITTED" or candidate.evidence_digest is None:
         raise ValueError("promotion requires admitted candidate with evidence")
-    if authorize(candidate) is False:
-        raise PermissionError("promotion authorization denied")
+    # Authorization is an explicit positive decision, not "anything except False".
+    # None, 0, missing return values and other truthy objects fail closed.
+    if authorize(candidate) is not True:
+        raise PermissionError("promotion authorization must return exactly True")
     return transition(candidate,"ACTIVE")
 
 def candidate_digest(candidate:Candidate)->str:
