@@ -97,7 +97,9 @@ def _persist(aios_dir: str, folder: str, record: dict[str, Any], actor: str, act
     if os.path.exists(destination):
         with open(destination, "r", encoding="utf-8") as fh:
             existing = json.load(fh)
-        if canonical_json(existing) != canonical_json(record):
+        existing_logical = {k: value for k, value in existing.items() if k != "created_at"}
+        record_logical = {k: value for k, value in record.items() if k != "created_at"}
+        if canonical_json(existing_logical) != canonical_json(record_logical):
             raise TransitionError(f"immutable identity collision: {record['record_id']}")
         _require_event(aios_dir, record, action)
         return {"record_id": record["record_id"], "replayed": True}
