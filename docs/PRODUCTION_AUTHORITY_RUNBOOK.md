@@ -12,9 +12,7 @@ Set these in the production deployment environment (not in the repository):
 - `AIOS_PROVIDER_KEYRING` (when HMAC-based providers are used): JSON object keyed by provider; each active entry
   contains a deployment-only `secret` (at least 32 characters),
   `scopes: ["provider.receipt.sign"]`, and optional `revoked: true`. It may be an empty object when all deployed providers use Ed25519.
-- `AIOS_RETRY_ISSUER_KEYRING`: JSON object keyed by retry issuer; each active
-  entry contains a distinct secret (at least 32 characters),
-  `scopes: ["effect.retry.approve"]`, and optional `revoked: true`.
+- `AIOS_RETRY_ISSUER_ED25519_KEYRING`: JSON object keyed by retry issuer; each active entry contains only `key_id`, 32-byte hex `public_key`, and optional `revoked: true`. The matching private key is held only by the separately protected issuer.
 - `AIOS_PROVIDER_ED25519_KEYRING`: verifier-side public key registry. The
   `minimind` entry is mandatory and must contain a valid `key_id` and 32-byte
   hex `public_key`; private keys must remain in the workload secret store.
@@ -96,3 +94,42 @@ provider receipt challenge and verify its persisted receipt before promotion.
 Never generate replacement production secrets in CI or commit them to Git.
 If a reviewer key or signing secret is unavailable, the correct result is
 BLOCKED, not a synthetic PASS.
+
+## Independent Ed25519 retry issuer (integrated verifier protocol)
+
+Production retry approval no longer uses `AIOS_RETRY_ISSUER_KEYRING` or an
+in-process HMAC secret. Configure `AIOS_RETRY_ISSUER_ED25519_KEYRING` as a
+protected deployment variable containing only public keys:
+
+```json
+{
+  "issuer:production-approver": {
+    "key_id": "ed25519:<first-32-hex-of-sha256-of-raw-public-key>",
+    "public_key": "<32-byte-Ed25519-public-key-hex>",
+    "revoked": false
+  }
+}
+```
+
+The independent issuer owns the matching private key outside AIOS and signs a
+`RETRY_AUTHORIZATION_ED25519` record. The signature covers the authorization
+ID, exact effect/contract/permit, actor, provider, full UNKNOWN-state digest,
+previous and next attempt IDs, reason, unknown reason, scope, algorithm, key
+ID, and validity window. AIOS imports the signed record with
+`import_retry_authorization(...)`, validates it against the current persisted
+UNKNOWN effect using the pinned public-key registry, then atomically consumes
+it with the retry dispatch. Reuse, expiry, stale state, changed provider,
+changed attempt, wrong actor, revoked key, or invalid signature fails closed.
+
+The legacy `AIOS_RETRY_ISSUER_KEYRING` is retained only for non-production
+test compatibility. It is rejected whenever `AIOS_REQUIRE_EXECUTION_LINEAGE=true`.
+The production preflight now requires the Ed25519 public-key registry and at
+least one non-revoked issuer distinct from the deployment executor and
+reviewer. Do not copy a private key into AIOS or its CI environment.
+
+This software integration does not provision the issuer's private key or the
+production public-key trust anchor, and it does not prove a live issuer run.
+Production remains BLOCKED until the independently operated issuer workflow,
+protected environment approval, public-key pinning, immutable readback, and a
+live signed authorization → AIOS import → provider NOT_APPLIED reconciliation
+→ single-use retry → persisted receipt → restart verification are evidenced.
