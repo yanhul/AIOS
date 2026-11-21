@@ -50,6 +50,10 @@ def _id(contract_id, logical_operation_id, actor):
 
 
 def _path(aios_dir, effect_id):
+    # Effect IDs are generated as EF- + lowercase SHA-256. Validate before
+    # joining paths so imported or caller-supplied IDs cannot escape effects/.
+    if not isinstance(effect_id, str) or not re.fullmatch(r"EF-[0-9a-f]{64}", effect_id):
+        raise TransitionError("effect identity is malformed")
     return os.path.join(aios_dir, "effects", effect_id + ".json")
 
 
