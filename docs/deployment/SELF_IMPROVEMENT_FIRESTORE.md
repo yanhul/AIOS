@@ -54,9 +54,9 @@ The Terraform in this change rejects project-ID reuse and grants:
   create, and update; no delete or list. Update is required for the active
   pointer/latest-evaluation projections.
 - CI ingestion: no IAM binding whatsoever on the authority project.
-- Capability promotion and Cloud Run runtime: `roles/datastore.viewer` on
-  the authority project only, so signed artifacts can be verified but not
-  changed.
+- Capability promotion and Cloud Run runtime: a custom authority-reader role
+  containing only `datastore.entities.get` on the authority project; no write
+  or collection-list permission.
 - Separate pre-existing service accounts and separate WIF principal bindings
   for the ingestion and promotion workflows. The WIF principals must be
   restricted to their respective workflow identities; a broad repository
