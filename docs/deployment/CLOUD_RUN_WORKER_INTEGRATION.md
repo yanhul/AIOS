@@ -60,9 +60,10 @@ document get/list/create/update and transaction permissions, but no delete.
 It receives the equivalent governed-write role on the evolution project and a
 get-only custom role on the authority project. CI ingestion and capability
 promotion use DIFFERENT existing service accounts and DIFFERENT WIF principals:
-ingestion can only get/create documents in the evolution project and has no
-binding on the authority project; promotion can get/create/update evolution
-documents (no delete/list) and can only get authority documents. The WIF
+ingestion can only get/create documents in the CI-evidence project and has no
+binding on the evolution or authority projects; promotion can get/create/update
+evolution documents (no delete/list) and can only get evidence and authority
+documents. The WIF
 principal strings must be restricted to their exact workflow identities, not
 the whole repository. Cloud Tasks and Scheduler use separate dedicated invoker
 service accounts. The Terraform module adds service-level Cloud Run invoker
