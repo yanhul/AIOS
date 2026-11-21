@@ -290,3 +290,61 @@ def test_import_rejects_retry_issuer_that_is_also_state_attestor(tmp_path, monke
     }))
     with pytest.raises(TransitionError, match="fresh, source-bound effect-state attestation"):
         import_retry_authorization(str(tmp_path), record, "agent-1", now=1001)
+
+
+def test_dispatch_verifier_rejects_signed_authorization_over_max_ttl_without_import(tmp_path, monkeypatch):
+    import json
+    from core.effect_authority import (
+        _effect_state_digest, _load_owned_effect, _verify_retry_authorization,
+        dispatch, unknown,
+    )
+    from core.mutation import TransitionError
+    from tests.test_m6_effect_authority import _effect
+
+    effect = _effect(tmp_path)
+    first = f"{effect['effect_id']}:attempt:1"
+    dispatch(str(tmp_path), effect["effect_id"], "agent-1", first, "provider-1")
+    unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
+    current, _ = _load_owned_effect(str(tmp_path), effect["effect_id"], "agent-1", "test")
+
+    signer, _ = _record()
+    fields = {
+        "record_type": "RETRY_AUTHORIZATION_ED25519",
+        "authorization_id": "RA-" + "9" * 32,
+        "effect_id": current["effect_id"], "contract_id": current["contract_id"],
+        "permit_id": current["permit_id"], "actor": "agent-1",
+        "effect_state_digest": _effect_state_digest(current),
+        "previous_attempt": 1, "previous_attempt_id": first,
+        "attempt": 2, "attempt_id": f"{effect['effect_id']}:attempt:2",
+        "reason": "overlong authorization", "unknown_reason": current["unknown_reason"],
+        "provider": "provider-1",
+        "state_attestation_digest": "d" * 64,
+        "state_source_repository": "yanhul/AIOS-effect-state",
+        "state_source_ref": "authority/effect-state",
+        "state_source_commit": "a" * 40,
+        "state_source_path": f"effects/raw/{current['effect_id']}.json",
+        "state_attested_at": 1000.0, "state_version": 1,
+        "state_attestor": "state-attestor:test",
+        "state_attestor_key_id": "ed25519:" + "1" * 32,
+        "state_attestation_commit": "b" * 40,
+        "state_attestation_path": f"effects/attested/{current['effect_id']}.json",
+    }
+    record = signer.sign(fields, now=1000)
+    record["expires_at"] = 1000.0 + 86401
+    record["signature"] = signer.key.sign(signing_bytes(record)).hex()
+
+    monkeypatch.setenv("AIOS_RETRY_ISSUER_ED25519_KEYRING", json.dumps({
+        signer.issuer: {"key_id": signer.key_id, "public_key": signer.public_key}
+    }))
+    monkeypatch.setenv("AIOS_REQUIRE_EXECUTION_LINEAGE", "false")
+    auth_dir = tmp_path / "retry_authorizations"
+    auth_dir.mkdir()
+    (auth_dir / (record["authorization_id"] + ".json")).write_text(
+        json.dumps(record), encoding="utf-8"
+    )
+
+    with pytest.raises(TransitionError, match="exceeds maximum TTL"):
+        _verify_retry_authorization(
+            str(tmp_path), record, current, "agent-1", 2,
+            fields["attempt_id"], None, 1001,
+        )
