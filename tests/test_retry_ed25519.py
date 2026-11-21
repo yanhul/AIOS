@@ -67,7 +67,10 @@ def test_external_authorization_import_binds_current_unknown_effect(tmp_path, mo
         signer.issuer: {"key_id": signer.key_id, "public_key": signer.public_key}
     }))
     monkeypatch.setenv("AIOS_REQUIRE_EXECUTION_LINEAGE", "false")
-    assert import_retry_authorization(str(tmp_path), record, "agent-1", now=1001)["imported"]
+    imported = import_retry_authorization(str(tmp_path), record, "agent-1", now=1001)
+    assert imported["imported"]
+    assert imported["retry_authorization"] == {"authorization_id": record["authorization_id"],
+                                                  "mode": "EXPLICIT", "effect_id": effect["effect_id"], "attempt": 2}
     rel, verified = _verify_retry_authorization(
         str(tmp_path), record, current, "agent-1", 2,
         f"{effect['effect_id']}:attempt:2", None, 1001,
