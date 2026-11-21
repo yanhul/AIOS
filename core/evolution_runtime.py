@@ -36,13 +36,13 @@ class FirestoreEvolutionService:
         return self.store.evaluate_candidate(values, actor=self.actor)
 
     def record_ci_evidence(self, record: Mapping[str, Any]) -> dict[str, Any]:
-        return self.store.record_ci_evidence(record, actor=self.actor)
+        raise EvolutionRuntimeBlocked("CI evidence writes are restricted to the isolated ingestion workflow")
 
     def promote_candidate(self, **values: Any) -> dict[str, Any]:
-        return self.store.promote_candidate(**values)
+        raise EvolutionRuntimeBlocked("capability promotion is restricted to the isolated promotion workflow")
 
     def bootstrap_active_capability(self, **values: Any) -> dict[str, Any]:
-        return self.store.bootstrap_active_capability(**values)
+        raise EvolutionRuntimeBlocked("capability bootstrap is restricted to the isolated promotion workflow")
 
     def get_active_capability(self, capability_id: str) -> dict[str, Any]:
         return self.store.get_active_capability(capability_id)
