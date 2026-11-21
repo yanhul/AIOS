@@ -54,23 +54,26 @@ def test_firestore_runtime_requires_reviewed_ci_workflow_pin():
         create_firestore_evolution_service(
             environ={"AIOS_EVOLUTION_BACKEND": "firestore",
                      "AIOS_EVOLUTION_FIRESTORE_PROJECT_ID": "evolution-test",
-                     "AIOS_AUTHORITY_FIRESTORE_PROJECT_ID": "authority-test"},
+                     "AIOS_AUTHORITY_FIRESTORE_PROJECT_ID": "authority-test",
+                     "AIOS_CI_EVIDENCE_FIRESTORE_PROJECT_ID": "evidence-test"},
             actor="test",
         )
 
 
 
 def test_firestore_runtime_requires_two_distinct_projects():
-    with pytest.raises(EvolutionRuntimeBlocked, match="both AIOS_EVOLUTION_FIRESTORE_PROJECT_ID"):
+    with pytest.raises(EvolutionRuntimeBlocked, match="AIOS_EVOLUTION_FIRESTORE_PROJECT_ID, AIOS_AUTHORITY_FIRESTORE_PROJECT_ID"):
         create_firestore_evolution_service(
             environ={"AIOS_EVOLUTION_BACKEND": "firestore",
-                     "AIOS_EVOLUTION_FIRESTORE_PROJECT_ID": "evolution-test"},
+                     "AIOS_EVOLUTION_FIRESTORE_PROJECT_ID": "evolution-test",
+                     "AIOS_AUTHORITY_FIRESTORE_PROJECT_ID": "authority-test"},
             actor="test",
         )
-    with pytest.raises(EvolutionRuntimeBlocked, match="must be distinct"):
+    with pytest.raises(EvolutionRuntimeBlocked, match="evolution, authority, and CI evidence Firestore projects must be distinct"):
         create_firestore_evolution_service(
             environ={"AIOS_EVOLUTION_BACKEND": "firestore",
                      "AIOS_EVOLUTION_FIRESTORE_PROJECT_ID": "same",
-                     "AIOS_AUTHORITY_FIRESTORE_PROJECT_ID": "same"},
+                     "AIOS_AUTHORITY_FIRESTORE_PROJECT_ID": "same",
+                     "AIOS_CI_EVIDENCE_FIRESTORE_PROJECT_ID": "evidence"},
             actor="test",
         )
