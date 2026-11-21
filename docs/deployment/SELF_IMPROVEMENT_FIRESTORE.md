@@ -62,9 +62,11 @@ The Terraform in this change rejects project-ID reuse and grants:
   restricted to their respective workflow identities; a broad repository
   principal defeats this separation.
 
-The worker's existing operational Firestore grant remains on its separate
-worker project. Do not place authority artifacts or the M10/M11 ledger in that
-project. No project or service account is created by this Terraform module.
+The worker effect/attempt/receipt store is also isolated in the third, worker
+project. Its custom role permits transaction begin, document get/list/create/
+update, but not delete. Keep that project dedicated to worker operational
+state; do not place authority artifacts or the M10/M11 ledger there. No project
+or service account is created by this Terraform module.
 
 ## CI evidence ingestion
 
