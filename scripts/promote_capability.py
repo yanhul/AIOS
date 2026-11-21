@@ -32,7 +32,7 @@ def client_and_store():
     if len(workflow_pin) != 64:
         raise RuntimeError("AIOS_FIRESTORE_WORKFLOW_SHA256 reviewed pin is required")
     return FirestoreEvolutionStore(evolution_client, project_id=evolution_project_id, authority_store=authority,
-                                   trust_anchor=trust_anchor,
+                                   evidence_client=evidence_client, trust_anchor=trust_anchor,
                                    expected_workflow_sha256=workflow_pin)
 
 
