@@ -52,6 +52,39 @@ def test_firestore_runtime_requires_project_and_explicit_backend():
 def test_firestore_runtime_requires_reviewed_ci_workflow_pin():
     with pytest.raises(EvolutionRuntimeBlocked, match="WORKFLOW_SHA256"):
         create_firestore_evolution_service(
-            environ={"AIOS_EVOLUTION_BACKEND": "firestore", "AIOS_FIRESTORE_PROJECT_ID": "test"},
+            environ={"AIOS_EVOLUTION_BACKEND": "firestore",
+                     "AIOS_EVOLUTION_FIRESTORE_PROJECT_ID": "evolution-test",
+                     "AIOS_AUTHORITY_FIRESTORE_PROJECT_ID": "authority-test",
+                     "AIOS_CI_EVIDENCE_FIRESTORE_PROJECT_ID": "evidence-test"},
             actor="test",
         )
+
+
+
+def test_firestore_runtime_requires_two_distinct_projects():
+    with pytest.raises(EvolutionRuntimeBlocked, match="AIOS_EVOLUTION_FIRESTORE_PROJECT_ID, AIOS_AUTHORITY_FIRESTORE_PROJECT_ID"):
+        create_firestore_evolution_service(
+            environ={"AIOS_EVOLUTION_BACKEND": "firestore",
+                     "AIOS_EVOLUTION_FIRESTORE_PROJECT_ID": "evolution-test",
+                     "AIOS_AUTHORITY_FIRESTORE_PROJECT_ID": "authority-test"},
+            actor="test",
+        )
+    with pytest.raises(EvolutionRuntimeBlocked, match="evolution, authority, and CI evidence Firestore projects must be distinct"):
+        create_firestore_evolution_service(
+            environ={"AIOS_EVOLUTION_BACKEND": "firestore",
+                     "AIOS_EVOLUTION_FIRESTORE_PROJECT_ID": "same",
+                     "AIOS_AUTHORITY_FIRESTORE_PROJECT_ID": "same",
+                     "AIOS_CI_EVIDENCE_FIRESTORE_PROJECT_ID": "evidence"},
+            actor="test",
+        )
+
+
+
+def test_runtime_facade_cannot_ingest_ci_or_promote_capabilities():
+    service = FirestoreEvolutionService(Store(), actor="worker-runtime")
+    with pytest.raises(EvolutionRuntimeBlocked, match="CI evidence writes"):
+        service.record_ci_evidence({})
+    with pytest.raises(EvolutionRuntimeBlocked, match="capability promotion"):
+        service.promote_candidate()
+    with pytest.raises(EvolutionRuntimeBlocked, match="capability bootstrap"):
+        service.bootstrap_active_capability()

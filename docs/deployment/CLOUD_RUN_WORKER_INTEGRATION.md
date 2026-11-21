@@ -28,7 +28,9 @@ The Cloud Run service must set these values explicitly:
 - AIOS_REQUIRE_FIRESTORE_EFFECT_STORE=true
 - AIOS_REQUIRE_EXECUTION_LINEAGE=true
 - AIOS_REQUIRE_ACTIVE_CAPABILITY_REGISTRY=true
-- AIOS_FIRESTORE_PROJECT_ID
+- AIOS_FIRESTORE_PROJECT_ID (existing worker/effects project)
+- AIOS_EVOLUTION_FIRESTORE_PROJECT_ID
+- AIOS_AUTHORITY_FIRESTORE_PROJECT_ID
 - AIOS_AUTHORITY_TRUST_ANCHOR (JSON Ed25519 public-key trust anchor)
 - AIOS_AUTHORITY_ATTESTATION_SECRET (injected from Secret Manager; never baked
   into the image)
@@ -45,18 +47,34 @@ The Cloud Run service must set these values explicitly:
 - AIOS_OUTBOX_TASK_TTL_SECONDS
 - AIOS_OUTBOX_BATCH_LIMIT
 
-The worker runtime service account needs Firestore datastore access, Cloud Tasks
-enqueue permission on the existing queue, and Secret Manager access only to the
-existing authority-attestation secret. The separate GitHub OIDC automation
-service account needs Firestore datastore access to ingest CI evidence and
-invoke the signed promotion gate. Firestore IAM roles are not collection-scoped;
-these project-level grants do not isolate the active-pointer collection from a
-compromised worker identity. Before production, separate the evolution registry
-into an independently permissioned database/project or place activation behind
-a separately permissioned authority service. Do not treat this Terraform grant
-as sufficient write isolation. Cloud Tasks and Scheduler use separate
-dedicated invoker service accounts. The Terraform module adds service-level
-Cloud Run invoker members and the required token-minting/actAs grants.
+The three Firestore data planes MUST be separate existing projects:
+(1) `AIOS_FIRESTORE_PROJECT_ID` for worker effects/attempts/receipts,
+(2) `AIOS_EVOLUTION_FIRESTORE_PROJECT_ID` for M10/M11 ledger and active
+capability projections,
+(3) `AIOS_AUTHORITY_FIRESTORE_PROJECT_ID` for signed authority artifacts, and
+(4) `AIOS_CI_EVIDENCE_FIRESTORE_PROJECT_ID` for CI evidence and ingestion events.
+Terraform rejects reuse of any of these project IDs.
+
+The worker runtime identity receives a custom role on the worker project with
+document get/list/create/update and transaction permissions, but no delete.
+It receives the equivalent governed-write role on the evolution project and a
+get-only custom role on the authority project. CI ingestion and capability
+promotion use DIFFERENT existing service accounts and DIFFERENT WIF principals:
+ingestion can only get/create documents in the CI-evidence project and has no
+binding on the evolution or authority projects; promotion can get/create/update
+evolution documents (no delete/list) and can only get evidence and authority
+documents. The WIF
+principal strings must be restricted to their exact workflow identities, not
+the whole repository. Cloud Tasks and Scheduler use separate dedicated invoker
+service accounts. The Terraform module adds service-level Cloud Run invoker
+members and the required token-minting/actAs grants.
+
+Firestore IAM is project-scoped, not collection-scoped. The isolation therefore
+depends on keeping each project dedicated to the data plane named above and
+not granting the automation identities additional inherited roles at folder or
+organization scope. Review effective IAM (including inherited grants) before
+applying; these Terraform resources do not revoke external grants or prove the
+absence of organization-level access.
 
 ## Provider reconciliation plugin is still a deployment dependency
 
@@ -97,7 +115,8 @@ infra/cloudrun/worker_access.tf:
 - owns the complete roles/run.invoker binding on an existing Cloud Run service,
   allowing only the two dedicated invoker service accounts and removing
   allUsers/other unlisted invokers;
-- grants roles/datastore.user to the existing worker runtime identity;
+- creates least-privilege custom roles for the worker, CI ingestion, capability
+  promotion and authority artifact reader; none grants document delete;
 - grants roles/cloudtasks.enqueuer on an existing queue;
 - grants Secret Manager access to one named existing attestation secret;
 - grants token creation to the Google-managed Cloud Tasks/Scheduler service
@@ -106,8 +125,10 @@ infra/cloudrun/worker_access.tf:
 
 It does not create the Cloud Run service, Cloud Tasks queue, service accounts,
 Firestore database, Secret Manager secret, KMS key, or registry image.
-Terraform inputs require the project, region, existing service/queue names,
-service-account emails, schedule, time zone and existing secret ID. The
+Terraform inputs require four distinct existing Firestore projects, two
+distinct GitHub automation service accounts, two workflow-scoped WIF principals,
+the worker/invoker service-account emails, project, region, existing service/
+queue names, schedule, time zone and existing secret ID. The
 deployment owner must review a plan before any apply.
 
 ## Verification boundary

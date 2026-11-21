@@ -36,13 +36,13 @@ class FirestoreEvolutionService:
         return self.store.evaluate_candidate(values, actor=self.actor)
 
     def record_ci_evidence(self, record: Mapping[str, Any]) -> dict[str, Any]:
-        return self.store.record_ci_evidence(record, actor=self.actor)
+        raise EvolutionRuntimeBlocked("CI evidence writes are restricted to the isolated ingestion workflow")
 
     def promote_candidate(self, **values: Any) -> dict[str, Any]:
-        return self.store.promote_candidate(**values)
+        raise EvolutionRuntimeBlocked("capability promotion is restricted to the isolated promotion workflow")
 
     def bootstrap_active_capability(self, **values: Any) -> dict[str, Any]:
-        return self.store.bootstrap_active_capability(**values)
+        raise EvolutionRuntimeBlocked("capability bootstrap is restricted to the isolated promotion workflow")
 
     def get_active_capability(self, capability_id: str) -> dict[str, Any]:
         return self.store.get_active_capability(capability_id)
@@ -56,28 +56,39 @@ def create_firestore_evolution_service(
     env = os.environ if environ is None else environ
     if env.get("AIOS_EVOLUTION_BACKEND") != "firestore":
         raise EvolutionRuntimeBlocked("AIOS_EVOLUTION_BACKEND=firestore is required; no local fallback")
-    project_id = env.get("AIOS_FIRESTORE_PROJECT_ID", "").strip()
-    if not project_id:
-        raise EvolutionRuntimeBlocked("AIOS_FIRESTORE_PROJECT_ID is required")
+    evolution_project_id = env.get("AIOS_EVOLUTION_FIRESTORE_PROJECT_ID", "").strip()
+    authority_project_id = env.get("AIOS_AUTHORITY_FIRESTORE_PROJECT_ID", "").strip()
+    evidence_project_id = env.get("AIOS_CI_EVIDENCE_FIRESTORE_PROJECT_ID", "").strip()
+    if not evolution_project_id or not authority_project_id or not evidence_project_id:
+        raise EvolutionRuntimeBlocked(
+            "AIOS_EVOLUTION_FIRESTORE_PROJECT_ID, AIOS_AUTHORITY_FIRESTORE_PROJECT_ID, "
+            "and AIOS_CI_EVIDENCE_FIRESTORE_PROJECT_ID are required"
+        )
+    if len({evolution_project_id, authority_project_id, evidence_project_id}) != 3:
+        raise EvolutionRuntimeBlocked("evolution, authority, and CI evidence Firestore projects must be distinct")
     workflow_pin = env.get("AIOS_FIRESTORE_WORKFLOW_SHA256", "").strip().lower()
     if not workflow_pin:
         raise EvolutionRuntimeBlocked("AIOS_FIRESTORE_WORKFLOW_SHA256 is required")
     try:
         import google.auth
         from google.cloud import firestore
-        credentials, adc_project = google.auth.default(
+        credentials, _ = google.auth.default(
             scopes=["https://www.googleapis.com/auth/datastore"]
         )
-        if adc_project and adc_project != project_id:
-            raise EvolutionRuntimeBlocked("ADC project differs from AIOS_FIRESTORE_PROJECT_ID")
-        client = firestore.Client(project=project_id, credentials=credentials)
-        if getattr(client, "project", None) != project_id:
-            raise EvolutionRuntimeBlocked("Firestore client project mismatch")
+        evolution_client = firestore.Client(project=evolution_project_id, credentials=credentials)
+        authority_client = firestore.Client(project=authority_project_id, credentials=credentials)
+        evidence_client = firestore.Client(project=evidence_project_id, credentials=credentials)
+        if getattr(evolution_client, "project", None) != evolution_project_id:
+            raise EvolutionRuntimeBlocked("evolution Firestore client project mismatch")
+        if getattr(authority_client, "project", None) != authority_project_id:
+            raise EvolutionRuntimeBlocked("authority Firestore client project mismatch")
+        if getattr(evidence_client, "project", None) != evidence_project_id:
+            raise EvolutionRuntimeBlocked("CI evidence Firestore client project mismatch")
         trust_anchor = FirestoreAuthorityStore.trust_anchor_from_env(dict(env))
-        authority_store = FirestoreAuthorityStore(client, project_id=project_id)
+        authority_store = FirestoreAuthorityStore(authority_client, project_id=authority_project_id)
         store = FirestoreEvolutionStore(
-            client, project_id=project_id, authority_store=authority_store,
-            trust_anchor=trust_anchor, evidence_verifier=evidence_verifier,
+            evolution_client, project_id=evolution_project_id, authority_store=authority_store,
+            evidence_client=evidence_client, trust_anchor=trust_anchor, evidence_verifier=evidence_verifier,
             expected_workflow_sha256=workflow_pin,
         )
         return FirestoreEvolutionService(store, actor=actor)

@@ -30,9 +30,27 @@ resource "google_cloud_run_v2_service_iam_binding" "private_invokers" {
   ]
 }
 
+# The worker project is a dedicated effect/attempt/receipt data plane.
+# It needs direct reads, outbox queries, creates and state transitions, but
+# it never needs to delete durable evidence.
+resource "google_project_iam_custom_role" "worker_effect_runtime" {
+  project     = var.project_id
+  role_id     = "aiosWorkerEffectRuntime"
+  title       = "AIOS Worker Effect Runtime"
+  description = "Read/query and create/update durable worker effects; no delete."
+  permissions = [
+    "datastore.databases.get",
+    "datastore.entities.create",
+    "datastore.entities.get",
+    "datastore.entities.list",
+    "datastore.entities.update",
+  ]
+  stage = "GA"
+}
+
 resource "google_project_iam_member" "worker_firestore" {
   project = var.project_id
-  role    = "roles/datastore.user"
+  role    = google_project_iam_custom_role.worker_effect_runtime.name
   member  = "serviceAccount:${var.worker_runtime_service_account_email}"
 }
 
@@ -173,26 +191,168 @@ variable "authority_attestation_secret_id" {
   type        = string
 }
 
-# Dedicated GitHub Actions workload-identity service account for CI evidence
-# ingestion and signed capability promotion. No service account is created here.
-resource "google_project_iam_member" "evolution_automation_firestore" {
-  project = var.project_id
-  role    = "roles/datastore.user"
-  member  = "serviceAccount:${var.evolution_automation_service_account_email}"
-}
-
-variable "evolution_automation_service_account_email" {
-  description = "Existing service account impersonated by GitHub OIDC for CI evidence ingestion and signed capability promotion."
+# Evolution ledger and authority artifacts live in different GCP projects.
+# Firestore IAM is project-scoped here; these projects must contain only the
+# corresponding data plane. No database, project, or service account is created.
+variable "evolution_firestore_project_id" {
+  description = "Dedicated existing project containing only the M10/M11 evolution ledger."
   type        = string
 }
 
-resource "google_service_account_iam_member" "github_actions_wif_impersonation" {
-  service_account_id = "projects/${var.project_id}/serviceAccounts/${var.evolution_automation_service_account_email}"
+variable "authority_firestore_project_id" {
+  description = "Dedicated existing project containing signed authority artifacts only."
+  type        = string
+}
+
+variable "ci_evidence_firestore_project_id" {
+  description = "Dedicated existing project containing only GitHub CI evidence and ingestion events."
+  type        = string
+}
+
+variable "ci_ingestion_service_account_email" {
+  description = "Existing GitHub OIDC identity used only by the CI evidence ingestion workflow."
+  type        = string
+}
+
+variable "capability_promotion_service_account_email" {
+  description = "Existing GitHub OIDC identity used only by the capability promotion workflow."
+  type        = string
+}
+
+variable "github_actions_ingestion_wif_principal" {
+  description = "WIF principalSet restricted to the CI evidence ingestion workflow identity."
+  type        = string
+}
+
+variable "github_actions_promotion_wif_principal" {
+  description = "WIF principalSet restricted to the capability promotion workflow identity."
+  type        = string
+}
+
+check "firestore_projects_are_isolated" {
+  assert {
+    condition = (
+      var.evolution_firestore_project_id != var.authority_firestore_project_id &&
+      var.evolution_firestore_project_id != var.ci_evidence_firestore_project_id &&
+      var.authority_firestore_project_id != var.ci_evidence_firestore_project_id &&
+      var.evolution_firestore_project_id != var.project_id &&
+      var.authority_firestore_project_id != var.project_id &&
+      var.ci_evidence_firestore_project_id != var.project_id
+    )
+    error_message = "Worker, evolution-ledger, and authority Firestore projects must be three distinct existing projects."
+  }
+}
+
+check "automation_identities_are_isolated" {
+  assert {
+    condition = (
+      var.ci_ingestion_service_account_email != var.capability_promotion_service_account_email &&
+      var.github_actions_ingestion_wif_principal != var.github_actions_promotion_wif_principal
+    )
+    error_message = "CI ingestion and capability promotion must use distinct service accounts and distinct WIF principals."
+  }
+}
+
+# The ingestion role can read and create documents only. It cannot update,
+# delete, list, or write any authority artifact.
+resource "google_project_iam_custom_role" "ci_ingestion" {
+  project     = var.ci_evidence_firestore_project_id
+  role_id     = "aiosCiEvidenceIngestion"
+  title       = "AIOS CI Evidence Ingestion"
+  description = "Read existing evidence IDs and create immutable CI evidence documents; no update/delete/list."
+  permissions = [
+    "datastore.databases.get",
+    "datastore.entities.create",
+    "datastore.entities.get",
+  ]
+  stage = "GA"
+}
+
+# Promotion needs direct document reads, create-only audit records, and
+# updates to the latest-evaluation/active-pointer projections. No delete/list.
+resource "google_project_iam_custom_role" "capability_promotion" {
+  project     = var.evolution_firestore_project_id
+  role_id     = "aiosCapabilityPromotion"
+  title       = "AIOS Capability Promotion"
+  description = "Read/create evolution records and update governed projections; no delete/list."
+  permissions = [
+    "datastore.databases.get",
+    "datastore.entities.create",
+    "datastore.entities.get",
+    "datastore.entities.update",
+  ]
+  stage = "GA"
+}
+
+resource "google_project_iam_member" "ci_ingestion_evidence" {
+  project = var.ci_evidence_firestore_project_id
+  role    = google_project_iam_custom_role.ci_ingestion.name
+  member  = "serviceAccount:${var.ci_ingestion_service_account_email}"
+}
+
+resource "google_project_iam_custom_role" "ci_evidence_reader" {
+  project     = var.ci_evidence_firestore_project_id
+  role_id     = "aiosCiEvidenceReader"
+  title       = "AIOS CI Evidence Reader"
+  description = "Read individual immutable CI evidence records; no writes or listing."
+  permissions = [
+    "datastore.entities.get",
+  ]
+  stage = "GA"
+}
+
+resource "google_project_iam_member" "capability_promotion_evidence_readonly" {
+  project = var.ci_evidence_firestore_project_id
+  role    = google_project_iam_custom_role.ci_evidence_reader.name
+  member  = "serviceAccount:${var.capability_promotion_service_account_email}"
+}
+
+resource "google_project_iam_member" "capability_promotion_ledger" {
+  project = var.evolution_firestore_project_id
+  role    = google_project_iam_custom_role.capability_promotion.name
+  member  = "serviceAccount:${var.capability_promotion_service_account_email}"
+}
+
+# Promotion verifies signed artifacts but cannot create, update or delete them.
+resource "google_project_iam_custom_role" "authority_artifact_reader" {
+  project     = var.authority_firestore_project_id
+  role_id     = "aiosAuthorityArtifactReader"
+  title       = "AIOS Authority Artifact Reader"
+  description = "Read individual signed authority documents only; no writes or collection listing."
+  permissions = [
+    "datastore.entities.get",
+  ]
+  stage = "GA"
+}
+
+resource "google_project_iam_member" "capability_promotion_authority_readonly" {
+  project = var.authority_firestore_project_id
+  role    = google_project_iam_custom_role.authority_artifact_reader.name
+  member  = "serviceAccount:${var.capability_promotion_service_account_email}"
+}
+
+# Runtime needs to resolve signed authority artifacts but cannot mutate or
+# enumerate the authority store.
+resource "google_project_iam_member" "worker_evolution_ledger" {
+  project = var.evolution_firestore_project_id
+  role    = google_project_iam_custom_role.capability_promotion.name
+  member  = "serviceAccount:${var.worker_runtime_service_account_email}"
+}
+
+resource "google_project_iam_member" "worker_authority_readonly" {
+  project = var.authority_firestore_project_id
+  role    = google_project_iam_custom_role.authority_artifact_reader.name
+  member  = "serviceAccount:${var.worker_runtime_service_account_email}"
+}
+
+resource "google_service_account_iam_member" "github_actions_ingestion_wif" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${var.ci_ingestion_service_account_email}"
   role               = "roles/iam.workloadIdentityUser"
-  member             = var.github_actions_wif_principal
+  member             = var.github_actions_ingestion_wif_principal
 }
 
-variable "github_actions_wif_principal" {
-  description = "Principal/principalSet string mapped by the pre-existing GitHub Workload Identity Provider; provider creation and attribute mapping are out of scope."
-  type        = string
+resource "google_service_account_iam_member" "github_actions_promotion_wif" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${var.capability_promotion_service_account_email}"
+  role               = "roles/iam.workloadIdentityUser"
+  member             = var.github_actions_promotion_wif_principal
 }

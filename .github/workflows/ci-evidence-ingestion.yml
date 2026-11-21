@@ -21,8 +21,10 @@ jobs:
     if: >-
       (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') &&
       vars.AIOS_GCP_WIF_PROVIDER != '' &&
-      vars.AIOS_GCP_SERVICE_ACCOUNT != '' &&
-      vars.AIOS_FIRESTORE_PROJECT_ID != '' &&
+      vars.AIOS_INGESTION_GCP_SERVICE_ACCOUNT != '' &&
+      vars.AIOS_EVOLUTION_FIRESTORE_PROJECT_ID != '' &&
+      vars.AIOS_AUTHORITY_FIRESTORE_PROJECT_ID != '' &&
+      vars.AIOS_CI_EVIDENCE_FIRESTORE_PROJECT_ID != '' &&
       vars.AIOS_AUTHORITY_TRUST_ANCHOR != '' &&
       vars.AIOS_FIRESTORE_WORKFLOW_SHA256 != ''
     runs-on: ubuntu-latest
@@ -36,7 +38,7 @@ jobs:
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.AIOS_GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.AIOS_GCP_SERVICE_ACCOUNT }}
+          service_account: ${{ vars.AIOS_INGESTION_GCP_SERVICE_ACCOUNT }}
           create_credentials_file: true
       - name: Install pinned Firestore dependencies
         run: python -m pip install -r requirements-firestore.txt
@@ -45,7 +47,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AIOS_SOURCE_RUN_ID: ${{ github.event.workflow_run.id || inputs.source_run_id }}
           AIOS_EXPECTED_REPOSITORY: ${{ github.repository }}
-          AIOS_FIRESTORE_PROJECT_ID: ${{ vars.AIOS_FIRESTORE_PROJECT_ID }}
+          AIOS_EVOLUTION_FIRESTORE_PROJECT_ID: ${{ vars.AIOS_EVOLUTION_FIRESTORE_PROJECT_ID }}
+          AIOS_AUTHORITY_FIRESTORE_PROJECT_ID: ${{ vars.AIOS_AUTHORITY_FIRESTORE_PROJECT_ID }}
+          AIOS_CI_EVIDENCE_FIRESTORE_PROJECT_ID: ${{ vars.AIOS_CI_EVIDENCE_FIRESTORE_PROJECT_ID }}
           AIOS_AUTHORITY_TRUST_ANCHOR: ${{ vars.AIOS_AUTHORITY_TRUST_ANCHOR }}
           AIOS_FIRESTORE_WORKFLOW_SHA256: ${{ vars.AIOS_FIRESTORE_WORKFLOW_SHA256 }}
         run: python scripts/ingest_ci_evidence.py
