@@ -41,6 +41,8 @@ def validate_production_authority(env=None, *, now=None):
     secret = env.get(AUTHORITY_SECRET, "")
     if not isinstance(secret, str) or len(secret) < 32:
         raise ProductionAuthorityConfigError(f"{AUTHORITY_SECRET} must be a deployment secret of at least 32 characters")
+    if env.get("AIOS_RETRY_ISSUER_KEYRING"):
+        raise ProductionAuthorityConfigError("legacy HMAC AIOS_RETRY_ISSUER_KEYRING must be unset in production; use the Ed25519 public-key registry")
 
     try:
         providers = json.loads(env.get(PROVIDER_RING, "{}"))
