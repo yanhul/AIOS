@@ -57,3 +57,7 @@ Initial workload registrations live in `capabilities/registry.yaml`.
 ## Current implementation
 
 The repository contains the M1/M1.5 state and mutation foundation plus implemented authority, verification, reconciliation, contract, runtime and durable-execution components. A dependency-free governed durable loop is implemented in `core/durable_loop.py` with coverage for bounded execution, persistence, terminal gating and resume. Capability identity/registry, first-class execution context, and governed workload adapters are now established; full cross-repository training execution and promotion automation remain separate implementation work.
+
+## Private-repository governance status
+
+The Free-plan fallback and its limitations are recorded in [`docs/FREE_PLAN_GOVERNANCE.md`](docs/FREE_PLAN_GOVERNANCE.md). CI success, signature validity, and repository governance enforcement are separate claims. Production retry and promotion remain blocked until independent governance and live E2E evidence exist.
