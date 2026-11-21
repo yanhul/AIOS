@@ -52,6 +52,25 @@ def test_firestore_runtime_requires_project_and_explicit_backend():
 def test_firestore_runtime_requires_reviewed_ci_workflow_pin():
     with pytest.raises(EvolutionRuntimeBlocked, match="WORKFLOW_SHA256"):
         create_firestore_evolution_service(
-            environ={"AIOS_EVOLUTION_BACKEND": "firestore", "AIOS_FIRESTORE_PROJECT_ID": "test"},
+            environ={"AIOS_EVOLUTION_BACKEND": "firestore",
+                     "AIOS_EVOLUTION_FIRESTORE_PROJECT_ID": "evolution-test",
+                     "AIOS_AUTHORITY_FIRESTORE_PROJECT_ID": "authority-test"},
+            actor="test",
+        )
+
+
+
+def test_firestore_runtime_requires_two_distinct_projects():
+    with pytest.raises(EvolutionRuntimeBlocked, match="both AIOS_EVOLUTION_FIRESTORE_PROJECT_ID"):
+        create_firestore_evolution_service(
+            environ={"AIOS_EVOLUTION_BACKEND": "firestore",
+                     "AIOS_EVOLUTION_FIRESTORE_PROJECT_ID": "evolution-test"},
+            actor="test",
+        )
+    with pytest.raises(EvolutionRuntimeBlocked, match="must be distinct"):
+        create_firestore_evolution_service(
+            environ={"AIOS_EVOLUTION_BACKEND": "firestore",
+                     "AIOS_EVOLUTION_FIRESTORE_PROJECT_ID": "same",
+                     "AIOS_AUTHORITY_FIRESTORE_PROJECT_ID": "same"},
             actor="test",
         )
