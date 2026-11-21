@@ -11,10 +11,10 @@ import os
 import time
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from core.provider_ed25519 import ProviderPublicKeyring
+from core.retry_ed25519 import RetryIssuerPublicKeyring, ENV as RETRY_ED25519_RING
 
 AUTHORITY_SECRET = "AIOS_AUTHORITY_ATTESTATION_SECRET"
 PROVIDER_RING = "AIOS_PROVIDER_KEYRING"
-RETRY_RING = "AIOS_RETRY_ISSUER_KEYRING"
 PROVIDER_ED25519_RING = "AIOS_PROVIDER_ED25519_KEYRING"
 REVIEWER_KEYRING = "AIOS_DEPLOYMENT_REVIEWER_KEYRING"
 REVIEWER_ATTESTATION = "AIOS_DEPLOYMENT_REVIEWER_ATTESTATION"
@@ -62,28 +62,22 @@ def validate_production_authority(env=None, *, now=None):
             raise ProductionAuthorityConfigError(f"active provider key for {provider} must be at least 32 characters")
         if "provider.receipt.sign" not in scopes:
             raise ProductionAuthorityConfigError(f"active provider {provider} lacks provider.receipt.sign scope")
-    retry = _json_object(env, RETRY_RING)
+    retry = _json_object(env, RETRY_ED25519_RING)
+    try:
+        RetryIssuerPublicKeyring(retry)
+    except ValueError as exc:
+        raise ProductionAuthorityConfigError(f"{RETRY_ED25519_RING} is invalid: {exc}") from exc
     active_issuers = []
     for issuer, entry in retry.items():
-        if not isinstance(issuer, str) or not isinstance(entry, dict):
-            raise ProductionAuthorityConfigError("retry issuer keyring entry is malformed")
-        if not isinstance(entry.get("revoked", False), bool):
-            raise ProductionAuthorityConfigError(f"retry issuer revoked flag for {issuer} must be boolean")
-        if entry.get("revoked", False):
-            continue
-        scopes = entry.get("scopes", [])
-        if not isinstance(scopes, list) or not all(isinstance(scope, str) for scope in scopes):
-            raise ProductionAuthorityConfigError(f"retry issuer scopes for {issuer} must be a list of strings")
-        if not isinstance(entry.get("secret"), str) or len(entry["secret"]) < 32:
-            raise ProductionAuthorityConfigError(f"active retry issuer key for {issuer} must be at least 32 characters")
-        if "effect.retry.approve" not in scopes:
-            raise ProductionAuthorityConfigError(f"active retry issuer {issuer} lacks effect.retry.approve scope")
-        active_issuers.append(issuer)
+        if not isinstance(issuer, str) or not issuer.strip() or not isinstance(entry, dict):
+            raise ProductionAuthorityConfigError("retry issuer Ed25519 registry entry is malformed")
+        if not entry.get("revoked", False):
+            active_issuers.append(issuer)
     if not active_issuers:
-        raise ProductionAuthorityConfigError("retry issuer keyring has no active issuer")
-    if executor := env.get("AIOS_DEPLOYMENT_EXECUTOR_ID"):
-        if executor in active_issuers:
-            raise ProductionAuthorityConfigError("executor and retry issuer must be separate principals")
+        raise ProductionAuthorityConfigError("retry issuer Ed25519 registry has no active issuer")
+    executor = env.get("AIOS_DEPLOYMENT_EXECUTOR_ID", "")
+    if executor in active_issuers:
+        raise ProductionAuthorityConfigError("executor and retry issuer must be separate principals")
 
     public_ring = _json_object(env, PROVIDER_ED25519_RING)
     try:
