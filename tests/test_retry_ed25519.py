@@ -255,3 +255,38 @@ def test_production_ed25519_retry_with_lineage_not_applied_receipt_and_restart(t
     _verify_consumption_history(str(tmp_path), reloaded)
     assert json.loads(receipt_path.read_text())["attempt_id"] == auth_fields["attempt_id"]
     assert reloaded["consumed_retry_authorizations"] == [record["authorization_id"]]
+
+
+def test_import_rejects_retry_issuer_that_is_also_state_attestor(tmp_path, monkeypatch):
+    import json
+    from core.effect_authority import _effect_state_digest, _load_owned_effect, dispatch, import_retry_authorization, unknown
+    from core.mutation import TransitionError
+    from tests.test_m6_effect_authority import _effect
+    effect = _effect(tmp_path)
+    first = f"{effect['effect_id']}:attempt:1"
+    dispatch(str(tmp_path), effect["effect_id"], "agent-1", first, "provider-1")
+    unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
+    current, _ = _load_owned_effect(str(tmp_path), effect["effect_id"], "agent-1", "test")
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    signer = _TestSigner("same-principal", Ed25519PrivateKey.generate())
+    fields = {
+        "record_type": "RETRY_AUTHORIZATION_ED25519", "authorization_id": "RA-" + "c" * 32,
+        "effect_id": current["effect_id"], "contract_id": current["contract_id"],
+        "permit_id": current["permit_id"], "actor": current["actor"],
+        "effect_state_digest": _effect_state_digest(current),
+        "previous_attempt": 1, "previous_attempt_id": current["attempt_id"],
+        "attempt": 2, "attempt_id": f"{current['effect_id']}:attempt:2",
+        "reason": "must reject shared state/retry issuer", "unknown_reason": current["unknown_reason"],
+        "provider": current["provider"], "state_attestation_digest": "d" * 64,
+        "state_source_repository": "yanhul/AIOS-effect-state", "state_source_ref": "authority/effect-state",
+        "state_source_commit": "a" * 40, "state_source_path": f"effects/raw/{current['effect_id']}.json",
+        "state_attested_at": 1000.0, "state_version": 1,
+        "state_attestor": signer.issuer, "state_attestor_key_id": "ed25519:" + "1" * 32,
+        "state_attestation_commit": "b" * 40, "state_attestation_path": f"effects/attested/{current['effect_id']}.json",
+    }
+    record = signer.sign(fields, now=1000)
+    monkeypatch.setenv("AIOS_RETRY_ISSUER_ED25519_KEYRING", json.dumps({
+        signer.issuer: {"key_id": signer.key_id, "public_key": signer.public_key, "revoked": False}
+    }))
+    with pytest.raises(TransitionError, match="fresh, source-bound effect-state attestation"):
+        import_retry_authorization(str(tmp_path), record, "agent-1", now=1001)

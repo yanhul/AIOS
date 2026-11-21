@@ -438,7 +438,9 @@ def _validate_retry_state_provenance(authorization, issued_at):
             or not _is_finite_number(source_attested_at)
             or not isinstance(source_version, int) or isinstance(source_version, bool) or source_version < 1
             or not isinstance(state_attestor, str) or not state_attestor.strip()
+            or state_attestor in (authorization.get("issuer"), authorization.get("actor"))
             or not isinstance(state_attestor_key_id, str) or not re.fullmatch(r"ed25519:[0-9a-f]{32}", state_attestor_key_id)
+            or state_attestor_key_id == authorization.get("key_id")
             or not isinstance(attestation_commit, str) or not re.fullmatch(r"[0-9a-f]{40}", attestation_commit)
             or attestation_commit == source_commit
             or attestation_path != f"effects/attested/{effect_id}.json"
