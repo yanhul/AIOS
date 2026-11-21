@@ -7,6 +7,7 @@ on:
       - main
       - feat/self-improvement-experience-evolution-v1
       - feat/firestore-self-improvement-ci-promotion-v1
+      - fix/evolution-identity-separation-v1
   workflow_dispatch:
 
 permissions:
