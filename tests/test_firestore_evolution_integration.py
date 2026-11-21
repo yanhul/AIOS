@@ -42,8 +42,10 @@ def signed_store(client):
 def make_store():
     client = firestore.Client(project=PROJECT, credentials=AnonymousCredentials())
     authority, anchor, put = signed_store(client)
+    activation_client = firestore.Client(project=PROJECT + "-activation", credentials=AnonymousCredentials())
     store = FirestoreEvolutionStore(client, project_id=PROJECT, authority_store=authority,
-                                    trust_anchor=anchor, expected_workflow_sha256="9" * 64)
+                                    activation_client=activation_client, trust_anchor=anchor,
+                                    expected_workflow_sha256="9" * 64)
     return store, authority, put
 
 
@@ -208,3 +210,75 @@ def test_emulator_promotion_rejects_stale_base_after_another_activation():
     with pytest.raises(EvolutionStoreError, match="active capability base version mismatch"):
         store.promote_candidate(candidate_id=stale["record_id"], evaluation_id=stale_eval["evaluation_id"],
             decision_digest=stale_decision, capability_digest=stale_cap_digest, repository="yanhul/AIOS")
+
+
+def test_activation_reconciles_crash_before_pointer_and_after_pointer_before_finalize():
+    client = firestore.Client(project=PROJECT, credentials=AnonymousCredentials())
+    activation_client = firestore.Client(project=PROJECT + "-activation", credentials=AnonymousCredentials())
+    authority, anchor, put = signed_store(client)
+    capability_id = "activation-crash." + uuid.uuid4().hex
+    capability = {"capability_id": capability_id, "version": "1.0.0", "status": "ACTIVE",
+                  "source_commit": hashlib.sha1(uuid.uuid4().bytes).hexdigest(), "patch_digest": "a" * 64}
+    capability_digest = put("CAPABILITY", capability)
+    decision_digest = put("CAPABILITY_BOOTSTRAP_DECISION", {
+        "decision": "BOOTSTRAP_ACTIVE", "capability_id": capability_id,
+        "version": "1.0.0", "capability_digest": capability_digest,
+        "revision": 0, "previous_decision_digest": None,
+    })
+    store = FirestoreEvolutionStore(client, project_id=PROJECT, authority_store=authority,
+                                    activation_client=activation_client, trust_anchor=anchor,
+                                    expected_workflow_sha256="9" * 64)
+    original_run = store._run
+    failed = {"activation": False}
+
+    def crash_before_pointer(tx_client, callback):
+        if tx_client is activation_client and not failed["activation"]:
+            failed["activation"] = True
+            raise RuntimeError("simulated process crash before pointer write")
+        return original_run(tx_client, callback)
+
+    store._run = crash_before_pointer
+    with pytest.raises(EvolutionStoreError, match="was not confirmed"):
+        store.bootstrap_active_capability(capability_digest=capability_digest,
+                                          bootstrap_decision_digest=decision_digest)
+    operation_id = "BOOTSTRAP-" + decision_digest
+    assert store._ref("aios_activation_operations", operation_id).get().to_dict()["state"] == "PREPARED"
+    assert store._ref("aios_active_capabilities", capability_id).get().exists is False
+
+    # Re-run after crash: PREPARED is durable and the same signed operation is idempotently completed.
+    store._run = original_run
+    result = store.bootstrap_active_capability(capability_digest=capability_digest,
+                                               bootstrap_decision_digest=decision_digest)
+    assert result["status"] == "ACTIVE"
+    assert result["activation_state"] == "ACTIVATED"
+    assert store._ref("aios_activation_operations", operation_id).get().to_dict()["state"] == "ACTIVATED"
+    assert store.get_active_capability(capability_id)["pointer"]["bootstrap_decision_digest"] == decision_digest
+
+    # Simulate a crash after pointer durability but before the ledger finalize phase.
+    capability_id_2 = capability_id + ".second"
+    capability_2 = {**capability, "capability_id": capability_id_2}
+    digest_2 = put("CAPABILITY", capability_2)
+    decision_2 = put("CAPABILITY_BOOTSTRAP_DECISION", {
+        "decision": "BOOTSTRAP_ACTIVE", "capability_id": capability_id_2,
+        "version": "1.0.0", "capability_digest": digest_2,
+        "revision": 0, "previous_decision_digest": None,
+    })
+    calls = {"evolution": 0}
+    def crash_before_finalize(tx_client, callback):
+        if tx_client is client:
+            calls["evolution"] += 1
+            if calls["evolution"] == 2:
+                raise RuntimeError("simulated process crash before finalize")
+        return original_run(tx_client, callback)
+    store._run = crash_before_finalize
+    with pytest.raises(EvolutionStoreError, match="was not confirmed"):
+        store.bootstrap_active_capability(capability_digest=digest_2,
+                                          bootstrap_decision_digest=decision_2)
+    operation_id_2 = "BOOTSTRAP-" + decision_2
+    assert store._ref("aios_activation_operations", operation_id_2).get().to_dict()["state"] == "PREPARED"
+    assert store._ref("aios_active_capabilities", capability_id_2).get().exists is True
+    store._run = original_run
+    result_2 = store.bootstrap_active_capability(capability_digest=digest_2,
+                                                 bootstrap_decision_digest=decision_2)
+    assert result_2["activation_state"] == "ACTIVATED"
+    assert store._ref("aios_activation_operations", operation_id_2).get().to_dict()["state"] == "ACTIVATED"

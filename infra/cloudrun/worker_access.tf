@@ -204,6 +204,11 @@ variable "authority_firestore_project_id" {
   type        = string
 }
 
+variable "activation_firestore_project_id" {
+  description = "Dedicated existing project containing only the active capability pointer projection."
+  type        = string
+}
+
 variable "ci_evidence_firestore_project_id" {
   description = "Dedicated existing project containing only GitHub CI evidence and ingestion events."
   type        = string
@@ -235,11 +240,15 @@ check "firestore_projects_are_isolated" {
       var.evolution_firestore_project_id != var.authority_firestore_project_id &&
       var.evolution_firestore_project_id != var.ci_evidence_firestore_project_id &&
       var.authority_firestore_project_id != var.ci_evidence_firestore_project_id &&
+      var.activation_firestore_project_id != var.evolution_firestore_project_id &&
+      var.activation_firestore_project_id != var.authority_firestore_project_id &&
+      var.activation_firestore_project_id != var.ci_evidence_firestore_project_id &&
+      var.activation_firestore_project_id != var.project_id &&
       var.evolution_firestore_project_id != var.project_id &&
       var.authority_firestore_project_id != var.project_id &&
       var.ci_evidence_firestore_project_id != var.project_id
     )
-    error_message = "Worker, evolution-ledger, and authority Firestore projects must be three distinct existing projects."
+    error_message = "Worker, evolution, authority, CI evidence, and activation Firestore projects must be five distinct existing projects."
   }
 }
 
@@ -247,9 +256,11 @@ check "automation_identities_are_isolated" {
   assert {
     condition = (
       var.ci_ingestion_service_account_email != var.capability_promotion_service_account_email &&
+      var.worker_runtime_service_account_email != var.capability_promotion_service_account_email &&
+      var.worker_runtime_service_account_email != var.ci_ingestion_service_account_email &&
       var.github_actions_ingestion_wif_principal != var.github_actions_promotion_wif_principal
     )
-    error_message = "CI ingestion and capability promotion must use distinct service accounts and distinct WIF principals."
+    error_message = "Worker runtime, CI ingestion, and capability promotion must use distinct service accounts; CI ingestion and promotion must also use distinct WIF principals."
   }
 }
 
@@ -268,8 +279,8 @@ resource "google_project_iam_custom_role" "ci_ingestion" {
   stage = "GA"
 }
 
-# Promotion needs direct document reads, create-only audit records, and
-# updates to the latest-evaluation/active-pointer projections. No delete/list.
+# Promotion needs direct document reads, create-only ledger records, and
+# updates to governed evolution projections. Active pointers use a separate project.
 resource "google_project_iam_custom_role" "capability_promotion" {
   project     = var.evolution_firestore_project_id
   role_id     = "aiosCapabilityPromotion"
@@ -313,6 +324,37 @@ resource "google_project_iam_member" "capability_promotion_ledger" {
   member  = "serviceAccount:${var.capability_promotion_service_account_email}"
 }
 
+# Only the isolated promotion identity may mutate active pointers. Worker is read-only.
+resource "google_project_iam_custom_role" "activation_pointer_writer" {
+  project     = var.activation_firestore_project_id
+  role_id     = "aiosActivationPointerWriter"
+  title       = "AIOS Activation Pointer Writer"
+  description = "Read/create/update active capability pointers; no delete/list."
+  permissions = ["datastore.entities.get", "datastore.entities.create", "datastore.entities.update"]
+  stage       = "GA"
+}
+
+resource "google_project_iam_member" "promotion_activation_writer" {
+  project = var.activation_firestore_project_id
+  role    = google_project_iam_custom_role.activation_pointer_writer.name
+  member  = "serviceAccount:${var.capability_promotion_service_account_email}"
+}
+
+resource "google_project_iam_custom_role" "activation_pointer_reader" {
+  project     = var.activation_firestore_project_id
+  role_id     = "aiosActivationPointerReader"
+  title       = "AIOS Activation Pointer Reader"
+  description = "Read active capability pointers only."
+  permissions = ["datastore.entities.get"]
+  stage       = "GA"
+}
+
+resource "google_project_iam_member" "worker_activation_readonly" {
+  project = var.activation_firestore_project_id
+  role    = google_project_iam_custom_role.activation_pointer_reader.name
+  member  = "serviceAccount:${var.worker_runtime_service_account_email}"
+}
+
 # Promotion verifies signed artifacts but cannot create, update or delete them.
 resource "google_project_iam_custom_role" "authority_artifact_reader" {
   project     = var.authority_firestore_project_id
@@ -333,9 +375,18 @@ resource "google_project_iam_member" "capability_promotion_authority_readonly" {
 
 # Runtime needs to resolve signed authority artifacts but cannot mutate or
 # enumerate the authority store.
+resource "google_project_iam_custom_role" "worker_evolution_reader" {
+  project     = var.evolution_firestore_project_id
+  role_id     = "aiosEvolutionReader"
+  title       = "AIOS Evolution Reader"
+  description = "Read evolution ledger documents only; no mutation or collection listing."
+  permissions = ["datastore.entities.get"]
+  stage       = "GA"
+}
+
 resource "google_project_iam_member" "worker_evolution_ledger" {
   project = var.evolution_firestore_project_id
-  role    = google_project_iam_custom_role.capability_promotion.name
+  role    = google_project_iam_custom_role.worker_evolution_reader.name
   member  = "serviceAccount:${var.worker_runtime_service_account_email}"
 }
 

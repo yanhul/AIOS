@@ -43,7 +43,7 @@ def test_firestore_runtime_refuses_local_fallback():
 
 
 def test_firestore_runtime_requires_project_and_explicit_backend():
-    with pytest.raises(EvolutionRuntimeBlocked, match="PROJECT_ID"):
+    with pytest.raises(EvolutionRuntimeBlocked, match="project IDs"):
         create_firestore_evolution_service(
             environ={"AIOS_EVOLUTION_BACKEND": "firestore"}, actor="test",
         )
@@ -55,26 +55,26 @@ def test_firestore_runtime_requires_reviewed_ci_workflow_pin():
             environ={"AIOS_EVOLUTION_BACKEND": "firestore",
                      "AIOS_EVOLUTION_FIRESTORE_PROJECT_ID": "evolution-test",
                      "AIOS_AUTHORITY_FIRESTORE_PROJECT_ID": "authority-test",
-                     "AIOS_CI_EVIDENCE_FIRESTORE_PROJECT_ID": "evidence-test"},
+                     "AIOS_CI_EVIDENCE_FIRESTORE_PROJECT_ID": "evidence-test", "AIOS_ACTIVATION_FIRESTORE_PROJECT_ID": "activation-test"},
             actor="test",
         )
 
 
 
 def test_firestore_runtime_requires_two_distinct_projects():
-    with pytest.raises(EvolutionRuntimeBlocked, match="AIOS_EVOLUTION_FIRESTORE_PROJECT_ID, AIOS_AUTHORITY_FIRESTORE_PROJECT_ID"):
+    with pytest.raises(EvolutionRuntimeBlocked, match="evolution, authority, CI evidence, and activation Firestore project IDs are required"):
         create_firestore_evolution_service(
             environ={"AIOS_EVOLUTION_BACKEND": "firestore",
                      "AIOS_EVOLUTION_FIRESTORE_PROJECT_ID": "evolution-test",
                      "AIOS_AUTHORITY_FIRESTORE_PROJECT_ID": "authority-test"},
             actor="test",
         )
-    with pytest.raises(EvolutionRuntimeBlocked, match="evolution, authority, and CI evidence Firestore projects must be distinct"):
+    with pytest.raises(EvolutionRuntimeBlocked, match="evolution, authority, CI evidence, and activation Firestore projects must be distinct"):
         create_firestore_evolution_service(
             environ={"AIOS_EVOLUTION_BACKEND": "firestore",
                      "AIOS_EVOLUTION_FIRESTORE_PROJECT_ID": "same",
                      "AIOS_AUTHORITY_FIRESTORE_PROJECT_ID": "same",
-                     "AIOS_CI_EVIDENCE_FIRESTORE_PROJECT_ID": "evidence"},
+                     "AIOS_CI_EVIDENCE_FIRESTORE_PROJECT_ID": "evidence", "AIOS_ACTIVATION_FIRESTORE_PROJECT_ID": "activation"},
             actor="test",
         )
 

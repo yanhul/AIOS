@@ -105,3 +105,17 @@ def test_ci_evidence_append_transaction_runs_only_on_evidence_client():
     assert {reference.collection_name for reference, _ in tx.created} == {
         "aios_ci_evidence", "aios_ci_evidence_events"
     }
+
+
+def test_active_pointer_uses_separate_activation_project():
+    ledger = FakeClient("evolution-project")
+    activation = FakeClient("activation-project")
+    store = FirestoreEvolutionStore(
+        ledger, project_id="evolution-project", authority_store=object(),
+        trust_anchor={"pinned-key": {}}, activation_client=activation,
+        transaction_runner=lambda client, callback: None,
+    )
+    pointer = store._ref("aios_active_capabilities", "capability-x")
+    operation = store._ref("aios_activation_operations", "PROMOTE-x")
+    assert pointer.project == "activation-project"
+    assert operation.project == "evolution-project"

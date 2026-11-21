@@ -15,24 +15,27 @@ def client_and_store():
     evolution_project_id = os.environ.get("AIOS_EVOLUTION_FIRESTORE_PROJECT_ID", "").strip()
     authority_project_id = os.environ.get("AIOS_AUTHORITY_FIRESTORE_PROJECT_ID", "").strip()
     evidence_project_id = os.environ.get("AIOS_CI_EVIDENCE_FIRESTORE_PROJECT_ID", "").strip()
-    if not evolution_project_id or not authority_project_id or not evidence_project_id:
-        raise RuntimeError("evolution, authority, and CI evidence Firestore project IDs are required")
-    if len({evolution_project_id, authority_project_id, evidence_project_id}) != 3:
-        raise RuntimeError("evolution, authority, and CI evidence Firestore projects must be distinct")
+    activation_project_id = os.environ.get("AIOS_ACTIVATION_FIRESTORE_PROJECT_ID", "").strip()
+    if not all((evolution_project_id, authority_project_id, evidence_project_id, activation_project_id)):
+        raise RuntimeError("evolution, authority, CI evidence, and activation Firestore project IDs are required")
+    if len({evolution_project_id, authority_project_id, evidence_project_id, activation_project_id}) != 4:
+        raise RuntimeError("evolution, authority, CI evidence, and activation Firestore projects must be distinct")
     trust_anchor = FirestoreAuthorityStore.trust_anchor_from_env()
     credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/datastore"])
     evolution_client = firestore.Client(project=evolution_project_id, credentials=credentials)
     authority_client = firestore.Client(project=authority_project_id, credentials=credentials)
     evidence_client = firestore.Client(project=evidence_project_id, credentials=credentials)
+    activation_client = firestore.Client(project=activation_project_id, credentials=credentials)
     if (evolution_client.project != evolution_project_id or authority_client.project != authority_project_id
-            or evidence_client.project != evidence_project_id):
+            or evidence_client.project != evidence_project_id or activation_client.project != activation_project_id):
         raise RuntimeError("Firestore client project mismatch")
     authority = FirestoreAuthorityStore(authority_client, project_id=authority_project_id)
     workflow_pin = os.environ.get("AIOS_FIRESTORE_WORKFLOW_SHA256", "").strip().lower()
     if len(workflow_pin) != 64:
         raise RuntimeError("AIOS_FIRESTORE_WORKFLOW_SHA256 reviewed pin is required")
     return FirestoreEvolutionStore(evolution_client, project_id=evolution_project_id, authority_store=authority,
-                                   evidence_client=evidence_client, trust_anchor=trust_anchor,
+                                   evidence_client=evidence_client, activation_client=activation_client,
+                                   trust_anchor=trust_anchor,
                                    expected_workflow_sha256=workflow_pin)
 
 

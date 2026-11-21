@@ -91,16 +91,31 @@ def create_production_app(*, environ: Mapping[str, str] | None = None):
         raise CloudRunWorkerConfigurationError("AIOS_REQUIRE_EXECUTION_LINEAGE=true is required")
     store = create_firestore_effect_store(environ=dict(env))
     project_id = _required(env, "AIOS_FIRESTORE_PROJECT_ID")
+    evolution_project_id = _required(env, "AIOS_EVOLUTION_FIRESTORE_PROJECT_ID")
+    activation_project_id = _required(env, "AIOS_ACTIVATION_FIRESTORE_PROJECT_ID")
+    authority_project_id = _required(env, "AIOS_AUTHORITY_FIRESTORE_PROJECT_ID")
+    evidence_project_id = _required(env, "AIOS_CI_EVIDENCE_FIRESTORE_PROJECT_ID")
+    if len({project_id, evolution_project_id, authority_project_id, evidence_project_id, activation_project_id}) != 5:
+        raise CloudRunWorkerConfigurationError("worker, evolution, authority, CI evidence, and activation Firestore projects must be distinct")
     trust_anchor_raw = _required(env, "AIOS_AUTHORITY_TRUST_ANCHOR")
     try:
         trust_anchor = json.loads(trust_anchor_raw)
     except ValueError as exc:
         raise CloudRunWorkerConfigurationError("AIOS_AUTHORITY_TRUST_ANCHOR must be valid JSON") from exc
     attestation_secret = _required(env, "AIOS_AUTHORITY_ATTESTATION_SECRET")
-    authority_store = FirestoreAuthorityStore(store.client, project_id=project_id)
+    import google.auth
+    from google.cloud import firestore
+    credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/datastore"])
+    authority_client = firestore.Client(project=authority_project_id, credentials=credentials)
+    evolution_client = firestore.Client(project=evolution_project_id, credentials=credentials)
+    activation_client = firestore.Client(project=activation_project_id, credentials=credentials)
+    if any(c.project != expected for c, expected in ((authority_client, authority_project_id),
+            (evolution_client, evolution_project_id), (activation_client, activation_project_id))):
+        raise CloudRunWorkerConfigurationError("Firestore client project mismatch")
+    authority_store = FirestoreAuthorityStore(authority_client, project_id=authority_project_id)
     evolution_store = FirestoreEvolutionStore(
-        store.client, project_id=project_id, authority_store=authority_store,
-        trust_anchor=trust_anchor,
+        evolution_client, project_id=evolution_project_id, authority_store=authority_store,
+        trust_anchor=trust_anchor, activation_client=activation_client,
     )
     if env.get("AIOS_REQUIRE_ACTIVE_CAPABILITY_REGISTRY", "").lower() != "true":
         raise CloudRunWorkerConfigurationError(
