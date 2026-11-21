@@ -6,6 +6,7 @@ on:
       - integration/firestore-execution-ledger-v1
       - main
       - feat/self-improvement-experience-evolution-v1
+      - feat/firestore-self-improvement-ci-promotion-v1
   workflow_dispatch:
 
 permissions:
