@@ -167,3 +167,91 @@ def test_external_ed25519_authorization_import_then_single_use_retry_dispatch(tm
             str(tmp_path), imported["retry_authorization"], dispatched, "agent-1", 2,
             fields["attempt_id"], None, 1001,
         )
+
+
+def test_production_ed25519_retry_with_lineage_not_applied_receipt_and_restart(tmp_path, monkeypatch):
+    import json
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from core.authority import load_contract
+    from core.effect_authority import (
+        _effect_state_digest, _load, _path, _load_owned_effect, _verify_consumption_history,
+        dispatch, import_retry_authorization, observe, retry_dispatch, unknown,
+    )
+    from core.execution_lineage import ExecutionLineage
+    from tests.provider_keys import KEYRING, sign_observation, signed_not_applied_proof
+    from tests.test_m6_effect_authority import _effect, _observation
+
+    monkeypatch.setenv("AIOS_REQUIRE_EXECUTION_LINEAGE", "true")
+    effect = _effect(tmp_path)
+    contract = load_contract(str(tmp_path), effect["contract_id"])
+
+    def lineage(attempt_id):
+        fields = {
+            "policy_revision": contract["policy_digest"],
+            "environment_revision": "deployment:test:sha256:retry-ed25519",
+            "capability_snapshot": {"capabilities": contract["capabilities"],
+                                    "policy_digest": contract["policy_digest"]},
+            "provider_revision": "1", "attempt_id": attempt_id,
+            "trajectory_id": "trajectory:retry-ed25519-production-test",
+        }
+        fields["lineage_digest"] = ExecutionLineage(**fields).digest
+        return fields
+
+    first_attempt = f"{effect['effect_id']}:attempt:1"
+    dispatch(str(tmp_path), effect["effect_id"], "agent-1", first_attempt, "provider-1",
+             lineage=lineage(first_attempt))
+    unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
+    current, _ = _load_owned_effect(str(tmp_path), effect["effect_id"], "agent-1", "test")
+
+    private = Ed25519PrivateKey.generate()
+    signer = _TestSigner("issuer:independent-production-test", private)
+    auth_fields = {
+        "record_type": "RETRY_AUTHORIZATION_ED25519", "authorization_id": "RA-" + "f" * 32,
+        "effect_id": current["effect_id"], "contract_id": current["contract_id"],
+        "permit_id": current["permit_id"], "actor": current["actor"],
+        "effect_state_digest": _effect_state_digest(current),
+        "previous_attempt": current["attempt"], "previous_attempt_id": current["attempt_id"],
+        "attempt": 2, "attempt_id": f"{current['effect_id']}:attempt:2",
+        "reason": "reviewed production retry", "unknown_reason": current["unknown_reason"],
+        "provider": current["provider"],
+        "state_attestation_digest": "d" * 64,
+        "state_source_repository": "yanhul/AIOS-effect-state",
+        "state_source_ref": "authority/effect-state",
+        "state_source_commit": "a" * 40,
+        "state_source_path": f"effects/raw/{current['effect_id']}.json",
+        "state_attested_at": 1000.0, "state_version": 1,
+        "state_attestor": "state-attestor:test", "state_attestor_key_id": "ed25519:" + "1" * 32,
+        "state_attestation_commit": "b" * 40,
+        "state_attestation_path": f"effects/attested/{current['effect_id']}.json",
+    }
+    record = signer.sign(auth_fields, now=1000)
+    public = private.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw).hex()
+    monkeypatch.setenv("AIOS_RETRY_ISSUER_ED25519_KEYRING", json.dumps({
+        signer.issuer: {"key_id": signer.key_id, "public_key": public, "revoked": False}
+    }))
+    imported = import_retry_authorization(str(tmp_path), record, "agent-1", now=1001)
+    proof = signed_not_applied_proof(str(tmp_path), effect["effect_id"], "provider-1", now=1002)
+    dispatched = retry_dispatch(
+        str(tmp_path), effect["effect_id"], "agent-1", auth_fields["attempt_id"], "provider-1", 2,
+        imported["retry_authorization"], lineage=lineage(auth_fields["attempt_id"]),
+        not_applied_proof=proof, provider_keyring=KEYRING, now=1002,
+    )
+    assert dispatched["state"] == "DISPATCHED"
+    assert dispatched["retry_authorization_id"] == record["authorization_id"]
+    assert record["authorization_id"] in dispatched["consumed_retry_authorizations"]
+
+    observation = sign_observation(dispatched, _observation(effect["effect_id"], attempt=2), now=1003)
+    observed = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS",
+                       observation, provider_keyring=KEYRING, now=1003)
+    assert observed["state"] == "OBSERVED_SUCCESS"
+    receipt_id = observation["authentication"]["receipt_id"]
+    receipt_path = tmp_path / "provider_receipts" / (receipt_id + ".json")
+    assert receipt_path.is_file()
+
+    # Restart boundary: reload only durable files and revalidate the one-use ledger.
+    reloaded = _load(_path(str(tmp_path), effect["effect_id"]))
+    _load_owned_effect(str(tmp_path), effect["effect_id"], "agent-1", "restart")
+    _verify_consumption_history(str(tmp_path), reloaded)
+    assert json.loads(receipt_path.read_text())["attempt_id"] == auth_fields["attempt_id"]
+    assert reloaded["consumed_retry_authorizations"] == [record["authorization_id"]]
