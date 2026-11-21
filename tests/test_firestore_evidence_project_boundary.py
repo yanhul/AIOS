@@ -7,6 +7,9 @@ class FakeReference:
         self.collection_name = collection
         self.document_id = document_id
 
+    def get(self, transaction=None):
+        return MissingSnapshot()
+
 
 class FakeCollection:
     def __init__(self, project, name):
