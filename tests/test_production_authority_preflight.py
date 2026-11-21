@@ -81,3 +81,10 @@ def test_production_authority_rejects_expired_reviewer_attestation():
     env, _ = _valid_env()
     with pytest.raises(ProductionAuthorityConfigError, match="expired"):
         validate_production_authority(env, now=2000)
+
+
+def test_production_authority_rejects_legacy_hmac_retry_keyring():
+    env, _ = _valid_env()
+    env["AIOS_RETRY_ISSUER_KEYRING"] = json.dumps({"legacy": {"secret": "x" * 40, "scopes": ["effect.retry.approve"]}})
+    with pytest.raises(ProductionAuthorityConfigError, match="legacy HMAC"):
+        validate_production_authority(env, now=1000)
