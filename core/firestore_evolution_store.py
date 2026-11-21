@@ -484,7 +484,7 @@ class FirestoreEvolutionStore:
         if any(capability.get(k) != v for k, v in expected_capability.items()):
             raise EvolutionStoreError("signed ACTIVE capability does not bind exact evaluated candidate")
         decision_ref = self._ref("aios_capability_decisions", "CD-" + decision_digest)
-        event = {"event_type": "capability.version_promoted", "decision_digest": decision_digest,
+        event = {"event_type": "capability.activation_prepared", "decision_digest": decision_digest,
                  "capability_digest": capability_digest, "candidate_id": candidate_id,
                  "evaluation_id": evaluation_id, "capability_id": candidate["capability_id"],
                  "from_version": candidate["base_version"], "to_version": candidate["candidate_version"],
@@ -514,7 +514,7 @@ class FirestoreEvolutionStore:
             if old_event is not None or old_operation is not None:
                 raise EvolutionStoreError("orphan promotion event/activation operation")
             tx.create(decision_ref, {**event, "record_type": "CAPABILITY_DECISION",
-                                     "decision": "PROMOTED", "approver": decision["approver"],
+                                     "decision": "PROMOTION_PREPARED", "approver": decision["approver"],
                                      "decision_digest": decision_digest, "capability_digest": capability_digest})
             tx.create(event_ref, event)
             tx.create(operation_ref, {"operation_id": "PROMOTE-" + decision_digest, "state": "PREPARED",
@@ -547,14 +547,27 @@ class FirestoreEvolutionStore:
             tx.set(active_ref, expected_pointer)
             return False
         replayed = self._commit("activation pointer CAS", activate_tx, client=self.activation_client)
+        activated_event = {"event_type": "capability.version_activated", "decision_digest": decision_digest,
+                           "capability_digest": capability_digest, "candidate_id": candidate_id,
+                           "evaluation_id": evaluation_id, "capability_id": candidate["capability_id"],
+                           "from_version": candidate["base_version"], "to_version": candidate["candidate_version"],
+                           "revision": next_revision}
+        activated_event_ref = self._ref("aios_evolution_events", _digest(activated_event))
         def finalize_tx(tx: Any) -> None:
             op = _data(operation_ref.get(transaction=tx))
+            old_event = _data(activated_event_ref.get(transaction=tx))
             if op is None or op.get("decision_digest") != decision_digest or op.get("capability_digest") != capability_digest:
                 raise EvolutionStoreError("activation operation missing or conflicting")
             if op.get("state") == "ACTIVATED":
+                if old_event != activated_event:
+                    raise EvolutionStoreError("activated operation has missing/conflicting activation event")
                 return
             if op.get("state") != "PREPARED":
                 raise EvolutionStoreError("activation operation cannot be finalized")
+            if old_event is None:
+                tx.create(activated_event_ref, activated_event)
+            elif old_event != activated_event:
+                raise EvolutionStoreError("activation event identity conflict")
             tx.set(operation_ref, {**op, "state": "ACTIVATED"})
         self._commit("activation finalize transaction", finalize_tx)
         return {**prepared, "status": "ACTIVE", "replayed": bool(prepared.get("replayed") or replayed),
@@ -579,7 +592,7 @@ class FirestoreEvolutionStore:
         capability_id = _required(capability.get("capability_id"), "capability_id")
         pointer_ref = self._ref("aios_active_capabilities", capability_id)
         decision_ref = self._ref("aios_capability_decisions", "CD-BOOTSTRAP-" + bootstrap_decision_digest)
-        event = {"event_type": "capability.registry_bootstrapped", "capability_id": capability_id,
+        event = {"event_type": "capability.registry_bootstrap_prepared", "capability_id": capability_id,
                  "version": capability["version"], "capability_digest": capability_digest,
                  "bootstrap_decision_digest": bootstrap_decision_digest}
         event_id = _digest(event)
@@ -596,7 +609,7 @@ class FirestoreEvolutionStore:
                 return {"status": "PREPARED", "replayed": True, "version": capability["version"]}
             if old_event is not None or old_operation is not None:
                 raise EvolutionStoreError("orphan bootstrap event/operation")
-            tx.create(decision_ref, {**event, "record_type": "CAPABILITY_DECISION", "decision": "BOOTSTRAP_ACTIVE"})
+            tx.create(decision_ref, {**event, "record_type": "CAPABILITY_DECISION", "decision": "BOOTSTRAP_PREPARED"})
             tx.create(event_ref, event)
             tx.create(operation_ref, {"operation_id": "BOOTSTRAP-" + bootstrap_decision_digest,
                                       "state": "PREPARED", "decision_digest": bootstrap_decision_digest,
@@ -619,14 +632,25 @@ class FirestoreEvolutionStore:
             tx.create(pointer_ref, expected_pointer)
             return False
         replayed = self._commit("bootstrap activation pointer create", activate_tx, client=self.activation_client)
+        activated_event = {"event_type": "capability.registry_bootstrapped", "capability_id": capability_id,
+                           "version": capability["version"], "capability_digest": capability_digest,
+                           "bootstrap_decision_digest": bootstrap_decision_digest}
+        activated_event_ref = self._ref("aios_evolution_events", _digest(activated_event))
         def finalize_tx(tx: Any) -> None:
             op = _data(operation_ref.get(transaction=tx))
+            old_event = _data(activated_event_ref.get(transaction=tx))
             if op is None or op.get("decision_digest") != bootstrap_decision_digest or op.get("capability_digest") != capability_digest:
                 raise EvolutionStoreError("bootstrap operation missing or conflicting")
             if op.get("state") == "ACTIVATED":
+                if old_event != activated_event:
+                    raise EvolutionStoreError("activated bootstrap has missing/conflicting activation event")
                 return
             if op.get("state") != "PREPARED":
                 raise EvolutionStoreError("bootstrap operation cannot be finalized")
+            if old_event is None:
+                tx.create(activated_event_ref, activated_event)
+            elif old_event != activated_event:
+                raise EvolutionStoreError("bootstrap activation event identity conflict")
             tx.set(operation_ref, {**op, "state": "ACTIVATED"})
         self._commit("bootstrap activation finalize", finalize_tx)
         return {**prepared, "status": "ACTIVE", "replayed": bool(prepared.get("replayed") or replayed),

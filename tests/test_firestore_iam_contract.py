@@ -75,6 +75,8 @@ def test_terraform_requires_five_distinct_firestore_projects():
     ):
         assert variable in source
     assert "var.ci_ingestion_service_account_email != var.capability_promotion_service_account_email" in source
+    assert "var.worker_runtime_service_account_email != var.capability_promotion_service_account_email" in source
+    assert "var.worker_runtime_service_account_email != var.ci_ingestion_service_account_email" in source
 
 
 def test_worker_cannot_mutate_evolution_or_activation_pointer():

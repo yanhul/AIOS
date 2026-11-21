@@ -256,9 +256,11 @@ check "automation_identities_are_isolated" {
   assert {
     condition = (
       var.ci_ingestion_service_account_email != var.capability_promotion_service_account_email &&
+      var.worker_runtime_service_account_email != var.capability_promotion_service_account_email &&
+      var.worker_runtime_service_account_email != var.ci_ingestion_service_account_email &&
       var.github_actions_ingestion_wif_principal != var.github_actions_promotion_wif_principal
     )
-    error_message = "CI ingestion and capability promotion must use distinct service accounts and distinct WIF principals."
+    error_message = "Worker runtime, CI ingestion, and capability promotion must use distinct service accounts; CI ingestion and promotion must also use distinct WIF principals."
   }
 }
 
