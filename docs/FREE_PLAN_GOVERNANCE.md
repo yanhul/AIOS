@@ -54,3 +54,17 @@ PROMOTION_BLOCKED
 ## Residual risk
 
 Under this fallback, a repository owner/admin can still alter repository workflows and documentation. External signatures and independently held keys protect authenticity of signed records, but they do not by themselves guarantee repository availability, branch immutability, or enforcement of human review. This residual risk is accepted only for development and audit preparation, not production authority or autonomous retry.
+
+## Decision: owner-reviewed pilot (approved)
+
+Use a **manual owner-reviewed pilot** to unblock integration work without purchasing GitHub Team. This is an explicit, limited trust assumption—not equivalent to branch protection.
+
+Pilot rules:
+1. The repository owner manually initiates the test workflow and reviews the exact PR/commit before any test artifact is accepted.
+2. Pilot data must be synthetic. Use ephemeral Ed25519 keypairs generated inside the test process; never use production keys, real effect records, production tokens, or live provider credentials.
+3. The pilot may exercise the complete software path: UNKNOWN fixture → signed snapshot attestation → retry authorization → AIOS import → provider-authenticated NOT_APPLIED test proof → one-shot retry → receipt persistence → restart/readback → replay rejection.
+4. The test must assert exact source SHA, attestation parent binding, trust-key separation, signature verification, CAS/single-use consumption, and durable receipt.
+5. Owner review is recorded as an operator action in the PR/release evidence. Because GitHub does not enforce it on this private Free repository, label it `MANUAL_OWNER_REVIEWED`, never `REPOSITORY_GOVERNANCE_ENFORCED`.
+6. Pilot success is `PILOT_E2E_VERIFIED` only. It does not authorize production issuance, retry, promotion, or merge to an authoritative branch.
+
+Exit criteria: all pilot assertions pass on one pinned commit and the test artifact/logs are retained. Production remains blocked until independent governance, production key custody, and live provider E2E are separately proven.
