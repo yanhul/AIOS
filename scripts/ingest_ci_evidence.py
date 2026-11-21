@@ -17,6 +17,22 @@ from urllib.request import Request, urlopen
 EXPECTED_WORKFLOW = ".github/workflows/firestore-emulator.yml"
 
 
+def verify_artifact_digest(artifact: dict, zip_bytes: bytes) -> str:
+    """Require GitHub's artifact digest and verify the downloaded ZIP bytes."""
+    if not isinstance(artifact, dict):
+        raise RuntimeError("GitHub artifact metadata is malformed")
+    expected = artifact.get("digest")
+    if not isinstance(expected, str) or not expected.startswith("sha256:"):
+        raise RuntimeError("GitHub artifact metadata has no SHA-256 digest")
+    expected_hex = expected.removeprefix("sha256:").lower()
+    if len(expected_hex) != 64 or any(ch not in "0123456789abcdef" for ch in expected_hex):
+        raise RuntimeError("GitHub artifact SHA-256 digest is malformed")
+    actual = hashlib.sha256(zip_bytes).hexdigest()
+    if actual != expected_hex:
+        raise RuntimeError("downloaded artifact bytes do not match GitHub artifact digest")
+    return actual
+
+
 def api(url: str, token: str) -> tuple[dict, bytes]:
     request = Request(url, headers={
         "Accept": "application/vnd.github+json",
@@ -92,7 +108,7 @@ def main() -> int:
         raise RuntimeError("expected non-expired emulator log artifact is missing or ambiguous")
     artifact = artifacts[0]
     _, zip_bytes = api(f"{base}/artifacts/{artifact['id']}/zip", token)
-    artifact_digest = hashlib.sha256(zip_bytes).hexdigest()
+    artifact_digest = verify_artifact_digest(artifact, zip_bytes)
 
     from google.cloud import firestore
     import google.auth
