@@ -1,0 +1,45 @@
+name: AIOS CI Evidence Ingestion
+
+on:
+  workflow_run:
+    workflows: ["Firestore Emulator Gate"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+jobs:
+  ingest:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      vars.AIOS_GCP_WIF_PROVIDER != '' &&
+      vars.AIOS_GCP_SERVICE_ACCOUNT != '' &&
+      vars.AIOS_FIRESTORE_PROJECT_ID != '' &&
+      vars.AIOS_AUTHORITY_TRUST_ANCHOR != '' &&
+      vars.AIOS_FIRESTORE_WORKFLOW_SHA256 != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Authenticate with Google Cloud using GitHub OIDC
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.AIOS_GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.AIOS_GCP_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+      - name: Install pinned Firestore dependencies
+        run: python -m pip install -r requirements-firestore.txt
+      - name: Verify completed source run and ingest immutable CI evidence
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AIOS_SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          AIOS_EXPECTED_REPOSITORY: ${{ github.repository }}
+          AIOS_FIRESTORE_PROJECT_ID: ${{ vars.AIOS_FIRESTORE_PROJECT_ID }}
+          AIOS_AUTHORITY_TRUST_ANCHOR: ${{ vars.AIOS_AUTHORITY_TRUST_ANCHOR }}
+          AIOS_FIRESTORE_WORKFLOW_SHA256: ${{ vars.AIOS_FIRESTORE_WORKFLOW_SHA256 }}
+        run: python scripts/ingest_ci_evidence.py

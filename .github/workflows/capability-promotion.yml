@@ -1,0 +1,66 @@
+name: AIOS Capability Promotion Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_id:
+        description: Immutable CV- candidate record ID
+        required: true
+        type: string
+      evaluation_id:
+        description: Immutable CE- PASS evaluation record ID
+        required: true
+        type: string
+      decision_digest:
+        description: SHA-256 digest of signed CAPABILITY_PROMOTION_DECISION authority record
+        required: true
+        type: string
+      capability_digest:
+        description: SHA-256 digest of signed ACTIVE CAPABILITY authority record
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  promote:
+    if: >-
+      vars.AIOS_GCP_WIF_PROVIDER != '' &&
+      vars.AIOS_GCP_SERVICE_ACCOUNT != '' &&
+      vars.AIOS_FIRESTORE_PROJECT_ID != '' &&
+      vars.AIOS_AUTHORITY_TRUST_ANCHOR != '' &&
+      vars.AIOS_FIRESTORE_WORKFLOW_SHA256 != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Authenticate with Google Cloud using GitHub OIDC
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.AIOS_GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.AIOS_GCP_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+      - name: Install pinned Firestore dependencies
+        run: python -m pip install -r requirements-firestore.txt
+      - name: Verify signed decision and atomically activate capability
+        env:
+          AIOS_FIRESTORE_PROJECT_ID: ${{ vars.AIOS_FIRESTORE_PROJECT_ID }}
+          AIOS_AUTHORITY_TRUST_ANCHOR: ${{ vars.AIOS_AUTHORITY_TRUST_ANCHOR }}
+          AIOS_FIRESTORE_WORKFLOW_SHA256: ${{ vars.AIOS_FIRESTORE_WORKFLOW_SHA256 }}
+          AIOS_CANDIDATE_ID: ${{ inputs.candidate_id }}
+          AIOS_EVALUATION_ID: ${{ inputs.evaluation_id }}
+          AIOS_DECISION_DIGEST: ${{ inputs.decision_digest }}
+          AIOS_CAPABILITY_DIGEST: ${{ inputs.capability_digest }}
+          AIOS_EXPECTED_REPOSITORY: ${{ github.repository }}
+        run: >-
+          python scripts/promote_capability.py promote
+          --candidate-id "$AIOS_CANDIDATE_ID"
+          --evaluation-id "$AIOS_EVALUATION_ID"
+          --decision-digest "$AIOS_DECISION_DIGEST"
+          --capability-digest "$AIOS_CAPABILITY_DIGEST"
+          --repository "$AIOS_EXPECTED_REPOSITORY"

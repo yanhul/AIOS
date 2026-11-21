@@ -1,9 +1,11 @@
 # AIOS Self-Improvement: Experience and Capability Evolution
 
-Status: PARTIAL IMPLEMENTATION. The append-only local persistence and gate logic
-are implemented on the self-improvement feature branch. A Firestore repository,
-automatic CI artifact ingestion, active registry integration, and deployment
-orchestration are not implemented by this change.
+Status: PARTIAL IMPLEMENTATION. The local developer ledger remains available;
+a Firestore-only M10/M11 service, transactional evolution ledger, CI evidence
+ingestion workflow, signed promotion/bootstrap workflows and active capability
+resolver binding are now implemented in code. They have not been run against a
+GCP project. Production IAM isolation, WIF configuration, issuer integration,
+contribution/relationship learning and deployment orchestration remain open.
 
 ## 1. Governed loop
 
@@ -53,8 +55,9 @@ authenticity must be supplied by trusted authority/evidence callbacks.
    evaluator and approver, independent evaluation-provenance verification,
    evidence verifier returning exactly true, a fresh base version, and an
    AIOS promotion authorizer returning exactly true.
-4. `rollback_capability`: separately authorized append-only rollback to a
-   version present in the capability's prior decision history.
+4. The local `rollback_capability` path remains a developer ledger operation.
+   Production Firestore activation currently requires signed bootstrap and
+   promotion decisions; signed rollback decision support remains a follow-up.
 
 Semantic versions use MAJOR.MINOR.PATCH. A candidate based on a stale active
 version cannot be promoted. A later FAIL/INCONCLUSIVE evaluation supersedes an
@@ -70,17 +73,40 @@ older PASS for promotion purposes.
 
 The module does not mint these identities or decide who is trusted. Those
 bindings must come from the deployment's AIOS identity and authority stores.
+The Firestore promotion gate verifies a signed `CAPABILITY_PROMOTION_DECISION`
+and a signed `CAPABILITY` artifact with exact candidate/evaluation/source/patch
+bindings. It checks the latest PASS, three distinct identities, CI evidence for
+the same repository and commit, active base version, signed revision and
+predecessor digest, then atomically appends the decision/event and advances the
+active pointer. The worker authority resolver checks the signed active pointer
+before accepting the capability.
 
 ## 5. Explicit non-goals and remaining integration
 
-This implementation does not train a model, invoke a provider, execute a patch,
-change the active capability registry, or deploy a candidate. It does not
-provide a Firestore adapter, cross-host locking, automatic CI artifact
-discovery, statistical contribution/credit assignment, or a relationship graph.
-Those remain required before M10/M11 can be declared operationally complete.
+The CI evidence workflow is triggered by `workflow_run` after the Firestore
+Emulator Gate completes. It verifies the authenticated GitHub API run metadata,
+pinned workflow path, completed successful jobs and emulator log artifact; it
+stores the downloaded artifact ZIP SHA-256 and provenance in `aios_ci_evidence`.
+The manual `AIOS Capability Promotion Gate` workflow activates only when the
+independent issuer has already published both signed authority artifacts. The
+one-time registry bootstrap is also a manual signed workflow. Neither workflow
+creates or deploys GCP resources.
 
-A green unit test suite proves only the tested local invariants. Local content
+This implementation does not train a model, invoke a provider, execute a patch,
+or deploy a candidate. The `workflow_run` ingestor only becomes active after its
+workflow is present on the repository default branch and the repository WIF /
+Firestore variables are configured. No GCP run has been performed.
+
+A green unit test suite proves only the tested invariants. Local content
 hashes and audit events are not signatures and do not resist a privileged,
-coordinated rewrite of both record and event. Tests do not prove production
-identity custody, Firestore durability, provider correctness, or safe rollout. Missing or inconclusive evidence must remain BLOCKED or
-INCONCLUSIVE.
+coordinated rewrite of both record and event. The Firestore active pointer is a
+mutable projection; a project-level `roles/datastore.user` grant is not
+collection-scoped. A compromised worker identity could rewrite it, so before
+production the evolution registry must be isolated in a separately permissioned
+Firestore database/project or activation must be moved behind a separately
+permissioned authority service. No IAM apply is authorized by this change.
+
+No local Firestore Emulator or GCP staging run has yet been completed for this
+batch. Tests do not prove production identity custody, Firestore durability,
+provider correctness, or safe rollout. Missing or inconclusive evidence must
+remain BLOCKED or INCONCLUSIVE.

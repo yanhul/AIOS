@@ -47,3 +47,22 @@ stateless Cloud Run worker can be enabled, a follow-up integration must:
 record tampering, signature tampering, expiry, revocation, and project binding
 with a deterministic in-memory Firestore client double. These tests do not
 claim a live Firestore Emulator or GCP staging run.
+
+## M10/M11 follow-on: Firestore evolution ledger
+
+The self-improvement integration adds `core.firestore_evolution_store` beside,
+not inside, the immutable authority artifact store. Experience, candidate,
+evaluation, CI evidence, decision and event records are kept in separate
+Firestore collections. Signed `CAPABILITY_BOOTSTRAP_DECISION`,
+`CAPABILITY_PROMOTION_DECISION` and `CAPABILITY` artifacts remain in
+`aios_authority_records`; the evolution ledger verifies them through this
+store before moving the active capability projection.
+
+`FirestoreAuthorityResolver` can now receive an active-capability lookup. The
+Cloud Run composition root supplies `FirestoreEvolutionStore.get_active_capability`
+and requires `AIOS_REQUIRE_ACTIVE_CAPABILITY_REGISTRY=true`, so a missing,
+unsigned, mismatched or superseded-by-current-pointer capability is denied.
+The active pointer is still a mutable Firestore projection. Project-level
+`roles/datastore.user` is not collection-scoped, so production must isolate
+registry writes from the worker identity using a separate permission boundary
+before deployment. No GCP resource or IAM policy was applied by this change.

@@ -5,6 +5,7 @@ on:
     branches:
       - integration/firestore-execution-ledger-v1
       - main
+      - feat/self-improvement-experience-evolution-v1
   workflow_dispatch:
 
 permissions:

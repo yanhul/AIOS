@@ -142,3 +142,19 @@ def test_rejects_policy_artifact_not_bound_by_contract():
     resolver, d = signed_fixture()
     with pytest.raises(FirestoreAuthorityResolutionError, match="POLICY authority lookup"):
         _resolve(resolver, d, policy_digest="0" * 64)
+
+
+def test_active_registry_rejects_signed_but_superseded_capability():
+    resolver, d = signed_fixture()
+    base = resolver
+    active_lookup = lambda capability_id: {
+        "pointer": {"capability_digest": "f" * 64, "version": "2.0.0"},
+        "capability": {"capability_id": capability_id, "version": "2.0.0", "status": "ACTIVE"},
+    }
+    guarded = FirestoreAuthorityResolver(
+        base._store, trust_anchor=base._trust_anchor,
+        attestation_secret=ATTESTATION_SECRET,
+        active_capability_lookup=active_lookup,
+    )
+    with pytest.raises(FirestoreAuthorityResolutionError, match="currently promoted"):
+        _resolve(guarded, d)

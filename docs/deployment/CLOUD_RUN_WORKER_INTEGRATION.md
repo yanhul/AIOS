@@ -27,6 +27,7 @@ The Cloud Run service must set these values explicitly:
 
 - AIOS_REQUIRE_FIRESTORE_EFFECT_STORE=true
 - AIOS_REQUIRE_EXECUTION_LINEAGE=true
+- AIOS_REQUIRE_ACTIVE_CAPABILITY_REGISTRY=true
 - AIOS_FIRESTORE_PROJECT_ID
 - AIOS_AUTHORITY_TRUST_ANCHOR (JSON Ed25519 public-key trust anchor)
 - AIOS_AUTHORITY_ATTESTATION_SECRET (injected from Secret Manager; never baked
@@ -46,7 +47,14 @@ The Cloud Run service must set these values explicitly:
 
 The worker runtime service account needs Firestore datastore access, Cloud Tasks
 enqueue permission on the existing queue, and Secret Manager access only to the
-existing authority-attestation secret. Cloud Tasks and Scheduler use separate
+existing authority-attestation secret. The separate GitHub OIDC automation
+service account needs Firestore datastore access to ingest CI evidence and
+invoke the signed promotion gate. Firestore IAM roles are not collection-scoped;
+these project-level grants do not isolate the active-pointer collection from a
+compromised worker identity. Before production, separate the evolution registry
+into an independently permissioned database/project or place activation behind
+a separately permissioned authority service. Do not treat this Terraform grant
+as sufficient write isolation. Cloud Tasks and Scheduler use separate
 dedicated invoker service accounts. The Terraform module adds service-level
 Cloud Run invoker members and the required token-minting/actAs grants.
 
@@ -76,9 +84,12 @@ FirestoreEffectStore.create_effect persists the complete immutable
 authority_digests bundle supplied to execute_firestore_effect when using
 FirestoreAuthorityResolver. A restarted worker resolves contract, permit,
 attestation, policy and exact ACTIVE capability records from Firestore,
-verifies Ed25519 issuer signatures and cross-bindings, then calls only the
-provider adapter's reconcile method. Effects without the complete digest bundle
-are rejected by the production reconciler.
+verifies Ed25519 issuer signatures and cross-bindings, then checks the signed
+capability against FirestoreEvolutionStore's active pointer and its signed
+bootstrap/promotion decision. The production worker refuses to start unless
+AIOS_REQUIRE_ACTIVE_CAPABILITY_REGISTRY=true. It then calls only the provider
+adapter's reconcile method. Effects without the complete digest bundle or a
+current active capability binding are rejected.
 
 ## Terraform scope
 
