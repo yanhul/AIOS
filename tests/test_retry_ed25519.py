@@ -77,3 +77,50 @@ def test_external_authorization_import_binds_current_unknown_effect(tmp_path, mo
     )
     assert verified["algorithm"] == "Ed25519"
     assert rel.endswith(record["authorization_id"] + ".json")
+
+
+
+def test_external_ed25519_authorization_import_then_single_use_retry_dispatch(tmp_path, monkeypatch):
+    import json
+    from core.effect_authority import (
+        _effect_state_digest, _load_owned_effect, dispatch, import_retry_authorization,
+        retry_dispatch, unknown, _load, _path, _verify_retry_authorization,
+    )
+    from core.mutation import TransitionError
+    from tests.provider_keys import KEYRING, signed_not_applied_proof
+    from tests.test_m6_effect_authority import _effect
+    effect = _effect(tmp_path)
+    first = f"{effect['effect_id']}:attempt:1"
+    dispatch(str(tmp_path), effect["effect_id"], "agent-1", first, "provider-1")
+    unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
+    current, _ = _load_owned_effect(str(tmp_path), effect["effect_id"], "agent-1", "test")
+    signer, _ = _record()
+    fields = {
+        "record_type": "RETRY_AUTHORIZATION_ED25519", "authorization_id": "RA-" + "e" * 32,
+        "effect_id": current["effect_id"], "contract_id": current["contract_id"],
+        "permit_id": current["permit_id"], "actor": "agent-1",
+        "effect_state_digest": _effect_state_digest(current), "previous_attempt": 1,
+        "previous_attempt_id": first, "attempt": 2,
+        "attempt_id": f"{effect['effect_id']}:attempt:2", "reason": "reviewed retry",
+        "unknown_reason": current["unknown_reason"], "provider": "provider-1",
+    }
+    record = signer.sign(fields, now=1000)
+    monkeypatch.setenv("AIOS_RETRY_ISSUER_ED25519_KEYRING", json.dumps({
+        signer.issuer: {"key_id": signer.key_id, "public_key": signer.public_key}
+    }))
+    monkeypatch.setenv("AIOS_REQUIRE_EXECUTION_LINEAGE", "false")
+    imported = import_retry_authorization(str(tmp_path), record, "agent-1", now=1001)
+    proof = signed_not_applied_proof(str(tmp_path), effect["effect_id"], "provider-1", now=1001)
+    dispatched = retry_dispatch(
+        str(tmp_path), effect["effect_id"], "agent-1", fields["attempt_id"], "provider-1", 2,
+        retry_authorization=imported["retry_authorization"], not_applied_proof=proof,
+        provider_keyring=KEYRING, now=1001,
+    )
+    assert dispatched["state"] == "DISPATCHED"
+    assert dispatched["retry_authorization_id"] == record["authorization_id"]
+    assert dispatched["consumed_retry_authorizations"] == [record["authorization_id"]]
+    with pytest.raises(TransitionError, match="already consumed"):
+        _verify_retry_authorization(
+            str(tmp_path), imported["retry_authorization"], dispatched, "agent-1", 2,
+            fields["attempt_id"], None, 1001,
+        )
