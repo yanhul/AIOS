@@ -204,6 +204,11 @@ variable "authority_firestore_project_id" {
   type        = string
 }
 
+variable "ci_evidence_firestore_project_id" {
+  description = "Dedicated existing project containing only GitHub CI evidence and ingestion events."
+  type        = string
+}
+
 variable "ci_ingestion_service_account_email" {
   description = "Existing GitHub OIDC identity used only by the CI evidence ingestion workflow."
   type        = string
@@ -228,8 +233,11 @@ check "firestore_projects_are_isolated" {
   assert {
     condition = (
       var.evolution_firestore_project_id != var.authority_firestore_project_id &&
+      var.evolution_firestore_project_id != var.ci_evidence_firestore_project_id &&
+      var.authority_firestore_project_id != var.ci_evidence_firestore_project_id &&
       var.evolution_firestore_project_id != var.project_id &&
-      var.authority_firestore_project_id != var.project_id
+      var.authority_firestore_project_id != var.project_id &&
+      var.ci_evidence_firestore_project_id != var.project_id
     )
     error_message = "Worker, evolution-ledger, and authority Firestore projects must be three distinct existing projects."
   }
@@ -248,7 +256,7 @@ check "automation_identities_are_isolated" {
 # The ingestion role can read and create documents only. It cannot update,
 # delete, list, or write any authority artifact.
 resource "google_project_iam_custom_role" "ci_ingestion" {
-  project     = var.evolution_firestore_project_id
+  project     = var.ci_evidence_firestore_project_id
   role_id     = "aiosCiEvidenceIngestion"
   title       = "AIOS CI Evidence Ingestion"
   description = "Read existing evidence IDs and create immutable CI evidence documents; no update/delete/list."
@@ -276,10 +284,27 @@ resource "google_project_iam_custom_role" "capability_promotion" {
   stage = "GA"
 }
 
-resource "google_project_iam_member" "ci_ingestion_ledger" {
-  project = var.evolution_firestore_project_id
+resource "google_project_iam_member" "ci_ingestion_evidence" {
+  project = var.ci_evidence_firestore_project_id
   role    = google_project_iam_custom_role.ci_ingestion.name
   member  = "serviceAccount:${var.ci_ingestion_service_account_email}"
+}
+
+resource "google_project_iam_custom_role" "ci_evidence_reader" {
+  project     = var.ci_evidence_firestore_project_id
+  role_id     = "aiosCiEvidenceReader"
+  title       = "AIOS CI Evidence Reader"
+  description = "Read individual immutable CI evidence records; no writes or listing."
+  permissions = [
+    "datastore.entities.get",
+  ]
+  stage = "GA"
+}
+
+resource "google_project_iam_member" "capability_promotion_evidence_readonly" {
+  project = var.ci_evidence_firestore_project_id
+  role    = google_project_iam_custom_role.ci_evidence_reader.name
+  member  = "serviceAccount:${var.capability_promotion_service_account_email}"
 }
 
 resource "google_project_iam_member" "capability_promotion_ledger" {
