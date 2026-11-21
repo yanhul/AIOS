@@ -30,9 +30,27 @@ resource "google_cloud_run_v2_service_iam_binding" "private_invokers" {
   ]
 }
 
+# The worker project is a dedicated effect/attempt/receipt data plane.
+# It needs direct reads, outbox queries, creates and state transitions, but
+# it never needs to delete durable evidence.
+resource "google_project_iam_custom_role" "worker_effect_runtime" {
+  project     = var.project_id
+  role_id     = "aiosWorkerEffectRuntime"
+  title       = "AIOS Worker Effect Runtime"
+  description = "Read/query and create/update durable worker effects; no delete."
+  permissions = [
+    "datastore.databases.get",
+    "datastore.entities.create",
+    "datastore.entities.get",
+    "datastore.entities.list",
+    "datastore.entities.update",
+  ]
+  stage = "GA"
+}
+
 resource "google_project_iam_member" "worker_firestore" {
   project = var.project_id
-  role    = "roles/datastore.user"
+  role    = google_project_iam_custom_role.worker_effect_runtime.name
   member  = "serviceAccount:${var.worker_runtime_service_account_email}"
 }
 
