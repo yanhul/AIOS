@@ -218,7 +218,7 @@ def transition(aios_dir, effect_id, target, actor, **fields):
         raise TransitionError("observation outcomes can only be recorded through observe(); "
                               f"direct {target} transition is not allowed")
     current, _contract = _load_owned_effect(aios_dir, ef
-[... 27570 bytes omitted ...]
+[... 27950 bytes omitted ...]
 ],
                                   provider, attempt_id)
         except ValueError as exc:
