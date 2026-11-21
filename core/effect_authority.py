@@ -689,10 +689,14 @@ def _verify_retry_authorization(aios_dir, supplied, current, actor, attempt, att
     t = _now(now)
     if not _is_finite_number(record["issued_at"]) or not _is_finite_number(record["expires_at"]):
         raise TransitionError("retry authorization record failed integrity check")
-    if t > record["expires_at"]:
-        raise TransitionError("retry authorization has expired")
+    if record["expires_at"] <= record["issued_at"]:
+        raise TransitionError("retry authorization validity window is invalid")
+    if record["expires_at"] - record["issued_at"] > MAX_RETRY_AUTH_TTL_SECONDS:
+        raise TransitionError("retry authorization exceeds maximum TTL")
     if record["issued_at"] > t + _CLOCK_SKEW_SECONDS:
         raise TransitionError("retry authorization is issued in the future")
+    if t > record["expires_at"]:
+        raise TransitionError("retry authorization has expired")
     if isinstance(supplied, dict):
         for key in supplied:
             if key not in record or supplied[key] != record[key]:
