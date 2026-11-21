@@ -50,8 +50,9 @@ The Cloud Run service must set these values explicitly:
 The three Firestore data planes MUST be separate existing projects:
 (1) `AIOS_FIRESTORE_PROJECT_ID` for worker effects/attempts/receipts,
 (2) `AIOS_EVOLUTION_FIRESTORE_PROJECT_ID` for M10/M11 ledger and active
-capability projections, and
-(3) `AIOS_AUTHORITY_FIRESTORE_PROJECT_ID` for signed authority artifacts.
+capability projections,
+(3) `AIOS_AUTHORITY_FIRESTORE_PROJECT_ID` for signed authority artifacts, and
+(4) `AIOS_CI_EVIDENCE_FIRESTORE_PROJECT_ID` for CI evidence and ingestion events.
 Terraform rejects reuse of any of these project IDs.
 
 The worker runtime identity receives a custom role on the worker project with
@@ -123,7 +124,7 @@ infra/cloudrun/worker_access.tf:
 
 It does not create the Cloud Run service, Cloud Tasks queue, service accounts,
 Firestore database, Secret Manager secret, KMS key, or registry image.
-Terraform inputs require three distinct existing Firestore projects, two
+Terraform inputs require four distinct existing Firestore projects, two
 distinct GitHub automation service accounts, two workflow-scoped WIF principals,
 the worker/invoker service-account emails, project, region, existing service/
 queue names, schedule, time zone and existing secret ID. The
