@@ -14,6 +14,14 @@ def _record():
         "previous_attempt": 1, "previous_attempt_id": "EF-test:attempt:1",
         "attempt": 2, "attempt_id": "EF-test:attempt:2", "reason": "reviewed retry",
         "unknown_reason": "timeout", "provider": "provider:test",
+        "state_attestation_digest": "d" * 64,
+        "state_source_repository": "yanhul/AIOS-effect-state",
+        "state_source_ref": "authority/effect-state", "state_source_commit": "a" * 40,
+        "state_source_path": "effects/raw/EF-test.json", "state_attested_at": 999.0,
+        "state_version": 1, "state_attestor": "aios-effect-state-authority",
+        "state_attestor_key_id": "ed25519:" + "1" * 32,
+        "state_attestation_commit": "b" * 40,
+        "state_attestation_path": "effects/attested/EF-test.json",
     }
     return signer, signer.sign(fields, now=1000)
 
@@ -61,6 +69,14 @@ def test_external_authorization_import_binds_current_unknown_effect(tmp_path, mo
         "previous_attempt_id": first, "attempt": 2,
         "attempt_id": f"{effect['effect_id']}:attempt:2", "reason": "reviewed retry",
         "unknown_reason": current["unknown_reason"], "provider": "provider-1",
+        "state_attestation_digest": "d" * 64,
+        "state_source_repository": "yanhul/AIOS-effect-state",
+        "state_source_ref": "authority/effect-state", "state_source_commit": "a" * 40,
+        "state_source_path": f"effects/raw/{current['effect_id']}.json", "state_attested_at": 1000.0,
+        "state_version": 1, "state_attestor": "aios-effect-state-authority",
+        "state_attestor_key_id": "ed25519:" + "1" * 32,
+        "state_attestation_commit": "b" * 40,
+        "state_attestation_path": f"effects/attested/{current['effect_id']}.json",
     }
     record = signer.sign(fields, now=1000)
     monkeypatch.setenv("AIOS_RETRY_ISSUER_ED25519_KEYRING", json.dumps({
@@ -103,6 +119,14 @@ def test_external_ed25519_authorization_import_then_single_use_retry_dispatch(tm
         "previous_attempt_id": first, "attempt": 2,
         "attempt_id": f"{effect['effect_id']}:attempt:2", "reason": "reviewed retry",
         "unknown_reason": current["unknown_reason"], "provider": "provider-1",
+        "state_attestation_digest": "d" * 64,
+        "state_source_repository": "yanhul/AIOS-effect-state",
+        "state_source_ref": "authority/effect-state", "state_source_commit": "a" * 40,
+        "state_source_path": f"effects/raw/{current['effect_id']}.json", "state_attested_at": 1000.0,
+        "state_version": 1, "state_attestor": "aios-effect-state-authority",
+        "state_attestor_key_id": "ed25519:" + "1" * 32,
+        "state_attestation_commit": "b" * 40,
+        "state_attestation_path": f"effects/attested/{current['effect_id']}.json",
     }
     record = signer.sign(fields, now=1000)
     monkeypatch.setenv("AIOS_RETRY_ISSUER_ED25519_KEYRING", json.dumps({

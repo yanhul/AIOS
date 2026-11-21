@@ -248,7 +248,7 @@ def _transition_dispatch(aios_dir, current, actor, *, attempt, attempt_id, provi
     effect_id = current["effect_id"]
     updated = dict(current)
     updated.update({"state": "DISPATCHED", "attempt": attempt,
-"attempt_id": attempt_id, "provider": provider})
+                    "attempt_id": attempt_id, "provider": provider})
     if extra_fields:
         updated.update(extra_fields)
     event = {
@@ -295,18 +295,11 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider, *, lineage=None):
 # --- Retry authority -------------------------------------------------------
 #
 # Trust model (audit F-03). Files under ``aios_dir`` are NOT a trust anchor for
-# retry approval: anything an agent can write there it could also forge. Retry
-# issuers are registered in a deployment-supplied ``RetryIssuerKeyring``
-# (explicit ``keyring=`` argument, or the ``AIOS_RETRY_ISSUER_KEYRING`` JSON
-# environment variable), which is never persisted in AIOS state. This reuses
-# the existing deployment-secret/HMAC authority model of ``core.attestation``.
-# An authorization is an HMAC-SHA256 signature by the issuer's registered
-# secret over the complete retry context, including the digest of the exact
-# UNKNOWN effect record it approves, so it can only ever match one state.
-#
-# Limitation (by design of the existing model): HMAC is symmetric. It
-# authenticates the issuer against principals that do not hold the issuer's
-# secret (e.g. the executing agent), not against the deployment itself.
+# retry approval: anything an agent can write there it could also forge. The
+# production retry issuer is independently operated and Ed25519-signed; AIOS
+# verifies it with ``AIOS_RETRY_ISSUER_ED25519_KEYRING`` (public keys only).
+# The HMAC ``RetryIssuerKeyring`` below is retained solely for non-production
+# compatibility tests and is rejected in production mode.
 
 RETRY_AUTH_DIR = "retry_authorizations"
 RETRY_APPROVE_SCOPE = "effect.retry.approve"
@@ -422,6 +415,36 @@ def _effect_state_digest(effect):
     return hashlib.sha256(canonical_json(effect).encode("utf-8")).hexdigest()
 
 
+
+def _validate_retry_state_provenance(authorization, issued_at):
+    """Validate the source provenance fields signed by the independent retry issuer."""
+    source_digest = authorization.get("state_attestation_digest")
+    source_commit = authorization.get("state_source_commit")
+    source_repo = authorization.get("state_source_repository")
+    source_ref = authorization.get("state_source_ref")
+    source_path = authorization.get("state_source_path")
+    source_attested_at = authorization.get("state_attested_at")
+    source_version = authorization.get("state_version")
+    state_attestor = authorization.get("state_attestor")
+    state_attestor_key_id = authorization.get("state_attestor_key_id")
+    attestation_commit = authorization.get("state_attestation_commit")
+    attestation_path = authorization.get("state_attestation_path")
+    effect_id = authorization.get("effect_id")
+    if (not isinstance(source_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", source_digest)
+            or not isinstance(source_commit, str) or not re.fullmatch(r"[0-9a-f]{40}", source_commit)
+            or not isinstance(source_repo, str) or not source_repo.strip()
+            or not isinstance(source_ref, str) or not source_ref.strip()
+            or source_path != f"effects/raw/{effect_id}.json"
+            or not _is_finite_number(source_attested_at)
+            or not isinstance(source_version, int) or isinstance(source_version, bool) or source_version < 1
+            or not isinstance(state_attestor, str) or not state_attestor.strip()
+            or not isinstance(state_attestor_key_id, str) or not re.fullmatch(r"ed25519:[0-9a-f]{32}", state_attestor_key_id)
+            or not isinstance(attestation_commit, str) or not re.fullmatch(r"[0-9a-f]{40}", attestation_commit)
+            or attestation_path != f"effects/attested/{effect_id}.json"
+            or source_attested_at > issued_at + _CLOCK_SKEW_SECONDS
+            or issued_at - source_attested_at > 300):
+        raise TransitionError("external retry authorization lacks fresh, source-bound effect-state attestation")
+
 def _retry_auth_rel(authorization_id):
     return os.path.join(RETRY_AUTH_DIR, authorization_id + ".json")
 
@@ -498,7 +521,7 @@ def issue_retry_authorization(aios_dir, effect_id, actor, attempt, issuer, reaso
         raise ValueError("ttl_seconds must be within (0, 86400]")
     if not isinstance(issuer_secret, str) or not issuer_secret:
         raise TransitionError("retry authorization requires the issuer's signing secret")
-registered = _resolve_keyring(keyring).secret_for(issuer, RETRY_APPROVE_SCOPE)
+    registered = _resolve_keyring(keyring).secret_for(issuer, RETRY_APPROVE_SCOPE)
     if not hmac.compare_digest(registered, issuer_secret.encode("utf-8")):
         raise TransitionError(f"retry issuer failed authentication: {issuer}")
     current, contract = _load_owned_effect(aios_dir, effect_id, actor, "retry authorization")
@@ -582,6 +605,7 @@ def import_retry_authorization(aios_dir, authorization, actor, *, now=None):
         raise TransitionError("external retry authorization is expired, future-dated or exceeds TTL")
     if expires <= issued:
         raise TransitionError("external retry authorization validity window is invalid")
+    _validate_retry_state_provenance(authorization, issued)
     _verify_consumption_history(aios_dir, current)
     rel = _retry_auth_rel(authorization_id)
     event = {"kind": "external_effect", "action": "retry_authorized_external", "effect_id": current["effect_id"],
@@ -638,6 +662,8 @@ def _verify_retry_authorization(aios_dir, supplied, current, actor, attempt, att
         secret = _resolve_keyring(keyring).secret_for(record["issuer"], RETRY_APPROVE_SCOPE)
         if not hmac.compare_digest(record["signature"], _retry_signature(secret, record)):
             raise TransitionError("retry authorization record failed integrity/authenticity check")
+    if record.get("algorithm") == _retry_ed.ALGORITHM:
+        _validate_retry_state_provenance(record, record["issued_at"])
     if record["issuer"] in (actor, current.get("actor")):
         raise TransitionError("retry authorization issuer must differ from the executing actor (self-approval)")
     if (authorization_id in current.get("consumed_retry_authorizations", [])
@@ -748,7 +774,7 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
     proof_record.update({"record_type": "PROVIDER_NOT_APPLIED_RECONCILIATION",
                          "outcome": "NOT_APPLIED", "proof_id": proof_id,
                          "verified_at": _now(now)})
-proof_rel = os.path.join("reconciliation_proofs", proof_id + ".json")
+    proof_rel = os.path.join("reconciliation_proofs", proof_id + ".json")
     consumption = {
         "record_type": "RETRY_AUTHORIZATION_CONSUMPTION", "authorization_id": authorization_id,
         "authorization_signature": auth["signature"], "effect_id": effect_id,

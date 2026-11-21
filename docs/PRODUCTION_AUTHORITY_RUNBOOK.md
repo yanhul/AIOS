@@ -69,13 +69,14 @@ tampered, or mismatched lineage blocks production dispatch/receipt verification.
 
 ## Retry issuer status
 
-The current HMAC retry issuer is symmetric and must not be treated as an
-independent trust domain. While `AIOS_REQUIRE_EXECUTION_LINEAGE=true`,
-AIOS deliberately blocks both HMAC authorization issuance and retry dispatch.
-Production UNKNOWN retries remain BLOCKED until a separately operated issuer
-signs the fully bound authorization with an asymmetric key and AIOS verifies
-it using a pinned public-key registry, including expiry and replay protection.
-Do not inject retry signing secrets into AIOS, TRY, agents, or subprocesses.
+The legacy HMAC retry issuer is symmetric and is not an independent trust
+domain. With `AIOS_REQUIRE_EXECUTION_LINEAGE=true`, HMAC authorization issuance
+and HMAC retry dispatch are blocked; a valid Ed25519 authorization from the
+independent issuer is required. Production UNKNOWN retries also require a
+fresh signed effect-state attestation from a separately keyed state attestor,
+plus provider-authenticated `NOT_APPLIED` reconciliation and fresh execution
+lineage. Do not inject either private signing key into AIOS, TRY, agents, or
+subprocesses.
 
 ## Preflight
 
@@ -115,7 +116,12 @@ The independent issuer owns the matching private key outside AIOS and signs a
 `RETRY_AUTHORIZATION_ED25519` record. The signature covers the authorization
 ID, exact effect/contract/permit, actor, provider, full UNKNOWN-state digest,
 previous and next attempt IDs, reason, unknown reason, scope, algorithm, key
-ID, and validity window. AIOS imports the signed record with
+ID, validity window, and provenance for the separately attested effect-state
+snapshot (attestor/key ID, raw snapshot commit/path/digest/version, and
+attestation commit/path). The issuer refuses operator-supplied snapshots: it
+fetches the latest signed attestation from the configured protected source
+repository, verifies the raw snapshot at the attestation commit's parent, and
+checks the attestation age and `UNKNOWN` state. AIOS imports the signed record with
 `import_retry_authorization(...)`, validates it against the current persisted
 UNKNOWN effect using the pinned public-key registry, then atomically consumes
 it with the retry dispatch. Reuse, expiry, stale state, changed provider,
@@ -133,3 +139,28 @@ Production remains BLOCKED until the independently operated issuer workflow,
 protected environment approval, public-key pinning, immutable readback, and a
 live signed authorization → AIOS import → provider NOT_APPLIED reconciliation
 → single-use retry → persisted receipt → restart verification are evidenced.
+
+## Effect-state source and independent attestor
+
+The retry issuer must not treat a JSON snapshot pasted into a workflow input as
+authoritative. `scripts/export_effect_snapshot.py` is a read-only AIOS export
+that validates the persisted contract/permit and refuses non-`UNKNOWN` effects
+or pending mutation journals. Its output is not itself a trust anchor. A
+trusted authority exporter must publish that raw snapshot to a protected
+state-source repository at `effects/raw/<effect_id>.json`; the executing agent
+must not have write access to that branch.
+
+A separate `effect-state-attestor` Environment signs the exact raw snapshot
+commit and writes `effects/attested/<effect_id>.json` as a direct child commit.
+The retry issuer uses a different Environment and a different Ed25519 key; it
+checks the attestation is at the latest protected branch tip, checks the
+attestation commit's parent equals the raw snapshot commit, compares the raw
+file bytes to the signed snapshot, and verifies signature, version chain and
+freshness (maximum 300 seconds). The signed retry authorization records both
+commits and both paths.
+
+The code and workflows are prepared, but no state-source repository, raw
+snapshot exporter channel, attestor key, retry issuer key, GitHub Environment
+approval, or token has been provisioned. The deployment remains BLOCKED until
+those controls are established and exercised. See the Authority Store PR #8
+runbook for the exact settings.

@@ -23,7 +23,10 @@ SIGNED_FIELDS = (
     "record_type", "authorization_id", "effect_id", "contract_id", "permit_id", "actor",
     "issuer", "scope", "effect_state_digest", "previous_attempt", "previous_attempt_id",
     "attempt", "attempt_id", "reason", "unknown_reason", "issued_at", "expires_at",
-    "mode", "algorithm", "provider", "key_id",
+    "mode", "algorithm", "provider", "key_id", "state_attestation_digest",
+    "state_source_repository", "state_source_ref", "state_source_commit", "state_source_path",
+    "state_attested_at", "state_version", "state_attestor", "state_attestor_key_id",
+    "state_attestation_commit", "state_attestation_path",
 )
 
 class RetryIssuerTrustError(ValueError):

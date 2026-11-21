@@ -3,7 +3,9 @@
 AIOS state under `aios_dir` is never a trust anchor: anything an agent can write there it could
 also forge. Provider HMAC keys remain deployment trust anchors where explicitly configured.
 Production retry approval uses an independently operated Ed25519 issuer: AIOS holds only the
-pinned public-key registry and never the retry issuer private key.
+pinned public-key registry and never the retry issuer private key. The issuer itself verifies a
+separately signed, fresh effect-state attestation from a protected source repository; raw state
+snapshots and signed attestations are not trusted merely because an agent supplied them.
 
 | Variable | Held by | Used by | Purpose |
 |---|---|---|---|
