@@ -504,14 +504,14 @@ def issue_retry_authorization(aios_dir, effect_id, actor, attempt, issuer, reaso
 
     ``issuer`` must be registered in the trusted keyring with the
     ``effect.retry.approve`` scope and must prove possession of its registered
-    secret. It must differ from the executing actor (separation of duties).
+    secret. This legacy HMAC path is non-production only; production imports an
+    authorization signed by the independent Ed25519 issuer.
     """
-    # The current retry signer is symmetric HMAC and executes inside the AIOS
-    # trust boundary. Production must not use it as a substitute for an
-    # independently operated issuer. Keep UNKNOWN retries fail-closed until
-    # the external Ed25519 issuer/verifier protocol is integrated.
+    # This legacy HMAC signer executes inside the AIOS trust boundary. It is
+    # retained for non-production compatibility only; production must import
+    # a signed authorization from the separately operated Ed25519 issuer.
     if os.environ.get("AIOS_REQUIRE_EXECUTION_LINEAGE", "").lower() == "true":
-        raise TransitionError("production UNKNOWN retry is blocked until an independent public-key retry issuer is integrated")
+        raise TransitionError("production retry authorization must come from the independent Ed25519 issuer")
     _validate_strings(("issuer", issuer), ("reason", reason))
     if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 2:
         raise ValueError("retry attempt must be an integer >= 2")
