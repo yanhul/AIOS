@@ -56,27 +56,33 @@ def create_firestore_evolution_service(
     env = os.environ if environ is None else environ
     if env.get("AIOS_EVOLUTION_BACKEND") != "firestore":
         raise EvolutionRuntimeBlocked("AIOS_EVOLUTION_BACKEND=firestore is required; no local fallback")
-    project_id = env.get("AIOS_FIRESTORE_PROJECT_ID", "").strip()
-    if not project_id:
-        raise EvolutionRuntimeBlocked("AIOS_FIRESTORE_PROJECT_ID is required")
+    evolution_project_id = env.get("AIOS_EVOLUTION_FIRESTORE_PROJECT_ID", "").strip()
+    authority_project_id = env.get("AIOS_AUTHORITY_FIRESTORE_PROJECT_ID", "").strip()
+    if not evolution_project_id or not authority_project_id:
+        raise EvolutionRuntimeBlocked(
+            "AIOS_EVOLUTION_FIRESTORE_PROJECT_ID and AIOS_AUTHORITY_FIRESTORE_PROJECT_ID are required"
+        )
+    if evolution_project_id == authority_project_id:
+        raise EvolutionRuntimeBlocked("evolution and authority Firestore projects must be distinct")
     workflow_pin = env.get("AIOS_FIRESTORE_WORKFLOW_SHA256", "").strip().lower()
     if not workflow_pin:
         raise EvolutionRuntimeBlocked("AIOS_FIRESTORE_WORKFLOW_SHA256 is required")
     try:
         import google.auth
         from google.cloud import firestore
-        credentials, adc_project = google.auth.default(
+        credentials, _ = google.auth.default(
             scopes=["https://www.googleapis.com/auth/datastore"]
         )
-        if adc_project and adc_project != project_id:
-            raise EvolutionRuntimeBlocked("ADC project differs from AIOS_FIRESTORE_PROJECT_ID")
-        client = firestore.Client(project=project_id, credentials=credentials)
-        if getattr(client, "project", None) != project_id:
-            raise EvolutionRuntimeBlocked("Firestore client project mismatch")
+        evolution_client = firestore.Client(project=evolution_project_id, credentials=credentials)
+        authority_client = firestore.Client(project=authority_project_id, credentials=credentials)
+        if getattr(evolution_client, "project", None) != evolution_project_id:
+            raise EvolutionRuntimeBlocked("evolution Firestore client project mismatch")
+        if getattr(authority_client, "project", None) != authority_project_id:
+            raise EvolutionRuntimeBlocked("authority Firestore client project mismatch")
         trust_anchor = FirestoreAuthorityStore.trust_anchor_from_env(dict(env))
-        authority_store = FirestoreAuthorityStore(client, project_id=project_id)
+        authority_store = FirestoreAuthorityStore(authority_client, project_id=authority_project_id)
         store = FirestoreEvolutionStore(
-            client, project_id=project_id, authority_store=authority_store,
+            evolution_client, project_id=evolution_project_id, authority_store=authority_store,
             trust_anchor=trust_anchor, evidence_verifier=evidence_verifier,
             expected_workflow_sha256=workflow_pin,
         )
