@@ -440,6 +440,7 @@ def _validate_retry_state_provenance(authorization, issued_at):
             or not isinstance(state_attestor, str) or not state_attestor.strip()
             or not isinstance(state_attestor_key_id, str) or not re.fullmatch(r"ed25519:[0-9a-f]{32}", state_attestor_key_id)
             or not isinstance(attestation_commit, str) or not re.fullmatch(r"[0-9a-f]{40}", attestation_commit)
+            or attestation_commit == source_commit
             or attestation_path != f"effects/attested/{effect_id}.json"
             or source_attested_at > issued_at + _CLOCK_SKEW_SECONDS
             or issued_at - source_attested_at > 300):

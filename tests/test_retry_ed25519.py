@@ -1,12 +1,28 @@
 import json
 import pytest
-from core.retry_ed25519 import RetryAuthorizationSigner, RetryIssuerPublicKeyring, RetryIssuerTrustError, SIGNED_FIELDS
+from core.retry_ed25519 import RetryIssuerPublicKeyring, RetryIssuerTrustError, SIGNED_FIELDS, key_id_for, signing_bytes
+
+
+class _TestSigner:
+    def __init__(self, issuer, key):
+        from cryptography.hazmat.primitives import serialization
+        self.issuer = issuer
+        self.key = key
+        self.public_key = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw).hex()
+        self.key_id = key_id_for(self.public_key)
+
+    def sign(self, fields, *, now=1000):
+        record = dict(fields, issuer=self.issuer, scope="effect.retry.approve", mode="EXPLICIT",
+                      algorithm="Ed25519", issued_at=float(now), expires_at=float(now)+120,
+                      key_id=self.key_id)
+        record["signature"] = self.key.sign(signing_bytes(record)).hex()
+        return record
 
 
 def _record():
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     key = Ed25519PrivateKey.generate()
-    signer = RetryAuthorizationSigner("issuer:independent", key, ttl_seconds=120)
+    signer = _TestSigner("issuer:independent", key)
     fields = {
         "record_type": "RETRY_AUTHORIZATION_ED25519", "authorization_id": "RA-" + "a" * 32,
         "effect_id": "EF-test", "contract_id": "CT-test", "permit_id": "PM-test",
@@ -23,7 +39,7 @@ def _record():
         "state_attestation_commit": "b" * 40,
         "state_attestation_path": "effects/attested/EF-test.json",
     }
-    return signer, signer.sign(fields, now=1000)
+    return signer, signer.sign(fields)
 
 
 def test_ed25519_retry_sign_verify_and_tamper():
@@ -44,8 +60,11 @@ def test_ed25519_retry_rejects_revoked_key():
 
 def test_ed25519_retry_signer_does_not_expose_private_key():
     signer, _ = _record()
-    assert "private" not in repr(signer).lower()
-    assert not hasattr(signer, "private_key")
+    # Private signing helper exists only in this test module; production AIOS
+    # verifier module intentionally exposes no signer class or private-key API.
+    import core.retry_ed25519 as verifier
+    assert not hasattr(verifier, "RetryAuthorizationSigner")
+    assert not hasattr(verifier, "Ed25519PrivateKey")
 
 
 def test_external_authorization_import_binds_current_unknown_effect(tmp_path, monkeypatch):

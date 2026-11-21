@@ -9,10 +9,9 @@ from .mutation import canonical_json
 
 try:
     from cryptography.exceptions import InvalidSignature
-    from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 except ImportError:  # fail closed
-    InvalidSignature = serialization = Ed25519PrivateKey = Ed25519PublicKey = None
+    InvalidSignature = Ed25519PublicKey = None
 
 ENV = "AIOS_RETRY_ISSUER_ED25519_KEYRING"
 ALGORITHM = "Ed25519"
@@ -85,38 +84,4 @@ class RetryIssuerPublicKeyring:
         except InvalidSignature as exc:
             raise RetryIssuerTrustError("retry authorization signature invalid") from exc
 
-class RetryAuthorizationSigner:
-    """Issuer-side signer. Load private key only from issuer-owned secret storage."""
-    def __init__(self, issuer, private_key, ttl_seconds=900):
-        if Ed25519PrivateKey is None or not isinstance(private_key, Ed25519PrivateKey):
-            raise RetryIssuerTrustError("an Ed25519 private key is required")
-        if not isinstance(issuer, str) or not issuer.strip():
-            raise RetryIssuerTrustError("issuer identity required")
-        if not isinstance(ttl_seconds, (int, float)) or isinstance(ttl_seconds, bool) or not 0 < ttl_seconds <= 86400:
-            raise RetryIssuerTrustError("ttl_seconds must be within (0, 86400]")
-        self.issuer, self._key, self.ttl_seconds = issuer, private_key, float(ttl_seconds)
-        raw = private_key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
-        self.public_key = raw.hex()
-        self.key_id = key_id_for(self.public_key)
-
-    @classmethod
-    def from_pem_file(cls, issuer, path, ttl_seconds=900):
-        if Ed25519PrivateKey is None:
-            raise RetryIssuerTrustError("cryptography is required")
-        with open(path, "rb") as f:
-            key = serialization.load_pem_private_key(f.read(), password=None)
-        return cls(issuer, key, ttl_seconds)
-
-    def sign(self, fields, *, now=None):
-        if not isinstance(fields, dict) or set(fields) != set(SIGNED_FIELDS) - {"issuer", "scope", "mode", "algorithm", "issued_at", "expires_at", "key_id"}:
-            raise RetryIssuerTrustError("retry request schema mismatch")
-        issued = time.time() if now is None else now
-        if not isinstance(issued, (int, float)) or isinstance(issued, bool):
-            raise RetryIssuerTrustError("invalid issuer clock")
-        record = dict(fields, issuer=self.issuer, scope=SCOPE, mode="EXPLICIT", algorithm=ALGORITHM,
-                      issued_at=float(issued), expires_at=float(issued) + self.ttl_seconds,
-                      record_type="RETRY_AUTHORIZATION_ED25519", key_id=self.key_id)
-        record["signature"] = self._key.sign(signing_bytes(record)).hex()
-        return record
-
-__all__ = ["ENV", "ALGORITHM", "SCOPE", "SIGNED_FIELDS", "RetryIssuerTrustError", "RetryIssuerPublicKeyring", "RetryAuthorizationSigner", "key_id_for", "signing_bytes"]
+__all__ = ["ENV", "ALGORITHM", "SCOPE", "SIGNED_FIELDS", "RetryIssuerTrustError", "RetryIssuerPublicKeyring", "key_id_for", "signing_bytes"]
