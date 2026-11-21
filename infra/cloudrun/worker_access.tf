@@ -217,6 +217,16 @@ check "firestore_projects_are_isolated" {
   }
 }
 
+check "automation_identities_are_isolated" {
+  assert {
+    condition = (
+      var.ci_ingestion_service_account_email != var.capability_promotion_service_account_email &&
+      var.github_actions_ingestion_wif_principal != var.github_actions_promotion_wif_principal
+    )
+    error_message = "CI ingestion and capability promotion must use distinct service accounts and distinct WIF principals."
+  }
+}
+
 # The ingestion role can read and create documents only. It cannot update,
 # delete, list, or write any authority artifact.
 resource "google_project_iam_custom_role" "ci_ingestion" {
@@ -261,14 +271,25 @@ resource "google_project_iam_member" "capability_promotion_ledger" {
 }
 
 # Promotion verifies signed artifacts but cannot create, update or delete them.
+resource "google_project_iam_custom_role" "authority_artifact_reader" {
+  project     = var.authority_firestore_project_id
+  role_id     = "aiosAuthorityArtifactReader"
+  title       = "AIOS Authority Artifact Reader"
+  description = "Read individual signed authority documents only; no writes or collection listing."
+  permissions = [
+    "datastore.entities.get",
+  ]
+  stage = "GA"
+}
+
 resource "google_project_iam_member" "capability_promotion_authority_readonly" {
   project = var.authority_firestore_project_id
-  role    = "roles/datastore.viewer"
+  role    = google_project_iam_custom_role.authority_artifact_reader.name
   member  = "serviceAccount:${var.capability_promotion_service_account_email}"
 }
 
-# Runtime needs to write governed evolution records and resolve signed
-# authority artifacts read-only. It receives no authority-store write grant.
+# Runtime needs to resolve signed authority artifacts but cannot mutate or
+# enumerate the authority store.
 resource "google_project_iam_member" "worker_evolution_ledger" {
   project = var.evolution_firestore_project_id
   role    = google_project_iam_custom_role.capability_promotion.name
@@ -277,7 +298,7 @@ resource "google_project_iam_member" "worker_evolution_ledger" {
 
 resource "google_project_iam_member" "worker_authority_readonly" {
   project = var.authority_firestore_project_id
-  role    = "roles/datastore.viewer"
+  role    = google_project_iam_custom_role.authority_artifact_reader.name
   member  = "serviceAccount:${var.worker_runtime_service_account_email}"
 }
 
