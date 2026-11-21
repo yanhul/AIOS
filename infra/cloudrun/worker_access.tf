@@ -172,3 +172,27 @@ variable "authority_attestation_secret_id" {
   description = "Name of the existing Secret Manager secret containing the authority attestation HMAC key."
   type        = string
 }
+
+# Dedicated GitHub Actions workload-identity service account for CI evidence
+# ingestion and signed capability promotion. No service account is created here.
+resource "google_project_iam_member" "evolution_automation_firestore" {
+  project = var.project_id
+  role    = "roles/datastore.user"
+  member  = "serviceAccount:${var.evolution_automation_service_account_email}"
+}
+
+variable "evolution_automation_service_account_email" {
+  description = "Existing service account impersonated by GitHub OIDC for CI evidence ingestion and signed capability promotion."
+  type        = string
+}
+
+resource "google_service_account_iam_member" "github_actions_wif_impersonation" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${var.evolution_automation_service_account_email}"
+  role               = "roles/iam.workloadIdentityUser"
+  member             = var.github_actions_wif_principal
+}
+
+variable "github_actions_wif_principal" {
+  description = "Principal/principalSet string mapped by the pre-existing GitHub Workload Identity Provider; provider creation and attribute mapping are out of scope."
+  type        = string
+}

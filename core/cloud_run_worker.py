@@ -18,6 +18,7 @@ from .cloud_tasks_outbox import reconcile_dispatch_outbox_batch
 from .cloud_tasks_worker import create_app
 from .firestore_authority import FirestoreAuthorityStore
 from .firestore_authority_resolver import FirestoreAuthorityResolver
+from .firestore_evolution_store import FirestoreEvolutionStore
 from .firestore_execution import resume_firestore_effect
 from .firestore_worker import create_firestore_effect_store
 
@@ -97,9 +98,18 @@ def create_production_app(*, environ: Mapping[str, str] | None = None):
         raise CloudRunWorkerConfigurationError("AIOS_AUTHORITY_TRUST_ANCHOR must be valid JSON") from exc
     attestation_secret = _required(env, "AIOS_AUTHORITY_ATTESTATION_SECRET")
     authority_store = FirestoreAuthorityStore(store.client, project_id=project_id)
+    evolution_store = FirestoreEvolutionStore(
+        store.client, project_id=project_id, authority_store=authority_store,
+        trust_anchor=trust_anchor,
+    )
+    if env.get("AIOS_REQUIRE_ACTIVE_CAPABILITY_REGISTRY", "").lower() != "true":
+        raise CloudRunWorkerConfigurationError(
+            "AIOS_REQUIRE_ACTIVE_CAPABILITY_REGISTRY=true is required; DENY"
+        )
     resolver = FirestoreAuthorityResolver(
         authority_store, trust_anchor=trust_anchor,
         attestation_secret=attestation_secret,
+        active_capability_lookup=evolution_store.get_active_capability,
     )
     adapter_factory = _load_adapter_factory(_required(env, "AIOS_RECONCILIATION_ADAPTER_FACTORY"))
 

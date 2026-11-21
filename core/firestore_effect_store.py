@@ -308,7 +308,7 @@ class FirestoreEffectStore:
                                         **receipt_record, "effect_id": effect_id, "attempt_id": attempt_id,
                                         "contract_id": current["contract_id"], "permit_id": current["permit_id"],
                                         "authentication": dict(verified_authentication),
-                                        "lineage_digest": (current.get("execution_lineage") or {}).get("lineage_digest")}
+                                        "lineage_digest": ((current.get("execution_lineage") or {}).get("lineage") or {}).get("lineage_digest")}
                     if existing_receipt == expected_receipt:
                         return current
                 raise EffectStoreConflict("receipt terminal CAS failed")
@@ -334,7 +334,7 @@ class FirestoreEffectStore:
                                  **receipt_record, "effect_id": effect_id, "attempt_id": attempt_id,
                                  "contract_id": current["contract_id"], "permit_id": current["permit_id"],
                                  "authentication": dict(verified_authentication),
-                                 "lineage_digest": (current.get("execution_lineage") or {}).get("lineage_digest")}
+                                 "lineage_digest": ((current.get("execution_lineage") or {}).get("lineage") or {}).get("lineage_digest")}
             if existing_receipt is not None and existing_receipt != immutable_receipt:
                 raise EffectStoreConflict("receipt ID replayed with different content")
             if existing_receipt is None:

@@ -6,7 +6,7 @@ not issue permits, create trust anchors, or call providers.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from .attestation import verify_attestation
@@ -28,6 +28,7 @@ class FirestoreAuthorityResolver:
         *,
         trust_anchor: Mapping[str, Mapping[str, Any]],
         attestation_secret: str,
+        active_capability_lookup: Callable[[str], Mapping[str, Any]] | None = None,
     ) -> None:
         if not isinstance(trust_anchor, Mapping) or not trust_anchor:
             raise FirestoreAuthorityResolutionError("pinned trust anchor required; DENY")
@@ -36,6 +37,7 @@ class FirestoreAuthorityResolver:
         self._store = store
         self._trust_anchor = trust_anchor
         self._attestation_secret = attestation_secret
+        self._active_capability_lookup = active_capability_lookup
 
     def _read(self, digest: str, record_type: str) -> dict[str, Any]:
         try:
@@ -92,8 +94,17 @@ class FirestoreAuthorityResolver:
                 actual_key = f"{record.get('capability_id')}@{record.get('version')}"
                 if actual_key != key or record.get("status") != "ACTIVE":
                     raise ValueError(f"capability is not the exact ACTIVE contract version: {key}")
+                if self._active_capability_lookup is not None:
+                    active = self._active_capability_lookup(record.get("capability_id"))
+                    pointer = active.get("pointer") if isinstance(active, Mapping) else None
+                    active_record = active.get("capability") if isinstance(active, Mapping) else None
+                    if (not isinstance(pointer, Mapping) or not isinstance(active_record, Mapping)
+                            or pointer.get("capability_digest") != digest
+                            or pointer.get("version") != record.get("version")
+                            or active_record != record):
+                        raise ValueError(f"capability is not the currently promoted version: {key}")
                 capabilities[key] = record
-        except (KeyError, TypeError, ValueError) as exc:
+        except (KeyError, TypeError, ValueError, RuntimeError) as exc:
             raise FirestoreAuthorityResolutionError(
                 f"authority cross-binding rejected: {exc}; DENY"
             ) from exc

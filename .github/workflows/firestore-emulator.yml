@@ -5,6 +5,8 @@ on:
     branches:
       - integration/firestore-execution-ledger-v1
       - main
+      - feat/self-improvement-experience-evolution-v1
+      - feat/firestore-self-improvement-ci-promotion-v1
   workflow_dispatch:
 
 permissions:
@@ -53,6 +55,12 @@ jobs:
           GOOGLE_CLOUD_PROJECT: aios-emulator-test
           AIOS_FIRESTORE_PROJECT_ID: aios-emulator-test
         run: python -m pytest -q tests/test_firestore_emulator_integration.py
+      - name: Run Firestore M10/M11 promotion integration tests
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+          GOOGLE_CLOUD_PROJECT: aios-emulator-test
+          AIOS_FIRESTORE_PROJECT_ID: aios-emulator-test
+        run: python -m pytest -q tests/test_firestore_evolution_integration.py
       - name: Run full repository test suite (including live emulator tests)
         env:
           FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
