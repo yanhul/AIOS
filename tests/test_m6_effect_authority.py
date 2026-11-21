@@ -193,7 +193,7 @@ def test_production_unknown_retry_fails_closed_until_independent_issuer(tmp_path
     unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
     monkeypatch.setenv("AIOS_REQUIRE_EXECUTION_LINEAGE", "true")
 
-    with pytest.raises(TransitionError, match="independent public-key retry issuer"):
+    with pytest.raises(TransitionError, match="independent Ed25519 issuer"):
         issue_retry_authorization(
             str(tmp_path), effect["effect_id"], "agent-1", 2,
             "operator:test", "production retry must remain blocked",

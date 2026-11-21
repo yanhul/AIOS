@@ -4,6 +4,7 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from core.provider_ed25519 import key_id_for
+from core.retry_ed25519 import key_id_for as retry_key_id_for
 
 from scripts.check_production_authority import (
     ProductionAuthorityConfigError, validate_production_authority,
@@ -19,6 +20,10 @@ def _valid_env(now=1000):
     provider_public = provider_key.public_key().public_bytes(
         serialization.Encoding.Raw, serialization.PublicFormat.Raw
     ).hex()
+    retry_key = Ed25519PrivateKey.generate()
+    retry_public = retry_key.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    ).hex()
     att = {
         "repository": "yanhul/AIOS", "commit": "a" * 40, "environment": "production",
         "executor_id": "runtime:prod", "reviewer_id": "human:security-reviewer",
@@ -32,8 +37,8 @@ def _valid_env(now=1000):
         "AIOS_PROVIDER_KEYRING": json.dumps({
             "provider-x": {"secret": "P" * 40, "scopes": ["provider.receipt.sign"], "revoked": False}
         }),
-        "AIOS_RETRY_ISSUER_KEYRING": json.dumps({
-            "operator-x": {"secret": "R" * 40, "scopes": ["effect.retry.approve"], "revoked": False}
+        "AIOS_RETRY_ISSUER_ED25519_KEYRING": json.dumps({
+            "issuer:independent": {"key_id": retry_key_id_for(retry_public), "public_key": retry_public, "revoked": False}
         }),
         "AIOS_PROVIDER_ED25519_KEYRING": json.dumps({
             "minimind": {"key_id": key_id_for(provider_public), "public_key": provider_public}
@@ -76,3 +81,10 @@ def test_production_authority_rejects_expired_reviewer_attestation():
     env, _ = _valid_env()
     with pytest.raises(ProductionAuthorityConfigError, match="expired"):
         validate_production_authority(env, now=2000)
+
+
+def test_production_authority_rejects_legacy_hmac_retry_keyring():
+    env, _ = _valid_env()
+    env["AIOS_RETRY_ISSUER_KEYRING"] = json.dumps({"legacy": {"secret": "x" * 40, "scopes": ["effect.retry.approve"]}})
+    with pytest.raises(ProductionAuthorityConfigError, match="legacy HMAC"):
+        validate_production_authority(env, now=1000)

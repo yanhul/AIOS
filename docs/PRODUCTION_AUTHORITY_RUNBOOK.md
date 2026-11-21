@@ -12,9 +12,7 @@ Set these in the production deployment environment (not in the repository):
 - `AIOS_PROVIDER_KEYRING` (when HMAC-based providers are used): JSON object keyed by provider; each active entry
   contains a deployment-only `secret` (at least 32 characters),
   `scopes: ["provider.receipt.sign"]`, and optional `revoked: true`. It may be an empty object when all deployed providers use Ed25519.
-- `AIOS_RETRY_ISSUER_KEYRING`: JSON object keyed by retry issuer; each active
-  entry contains a distinct secret (at least 32 characters),
-  `scopes: ["effect.retry.approve"]`, and optional `revoked: true`.
+- `AIOS_RETRY_ISSUER_ED25519_KEYRING`: JSON object keyed by retry issuer; each active entry contains only `key_id`, 32-byte hex `public_key`, and optional `revoked: true`. The matching private key is held only by the separately protected issuer.
 - `AIOS_PROVIDER_ED25519_KEYRING`: verifier-side public key registry. The
   `minimind` entry is mandatory and must contain a valid `key_id` and 32-byte
   hex `public_key`; private keys must remain in the workload secret store.
@@ -71,13 +69,14 @@ tampered, or mismatched lineage blocks production dispatch/receipt verification.
 
 ## Retry issuer status
 
-The current HMAC retry issuer is symmetric and must not be treated as an
-independent trust domain. While `AIOS_REQUIRE_EXECUTION_LINEAGE=true`,
-AIOS deliberately blocks both HMAC authorization issuance and retry dispatch.
-Production UNKNOWN retries remain BLOCKED until a separately operated issuer
-signs the fully bound authorization with an asymmetric key and AIOS verifies
-it using a pinned public-key registry, including expiry and replay protection.
-Do not inject retry signing secrets into AIOS, TRY, agents, or subprocesses.
+The legacy HMAC retry issuer is symmetric and is not an independent trust
+domain. With `AIOS_REQUIRE_EXECUTION_LINEAGE=true`, HMAC authorization issuance
+and HMAC retry dispatch are blocked; a valid Ed25519 authorization from the
+independent issuer is required. Production UNKNOWN retries also require a
+fresh signed effect-state attestation from a separately keyed state attestor,
+plus provider-authenticated `NOT_APPLIED` reconciliation and fresh execution
+lineage. Do not inject either private signing key into AIOS, TRY, agents, or
+subprocesses.
 
 ## Preflight
 
@@ -96,3 +95,72 @@ provider receipt challenge and verify its persisted receipt before promotion.
 Never generate replacement production secrets in CI or commit them to Git.
 If a reviewer key or signing secret is unavailable, the correct result is
 BLOCKED, not a synthetic PASS.
+
+## Independent Ed25519 retry issuer (integrated verifier protocol)
+
+Production retry approval no longer uses `AIOS_RETRY_ISSUER_KEYRING` or an
+in-process HMAC secret. Configure `AIOS_RETRY_ISSUER_ED25519_KEYRING` as a
+protected deployment variable containing only public keys:
+
+```json
+{
+  "issuer:production-approver": {
+    "key_id": "ed25519:<first-32-hex-of-sha256-of-raw-public-key>",
+    "public_key": "<32-byte-Ed25519-public-key-hex>",
+    "revoked": false
+  }
+}
+```
+
+The independent issuer owns the matching private key outside AIOS and signs a
+`RETRY_AUTHORIZATION_ED25519` record. The signature covers the authorization
+ID, exact effect/contract/permit, actor, provider, full UNKNOWN-state digest,
+previous and next attempt IDs, reason, unknown reason, scope, algorithm, key
+ID, validity window, and provenance for the separately attested effect-state
+snapshot (attestor/key ID, raw snapshot commit/path/digest/version, and
+attestation commit/path). The issuer refuses operator-supplied snapshots: it
+fetches the latest signed attestation from the configured protected source
+repository, verifies the raw snapshot at the attestation commit's parent, and
+checks the attestation age and `UNKNOWN` state. AIOS imports the signed record with
+`import_retry_authorization(...)`, validates it against the current persisted
+UNKNOWN effect using the pinned public-key registry, then atomically consumes
+it with the retry dispatch. Reuse, expiry, stale state, changed provider,
+changed attempt, wrong actor, revoked key, or invalid signature fails closed.
+
+The legacy `AIOS_RETRY_ISSUER_KEYRING` is retained only for non-production
+test compatibility. It is rejected whenever `AIOS_REQUIRE_EXECUTION_LINEAGE=true`.
+The production preflight now requires the Ed25519 public-key registry and at
+least one non-revoked issuer distinct from the deployment executor and
+reviewer. Do not copy a private key into AIOS or its CI environment.
+
+This software integration does not provision the issuer's private key or the
+production public-key trust anchor, and it does not prove a live issuer run.
+Production remains BLOCKED until the independently operated issuer workflow,
+protected environment approval, public-key pinning, immutable readback, and a
+live signed authorization → AIOS import → provider NOT_APPLIED reconciliation
+→ single-use retry → persisted receipt → restart verification are evidenced.
+
+## Effect-state source and independent attestor
+
+The retry issuer must not treat a JSON snapshot pasted into a workflow input as
+authoritative. `scripts/export_effect_snapshot.py` is a read-only AIOS export
+that validates the persisted contract/permit and refuses non-`UNKNOWN` effects
+or pending mutation journals. Its output is not itself a trust anchor. A
+trusted authority exporter must publish that raw snapshot to a protected
+state-source repository at `effects/raw/<effect_id>.json`; the executing agent
+must not have write access to that branch.
+
+A separate `effect-state-attestor` Environment signs the exact raw snapshot
+commit and writes `effects/attested/<effect_id>.json` as a direct child commit.
+The retry issuer uses a different Environment and a different Ed25519 key; it
+checks the attestation is at the latest protected branch tip, checks the
+attestation commit's parent equals the raw snapshot commit, compares the raw
+file bytes to the signed snapshot, and verifies signature, version chain and
+freshness (maximum 300 seconds). The signed retry authorization records both
+commits and both paths.
+
+The code and workflows are prepared, but no state-source repository, raw
+snapshot exporter channel, attestor key, retry issuer key, GitHub Environment
+approval, or token has been provisioned. The deployment remains BLOCKED until
+those controls are established and exercised. See the Authority Store PR #8
+runbook for the exact settings.

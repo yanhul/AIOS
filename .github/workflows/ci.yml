@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, fix/security-f01-f11-f06-one-turn, security/absorption-policy-ed25519-tests]
   push:
-    branches: [main]
+    branches: [main, feat/independent-ed25519-retry-issuer]
   workflow_dispatch:
     inputs:
       require_minimind_production:

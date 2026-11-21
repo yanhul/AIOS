@@ -1,0 +1,87 @@
+"""Independent Ed25519 retry authorization trust primitives.
+
+The issuer process owns the private key. AIOS loads only pinned public keys.
+Records are canonical JSON signatures over the complete one-shot retry context.
+"""
+from __future__ import annotations
+import hashlib, json, os, re, time
+from .mutation import canonical_json
+
+try:
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+except ImportError:  # fail closed
+    InvalidSignature = Ed25519PublicKey = None
+
+ENV = "AIOS_RETRY_ISSUER_ED25519_KEYRING"
+ALGORITHM = "Ed25519"
+SCOPE = "effect.retry.approve"
+KEY_ID_RE = re.compile(r"ed25519:[0-9a-f]{32}")
+HEX64 = re.compile(r"[0-9a-f]{64}")
+SIGNED_FIELDS = (
+    "record_type", "authorization_id", "effect_id", "contract_id", "permit_id", "actor",
+    "issuer", "scope", "effect_state_digest", "previous_attempt", "previous_attempt_id",
+    "attempt", "attempt_id", "reason", "unknown_reason", "issued_at", "expires_at",
+    "mode", "algorithm", "provider", "key_id", "state_attestation_digest",
+    "state_source_repository", "state_source_ref", "state_source_commit", "state_source_path",
+    "state_attested_at", "state_version", "state_attestor", "state_attestor_key_id",
+    "state_attestation_commit", "state_attestation_path",
+)
+
+class RetryIssuerTrustError(ValueError):
+    pass
+
+def key_id_for(public_hex: str) -> str:
+    return "ed25519:" + hashlib.sha256(bytes.fromhex(public_hex)).hexdigest()[:32]
+
+def signing_bytes(record: dict) -> bytes:
+    return canonical_json({k: record[k] for k in SIGNED_FIELDS}).encode("utf-8")
+
+class RetryIssuerPublicKeyring:
+    def __init__(self, spec):
+        if not isinstance(spec, dict) or not spec:
+            raise RetryIssuerTrustError("retry issuer Ed25519 keyring must be a non-empty object")
+        self._keys = {}
+        for issuer, entry in spec.items():
+            if not isinstance(issuer, str) or not issuer.strip() or not isinstance(entry, dict):
+                raise RetryIssuerTrustError("retry issuer entry malformed")
+            if set(entry) - {"key_id", "public_key", "revoked"} or not {"key_id", "public_key"} <= set(entry):
+                raise RetryIssuerTrustError("retry issuer registry accepts public keys only")
+            pub, kid, revoked = entry["public_key"], entry["key_id"], entry.get("revoked", False)
+            if not isinstance(pub, str) or not HEX64.fullmatch(pub) or not isinstance(kid, str) or kid != key_id_for(pub):
+                raise RetryIssuerTrustError("retry issuer public key or key_id invalid")
+            if not isinstance(revoked, bool):
+                raise RetryIssuerTrustError("retry issuer revoked flag must be boolean")
+            self._keys[issuer] = (kid, pub, revoked)
+
+    @classmethod
+    def from_env(cls, environ=None):
+        raw = (os.environ if environ is None else environ).get(ENV)
+        if not raw:
+            raise RetryIssuerTrustError(f"{ENV} is required")
+        try:
+            return cls(json.loads(raw))
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise RetryIssuerTrustError(f"{ENV} is invalid JSON") from exc
+
+    def verify(self, record):
+        if Ed25519PublicKey is None:
+            raise RetryIssuerTrustError("cryptography is required for Ed25519 retry verification")
+        issuer, kid = record.get("issuer"), record.get("key_id")
+        entry = self._keys.get(issuer)
+        if not entry:
+            raise RetryIssuerTrustError("retry issuer is not registered")
+        expected_kid, pub, revoked = entry
+        if revoked:
+            raise RetryIssuerTrustError("retry issuer key is revoked")
+        if kid != expected_kid:
+            raise RetryIssuerTrustError("retry issuer key_id mismatch")
+        sig = record.get("signature")
+        if not isinstance(sig, str) or not re.fullmatch(r"[0-9a-f]{128}", sig):
+            raise RetryIssuerTrustError("retry authorization signature malformed")
+        try:
+            Ed25519PublicKey.from_public_bytes(bytes.fromhex(pub)).verify(bytes.fromhex(sig), signing_bytes(record))
+        except InvalidSignature as exc:
+            raise RetryIssuerTrustError("retry authorization signature invalid") from exc
+
+__all__ = ["ENV", "ALGORITHM", "SCOPE", "SIGNED_FIELDS", "RetryIssuerTrustError", "RetryIssuerPublicKeyring", "key_id_for", "signing_bytes"]

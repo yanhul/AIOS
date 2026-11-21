@@ -1,18 +1,23 @@
 # Deployment trust anchors (effect authority)
 
 AIOS state under `aios_dir` is never a trust anchor: anything an agent can write there it could
-also forge. Authority decisions that must resist the executing agent use deployment-supplied
-HMAC-SHA256 keys, following the model of `core/attestation.py`.
+also forge. Provider HMAC keys remain deployment trust anchors where explicitly configured.
+Production retry approval uses an independently operated Ed25519 issuer: AIOS holds only the
+pinned public-key registry and never the retry issuer private key. The issuer itself verifies a
+separately signed, fresh effect-state attestation from a protected source repository; raw state
+snapshots and signed attestations are not trusted merely because an agent supplied them.
 
 | Variable | Held by | Used by | Purpose |
 |---|---|---|---|
-| `AIOS_RETRY_ISSUER_KEYRING` | AIOS verifier | `retry_dispatch`, `issue_retry_authorization` | Registered retry approvers: `{"<issuer>": {"secret": "...", "scopes": ["effect.retry.approve"], "revoked": false}}` |
+| `AIOS_RETRY_ISSUER_ED25519_KEYRING` | AIOS verifier | `import_retry_authorization`, `retry_dispatch` | Public keys only: `{"<issuer>": {"key_id": "ed25519:<sha256(pub)[:32]>", "public_key": "<32-byte hex>", "revoked": false}}`. The private key is held only by the separate authority-store issuer. |
+| `AIOS_RETRY_ISSUER_KEYRING` | Non-production tests only | Legacy `issue_retry_authorization`, `retry_dispatch` | HMAC compatibility path; rejected whenever `AIOS_REQUIRE_EXECUTION_LINEAGE=true`. Never configure this for production retry. |
 | `AIOS_PROVIDER_KEYRING` | AIOS verifier | `observe` (via `core.runtime`) | Registered providers: `{"<provider>": {"secret": "...", "scopes": ["provider.receipt.sign"], "revoked": false}}` |
 | `AIOS_PROVIDER_ED25519_KEYRING` | AIOS verifier | `observe` | Ed25519 **public** keys only: `{"<provider>": {"key_id": "ed25519:<sha256(pub)[:32]>", "public_key": "<32-byte hex>", "revoked": false}}`. Any other field is rejected. |
 | `AIOS_PROVIDER_SIGNING_KEYS` | Provider side only | `ProviderReceiptSigner.from_env` | `{"<provider>": "<secret>"}`. Lives in the provider process or the AIOS adapter that supervises it. Never give it to the agent. Must **not** contain `minimind` in the AIOS process (see below). |
 
-Secrets must be at least 16 characters long. They are never written to AIOS state. Keyring and
-signer `repr()` output never includes them.
+HMAC secrets must meet the documented deployment length. They are never written to AIOS state.
+The Ed25519 retry registry contains public keys only; the matching private key must never enter AIOS.
+Keyring and signer `repr()` output never includes private key material.
 
 ## Observation boundary (audit F-04)
 
@@ -41,7 +46,7 @@ signer `repr()` output never includes them.
 * `MiniMindAdapter` never signs or re-signs. It refuses to run if the parent environment exposes a
   `minimind` HMAC signing key (or an unparseable `AIOS_PROVIDER_SIGNING_KEYS`). It withholds
   `AIOS_PROVIDER_SIGNING_KEYS`, `AIOS_PROVIDER_KEYRING`, `AIOS_PROVIDER_ED25519_KEYRING` and
-  `AIOS_RETRY_ISSUER_KEYRING` from the child.
+  `AIOS_RETRY_ISSUER_KEYRING` and `AIOS_RETRY_ISSUER_ED25519_KEYRING` from the child.
 * Workload stdout: `{"minimind_receipt": {...}, "outcome": "...", "provider_operation_id":
   "minimind:<task_id>:<attempt_id>", "authentication": {"type": "PROVIDER_RECEIPT_ED25519",
   "algorithm": "Ed25519", "key_id", "receipt_id", "contract_id", "permit_id", "issued_at",
@@ -158,8 +163,8 @@ evidence of MiniMind runtime or production readiness.
 
 ## Limitations
 
-* HMAC is symmetric (all providers except Ed25519-only ones such as MiniMind). It authenticates against principals that do not hold the key, such as the
-  agent. It does not authenticate against whoever holds the verifier keyring. An adapter that runs
+* Provider HMAC is symmetric (for providers that are not Ed25519-only). It authenticates against principals that do not hold the key, such as the
+  agent. It does not authenticate against whoever holds the verifier keyring. Production retry approval uses asymmetric Ed25519 keys. An adapter that runs
   inside the AIOS process holds its signing key in that process. Treat it as part of the
   deployment's trusted computing base.
 * Deployments that do not configure these variables fail closed. External effects stay `UNKNOWN`,
