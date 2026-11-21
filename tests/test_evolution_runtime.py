@@ -77,3 +77,14 @@ def test_firestore_runtime_requires_two_distinct_projects():
                      "AIOS_CI_EVIDENCE_FIRESTORE_PROJECT_ID": "evidence"},
             actor="test",
         )
+
+
+
+def test_runtime_facade_cannot_ingest_ci_or_promote_capabilities():
+    service = FirestoreEvolutionService(Store(), actor="worker-runtime")
+    with pytest.raises(EvolutionRuntimeBlocked, match="CI evidence writes"):
+        service.record_ci_evidence({})
+    with pytest.raises(EvolutionRuntimeBlocked, match="capability promotion"):
+        service.promote_candidate()
+    with pytest.raises(EvolutionRuntimeBlocked, match="capability bootstrap"):
+        service.bootstrap_active_capability()
