@@ -20,8 +20,9 @@ jobs:
   bootstrap:
     if: >-
       vars.AIOS_GCP_WIF_PROVIDER != '' &&
-      vars.AIOS_GCP_SERVICE_ACCOUNT != '' &&
-      vars.AIOS_FIRESTORE_PROJECT_ID != '' &&
+      vars.AIOS_PROMOTION_GCP_SERVICE_ACCOUNT != '' &&
+      vars.AIOS_EVOLUTION_FIRESTORE_PROJECT_ID != '' &&
+      vars.AIOS_AUTHORITY_FIRESTORE_PROJECT_ID != '' &&
       vars.AIOS_AUTHORITY_TRUST_ANCHOR != '' &&
       vars.AIOS_FIRESTORE_WORKFLOW_SHA256 != ''
     runs-on: ubuntu-latest
@@ -35,13 +36,14 @@ jobs:
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.AIOS_GCP_WIF_PROVIDER }}
-          service_account: ${{ vars.AIOS_GCP_SERVICE_ACCOUNT }}
+          service_account: ${{ vars.AIOS_PROMOTION_GCP_SERVICE_ACCOUNT }}
           create_credentials_file: true
       - name: Install pinned Firestore dependencies
         run: python -m pip install -r requirements-firestore.txt
       - name: Verify signed bootstrap decision and create initial active pointer
         env:
-          AIOS_FIRESTORE_PROJECT_ID: ${{ vars.AIOS_FIRESTORE_PROJECT_ID }}
+          AIOS_EVOLUTION_FIRESTORE_PROJECT_ID: ${{ vars.AIOS_EVOLUTION_FIRESTORE_PROJECT_ID }}
+          AIOS_AUTHORITY_FIRESTORE_PROJECT_ID: ${{ vars.AIOS_AUTHORITY_FIRESTORE_PROJECT_ID }}
           AIOS_AUTHORITY_TRUST_ANCHOR: ${{ vars.AIOS_AUTHORITY_TRUST_ANCHOR }}
           AIOS_FIRESTORE_WORKFLOW_SHA256: ${{ vars.AIOS_FIRESTORE_WORKFLOW_SHA256 }}
           AIOS_CAPABILITY_DIGEST: ${{ inputs.capability_digest }}
