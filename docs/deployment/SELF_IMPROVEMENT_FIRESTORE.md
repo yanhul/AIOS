@@ -42,14 +42,29 @@ The active pointer is a mutable projection, not the authority itself. Every
 read resolves and verifies the signed capability and the signed decision that
 justifies the pointer, including its revision and predecessor digest.
 
-**Production isolation blocker:** the existing worker role `roles/datastore.user`
-and the proposed automation role are project-level Firestore grants, not
-collection-scoped. A compromised worker identity could write the pointer
-collection even though application code never exposes that mutation. Before
-production, isolate the evolution registry in a separately permissioned
-Firestore database/project or route activation through a separately
-permissioned authority service. The Terraform binding in this PR is only a
-staging wiring primitive and must not be applied as proof of least privilege.
+**Enforced data-plane boundary:** the evolution ledger and signed authority
+artifacts MUST use two different existing GCP projects, both distinct from the
+Cloud Run worker project. Firestore IAM grants are project-scoped; collection
+names and application-level create-only code are not an IAM security boundary.
+The Terraform in this change rejects project-ID reuse and grants:
+- CI ingestion: a custom role on the evolution project with only
+  `datastore.databases.get`, `datastore.entities.get`, and
+  `datastore.entities.create`; no update, delete, or list.
+- Capability promotion: a custom role on the evolution project with get,
+  create, and update; no delete or list. Update is required for the active
+  pointer/latest-evaluation projections.
+- CI ingestion: no IAM binding whatsoever on the authority project.
+- Capability promotion and Cloud Run runtime: `roles/datastore.viewer` on
+  the authority project only, so signed artifacts can be verified but not
+  changed.
+- Separate pre-existing service accounts and separate WIF principal bindings
+  for the ingestion and promotion workflows. The WIF principals must be
+  restricted to their respective workflow identities; a broad repository
+  principal defeats this separation.
+
+The worker's existing operational Firestore grant remains on its separate
+worker project. Do not place authority artifacts or the M10/M11 ledger in that
+project. No project or service account is created by this Terraform module.
 
 ## CI evidence ingestion
 
@@ -76,19 +91,24 @@ Set these repository Actions variables only after the existing GCP staging
 project and workload identity federation have been reviewed:
 
 - `AIOS_GCP_WIF_PROVIDER`: full Workload Identity Provider resource name.
-- `AIOS_GCP_SERVICE_ACCOUNT`: existing service account impersonated by GitHub.
-- `AIOS_FIRESTORE_PROJECT_ID`: exact existing Firestore project ID.
+- `AIOS_INGESTION_GCP_SERVICE_ACCOUNT`: existing CI-ingestion-only service account.
+- `AIOS_PROMOTION_GCP_SERVICE_ACCOUNT`: different existing capability-promotion service account.
+- `AIOS_EVOLUTION_FIRESTORE_PROJECT_ID`: dedicated existing evolution-ledger project.
+- `AIOS_AUTHORITY_FIRESTORE_PROJECT_ID`: different dedicated existing authority-artifact project.
+
 - `AIOS_AUTHORITY_TRUST_ANCHOR`: pinned public Ed25519 trust-anchor JSON.
 - `AIOS_FIRESTORE_WORKFLOW_SHA256`: SHA-256 of the reviewed
   `.github/workflows/firestore-emulator.yml` bytes on the default branch. The
   ingestor fetches that file at the source run commit and rejects evidence if
   the workflow file differs, preventing a PR from silently replacing the gate.
 
-The service account must have Firestore datastore read/write access and the
-WIF provider must restrict the repository, workflow/ref and audience. Terraform
-adds a binding for an existing service account only; it does not create a
-service account, WIF provider, database, key or secret. Review Terraform plan
-before any apply. Do not store issuer private keys in GitHub variables or
+The WIF provider must restrict repository, workflow identity/ref and audience.
+Terraform creates two narrowly scoped custom roles and binds the existing
+service accounts; it does not create service accounts, projects, databases,
+keys or secrets. The ingestion role is create/read only; promotion can update
+the two governed projections but cannot delete or list documents. The
+promotion identity is read-only on the authority project. Review the plan and
+verify effective IAM policies in both projects before any apply. Do not store issuer private keys in GitHub variables or
 secrets. Runtime callers using `create_firestore_evolution_service()` must set
 `AIOS_EVOLUTION_BACKEND=firestore`; this is an explicit runtime environment
 setting, not a repository Actions variable, and the factory has no filesystem
@@ -118,8 +138,8 @@ record fails closed.
 
 ## Non-goals / operational limits
 
-- No GCP staging project, Firestore database, WIF provider, service account,
-  IAM policy, Cloud Run service or secret was created or changed.
+- No GCP project, Firestore database, WIF provider, service account, IAM
+  policy, Cloud Run service or secret was created or changed by this PR.
 - No workflow was run against GCP; the workflows are dormant until repository
   variables and external WIF/IAM prerequisites exist.
 - Artifact hashes bind downloaded GitHub ZIP bytes. They do not by themselves
