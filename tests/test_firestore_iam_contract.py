@@ -60,3 +60,16 @@ def test_ci_ingestion_cannot_write_evolution_or_authority_projects():
     assert '"datastore.entities.get"' in reader
     assert '"datastore.entities.create"' not in reader
     assert '"datastore.entities.update"' not in reader
+
+
+def test_terraform_requires_four_distinct_firestore_projects():
+    source = TERRAFORM.read_text(encoding="utf-8")
+    assert 'check "firestore_projects_are_isolated"' in source
+    for variable in (
+        "var.project_id",
+        "var.evolution_firestore_project_id",
+        "var.authority_firestore_project_id",
+        "var.ci_evidence_firestore_project_id",
+    ):
+        assert variable in source
+    assert "var.ci_ingestion_service_account_email != var.capability_promotion_service_account_email" in source
