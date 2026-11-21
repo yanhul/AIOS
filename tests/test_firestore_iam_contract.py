@@ -20,8 +20,10 @@ def test_firestore_automation_does_not_use_broad_datastore_user_role():
     assert '"roles/datastore.user"' not in source
 
 
-def test_ingestion_role_is_create_read_only():
-    role = _role_block(TERRAFORM.read_text(encoding="utf-8"), "ci_ingestion")
+def test_ingestion_role_is_create_read_only_and_evidence_only():
+    source = TERRAFORM.read_text(encoding="utf-8")
+    role = _role_block(source, "ci_ingestion")
+    assert 'project     = var.ci_evidence_firestore_project_id' in role
     assert '"datastore.entities.create"' in role
     assert '"datastore.entities.get"' in role
     assert '"datastore.entities.update"' not in role
@@ -46,3 +48,15 @@ def test_authority_reader_is_read_only_and_does_not_enumerate_documents():
     assert '"datastore.entities.update"' not in role
     assert '"datastore.entities.delete"' not in role
     assert '"datastore.entities.list"' not in role
+
+
+
+def test_ci_ingestion_cannot_write_evolution_or_authority_projects():
+    source = TERRAFORM.read_text(encoding="utf-8")
+    assert 'resource "google_project_iam_member" "ci_ingestion_evidence"' in source
+    assert 'resource "google_project_iam_member" "ci_ingestion_ledger"' not in source
+    assert 'resource "google_project_iam_member" "ci_ingestion_authority"' not in source
+    reader = _role_block(source, "ci_evidence_reader")
+    assert '"datastore.entities.get"' in reader
+    assert '"datastore.entities.create"' not in reader
+    assert '"datastore.entities.update"' not in reader
