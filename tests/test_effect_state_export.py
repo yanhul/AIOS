@@ -1,4 +1,5 @@
 import os
+import shutil
 import pytest
 from core.effect_authority import create_effect, dispatch, unknown
 from core.effect_state_export import export_unknown_effect_snapshot
@@ -61,6 +62,9 @@ def test_export_rejects_symlinked_staging_directory(tmp_path):
     unknown(str(tmp_path), effect["effect_id"], "agent-1", "provider timeout")
     staging_target = tmp_path / "staging-target"
     staging_target.mkdir()
-    (tmp_path / ".staging").symlink_to(staging_target, target_is_directory=True)
+    staging = tmp_path / ".staging"
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.symlink_to(staging_target, target_is_directory=True)
     with pytest.raises(TransitionError, match="staging journal directory is symlinked"):
         export_unknown_effect_snapshot(str(tmp_path), effect["effect_id"], "agent-1")
