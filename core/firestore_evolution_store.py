@@ -63,6 +63,7 @@ class FirestoreEvolutionStore:
     def __init__(
         self, client: Any, *, project_id: str, authority_store: FirestoreAuthorityStore,
         trust_anchor: Mapping[str, Mapping[str, Any]], evidence_client: Any | None = None,
+        activation_client: Any | None = None,
         transaction_runner: Callable[[Any, Callable[[Any], Any]], Any] | None = None,
         evidence_verifier: Callable[[list[str], str], bool] | None = None,
         expected_workflow_sha256: str | None = None,
@@ -79,6 +80,11 @@ class FirestoreEvolutionStore:
         if not isinstance(evidence_project, str) or not evidence_project.strip():
             raise EvolutionStoreError("explicit CI evidence Firestore client project required")
         self.evidence_project_id = evidence_project
+        self.activation_client = activation_client if activation_client is not None else client
+        activation_project = getattr(self.activation_client, "project", None)
+        if not isinstance(activation_project, str) or not activation_project.strip():
+            raise EvolutionStoreError("explicit activation Firestore client project required")
+        self.activation_project_id = activation_project
         self.authority_store, self.trust_anchor = authority_store, trust_anchor
         self.evidence_verifier = evidence_verifier
         if expected_workflow_sha256 is not None and not _SHA256.fullmatch(expected_workflow_sha256):
@@ -104,7 +110,12 @@ class FirestoreEvolutionStore:
     def _ref(self, collection: str, document_id: str) -> Any:
         if not document_id or "/" in document_id:
             raise EvolutionStoreError("invalid Firestore document ID")
-        client = self.evidence_client if collection in {"aios_ci_evidence", "aios_ci_evidence_events"} else self.client
+        if collection in {"aios_ci_evidence", "aios_ci_evidence_events"}:
+            client = self.evidence_client
+        elif collection == "aios_active_capabilities":
+            client = self.activation_client
+        else:
+            client = self.client
         return client.collection(collection).document(document_id)
 
     def _commit(self, label: str, callback: Callable[[Any], Any], *, client: Any | None = None) -> Any:
@@ -485,38 +496,69 @@ class FirestoreEvolutionStore:
             current_candidate = _data(self._ref("aios_capability_candidates", candidate_id).get(transaction=tx))
             current_eval = _data(self._ref("aios_capability_evaluations", evaluation_id).get(transaction=tx))
             current_latest = _data(self._ref("aios_capability_latest_evaluations", candidate_id).get(transaction=tx))
-            active = _data(active_ref.get(transaction=tx))
             old_decision = _data(decision_ref.get(transaction=tx))
             old_event = _data(event_ref.get(transaction=tx))
+            operation_ref = self._ref("aios_activation_operations", "PROMOTE-" + decision_digest)
+            old_operation = _data(operation_ref.get(transaction=tx))
             if current_candidate != candidate or current_eval != evaluation or current_latest != latest:
                 raise EvolutionStoreError("candidate/evaluation changed during promotion; retry from fresh evidence")
             if old_decision is not None:
-                if old_decision.get("decision_digest") != decision_digest or old_decision.get("capability_digest") != capability_digest or active is None or active.get("decision_digest") != decision_digest:
-                    raise EvolutionStoreError("promotion replay conflicts with active capability state")
-                if old_event != event:
-                    raise EvolutionStoreError("promotion event missing or conflicting")
-                return {"status": "ACTIVE", "replayed": True, "decision_digest": decision_digest,
+                if (old_decision.get("decision_digest") != decision_digest
+                        or old_decision.get("capability_digest") != capability_digest
+                        or old_event != event or old_operation is None):
+                    raise EvolutionStoreError("promotion prepare replay conflicts with durable ledger")
+                if old_operation.get("state") not in {"PREPARED", "ACTIVATED"}:
+                    raise EvolutionStoreError("promotion operation has invalid state")
+                return {"status": "PREPARED", "replayed": True, "decision_digest": decision_digest,
                         "capability_digest": capability_digest, "version": candidate["candidate_version"]}
-            if old_event is not None:
-                raise EvolutionStoreError("orphan promotion event")
-            if (active is None or active.get("version") != candidate["base_version"]
-                    or active.get("revision") != next_revision - 1
-                    or (active.get("decision_digest") or active.get("bootstrap_decision_digest")) != prior_decision_digest):
-                raise EvolutionStoreError("active capability base/revision CAS mismatch; promotion blocked")
+            if old_event is not None or old_operation is not None:
+                raise EvolutionStoreError("orphan promotion event/activation operation")
             tx.create(decision_ref, {**event, "record_type": "CAPABILITY_DECISION",
                                      "decision": "PROMOTED", "approver": decision["approver"],
                                      "decision_digest": decision_digest, "capability_digest": capability_digest})
             tx.create(event_ref, event)
-            tx.set(active_ref, {"capability_id": candidate["capability_id"],
+            tx.create(operation_ref, {"operation_id": "PROMOTE-" + decision_digest, "state": "PREPARED",
+                                      "decision_digest": decision_digest, "capability_digest": capability_digest,
+                                      "capability_id": candidate["capability_id"],
+                                      "from_version": candidate["base_version"],
+                                      "version": candidate["candidate_version"],
+                                      "revision": next_revision,
+                                      "previous_decision_digest": prior_decision_digest})
+            return {"status": "PREPARED", "replayed": False, "decision_digest": decision_digest,
+                    "capability_digest": capability_digest, "version": candidate["candidate_version"],
+                    "revision": next_revision}
+        prepared = self._commit("capability activation prepare transaction", body_tx)
+        operation_id = "PROMOTE-" + decision_digest
+        operation_ref = self._ref("aios_activation_operations", operation_id)
+        def activate_tx(tx: Any) -> bool:
+            pointer = _data(active_ref.get(transaction=tx))
+            expected_pointer = {"capability_id": candidate["capability_id"],
                                 "version": candidate["candidate_version"],
                                 "capability_digest": capability_digest,
                                 "decision_digest": decision_digest,
                                 "previous_decision_digest": prior_decision_digest,
-                                "revision": next_revision})
-            return {"status": "ACTIVE", "replayed": False, "decision_digest": decision_digest,
-                    "capability_digest": capability_digest, "version": candidate["candidate_version"],
-                    "revision": next_revision}
-        return self._commit("capability promotion transaction", body_tx)
+                                "revision": next_revision}
+            if pointer == expected_pointer:
+                return True
+            if (pointer is None or pointer.get("version") != candidate["base_version"]
+                    or pointer.get("revision") != next_revision - 1
+                    or (pointer.get("decision_digest") or pointer.get("bootstrap_decision_digest")) != prior_decision_digest):
+                raise EvolutionStoreError("activation CAS conflict; operation remains PREPARED")
+            tx.set(active_ref, expected_pointer)
+            return False
+        replayed = self._commit("activation pointer CAS", activate_tx, client=self.activation_client)
+        def finalize_tx(tx: Any) -> None:
+            op = _data(operation_ref.get(transaction=tx))
+            if op is None or op.get("decision_digest") != decision_digest or op.get("capability_digest") != capability_digest:
+                raise EvolutionStoreError("activation operation missing or conflicting")
+            if op.get("state") == "ACTIVATED":
+                return
+            if op.get("state") != "PREPARED":
+                raise EvolutionStoreError("activation operation cannot be finalized")
+            tx.set(operation_ref, {**op, "state": "ACTIVATED"})
+        self._commit("activation finalize transaction", finalize_tx)
+        return {**prepared, "status": "ACTIVE", "replayed": bool(prepared.get("replayed") or replayed),
+                "activation_state": "ACTIVATED"}
 
     def bootstrap_active_capability(self, *, capability_digest: str, bootstrap_decision_digest: str) -> dict[str, Any]:
         """Create the first active pointer from two independently signed artifacts."""
@@ -544,23 +586,51 @@ class FirestoreEvolutionStore:
         event_ref = self._ref("aios_evolution_events", event_id)
 
         def body_tx(tx: Any) -> dict[str, Any]:
-            pointer = _data(pointer_ref.get(transaction=tx))
             old_decision = _data(decision_ref.get(transaction=tx))
             old_event = _data(event_ref.get(transaction=tx))
-            if pointer is not None:
-                if pointer.get("capability_digest") == capability_digest and pointer.get("bootstrap_decision_digest") == bootstrap_decision_digest and old_decision is not None and old_event == event:
-                    return {"status": "ACTIVE", "replayed": True, "version": capability["version"]}
-                raise EvolutionStoreError("active capability pointer already exists; bootstrap is create-only")
-            if old_decision is not None or old_event is not None:
-                raise EvolutionStoreError("orphan bootstrap decision/event")
+            operation_ref = self._ref("aios_activation_operations", "BOOTSTRAP-" + bootstrap_decision_digest)
+            old_operation = _data(operation_ref.get(transaction=tx))
+            if old_decision is not None:
+                if old_event != event or old_operation is None or old_operation.get("state") not in {"PREPARED", "ACTIVATED"}:
+                    raise EvolutionStoreError("bootstrap prepare replay conflicts")
+                return {"status": "PREPARED", "replayed": True, "version": capability["version"]}
+            if old_event is not None or old_operation is not None:
+                raise EvolutionStoreError("orphan bootstrap event/operation")
             tx.create(decision_ref, {**event, "record_type": "CAPABILITY_DECISION", "decision": "BOOTSTRAP_ACTIVE"})
             tx.create(event_ref, event)
-            tx.create(pointer_ref, {"capability_id": capability_id, "version": capability["version"],
-                                    "capability_digest": capability_digest,
-                                    "bootstrap_decision_digest": bootstrap_decision_digest,
-                                    "previous_decision_digest": None, "revision": 0})
-            return {"status": "ACTIVE", "replayed": False, "version": capability["version"], "revision": 0}
-        return self._commit("active capability bootstrap transaction", body_tx)
+            tx.create(operation_ref, {"operation_id": "BOOTSTRAP-" + bootstrap_decision_digest,
+                                      "state": "PREPARED", "decision_digest": bootstrap_decision_digest,
+                                      "capability_digest": capability_digest, "capability_id": capability_id,
+                                      "version": capability["version"], "revision": 0,
+                                      "previous_decision_digest": None})
+            return {"status": "PREPARED", "replayed": False, "version": capability["version"], "revision": 0}
+        prepared = self._commit("active capability bootstrap prepare", body_tx)
+        operation_ref = self._ref("aios_activation_operations", "BOOTSTRAP-" + bootstrap_decision_digest)
+        def activate_tx(tx: Any) -> bool:
+            current = _data(pointer_ref.get(transaction=tx))
+            expected_pointer = {"capability_id": capability_id, "version": capability["version"],
+                                "capability_digest": capability_digest,
+                                "bootstrap_decision_digest": bootstrap_decision_digest,
+                                "previous_decision_digest": None, "revision": 0}
+            if current == expected_pointer:
+                return True
+            if current is not None:
+                raise EvolutionStoreError("active capability pointer already exists; bootstrap is create-only")
+            tx.create(pointer_ref, expected_pointer)
+            return False
+        replayed = self._commit("bootstrap activation pointer create", activate_tx, client=self.activation_client)
+        def finalize_tx(tx: Any) -> None:
+            op = _data(operation_ref.get(transaction=tx))
+            if op is None or op.get("decision_digest") != bootstrap_decision_digest or op.get("capability_digest") != capability_digest:
+                raise EvolutionStoreError("bootstrap operation missing or conflicting")
+            if op.get("state") == "ACTIVATED":
+                return
+            if op.get("state") != "PREPARED":
+                raise EvolutionStoreError("bootstrap operation cannot be finalized")
+            tx.set(operation_ref, {**op, "state": "ACTIVATED"})
+        self._commit("bootstrap activation finalize", finalize_tx)
+        return {**prepared, "status": "ACTIVE", "replayed": bool(prepared.get("replayed") or replayed),
+                "activation_state": "ACTIVATED"}
 
     def get_active_capability(self, capability_id: str) -> dict[str, Any]:
         pointer = _data(self._ref("aios_active_capabilities", _required(capability_id, "capability_id")).get())

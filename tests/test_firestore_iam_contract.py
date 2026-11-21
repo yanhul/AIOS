@@ -56,13 +56,14 @@ def test_ci_ingestion_cannot_write_evolution_or_authority_projects():
     assert 'resource "google_project_iam_member" "ci_ingestion_evidence"' in source
     assert 'resource "google_project_iam_member" "ci_ingestion_ledger"' not in source
     assert 'resource "google_project_iam_member" "ci_ingestion_authority"' not in source
+    assert 'role    = google_project_iam_custom_role.capability_promotion.name\n  member  = "serviceAccount:${var.worker_runtime_service_account_email}"' not in source
     reader = _role_block(source, "ci_evidence_reader")
     assert '"datastore.entities.get"' in reader
     assert '"datastore.entities.create"' not in reader
     assert '"datastore.entities.update"' not in reader
 
 
-def test_terraform_requires_four_distinct_firestore_projects():
+def test_terraform_requires_five_distinct_firestore_projects():
     source = TERRAFORM.read_text(encoding="utf-8")
     assert 'check "firestore_projects_are_isolated"' in source
     for variable in (
@@ -70,6 +71,22 @@ def test_terraform_requires_four_distinct_firestore_projects():
         "var.evolution_firestore_project_id",
         "var.authority_firestore_project_id",
         "var.ci_evidence_firestore_project_id",
+        "var.activation_firestore_project_id",
     ):
         assert variable in source
     assert "var.ci_ingestion_service_account_email != var.capability_promotion_service_account_email" in source
+
+
+def test_worker_cannot_mutate_evolution_or_activation_pointer():
+    source = TERRAFORM.read_text(encoding="utf-8")
+    worker_evolution = re.search(r'resource "google_project_iam_custom_role" "worker_evolution_reader" \{(.*?)\n\}', source, re.DOTALL)
+    assert worker_evolution
+    assert '"datastore.entities.get"' in worker_evolution.group(1)
+    assert '"datastore.entities.update"' not in worker_evolution.group(1)
+    activation_reader = _role_block(source, "activation_pointer_reader")
+    assert '"datastore.entities.get"' in activation_reader
+    assert '"datastore.entities.create"' not in activation_reader
+    assert '"datastore.entities.update"' not in activation_reader
+    activation_writer = _role_block(source, "activation_pointer_writer")
+    assert 'project     = var.activation_firestore_project_id' in activation_writer
+    assert '"datastore.entities.update"' in activation_writer
