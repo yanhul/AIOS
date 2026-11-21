@@ -5,6 +5,7 @@ authorization therefore requires a deployment-held HMAC attestation secret.
 """
 import os
 import json
+import re
 from .contract import contract_identity, issue_permit, validate_contract, verify_permit
 from .attestation import issue_attestation, verify_attestation
 from .capabilities import CapabilityError, CapabilityRegistry
@@ -20,13 +21,27 @@ _CONTRACT_FIELDS = ("contract_type", "task_id", "scope", "actor", "capabilities"
                     "allowed_effects", "evidence_required", "max_attempts", "terminal_states", "policy_digest")
 
 
+_ID_PATTERNS = {
+    "contract_id": re.compile(r"^CT-[0-9a-f]{64}$"),
+    "permit_id": re.compile(r"^PT-[0-9a-f]{64}$"),
+}
+
+
 def _require_id(value, name):
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{name} must be a non-empty string")
+    pattern = _ID_PATTERNS.get(name)
+    if not isinstance(value, str) or pattern is None or not pattern.fullmatch(value):
+        raise ValueError(f"{name} has an invalid canonical identifier")
 
 
 def _path(aios_dir, kind, ident):
-    return os.path.join(aios_dir, AUTHORITY_DIR, kind, ident + ".json")
+    authority_root = os.path.join(aios_dir, AUTHORITY_DIR)
+    directory = os.path.join(authority_root, kind)
+    if os.path.islink(authority_root) or os.path.islink(directory):
+        raise TransitionError("authority storage directory must not be symlinked")
+    path = os.path.join(directory, ident + ".json")
+    if os.path.islink(path):
+        raise TransitionError("authority record must not be symlinked")
+    return path
 
 
 def _load(path):
