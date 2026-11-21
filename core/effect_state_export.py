@@ -13,8 +13,13 @@ def export_unknown_effect_snapshot(aios_dir: str, effect_id: str, actor: str) ->
     if not isinstance(effect_id, str) or not effect_id.strip() or not isinstance(actor, str) or not actor.strip():
         raise ValueError("effect_id and actor are required")
     staging = os.path.join(aios_dir, ".staging")
+    if os.path.islink(staging):
+        raise TransitionError("effect staging journal directory is symlinked")
     if os.path.isdir(staging) and os.listdir(staging):
         raise TransitionError("effect state has pending journal work; read-only exporter will not recover or attest it")
+    effects_dir = os.path.join(aios_dir, "effects")
+    if os.path.islink(effects_dir) or not os.path.isdir(effects_dir):
+        raise TransitionError("effect snapshot directory is missing or symlinked")
     path = _path(aios_dir, effect_id)
     if os.path.islink(path) or not os.path.isfile(path):
         raise TransitionError("effect snapshot is missing or symlinked")
