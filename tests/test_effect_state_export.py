@@ -36,3 +36,8 @@ def test_export_blocks_pending_journal_without_mutating_it(tmp_path):
     with pytest.raises(TransitionError, match="pending journal"):
         export_unknown_effect_snapshot(str(tmp_path), effect["effect_id"], "agent-1")
     assert marker.exists()
+
+
+def test_export_rejects_path_traversal_effect_identity(tmp_path):
+    with pytest.raises(TransitionError, match="effect identity is malformed"):
+        export_unknown_effect_snapshot(str(tmp_path), "../../outside", "agent-1")
