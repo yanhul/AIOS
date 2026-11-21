@@ -4,6 +4,12 @@ on:
   workflow_run:
     workflows: ["Firestore Emulator Gate"]
     types: [completed]
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed Firestore Emulator Gate run ID to ingest
+        required: true
+        type: string
 
 permissions:
   actions: read
@@ -13,7 +19,7 @@ permissions:
 jobs:
   ingest:
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') &&
       vars.AIOS_GCP_WIF_PROVIDER != '' &&
       vars.AIOS_GCP_SERVICE_ACCOUNT != '' &&
       vars.AIOS_FIRESTORE_PROJECT_ID != '' &&
@@ -37,7 +43,7 @@ jobs:
       - name: Verify completed source run and ingest immutable CI evidence
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AIOS_SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          AIOS_SOURCE_RUN_ID: ${{ github.event.workflow_run.id || inputs.source_run_id }}
           AIOS_EXPECTED_REPOSITORY: ${{ github.repository }}
           AIOS_FIRESTORE_PROJECT_ID: ${{ vars.AIOS_FIRESTORE_PROJECT_ID }}
           AIOS_AUTHORITY_TRUST_ANCHOR: ${{ vars.AIOS_AUTHORITY_TRUST_ANCHOR }}

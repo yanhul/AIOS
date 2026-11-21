@@ -65,7 +65,10 @@ such record matching both repository and candidate source commit.
 The workflow is deliberately separate from the source CI workflow: ingestion
 must not claim the overall run succeeded while the run is still in progress.
 GitHub's `workflow_run` trigger only runs after this workflow is on the default
-branch. Until then, CI evidence ingestion is not operational.
+branch. After merge, use `workflow_dispatch` with the completed source run ID to
+backfill this PR's already-completed gate run; later successful gate runs are
+ingested automatically. Until the workflow is on the default branch and the
+required WIF/Firestore variables exist, CI evidence ingestion is not operational.
 
 ## Manual GitHub variables and IAM prerequisites
 
