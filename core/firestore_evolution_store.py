@@ -62,7 +62,7 @@ class FirestoreEvolutionStore:
 
     def __init__(
         self, client: Any, *, project_id: str, authority_store: FirestoreAuthorityStore,
-        trust_anchor: Mapping[str, Mapping[str, Any]],
+        trust_anchor: Mapping[str, Mapping[str, Any]], evidence_client: Any | None = None,
         transaction_runner: Callable[[Any, Callable[[Any], Any]], Any] | None = None,
         evidence_verifier: Callable[[list[str], str], bool] | None = None,
         expected_workflow_sha256: str | None = None,
@@ -74,6 +74,11 @@ class FirestoreEvolutionStore:
         if not isinstance(trust_anchor, Mapping) or not trust_anchor:
             raise EvolutionStoreError("pinned authority trust anchor required")
         self.client, self.project_id = client, project_id
+        self.evidence_client = evidence_client if evidence_client is not None else client
+        evidence_project = getattr(self.evidence_client, "project", None)
+        if not isinstance(evidence_project, str) or not evidence_project.strip():
+            raise EvolutionStoreError("explicit CI evidence Firestore client project required")
+        self.evidence_project_id = evidence_project
         self.authority_store, self.trust_anchor = authority_store, trust_anchor
         self.evidence_verifier = evidence_verifier
         if expected_workflow_sha256 is not None and not _SHA256.fullmatch(expected_workflow_sha256):
@@ -99,11 +104,12 @@ class FirestoreEvolutionStore:
     def _ref(self, collection: str, document_id: str) -> Any:
         if not document_id or "/" in document_id:
             raise EvolutionStoreError("invalid Firestore document ID")
-        return self.client.collection(collection).document(document_id)
+        client = self.evidence_client if collection in {"aios_ci_evidence", "aios_ci_evidence_events"} else self.client
+        return client.collection(collection).document(document_id)
 
-    def _commit(self, label: str, callback: Callable[[Any], Any]) -> Any:
+    def _commit(self, label: str, callback: Callable[[Any], Any], *, client: Any | None = None) -> Any:
         try:
-            return self._run(self.client, callback)
+            return self._run(client if client is not None else self.client, callback)
         except EvolutionStoreError:
             raise
         except Exception as exc:
@@ -111,7 +117,9 @@ class FirestoreEvolutionStore:
 
     def _append(self, *, collection: str, prefix: str, record: Mapping[str, Any], actor: str, action: str,
                 precondition: Callable[[Any], None] | None = None,
-                record_id_override: str | None = None) -> dict[str, Any]:
+                record_id_override: str | None = None,
+                event_collection: str = "aios_evolution_events",
+                client: Any | None = None) -> dict[str, Any]:
         actor = _required(actor, "actor")
         body = dict(record)
         identity = _digest(body)
@@ -124,7 +132,7 @@ class FirestoreEvolutionStore:
                  "outcome": body.get("outcome"), "verdict": body.get("verdict")}
         event_id = _digest(event)
         record_ref = self._ref(collection, record_id)
-        event_ref = self._ref("aios_evolution_events", event_id)
+        event_ref = self._ref(event_collection, event_id)
 
         def body_tx(tx: Any) -> dict[str, Any]:
             old = _data(record_ref.get(transaction=tx))
@@ -142,7 +150,7 @@ class FirestoreEvolutionStore:
             tx.create(record_ref, stored)
             tx.create(event_ref, event)
             return {"record_id": record_id, "identity": identity, "replayed": False}
-        return self._commit(f"{action} transaction", body_tx)
+        return self._commit(f"{action} transaction", body_tx, client=client)
 
     def record_experience(self, record: Mapping[str, Any], *, actor: str) -> dict[str, Any]:
         body = dict(record)
@@ -352,7 +360,9 @@ class FirestoreEvolutionStore:
         stable_run_id = f"CI-{body['workflow_id']}-{body['run_id']}-{body['run_attempt']}"
         result = self._append(collection="aios_ci_evidence", prefix="CI-", record=body,
                               actor=actor, action="ci.evidence_ingested",
-                              record_id_override=stable_run_id)
+                              record_id_override=stable_run_id,
+                              event_collection="aios_ci_evidence_events",
+                              client=self.evidence_client)
         return {**result, "evidence_ref": "ci://" + result["record_id"]}
 
     def _read_ci_refs(self, refs: list[str], source_commit: str, repository: str | None,
