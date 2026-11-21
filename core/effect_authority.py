@@ -54,7 +54,13 @@ def _path(aios_dir, effect_id):
     # joining paths so imported or caller-supplied IDs cannot escape effects/.
     if not isinstance(effect_id, str) or not re.fullmatch(r"EF-[0-9a-f]{64}", effect_id):
         raise TransitionError("effect identity is malformed")
-    return os.path.join(aios_dir, "effects", effect_id + ".json")
+    effects_dir = os.path.join(aios_dir, "effects")
+    if os.path.islink(effects_dir):
+        raise TransitionError("effect storage directory must not be symlinked")
+    path = os.path.join(effects_dir, effect_id + ".json")
+    if os.path.islink(path):
+        raise TransitionError("effect record must not be symlinked")
+    return path
 
 
 def _load(path):
