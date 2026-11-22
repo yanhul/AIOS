@@ -34,7 +34,31 @@ env:
   SOURCE_BRANCH: ${{ inputs.source_branch }}
 
 jobs:
+  preflight:
+    # Checks secret presence only (boolean expressions); runs no repository code.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Preflight repair configuration (presence only, values never read)
+        env:
+          HAS_TRY_URL: ${{ vars.TRY_REPAIR_WORKER_URL != '' }}
+          HAS_TRY_TOKEN: ${{ secrets.TRY_PROVIDER_TOKEN != '' }}
+          HAS_AUTHORITY: ${{ secrets.AIOS_AUTHORITY_ATTESTATION_SECRET != '' }}
+          HAS_SIGNING_KEYS: ${{ secrets.AIOS_PROVIDER_SIGNING_KEYS != '' }}
+          HAS_KEYRING: ${{ secrets.AIOS_PROVIDER_KEYRING != '' }}
+        run: |
+          missing=0
+          for item in "vars.TRY_REPAIR_WORKER_URL=$HAS_TRY_URL" "secrets.TRY_PROVIDER_TOKEN=$HAS_TRY_TOKEN" \
+                      "secrets.AIOS_AUTHORITY_ATTESTATION_SECRET=$HAS_AUTHORITY" \
+                      "secrets.AIOS_PROVIDER_SIGNING_KEYS=$HAS_SIGNING_KEYS" "secrets.AIOS_PROVIDER_KEYRING=$HAS_KEYRING"; do
+            echo "configured ${item}"
+            [ "${item##*=}" = "true" ] || missing=1
+          done
+          [ "$missing" = 0 ] || { echo "BLOCKED: repair configuration incomplete"; exit 1; }
+
   propose1:
+    needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -62,22 +86,6 @@ jobs:
             '.headSha == $sha and .headBranch == $branch and .conclusion == "failure"
              and (.workflowName == "CI" or .workflowName == "G4A CI")' <<<"$run_json" >/dev/null \
             || { echo "BLOCKED: run $RUN_ID is not a failed CI run for $BASE_SHA on $SOURCE_BRANCH"; exit 1; }
-      - name: Preflight repair configuration (presence only, values never read)
-        env:
-          HAS_TRY_URL: ${{ vars.TRY_REPAIR_WORKER_URL != '' }}
-          HAS_TRY_TOKEN: ${{ secrets.TRY_PROVIDER_TOKEN != '' }}
-          HAS_AUTHORITY: ${{ secrets.AIOS_AUTHORITY_ATTESTATION_SECRET != '' }}
-          HAS_SIGNING_KEYS: ${{ secrets.AIOS_PROVIDER_SIGNING_KEYS != '' }}
-          HAS_KEYRING: ${{ secrets.AIOS_PROVIDER_KEYRING != '' }}
-        run: |
-          missing=0
-          for item in "vars.TRY_REPAIR_WORKER_URL=$HAS_TRY_URL" "secrets.TRY_PROVIDER_TOKEN=$HAS_TRY_TOKEN" \
-                      "secrets.AIOS_AUTHORITY_ATTESTATION_SECRET=$HAS_AUTHORITY" \
-                      "secrets.AIOS_PROVIDER_SIGNING_KEYS=$HAS_SIGNING_KEYS" "secrets.AIOS_PROVIDER_KEYRING=$HAS_KEYRING"; do
-            echo "configured ${item}"
-            [ "${item##*=}" = "true" ] || missing=1
-          done
-          [ "$missing" = 0 ] || { echo "BLOCKED: repair configuration incomplete"; exit 1; }
       - run: git fetch --no-tags --depth=1 origin "$BASE_SHA"
       - name: Capture failed CI evidence
         env:

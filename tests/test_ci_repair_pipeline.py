@@ -54,6 +54,10 @@ def test_repair_test_jobs_are_isolated_from_secrets_and_write_tokens():
         assert "pytest" not in json.dumps(apply_job)
         assert "AIOS_AUTHORITY_ATTESTATION_SECRET" in json.dumps(apply_job)
     for name, job in jobs.items():
+        if name == "preflight":
+            assert job["permissions"] == {}
+            assert all("uses" not in step for step in job["steps"])
+            continue
         if not (name.startswith("apply") or name == "publish"):
             assert "AIOS_AUTHORITY_ATTESTATION_SECRET" not in json.dumps(job)
     publish = jobs["publish"]
