@@ -170,3 +170,21 @@ def test_submission_gate_fails_closed_on_missing_or_malformed_data(
 ):
     with pytest.raises(SystemExit, match=reason):
         prov.validate_submission_base(prov_data, base_sha, base_tree, candidate_tree)
+
+
+def test_submit_workflow_rechecks_base_at_push_and_pr_boundaries():
+    workflow = (ROOT / ".github/workflows/ci-autonomous-repair.yml").read_text(encoding="utf-8")
+    block = workflow.split("  submit-candidate:", 1)[1]
+    assert "check_submission_base() {" in block
+    assert block.index("check_submission_base\n") < block.index('git push "$remote"')
+    assert block.index('git push "$remote"') < block.index('gh pr create')
+    assert block.rindex("check_submission_base\n") < block.index('gh pr create')
+    assert 'python "$GITHUB_WORKSPACE/trusted/scripts/ci_repair_provenance.py" submission-check' in block
+
+
+def test_submit_workflow_fails_closed_on_base_lookup_errors():
+    workflow = (ROOT / ".github/workflows/ci-autonomous-repair.yml").read_text(encoding="utf-8")
+    block = workflow.split("  submit-candidate:", 1)[1]
+    assert '|| { echo "BLOCKED: BASE_REF_UNRESOLVED' in block
+    assert '|| { echo "BLOCKED: BASE_TREE_UNRESOLVED' in block
+    assert "set -euo pipefail" in block
