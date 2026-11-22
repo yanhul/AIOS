@@ -130,3 +130,42 @@ def test_candidate_branch_format():
     assert prov.candidate_branch(44990346556, "45011332245") == "aios/autorepair/44990346556-45011332245"
     with pytest.raises(SystemExit):
         prov.candidate_branch("1", "../main")
+
+
+def test_submission_gate_accepts_fresh_non_noop_base():
+    base = "a" * 40
+    report = prov.validate_submission_base(
+        {"base_sha": base}, base, "b" * 40, "c" * 40
+    )
+    assert report["status"] == "SUBMISSION_BASE_VERIFIED"
+
+
+def test_submission_gate_blocks_moved_base():
+    with pytest.raises(SystemExit, match="BASE_MOVED"):
+        prov.validate_submission_base(
+            {"base_sha": "a" * 40}, "b" * 40, "c" * 40, "d" * 40
+        )
+
+
+def test_submission_gate_blocks_noop_tree():
+    with pytest.raises(SystemExit, match="NO_OP"):
+        prov.validate_submission_base(
+            {"base_sha": "a" * 40}, "a" * 40, "c" * 40, "c" * 40
+        )
+
+
+@pytest.mark.parametrize(
+    "prov_data,base_sha,base_tree,candidate_tree,reason",
+    [
+        ({}, "a" * 40, "b" * 40, "c" * 40, "INVALID_ATTESTED_BASE_SHA"),
+        ({"base_sha": "bad"}, "a" * 40, "b" * 40, "c" * 40, "INVALID_ATTESTED_BASE_SHA"),
+        ({"base_sha": "a" * 40}, "", "b" * 40, "c" * 40, "BASE_REF_UNRESOLVED"),
+        ({"base_sha": "a" * 40}, "a" * 40, "", "c" * 40, "BASE_TREE_UNRESOLVED"),
+        ({"base_sha": "a" * 40}, "a" * 40, "b" * 40, "", "CANDIDATE_TREE_UNRESOLVED"),
+    ],
+)
+def test_submission_gate_fails_closed_on_missing_or_malformed_data(
+    prov_data, base_sha, base_tree, candidate_tree, reason
+):
+    with pytest.raises(SystemExit, match=reason):
+        prov.validate_submission_base(prov_data, base_sha, base_tree, candidate_tree)
