@@ -16,7 +16,7 @@ def init_repo(root: Path) -> str:
     (root / "tests" / "test_side_effect.py").write_text(
         "from pathlib import Path\n"
         "def test_candidate_patch_and_side_effect():\n"
-        "    assert Path('module.py').read_text() == 'VALUE = 2\\\\n'\n"
+        "    assert Path('module.py').read_text() == 'VALUE = 2\\n'\n"
         "    Path('research-artifact.json').write_text('{\\\"touched\\\": true}')\n",
         encoding="utf-8",
     )
