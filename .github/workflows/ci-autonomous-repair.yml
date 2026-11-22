@@ -568,7 +568,7 @@ jobs:
           if [ -n "$existing_pr" ]; then
             echo "CANDIDATE_PR_ALREADY_EXISTS=$existing_pr"
           else
-            body="$(printf '%s\\n' \
+            body="$(printf '%s\n' \
               'Draft candidate produced by AIOS bounded repair loop.' \
               '' \
               "- Failed source CI run: ${RUN_ID}" \
