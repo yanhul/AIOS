@@ -196,3 +196,9 @@ def test_submit_workflow_keeps_verified_base_sha_for_pr_body():
     assert 'local ref_line base_sha base_tree' not in block
     assert 'submission-check "$prov" "$submission_base_sha" "$base_tree" "$candidate_tree"' in block
     assert 'Source CI run: ${RUN_ID} (base ${submission_base_sha})' in block
+
+def test_submit_workflow_does_not_keep_unused_base_sha_variable():
+    workflow = (ROOT / ".github/workflows/ci-autonomous-repair.yml").read_text(encoding="utf-8")
+    block = workflow.split("  submit-candidate:", 1)[1]
+    assert 'base_sha="${BASE_SHA:?BASE_SHA is required}"' not in block
+    assert 'submission_base_sha="$(cut -f1 <<<"$ref_line")"' in block
