@@ -47,7 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Resolve failed CI run
         env:
@@ -127,7 +127,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           path: trusted
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -208,7 +208,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           persist-credentials: false
       - env:
           SHA: ${{ env.BASE_SHA }}
@@ -251,7 +251,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           path: trusted
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -326,7 +326,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           persist-credentials: false
       - env:
           SHA: ${{ env.BASE_SHA }}
@@ -369,7 +369,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           path: trusted
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -453,7 +453,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           path: trusted
           persist-credentials: false
       - uses: actions/checkout@v4
