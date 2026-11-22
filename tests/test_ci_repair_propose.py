@@ -113,3 +113,24 @@ def test_bounded_source_skips_noisy_references_after_required_test_module(monkey
 
     assert target in source
     assert noisy not in source
+
+
+
+def test_failed_test_import_discovery_ignores_warning_paths(monkeypatch):
+    paths = ["core/runtime.py", "core/repair_e2e_probe.py"]
+    test_sources = {
+        "tests/test_runtime.py": "from core.runtime import Runtime\n",
+        "tests/test_repair_e2e_probe.py": "from core.repair_e2e_probe import repair_probe_value\n",
+    }
+    monkeypatch.setattr(
+        propose, "show_complete",
+        lambda sha, path: test_sources.get(path, ""),
+    )
+    log = (
+        "tests/test_runtime.py:271: PytestUnknownMarkWarning\n"
+        "FAILED tests/test_repair_e2e_probe.py::test_governed_repair_probe\n"
+    )
+
+    assert propose.failed_test_import_paths(
+        paths, log, sha="a" * 40
+    ) == ["core/repair_e2e_probe.py"]
