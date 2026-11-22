@@ -6,13 +6,11 @@ A caller cannot self-authorize an arbitrary policy digest.
 """
 import hashlib
 import os
-import re
 
 from .mutation import canonical_json, commit_batch, recover_pending
 
 POLICIES_DIR = "policies"
 POLICY_TYPE = "GOVERNING_POLICY"
-_POLICY_DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\\Z")
 
 
 def policy_digest(policy):
@@ -23,9 +21,14 @@ def policy_digest(policy):
 
 def _policy_relpath(digest):
     """Map a canonical digest to a portable filename (no ':' on Windows)."""
-    if not isinstance(digest, str) or not _POLICY_DIGEST_RE.fullmatch(digest):
+    if (
+        not isinstance(digest, str)
+        or len(digest) != 71
+        or not digest.startswith("sha256:")
+        or any(char not in "0123456789abcdef" for char in digest[7:])
+    ):
         raise ValueError("policy digest must be a canonical sha256 content digest")
-    return os.path.join(POLICIES_DIR, digest.removeprefix("sha256:") + ".json")
+    return os.path.join(POLICIES_DIR, digest[7:] + ".json")
 
 
 def persist_policy(aios_dir, policy):
