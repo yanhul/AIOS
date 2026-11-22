@@ -6,11 +6,13 @@ A caller cannot self-authorize an arbitrary policy digest.
 """
 import hashlib
 import os
+import re
 
 from .mutation import canonical_json, commit_batch, recover_pending
 
 POLICIES_DIR = "policies"
 POLICY_TYPE = "GOVERNING_POLICY"
+_POLICY_DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\\Z")
 
 
 def policy_digest(policy):
@@ -19,13 +21,21 @@ def policy_digest(policy):
     return "sha256:" + hashlib.sha256(canonical_json(policy).encode("utf-8")).hexdigest()
 
 
+def _policy_relpath(digest):
+    """Map a canonical digest to a portable filename (no ':' on Windows)."""
+    if not isinstance(digest, str) or not _POLICY_DIGEST_RE.fullmatch(digest):
+        raise ValueError("policy digest must be a canonical sha256 content digest")
+    return os.path.join(POLICIES_DIR, digest.removeprefix("sha256:") + ".json")
+
+
 def persist_policy(aios_dir, policy):
     """Persist an immutable policy artifact and return its content digest."""
     if not isinstance(policy, dict) or policy.get("policy_type") != POLICY_TYPE:
         raise ValueError("policy must be a governing policy artifact")
     digest = policy_digest(policy)
+    relative_path = _policy_relpath(digest)
     recover_pending(aios_dir)
-    path = os.path.join(aios_dir, POLICIES_DIR, digest + ".json")
+    path = os.path.join(aios_dir, relative_path)
     record = dict(policy)
     record["policy_digest"] = digest
     if os.path.exists(path):
@@ -34,15 +44,14 @@ def persist_policy(aios_dir, policy):
         if canonical_json(existing) != canonical_json(record):
             raise ValueError("existing policy identity has different content")
         return digest
-    commit_batch(aios_dir, [(os.path.join(POLICIES_DIR, digest + ".json"), record)])
+    commit_batch(aios_dir, [(relative_path, record)])
     return digest
 
 
 def resolve_policy(aios_dir, digest):
     """Resolve and re-hash an immutable policy artifact; fail closed."""
-    if not isinstance(digest, str) or not digest.startswith("sha256:"):
-        raise ValueError("policy digest must be a sha256 content digest")
-    path = os.path.join(aios_dir, POLICIES_DIR, digest + ".json")
+    relative_path = _policy_relpath(digest)
+    path = os.path.join(aios_dir, relative_path)
     try:
         with open(path, "r", encoding="utf-8") as fh:
             policy = __import__("json").load(fh)
