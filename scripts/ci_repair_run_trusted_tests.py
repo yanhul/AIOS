@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 
 from core.repair_reconcile import patch_digest, compute_test_evidence_digest
 
@@ -43,16 +44,46 @@ def main() -> int:
             "PRIVATE_KEY", "KEYRING", "CREDENTIAL",
         )):
             clean_env.pop(name, None)
-    try:
-        proc = subprocess.run(command, cwd=Path("."), text=True, capture_output=True,
-                              timeout=900, check=False, env=clean_env)
-        returncode = proc.returncode
-        stdout, stderr = proc.stdout, proc.stderr
-    except subprocess.TimeoutExpired as exc:
-        returncode = 124
-        stdout = exc.stdout.decode("utf-8", "replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-        stderr = exc.stderr.decode("utf-8", "replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
-        stderr += "\ntrusted test command timed out after 900 seconds"
+    repo_root = Path.cwd().resolve()
+    with tempfile.TemporaryDirectory(prefix="aios-repair-tests-") as temp_dir:
+        test_root = Path(temp_dir) / "repo"
+        subprocess.run(
+            ["git", "worktree", "add", "--detach", str(test_root), base],
+            cwd=repo_root, text=True, capture_output=True, check=True,
+        )
+        try:
+            for path, content in files.items():
+                relative = Path(path)
+                if relative.is_absolute() or ".." in relative.parts:
+                    raise SystemExit(f"unsafe trusted-test patch path: {path}")
+                target = (test_root / relative).resolve()
+                try:
+                    target.relative_to(test_root.resolve())
+                except ValueError as exc:
+                    raise SystemExit(f"trusted-test patch path escapes worktree: {path}") from exc
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content, encoding="utf-8")
+            clean_env["GITHUB_WORKSPACE"] = str(test_root)
+            clean_env["PYTHONPATH"] = str(test_root)
+            try:
+                proc = subprocess.run(command, cwd=test_root, text=True, capture_output=True,
+                                      timeout=900, check=False, env=clean_env)
+                returncode = proc.returncode
+                stdout, stderr = proc.stdout, proc.stderr
+            except subprocess.TimeoutExpired as exc:
+                returncode = 124
+                stdout = exc.stdout.decode("utf-8", "replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+                stderr = exc.stderr.decode("utf-8", "replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+                stderr += "\ntrusted test command timed out after 900 seconds"
+        finally:
+            cleanup = subprocess.run(
+                ["git", "worktree", "remove", "--force", str(test_root)],
+                cwd=repo_root, text=True, capture_output=True, check=False,
+            )
+            if cleanup.returncode:
+                raise SystemExit(
+                    "trusted test worktree cleanup failed: " + cleanup.stderr.strip()
+                )
     result = {
         "status": "PASS" if returncode == 0 else "FAIL", "run_id": run_id,
         "repository": repository, "base_sha": base,
