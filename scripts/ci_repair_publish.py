@@ -90,6 +90,8 @@ def main() -> int:
         raise SystemExit(f"verified patch materialization mismatch: actual={sorted(actual)} expected={sorted(expected)}")
 
     source_branch = os.environ.get("AIOS_REPAIR_SOURCE_BRANCH", "main")
+    if not source_branch or source_branch.startswith("/") or ".." in source_branch.split("/"):
+        raise SystemExit("invalid repair source branch")
     marker = git("show", "-s", "--format=%B", base)
     previous_cycle = 0
     for line in marker.splitlines():
@@ -101,12 +103,9 @@ def main() -> int:
     cycle = previous_cycle + 1
     if cycle > 3:
         raise SystemExit("repair campaign exhausted: maximum 3 full-CI repair cycles")
-    if source_branch == "main":
-        branch = f"aios/autorepair/{run_id}"
-    elif source_branch.startswith("aios/autorepair/"):
-        branch = source_branch
-    else:
-        raise SystemExit(f"unauthorized repair source branch: {source_branch!r}")
+    # Always publish to a fresh, run-scoped candidate branch. Never mutate the
+    # failed source branch, whether it is main, a PR branch, or a prior candidate.
+    branch = f"aios/autorepair/{run_id}"
     git("config", "user.name", "AIOS Repair Worker")
     git("config", "user.email", "aios-repair-worker@users.noreply.github.com")
     git("switch", "-c", branch)
