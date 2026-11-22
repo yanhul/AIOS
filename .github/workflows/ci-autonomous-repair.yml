@@ -548,6 +548,11 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
           ref: ${{ env.BASE_SHA }}
           path: target
           persist-credentials: false
@@ -622,6 +627,19 @@ jobs:
           git fetch -q --no-tags "$GITHUB_WORKSPACE/candidate/candidate.bundle" "+HEAD:refs/aios/candidate"
           [ "$(git rev-parse refs/aios/candidate)" = "$commit" ] || { echo "BLOCKED: bundle commit changed after verification"; exit 1; }
           remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          candidate_tree="$(git rev-parse "${commit}^{tree}")"
+          check_submission_base() {
+            local ref_line base_sha base_tree
+            ref_line="$(git ls-remote "$remote" "refs/heads/${pr_base}")"
+            [ -n "$ref_line" ] || { echo "BLOCKED: BASE_REF_UNRESOLVED ${pr_base}"; exit 1; }
+            base_sha="$(cut -f1 <<<"$ref_line")"
+            [ -n "$base_sha" ] || { echo "BLOCKED: BASE_REF_UNRESOLVED ${pr_base}"; exit 1; }
+            base_tree="$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${base_sha}" --jq '.tree.sha')"
+            [ -n "$base_tree" ] || { echo "BLOCKED: BASE_TREE_UNRESOLVED"; exit 1; }
+            python "$GITHUB_WORKSPACE/trusted/scripts/ci_repair_provenance.py" submission-check "$prov" "$base_sha" "$base_tree" "$candidate_tree"
+          }
+          # Gate immediately before any candidate ref is created or pushed.
+          check_submission_base
           existing="$(git ls-remote "$remote" "refs/heads/${branch}" | cut -f1)"
           if [ -z "$existing" ]; then
             git push "$remote" "${commit}:refs/heads/${branch}"
@@ -636,6 +654,8 @@ jobs:
           fi
           prs="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state all --json number,headRefOid)"
           if [ "$(jq length <<<"$prs")" -eq 0 ]; then
+            # Re-resolve the base immediately before PR creation; a race blocks PR creation.
+            check_submission_base
             statement_digest="sha256:$(sha256sum "$prov" | cut -d' ' -f1)"
             body="AIOS repair candidate (draft, human review required; never auto-merged).
 
