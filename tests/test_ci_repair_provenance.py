@@ -188,3 +188,11 @@ def test_submit_workflow_fails_closed_on_base_lookup_errors():
     assert '|| { echo "BLOCKED: BASE_REF_UNRESOLVED' in block
     assert '|| { echo "BLOCKED: BASE_TREE_UNRESOLVED' in block
     assert "set -euo pipefail" in block
+
+def test_submit_workflow_keeps_verified_base_sha_for_pr_body():
+    workflow = (ROOT / ".github/workflows/ci-autonomous-repair.yml").read_text(encoding="utf-8")
+    block = workflow.split("  submit-candidate:", 1)[1]
+    assert 'submission_base_sha="$(cut -f1 <<<"$ref_line")"' in block
+    assert 'local ref_line base_sha base_tree' not in block
+    assert 'submission-check "$prov" "$submission_base_sha" "$base_tree" "$candidate_tree"' in block
+    assert 'Source CI run: ${RUN_ID} (base ${submission_base_sha})' in block
