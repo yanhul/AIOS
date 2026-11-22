@@ -615,6 +615,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          base_sha="${BASE_SHA:?BASE_SHA is required}"
           prov="$GITHUB_WORKSPACE/candidate/candidate-provenance.json"
           commit="$(jq -r .commit "$prov")"
           branch="$(jq -r .candidate_branch "$prov")"
@@ -661,7 +662,7 @@ jobs:
             statement_digest="sha256:$(sha256sum "$prov" | cut -d' ' -f1)"
             body="AIOS repair candidate (draft, human review required; never auto-merged).
 
-          - Source CI run: ${RUN_ID} (base ${BASE_SHA})
+          - Source CI run: ${RUN_ID} (base ${base_sha})
           - Repair run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
           - Candidate commit: ${commit}
           - Patch digest: $(jq -r .patch_digest "$prov")
