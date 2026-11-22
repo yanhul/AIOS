@@ -82,3 +82,28 @@ def test_bounded_source_fails_closed_instead_of_truncating_referenced_file(monke
             "a" * 40,
             "core/repair_e2e_probe.py:1: AssertionError",
         )
+
+
+
+def test_bounded_source_skips_noisy_references_after_required_test_module(monkeypatch):
+    target = "core/repair_e2e_probe.py"
+    noisy = "core/runtime.py"
+    test_path = "tests/test_repair_e2e_probe.py"
+    monkeypatch.setattr(propose, "MAX_SOURCE_BYTES", 100)
+    monkeypatch.setattr(propose, "git", lambda *args: "\n".join([target, noisy, test_path]))
+    def read(sha, path):
+        if path == test_path:
+            return "from core.repair_e2e_probe import repair_probe_value\n"
+        if path == noisy:
+            return "x" * 200
+        return "def repair_probe_value(): return 'BROKEN'\n"
+    monkeypatch.setattr(propose, "show_complete", read)
+
+    source = propose.bounded_source(
+        "a" * 40,
+        "FAILED tests/test_repair_e2e_probe.py::test_governed_repair_probe\n"
+        "core/runtime.py:1: incidental traceback",
+    )
+
+    assert target in source
+    assert noisy not in source
