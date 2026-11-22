@@ -171,13 +171,46 @@ def verify(statement_path: Path, bundle: Path, attestation_json: Path, proposals
             "statement_digest": "sha256:" + _sha256_bytes(statement_path.read_bytes())}
 
 
+
+def validate_submission_base(prov: dict, current_base_sha: str, current_base_tree: str,
+                             candidate_tree: str) -> dict:
+    """Fail closed unless the submission target is still the attested base and non-no-op."""
+    attested_base_sha = prov.get("base_sha")
+    if not isinstance(attested_base_sha, str) or len(attested_base_sha) != 40:
+        raise SystemExit("BLOCKED: INVALID_ATTESTED_BASE_SHA")
+    if not isinstance(current_base_sha, str) or len(current_base_sha) != 40:
+        raise SystemExit("BLOCKED: BASE_REF_UNRESOLVED")
+    if not isinstance(current_base_tree, str) or len(current_base_tree) != 40:
+        raise SystemExit("BLOCKED: BASE_TREE_UNRESOLVED")
+    if not isinstance(candidate_tree, str) or len(candidate_tree) != 40:
+        raise SystemExit("BLOCKED: CANDIDATE_TREE_UNRESOLVED")
+    if current_base_sha != attested_base_sha:
+        raise SystemExit(
+            f"BLOCKED: BASE_MOVED attested={attested_base_sha} current={current_base_sha}"
+        )
+    if current_base_tree == candidate_tree:
+        raise SystemExit(
+            f"BLOCKED: NO_OP base_tree={current_base_tree} candidate_tree={candidate_tree}"
+        )
+    return {"status": "SUBMISSION_BASE_VERIFIED", "base_sha": current_base_sha,
+            "base_tree": current_base_tree, "candidate_tree": candidate_tree}
+
+
+def submission_check(statement_path: Path, current_base_sha: str,
+                     current_base_tree: str, candidate_tree: str) -> dict:
+    prov = json.loads(statement_path.read_text(encoding="utf-8"))
+    return validate_submission_base(prov, current_base_sha, current_base_tree, candidate_tree)
+
+
 def main(argv: list[str]) -> int:
     if argv[:1] == ["statement"]:
         print(json.dumps(statement(Path(argv[1])), sort_keys=True))
     elif argv[:1] == ["verify"]:
         print(json.dumps(verify(*(Path(a) for a in argv[1:6])), sort_keys=True))
+    elif argv[:1] == ["submission-check"] and len(argv) == 5:
+        print(json.dumps(submission_check(Path(argv[1]), *argv[2:5]), sort_keys=True))
     else:
-        raise SystemExit("usage: ci_repair_provenance.py statement OUT_DIR | verify STATEMENT BUNDLE ATTESTATION_JSON PROPOSALS_DIR RESULT")
+        raise SystemExit("usage: ci_repair_provenance.py statement OUT_DIR | verify STATEMENT BUNDLE ATTESTATION_JSON PROPOSALS_DIR RESULT | submission-check STATEMENT BASE_SHA BASE_TREE CANDIDATE_TREE")
     return 0
 
 
