@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import subprocess
 import urllib.parse
 import urllib.request
@@ -117,6 +118,24 @@ class Tools:
             return {"repo": repo, "path": path, "ref": ref, "found": False, "error": str(exc)}
 
 
+SOURCE_PATH_RE = re.compile(
+    r"(?<![A-Za-z0-9_.-])((?:core|scripts)/[A-Za-z0-9_./-]+\.py)(?=[:\s"'\),]|$)"
+)
+
+
+def referenced_source_paths(tracked_paths: list[str], failure_log: str) -> list[str]:
+    """Return tracked core/scripts Python paths explicitly named in CI logs."""
+    normalized_log = failure_log.replace("\\", "/")
+    mentioned = {match.group(1) for match in SOURCE_PATH_RE.finditer(normalized_log)}
+    eligible = {
+        path for path in tracked_paths
+        if (path.startswith("core/") or path.startswith("scripts/"))
+        and path.endswith(".py")
+        and not path.startswith("tests/")
+    }
+    return sorted(mentioned & eligible)
+
+
 def bounded_source(sha: str, failure_log: str) -> dict[str, str]:
     paths = [
         p for p in git("ls-tree", "-r", "--name-only", sha).splitlines()
@@ -124,16 +143,13 @@ def bounded_source(sha: str, failure_log: str) -> dict[str, str]:
         and p.endswith(".py")
         and not p.startswith("tests/")
     ]
-    # Prioritize filenames explicitly mentioned by the failed CI log.
-    tokens = {
-        line.strip().replace(":", "/")
-        for line in failure_log.splitlines()
-        if "/" in line and line.strip()
-    }
-    paths.sort(key=lambda p: (0 if any(t in p for t in tokens) else 1, p))
+    # Put exact tracked paths named by tracebacks/pytest failures first, before
+    # either the file-count or byte budget can starve them.
+    referenced = referenced_source_paths(paths, failure_log)
+    priority = referenced + sorted(set(paths) - set(referenced))
     source: dict[str, str] = {}
     used = 0
-    for path in paths:
+    for path in priority:
         if len(source) >= MAX_SOURCE_FILES:
             break
         content = show(sha, path)
