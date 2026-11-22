@@ -159,6 +159,7 @@ def test_submission_gate_blocks_noop_tree():
     [
         ({}, "a" * 40, "b" * 40, "c" * 40, "INVALID_ATTESTED_BASE_SHA"),
         ({"base_sha": "bad"}, "a" * 40, "b" * 40, "c" * 40, "INVALID_ATTESTED_BASE_SHA"),
+        ({"base_sha": "z" * 40}, "a" * 40, "b" * 40, "c" * 40, "INVALID_ATTESTED_BASE_SHA"),
         ({"base_sha": "a" * 40}, "", "b" * 40, "c" * 40, "BASE_REF_UNRESOLVED"),
         ({"base_sha": "a" * 40}, "a" * 40, "", "c" * 40, "BASE_TREE_UNRESOLVED"),
         ({"base_sha": "a" * 40}, "a" * 40, "b" * 40, "", "CANDIDATE_TREE_UNRESOLVED"),
