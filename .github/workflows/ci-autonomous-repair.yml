@@ -629,15 +629,16 @@ jobs:
           [ "$(git rev-parse refs/aios/candidate)" = "$commit" ] || { echo "BLOCKED: bundle commit changed after verification"; exit 1; }
           remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           candidate_tree="$(git rev-parse "${commit}^{tree}")"
+          submission_base_sha=""
           check_submission_base() {
-            local ref_line base_sha base_tree
+            local ref_line base_tree
             ref_line="$(git ls-remote "$remote" "refs/heads/${pr_base}")"
             [ -n "$ref_line" ] || { echo "BLOCKED: BASE_REF_UNRESOLVED ${pr_base}"; exit 1; }
-            base_sha="$(cut -f1 <<<"$ref_line")"
-            [ -n "$base_sha" ] || { echo "BLOCKED: BASE_REF_UNRESOLVED ${pr_base}"; exit 1; }
-            base_tree="$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${base_sha}" --jq '.tree.sha')"
+            submission_base_sha="$(cut -f1 <<<"$ref_line")"
+            [ -n "$submission_base_sha" ] || { echo "BLOCKED: BASE_REF_UNRESOLVED ${pr_base}"; exit 1; }
+            base_tree="$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${submission_base_sha}" --jq '.tree.sha')"
             [ -n "$base_tree" ] || { echo "BLOCKED: BASE_TREE_UNRESOLVED"; exit 1; }
-            python "$GITHUB_WORKSPACE/trusted/scripts/ci_repair_provenance.py" submission-check "$prov" "$base_sha" "$base_tree" "$candidate_tree"
+            python "$GITHUB_WORKSPACE/trusted/scripts/ci_repair_provenance.py" submission-check "$prov" "$submission_base_sha" "$base_tree" "$candidate_tree"
           }
           # Gate immediately before any candidate ref is created or pushed.
           check_submission_base
@@ -662,7 +663,7 @@ jobs:
             statement_digest="sha256:$(sha256sum "$prov" | cut -d' ' -f1)"
             body="AIOS repair candidate (draft, human review required; never auto-merged).
 
-          - Source CI run: ${RUN_ID} (base ${base_sha})
+          - Source CI run: ${RUN_ID} (base ${submission_base_sha})
           - Repair run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
           - Candidate commit: ${commit}
           - Patch digest: $(jq -r .patch_digest "$prov")
