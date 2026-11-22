@@ -132,10 +132,9 @@ SOURCE_PATH_RE = re.compile(
 )
 
 
-def referenced_source_paths(tracked_paths: list[str], failure_log: str, *, sha: str | None = None) -> list[str]:
-    """Prioritize code paths named by failures and modules imported by the failed tests."""
+def failed_test_import_paths(tracked_paths: list[str], failure_log: str, *, sha: str) -> list[str]:
+    """Resolve source modules imported by test files named in the failure log."""
     normalized_log = failure_log.replace("\\", "/")
-    mentioned = {match.group(1) for match in SOURCE_PATH_RE.finditer(normalized_log)}
     failed_tests = {
         match.group(1) for match in re.finditer(
             r"(?<![A-Za-z0-9_.-])((?:tests|test)/[A-Za-z0-9_./-]+\.py)(?=[:\s,)]|[\"']|$)",
@@ -148,26 +147,41 @@ def referenced_source_paths(tracked_paths: list[str], failure_log: str, *, sha: 
         and path.endswith(".py")
         and not path.startswith("tests/")
     }
-    if sha:
-        for test_path in sorted(failed_tests):
-            test_source = show_complete(sha, test_path)
-            if not test_source:
-                continue
-            try:
-                tree = ast.parse(test_source)
-            except SyntaxError:
-                continue
-            modules = set()
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom) and node.module:
-                    modules.add(node.module)
-                elif isinstance(node, ast.Import):
-                    modules.update(alias.name for alias in node.names)
-            for module in modules:
-                candidate = module.replace(".", "/") + ".py"
-                if candidate in eligible:
-                    mentioned.add(candidate)
-    return sorted(mentioned & eligible)
+    imported = set()
+    for test_path in sorted(failed_tests):
+        test_source = show_complete(sha, test_path)
+        if not test_source:
+            continue
+        try:
+            tree = ast.parse(test_source)
+        except SyntaxError:
+            continue
+        modules = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                modules.add(node.module)
+            elif isinstance(node, ast.Import):
+                modules.update(alias.name for alias in node.names)
+        for module in modules:
+            candidate = module.replace(".", "/") + ".py"
+            if candidate in eligible:
+                imported.add(candidate)
+    return sorted(imported)
+
+
+def referenced_source_paths(tracked_paths: list[str], failure_log: str, *, sha: str | None = None) -> list[str]:
+    """Prioritize failed-test imports before paths mentioned in noisy logs."""
+    normalized_log = failure_log.replace("\\", "/")
+    mentioned = {match.group(1) for match in SOURCE_PATH_RE.finditer(normalized_log)}
+    eligible = {
+        path for path in tracked_paths
+        if (path.startswith("core/") or path.startswith("scripts/"))
+        and path.endswith(".py")
+        and not path.startswith("tests/")
+    }
+    imported = failed_test_import_paths(tracked_paths, failure_log, sha=sha) if sha else []
+    direct = sorted(mentioned & eligible)
+    return imported + [path for path in direct if path not in imported]
 
 def bounded_source(sha: str, failure_log: str) -> dict[str, str]:
     paths = [
@@ -178,6 +192,7 @@ def bounded_source(sha: str, failure_log: str) -> dict[str, str]:
     ]
     # Put exact tracked paths named by tracebacks/pytest failures first, before
     # either the file-count or byte budget can starve them.
+    required = set(failed_test_import_paths(paths, failure_log, sha=sha))
     referenced = referenced_source_paths(paths, failure_log, sha=sha)
     priority = referenced + sorted(set(paths) - set(referenced))
     source: dict[str, str] = {}
@@ -191,9 +206,9 @@ def bounded_source(sha: str, failure_log: str) -> dict[str, str]:
         size = len(content.encode("utf-8"))
         remaining = MAX_SOURCE_BYTES - used
         if size > MAX_FILE_BYTES or size > remaining:
-            if path in referenced:
+            if path in required:
                 raise SystemExit(
-                    f"BLOCKED: referenced source file {path} exceeds the complete-source budget "
+                    f"BLOCKED: failed-test source file {path} exceeds the complete-source budget "
                     f"(size={size}, per_file={MAX_FILE_BYTES}, remaining={remaining})"
                 )
             continue
