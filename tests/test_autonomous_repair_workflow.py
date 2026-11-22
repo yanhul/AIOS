@@ -13,6 +13,8 @@ def test_repair_trigger_is_enabled_for_same_repo_main_prs_only():
     # The workflow_run payload may omit pull_requests entirely. The workflow
     # must resolve association through the Pull Requests API and exact head SHA.
     assert 'gh api -X GET "repos/$REPO/pulls"' in workflow
+    assert '-f head="${REPO%%/*}:$head_branch"' in workflow
+    assert '-f head="$REPO:$head_branch"' not in workflow
     assert '.head.sha == $sha' in workflow
     assert '.base.ref == "main"' in workflow
     assert '.head.repo.full_name == $repo' in workflow
