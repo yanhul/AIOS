@@ -67,7 +67,7 @@ jobs:
             if [ "$EVENT" = "push" ] && [ "${{ github.ref_name }}" = "aios/autorepair/g4a-live" ]; then
               workflow_name="G4A CI"
             fi
-            for i in $(seq 1 60); do
+            for _ in $(seq 1 60); do
               run_json="$(gh run list --repo "$REPO" --workflow "$workflow_name" --commit "$SHA" --limit 1 --json databaseId,status,conclusion)"
               ci_run_id="$(jq -r '.[0].databaseId // empty' <<<"$run_json")"
               status="$(jq -r '.[0].status // empty' <<<"$run_json")"
