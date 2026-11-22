@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -15,6 +16,8 @@ from .mutation import canonical_json, validate_entity, _entity_relpath, _require
 from .authority import authorize, load_contract
 from .capabilities import CapabilityRegistry
 from .policy_registry import resolve_policy
+
+_DECISION_ID = re.compile(r"D-\d+")
 
 MEMORY_TYPES = frozenset({"SEMANTIC", "EPISODIC", "PROCEDURAL"})
 MEMORY_STATUSES = frozenset({"ACTIVE", "SUPERSEDED", "REVOKED"})
@@ -187,6 +190,8 @@ def persist_memory(store, record: Mapping[str, Any], *, decision_id: str,
     if not any(cap.status == "ACTIVE" and "MEMORY_WRITE" in cap.permissions for cap in capabilities):
         raise ValueError("contract has no ACTIVE MEMORY_WRITE capability")
     _text(decision_id, "decision_id")
+    if not _DECISION_ID.fullmatch(decision_id):
+        raise ValueError("malformed decision_id")
     _text(mutation_id, "mutation_id")
     if record["predecessor"] != decision_id:
         raise ValueError("memory predecessor must match the governed decision_id")

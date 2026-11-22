@@ -5,6 +5,7 @@ authorization therefore requires a deployment-held HMAC attestation secret.
 """
 import os
 import json
+import re
 from .contract import contract_identity, issue_permit, validate_contract, verify_permit
 from .attestation import issue_attestation, verify_attestation
 from .capabilities import CapabilityError, CapabilityRegistry
@@ -20,12 +21,19 @@ _CONTRACT_FIELDS = ("contract_type", "task_id", "scope", "actor", "capabilities"
                     "allowed_effects", "evidence_required", "max_attempts", "terminal_states", "policy_digest")
 
 
+_ID_PATTERNS = {CONTRACTS_DIR: re.compile(r"CT-[0-9a-f]{64}"),
+                PERMITS_DIR: re.compile(r"PT-[0-9a-f]{64}"),
+                ATTESTATIONS_DIR: re.compile(r"PT-[0-9a-f]{64}")}
+
+
 def _require_id(value, name):
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be a non-empty string")
 
 
 def _path(aios_dir, kind, ident):
+    if not isinstance(ident, str) or not _ID_PATTERNS[kind].fullmatch(ident):
+        raise ValueError(f"malformed {kind} identifier")
     return os.path.join(aios_dir, AUTHORITY_DIR, kind, ident + ".json")
 
 

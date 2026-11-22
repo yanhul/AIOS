@@ -53,7 +53,7 @@ class AgentRepairWorker:
     paths are rejected.
     """
 
-    _DENIED_PREFIXES = (".git/", ".github/workflows/", ".aios/", "secrets/")
+    _DENIED_PREFIXES = (".git/", ".github/", ".aios/", "secrets/")
     _DENIED_FILES = frozenset({".env", ".env.local", ".env.production", "credentials.json"})
 
     def __init__(

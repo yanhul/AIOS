@@ -1,3 +1,8 @@
+import sys
+
+if sys.version_info < (3, 12):
+    raise RuntimeError("AIOS requires Python 3.12+ (see pyproject.toml)")
+
 import pytest
 
 from core.effect_authority import PROVIDER_KEYRING_ENV, RETRY_KEYRING_ENV
@@ -17,3 +22,18 @@ def _deployment_trust_anchors(monkeypatch):
     monkeypatch.setenv("AIOS_EVIDENCE_SIGNING_SECRET", "unit-test-evidence-secret-32")
     if ED25519_PUBLIC_KEYRING_JSON is not None:
         monkeypatch.setenv(ED25519_KEYRING_ENV, ED25519_PUBLIC_KEYRING_JSON)
+
+
+_RESEARCH_OUTPUT_ENVS = (
+    "AIOS_RESEARCH_OUT", "AIOS_ABSORPTION_OUT", "AIOS_ABSORPTION_EXECUTOR_OUT",
+    "AIOS_ABSORPTION_VERIFY_OUT", "AIOS_ABSORPTION_PROMOTION_OUT", "AIOS_ABSORPTION_REPAIR_OUT",
+    "AIOS_ABSORPTION_RUNTIME_PROOF_OUT", "AIOS_ABSORPTION_OUTCOME",
+)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_research_outputs(monkeypatch, tmp_path):
+    """Keep tracked research/artifacts/*.json untouched by the test suite."""
+    out = tmp_path / "research-artifacts"
+    for name in _RESEARCH_OUTPUT_ENVS:
+        monkeypatch.setenv(name, str(out / (name.lower() + ".json")))

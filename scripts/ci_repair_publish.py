@@ -3,42 +3,14 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import tempfile
 from pathlib import Path
 
 from core.agent_repair_worker import AgentRepairWorker, ProposedFile
-from core.authority import persist_contract, persist_permit
-from core.capabilities import Capability, CapabilityRegistry
-from core.contract import CONTRACT_TYPE
-from core.policy_registry import persist_policy
-
-
-def git(*args: str) -> str:
-    p = subprocess.run(["git", *args], text=True, capture_output=True, check=True)
-    return p.stdout.strip()
-
-
-def authority(root: Path, actor: str, run_id: int):
-    registry = CapabilityRegistry()
-    registry.register(Capability("repo_patch", "1", "AIOS", "external_effect",
-                                 inputs=("patch",), outputs=("observation",), status="ACTIVE"))
-    registry.persist(root, actor=actor)
-    policy_digest = persist_policy(root, {
-        "policy_type": "GOVERNING_POLICY", "task": "ci-repair",
-        "allowed_effects": ["external_effect"],
-    })
-    contract = {
-        "contract_type": CONTRACT_TYPE, "task_id": f"ci-repair-publish-{run_id}",
-        "scope": "repository", "actor": actor, "capabilities": ["repo_patch@1"],
-        "input_digest": "sha256:ci-failure", "allowed_effects": ["external_effect"],
-        "evidence_required": ["OBSERVED"], "max_attempts": 2,
-        "terminal_states": ["OBSERVED_SUCCESS", "OBSERVED_FAILURE"],
-        "policy_digest": policy_digest,
-    }
-    stored = persist_contract(root, contract)
-    permit = persist_permit(root, stored, issuer="ci-repair-authority")
-    return stored["contract_id"], permit["permit_id"]
+from scripts.ci_repair_common import (
+    APPLY_RECORD_KIND, changed_paths, expected_paths, git, issue_repair_authority,
+    load_proposals, proposals_digest, tree_digests,
+)
 
 
 def main() -> int:
@@ -49,24 +21,26 @@ def main() -> int:
         raise SystemExit("stale repair publish base")
 
     proposal_dir = Path(os.environ.get("AIOS_REPAIR_PROPOSALS_DIR", "proposals"))
-    proposal_files = sorted(proposal_dir.glob("repair-proposal-*.json"))
-    proposals = []
-    for path in proposal_files:
-        obj = json.loads(path.read_text(encoding="utf-8"))
-        if obj["base_sha"] == base and int(obj["attempt"]) <= pass_attempt:
-            proposals.append(obj)
-    proposals.sort(key=lambda x: int(x["attempt"]))
+    proposals = load_proposals(
+        [proposal_dir / f"repair-proposal-{n}.json" for n in range(1, pass_attempt + 1)], base)
     if not proposals or int(proposals[-1]["attempt"]) != pass_attempt:
         raise SystemExit("missing cumulative proposals for PASS attempt")
+    digest = proposals_digest(proposals)
+    apply_dir = Path(os.environ.get("AIOS_REPAIR_APPLY_DIR", "apply"))
+    record = json.loads((apply_dir / f"repair-apply-{pass_attempt}.json").read_text(encoding="utf-8"))
+    if (record.get("kind") != APPLY_RECORD_KIND or record.get("run_id") != run_id
+            or record.get("base_sha") != base or record.get("attempt") != pass_attempt
+            or record.get("proposals_digest") != digest):
+        raise SystemExit("BLOCKED: PASS attempt apply record is not bound to these proposals")
 
-    expected = set()
-    for proposal in proposals:
-        expected.update(x["path"] for x in proposal["files"])
+    expected = expected_paths(proposals)
 
     with tempfile.TemporaryDirectory(prefix="aios-repair-authority-") as td:
         aios = Path(td) / "aios"
         aios.mkdir()
-        contract_id, permit_id = authority(aios, "ci-repair-publisher", run_id)
+        contract_id, permit_id = issue_repair_authority(
+            aios, actor="ci-repair-publisher",
+            task_id=f"ci-repair-publish-{run_id}", input_digest=digest)
         worker = AgentRepairWorker(
             Path("."), object(), aios_dir=aios,
             contract_id=contract_id, permit_id=permit_id, actor="ci-repair-publisher",
@@ -82,9 +56,11 @@ def main() -> int:
             )
             owned = frozenset(set(owned) | {x.path for x in files})
 
-    actual = set(git("diff", "--name-only").splitlines())
+    actual = changed_paths()
     if actual != expected:
         raise SystemExit(f"mutation scope mismatch: actual={sorted(actual)} expected={sorted(expected)}")
+    if tree_digests(Path("."), expected) != record.get("files"):
+        raise SystemExit("BLOCKED: publish tree differs from the tree that passed isolated tests")
 
     source_branch = os.environ.get("AIOS_REPAIR_SOURCE_BRANCH", "main")
     marker = git("show", "-s", "--format=%B", base)

@@ -35,6 +35,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 
 from .mutation import (
     MutationError,
@@ -167,7 +168,12 @@ def verification_identity(record):
     return hashlib.sha256(canonical_json(logical).encode("utf-8")).hexdigest()
 
 
+_VERIFICATION_ID = re.compile(r"VF-[0-9a-f]{64}")
+
+
 def _verification_relpath(verification_id):
+    if not isinstance(verification_id, str) or not _VERIFICATION_ID.fullmatch(verification_id):
+        raise ValueError("malformed verification_id")
     return os.path.join(_VERIFICATION_DIR, verification_id + ".json")
 
 

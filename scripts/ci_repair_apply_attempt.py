@@ -1,72 +1,51 @@
 #!/usr/bin/env python3
+"""Trusted apply step: apply cumulative proposals through AIOS, never run them.
+
+Writes an apply record binding the proposals digest to the resulting file
+digests. Tests run later in a separate job without secrets or write tokens.
+"""
 from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
-import subprocess
 import tempfile
+from pathlib import Path
 
 from core.agent_repair_worker import AgentRepairWorker, ProposedFile
-from core.authority import persist_contract, persist_permit
-from core.capabilities import Capability, CapabilityRegistry
-from core.contract import CONTRACT_TYPE
-from core.policy_registry import persist_policy
-
-
-def git(*args: str) -> str:
-    p = subprocess.run(["git", *args], text=True, capture_output=True, check=True)
-    return p.stdout.strip()
-
-
-def authority(root: Path, actor: str, run_id: int):
-    registry = CapabilityRegistry()
-    registry.register(Capability("repo_patch", "1", "AIOS", "external_effect",
-                                 inputs=("patch",), outputs=("observation",), status="ACTIVE"))
-    registry.persist(root, actor=actor)
-    policy_digest = persist_policy(root, {
-        "policy_type": "GOVERNING_POLICY", "task": "ci-repair",
-        "allowed_effects": ["external_effect"],
-    })
-    contract = {
-        "contract_type": CONTRACT_TYPE, "task_id": f"ci-repair-{actor}-{run_id}",
-        "scope": "repository", "actor": actor, "capabilities": ["repo_patch@1"],
-        "input_digest": "sha256:ci-failure", "allowed_effects": ["external_effect"],
-        "evidence_required": ["OBSERVED"], "max_attempts": 2,
-        "terminal_states": ["OBSERVED_SUCCESS", "OBSERVED_FAILURE"],
-        "policy_digest": policy_digest,
-    }
-    stored = persist_contract(root, contract)
-    permit = persist_permit(root, stored, issuer="ci-repair-authority")
-    return stored["contract_id"], permit["permit_id"]
+from scripts.ci_repair_common import (
+    APPLY_RECORD_KIND, changed_paths, expected_paths, git, issue_repair_authority,
+    load_proposals, proposals_digest, tree_digests,
+)
 
 
 def main() -> int:
     base = os.environ["AIOS_REPAIR_SHA"]
     run_id = int(os.environ["AIOS_REPAIR_RUN_ID"])
+    attempt = int(os.environ["AIOS_REPAIR_ATTEMPT"])
+    out = Path(os.environ["AIOS_REPAIR_APPLY_RECORD"])
     paths = [Path(x) for x in os.environ["AIOS_REPAIR_PROPOSALS"].split(",") if x]
-    proposals = [json.loads(p.read_text(encoding="utf-8")) for p in paths]
-    if not proposals:
+    if not paths:
         raise SystemExit("no repair proposals")
+    proposals = load_proposals(paths, base)
+    if int(proposals[-1]["attempt"]) != attempt:
+        raise SystemExit("BLOCKED: proposals do not end at the requested attempt")
     if git("rev-parse", "HEAD") != base:
         raise SystemExit("repair proposal base SHA does not match checkout")
-    for p in proposals:
-        if p["base_sha"] != base:
-            raise SystemExit("cumulative repair proposal has stale base SHA")
+    digest = proposals_digest(proposals)
 
     with tempfile.TemporaryDirectory(prefix="aios-repair-authority-") as td:
         aios = Path(td) / "aios"
         aios.mkdir()
-        contract_id, permit_id = authority(aios, "ci-repair-worker", run_id)
+        contract_id, permit_id = issue_repair_authority(
+            aios, actor="ci-repair-worker",
+            task_id=f"ci-repair-{run_id}-attempt-{attempt}", input_digest=digest)
         worker = AgentRepairWorker(
-            Path("."), object(),
-            allowed_test_commands=(("python", "-m", "pytest", "-q"),),
-            timeout_seconds=900, aios_dir=aios,
+            Path("."), object(), aios_dir=aios,
             contract_id=contract_id, permit_id=permit_id, actor="ci-repair-worker",
         )
         applied = []
         owned = frozenset()
-        for idx, proposal in enumerate(proposals, 1):
+        for proposal in proposals:
             files = tuple(ProposedFile(x["path"], x["content"]) for x in proposal["files"])
             result = worker.apply_via_aios(
                 base_sha=base, files=files,
@@ -75,20 +54,20 @@ def main() -> int:
             )
             applied.append({"attempt": proposal["attempt"], "result": dict(result)})
             owned = frozenset(set(owned) | {x.path for x in files})
-        tested = worker.test()
 
-    result = {
-        "schema": 2, "run_id": run_id, "base_sha": base,
-        "attempts": [p["attempt"] for p in proposals],
+    expected = expected_paths(proposals)
+    actual = changed_paths()
+    if actual != expected:
+        raise SystemExit(f"mutation scope mismatch: actual={sorted(actual)} expected={sorted(expected)}")
+    record = {
+        "schema": 3, "kind": APPLY_RECORD_KIND, "run_id": run_id, "base_sha": base,
+        "attempt": attempt, "attempts": [int(p["attempt"]) for p in proposals],
+        "proposals_digest": digest, "files": tree_digests(Path("."), expected),
         "applied": applied,
-        "test": {
-            "status": tested.status,
-            "evidence_refs": list(tested.evidence_refs),
-            "details": dict(tested.details),
-        },
     }
-    Path("repair-result.json").write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
-    print(json.dumps({"status": tested.status, "attempts": result["attempts"]}))
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(record, indent=2, sort_keys=True), encoding="utf-8")
+    print(json.dumps({"attempt": attempt, "proposals_digest": digest}))
     return 0
 
 

@@ -26,6 +26,9 @@ _PROVIDER_RETRY_BACKOFF = (1, 2)
 _DENIED_PREFIXES = (".github/", ".aios/", "secrets/", ".git/")
 _DENIED_NAMES = {".env", ".env.local", ".env.production", "credentials.json"}
 _DENIED_COMPONENTS = {".git", ".github", ".aios", "secrets", "tests"}
+# Files that can change how the trusted test command collects or runs tests.
+_TEST_HARNESS_NAMES = {"conftest.py", "pytest.ini", "pyproject.toml", "setup.cfg", "tox.ini",
+                       "sitecustomize.py", "usercustomize.py"}
 
 
 def _validate_patch_paths(payload: Mapping[str, Any]) -> None:
@@ -44,6 +47,8 @@ def _validate_patch_paths(payload: Mapping[str, Any]) -> None:
             path.startswith("/")
             or ".." in parts
             or path in _DENIED_NAMES
+            or parts[-1] in _TEST_HARNESS_NAMES
+            or parts[-1].endswith(".pth")
             or any(part in _DENIED_COMPONENTS for part in parts)
             or any(path == p.rstrip("/") or path.startswith(p) for p in _DENIED_PREFIXES)
         ):
