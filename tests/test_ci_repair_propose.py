@@ -23,8 +23,8 @@ def test_referenced_source_paths_extracts_traceback_and_pytest_forms():
 def test_bounded_source_prioritizes_referenced_file_before_file_limit(monkeypatch):
     paths = [f"core/{index:02d}_module.py" for index in range(45)]
     paths.append("core/z_failure_target.py")
-    monkeypatch.setattr(propose, "git", lambda *args: "\\n".join(paths))
-    monkeypatch.setattr(propose, "show", lambda sha, path: f"# {path}\\n")
+    monkeypatch.setattr(propose, "git", lambda *args: "\n".join(paths))
+    monkeypatch.setattr(propose, "show", lambda sha, path: f"# {path}\n")
 
     source = propose.bounded_source(
         "a" * 40,
