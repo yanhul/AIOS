@@ -21,6 +21,10 @@ def event(**overrides):
     return CIEvent(**data)
 
 
+def test_event_id_matches_durable_filename_contract():
+    assert len(event().event_id) == 32
+
+
 def test_receive_is_durable_and_deduplicated(tmp_path):
     inbox = DurableCIInbox(str(tmp_path))
     first = inbox.receive(event(), "yanhul/AIOS")
