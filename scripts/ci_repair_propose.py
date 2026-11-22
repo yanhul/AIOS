@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import ast
 import base64
 import json
 import os
@@ -13,7 +14,7 @@ from pathlib import Path
 from core.try_repair_provider import propose as try_provider_propose, TryRepairProviderError
 
 MAX_SOURCE_FILES = 40
-MAX_FILE_BYTES = 8_000
+MAX_FILE_BYTES = 24_000
 MAX_SOURCE_BYTES = 42_000
 MAX_LOG_BYTES = 12_000
 MAX_EXTERNAL_BYTES = 100_000
@@ -31,6 +32,14 @@ def show(sha: str, path: str) -> str:
     if p.returncode:
         return ""
     return p.stdout[:MAX_FILE_BYTES]
+
+
+def show_complete(sha: str, path: str) -> str:
+    """Read a complete tracked file; never silently pass a truncated snapshot to TRY."""
+    p = subprocess.run(["git", "show", f"{sha}:{path}"], text=True, capture_output=True, check=False)
+    if p.returncode:
+        return ""
+    return p.stdout
 
 
 class Tools:
@@ -123,18 +132,42 @@ SOURCE_PATH_RE = re.compile(
 )
 
 
-def referenced_source_paths(tracked_paths: list[str], failure_log: str) -> list[str]:
-    """Return tracked core/scripts Python paths explicitly named in CI logs."""
+def referenced_source_paths(tracked_paths: list[str], failure_log: str, *, sha: str | None = None) -> list[str]:
+    """Prioritize code paths named by failures and modules imported by the failed tests."""
     normalized_log = failure_log.replace("\\", "/")
     mentioned = {match.group(1) for match in SOURCE_PATH_RE.finditer(normalized_log)}
+    failed_tests = {
+        match.group(1) for match in re.finditer(
+            r"(?<![A-Za-z0-9_.-])((?:tests|test)/[A-Za-z0-9_./-]+\.py)(?=[:\s,)]|[\"']|$)",
+            normalized_log,
+        )
+    }
     eligible = {
         path for path in tracked_paths
         if (path.startswith("core/") or path.startswith("scripts/"))
         and path.endswith(".py")
         and not path.startswith("tests/")
     }
+    if sha:
+        for test_path in sorted(failed_tests):
+            test_source = show_complete(sha, test_path)
+            if not test_source:
+                continue
+            try:
+                tree = ast.parse(test_source)
+            except SyntaxError:
+                continue
+            modules = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module:
+                    modules.add(node.module)
+                elif isinstance(node, ast.Import):
+                    modules.update(alias.name for alias in node.names)
+            for module in modules:
+                candidate = module.replace(".", "/") + ".py"
+                if candidate in eligible:
+                    mentioned.add(candidate)
     return sorted(mentioned & eligible)
-
 
 def bounded_source(sha: str, failure_log: str) -> dict[str, str]:
     paths = [
@@ -145,22 +178,27 @@ def bounded_source(sha: str, failure_log: str) -> dict[str, str]:
     ]
     # Put exact tracked paths named by tracebacks/pytest failures first, before
     # either the file-count or byte budget can starve them.
-    referenced = referenced_source_paths(paths, failure_log)
+    referenced = referenced_source_paths(paths, failure_log, sha=sha)
     priority = referenced + sorted(set(paths) - set(referenced))
     source: dict[str, str] = {}
     used = 0
     for path in priority:
         if len(source) >= MAX_SOURCE_FILES:
             break
-        content = show(sha, path)
+        content = show_complete(sha, path)
         if not content:
             continue
+        size = len(content.encode("utf-8"))
         remaining = MAX_SOURCE_BYTES - used
-        if remaining <= 0:
-            break
-        content = content[:min(MAX_FILE_BYTES, remaining)]
+        if size > MAX_FILE_BYTES or size > remaining:
+            if path in referenced:
+                raise SystemExit(
+                    f"BLOCKED: referenced source file {path} exceeds the complete-source budget "
+                    f"(size={size}, per_file={MAX_FILE_BYTES}, remaining={remaining})"
+                )
+            continue
         source[path] = content
-        used += len(content.encode("utf-8"))
+        used += size
     return source
 
 
