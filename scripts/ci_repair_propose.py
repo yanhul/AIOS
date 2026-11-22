@@ -119,7 +119,7 @@ class Tools:
 
 
 SOURCE_PATH_RE = re.compile(
-    r"(?<![A-Za-z0-9_.-])((?:core|scripts)/[A-Za-z0-9_./-]+\.py)(?=[:\s"'\),]|$)"
+    r"(?<![A-Za-z0-9_.-])((?:core|scripts)/[A-Za-z0-9_./-]+\.py)(?=[:\s,)]|[\"']|$)"
 )
 
 
