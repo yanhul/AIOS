@@ -38,3 +38,23 @@ The provider signer and verifier entries must match because the current `repo_pa
 - `PUBLISHED_CANDIDATE`: verified patch was materialized as a candidate commit/PR. This does not mean the PR's full CI passed, it was merged, or production was deployed.
 
 Missing or invalid authority, receipt, test or reconciliation evidence blocks publication. An ambiguous external effect remains `UNKNOWN`; it is never upgraded from a provider claim or test PASS alone.
+
+## Candidate signature and provenance gate
+
+A `PUBLISHED_CANDIDATE` commit is built locally in `publish` and is **not** pushed there.
+
+1. `publish` writes `candidate-provenance.json` (repository, failed run, base SHA, repair run/attempt,
+   workflow SHA, candidate commit/tree/parent, per-file SHA-256, patch digest, test digest,
+   contract/permit/receipt IDs, reconciliation digest) and a git bundle of the commit, then signs the
+   statement with a GitHub artifact attestation (Sigstore, `actions/attest-build-provenance`).
+2. `verify-candidate` (read-only token) runs `gh attestation verify --signer-workflow
+   .../ci-autonomous-repair.yml --deny-self-hosted-runners` and `scripts/ci_repair_provenance.py verify`.
+   It blocks unless the signer is this workflow, at this workflow SHA, in this run, on a GitHub-hosted
+   runner, and the bundled commit is a single-parent child of the failed base whose content equals the
+   cumulative proposal files, touches no protected paths, and matches the reconciled patch digest.
+3. Only then `submit-candidate` pushes to `aios/autorepair/*` and, for failures on `main`, opens a
+   **draft** PR. Nothing is merged or pushed to `main` automatically.
+
+Reviewers can re-check a candidate with
+`gh attestation verify candidate-provenance.json --repo <owner>/<repo> --signer-workflow <owner>/<repo>/.github/workflows/ci-autonomous-repair.yml`
+using the `aios-repair-candidate-<run>` artifact.

@@ -111,7 +111,8 @@ def main() -> int:
     git("config", "user.email", "aios-repair-worker@users.noreply.github.com")
     git("switch", "-c", branch)
     git("add", "--", *sorted(expected))
-    git("commit", "-m", f"fix: autonomous repair for CI run {run_id}", "-m", f"AIOS-REPAIR-CYCLE: {cycle}")
+    git("commit", "-m", f"fix: autonomous repair for CI run {run_id}", "-m",
+        f"AIOS-REPAIR-CYCLE: {cycle}\nAIOS-Repair-Run: {os.environ.get('GITHUB_RUN_ID', 'local')}")
     print(json.dumps({"status": "PUBLISHED_CANDIDATE", "branch": branch,
                       "reconciliation": reconciliation["status"], "paths": sorted(expected)}))
     return 0
