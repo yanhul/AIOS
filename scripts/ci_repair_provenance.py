@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -176,13 +177,13 @@ def validate_submission_base(prov: dict, current_base_sha: str, current_base_tre
                              candidate_tree: str) -> dict:
     """Fail closed unless the submission target is still the attested base and non-no-op."""
     attested_base_sha = prov.get("base_sha")
-    if not isinstance(attested_base_sha, str) or len(attested_base_sha) != 40:
+    if not isinstance(attested_base_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", attested_base_sha):
         raise SystemExit("BLOCKED: INVALID_ATTESTED_BASE_SHA")
-    if not isinstance(current_base_sha, str) or len(current_base_sha) != 40:
+    if not isinstance(current_base_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", current_base_sha):
         raise SystemExit("BLOCKED: BASE_REF_UNRESOLVED")
-    if not isinstance(current_base_tree, str) or len(current_base_tree) != 40:
+    if not isinstance(current_base_tree, str) or not re.fullmatch(r"[0-9a-f]{40}", current_base_tree):
         raise SystemExit("BLOCKED: BASE_TREE_UNRESOLVED")
-    if not isinstance(candidate_tree, str) or len(candidate_tree) != 40:
+    if not isinstance(candidate_tree, str) or not re.fullmatch(r"[0-9a-f]{40}", candidate_tree):
         raise SystemExit("BLOCKED: CANDIDATE_TREE_UNRESOLVED")
     if current_base_sha != attested_base_sha:
         raise SystemExit(
