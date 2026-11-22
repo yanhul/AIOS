@@ -615,7 +615,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          base_sha="${BASE_SHA:?BASE_SHA is required}"
           prov="$GITHUB_WORKSPACE/candidate/candidate-provenance.json"
           commit="$(jq -r .commit "$prov")"
           branch="$(jq -r .candidate_branch "$prov")"
