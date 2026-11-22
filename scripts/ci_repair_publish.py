@@ -8,10 +8,8 @@ import tempfile
 from pathlib import Path
 
 from core.agent_repair_worker import AgentRepairWorker, ProposedFile
-from core.authority import persist_contract, persist_permit
-from core.capabilities import Capability, CapabilityRegistry
-from core.contract import CONTRACT_TYPE
-from core.policy_registry import persist_policy
+from core.effect_authority import ProviderKeyring
+from core.repair_reconcile import reconcile_repair
 
 
 def git(*args: str) -> str:
@@ -19,74 +17,81 @@ def git(*args: str) -> str:
     return p.stdout.strip()
 
 
-def authority(root: Path, actor: str, run_id: int):
-    registry = CapabilityRegistry()
-    registry.register(Capability("repo_patch", "1", "AIOS", "external_effect",
-                                 inputs=("patch",), outputs=("observation",), status="ACTIVE"))
-    registry.persist(root, actor=actor)
-    policy_digest = persist_policy(root, {
-        "policy_type": "GOVERNING_POLICY", "task": "ci-repair",
-        "allowed_effects": ["external_effect"],
-    })
-    contract = {
-        "contract_type": CONTRACT_TYPE, "task_id": f"ci-repair-publish-{run_id}",
-        "scope": "repository", "actor": actor, "capabilities": ["repo_patch@1"],
-        "input_digest": "sha256:ci-failure", "allowed_effects": ["external_effect"],
-        "evidence_required": ["OBSERVED"], "max_attempts": 2,
-        "terminal_states": ["OBSERVED_SUCCESS", "OBSERVED_FAILURE"],
-        "policy_digest": policy_digest,
-    }
-    stored = persist_contract(root, contract)
-    permit = persist_permit(root, stored, issuer="ci-repair-authority")
-    return stored["contract_id"], permit["permit_id"]
+def atomic_write(target: Path, content: str) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{target.name}.repair-", dir=target.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
+            fh.write(content)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_name, target)
+    finally:
+        if os.path.exists(tmp_name):
+            os.unlink(tmp_name)
 
 
 def main() -> int:
     base = os.environ["AIOS_REPAIR_SHA"]
     run_id = int(os.environ["AIOS_REPAIR_RUN_ID"])
+    repository = os.environ["GITHUB_REPOSITORY"]
     pass_attempt = int(os.environ["AIOS_REPAIR_PASS_ATTEMPT"])
     if git("rev-parse", "HEAD") != base:
         raise SystemExit("stale repair publish base")
+    if git("status", "--porcelain"):
+        raise SystemExit("publish checkout must be clean before verified patch materialization")
+
+    result_path = Path(os.environ["AIOS_REPAIR_RESULT_FILE"])
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    if result.get("schema") != 3 or result.get("status") != "REPAIR_E2E_PASS":
+        raise SystemExit("selected result is not a reconciled AIOS repair E2E result")
+    if (result.get("run_id") != run_id or result.get("base_sha") != base
+            or result.get("repository") != repository):
+        raise SystemExit("repair result repository/run/base binding mismatch")
+    if max(result.get("attempts", [0])) != pass_attempt:
+        raise SystemExit("selected repair result does not match PASS attempt")
 
     proposal_dir = Path(os.environ.get("AIOS_REPAIR_PROPOSALS_DIR", "proposals"))
     proposal_files = sorted(proposal_dir.glob("repair-proposal-*.json"))
     proposals = []
     for path in proposal_files:
         obj = json.loads(path.read_text(encoding="utf-8"))
-        if obj["base_sha"] == base and int(obj["attempt"]) <= pass_attempt:
+        if (obj.get("schema") == 2 and obj.get("run_id") == run_id
+                and obj.get("repository") == repository and obj.get("base_sha") == base and int(obj.get("attempt", 0)) <= pass_attempt):
             proposals.append(obj)
     proposals.sort(key=lambda x: int(x["attempt"]))
-    if not proposals or int(proposals[-1]["attempt"]) != pass_attempt:
-        raise SystemExit("missing cumulative proposals for PASS attempt")
+    if [int(p["attempt"]) for p in proposals] != list(range(1, pass_attempt + 1)):
+        raise SystemExit("missing contiguous cumulative proposals for selected PASS attempt")
 
+    provider_keyring = ProviderKeyring.from_env()
+    if provider_keyring is None:
+        raise SystemExit("trusted AIOS_PROVIDER_KEYRING is required for publish reconciliation")
+    authority_dir = Path(os.environ["AIOS_REPAIR_AUTHORITY_DIR"])
+    reconciliation = reconcile_repair(
+        authority_dir, contract_id=result["contract_id"], permit_id=result["permit_id"],
+        actor="ci-repair-worker", repository=repository, run_id=run_id, base_sha=base,
+        effects=result["effects"], proposals=proposals, test=result["test"],
+        provider_keyring=provider_keyring,
+    )
+    if reconciliation != result.get("reconciliation"):
+        raise SystemExit("persisted authority/effect state no longer matches the repair result reconciliation")
+
+    worker = AgentRepairWorker(Path("."), object())
     expected = set()
     for proposal in proposals:
-        expected.update(x["path"] for x in proposal["files"])
-
-    with tempfile.TemporaryDirectory(prefix="aios-repair-authority-") as td:
-        aios = Path(td) / "aios"
-        aios.mkdir()
-        contract_id, permit_id = authority(aios, "ci-repair-publisher", run_id)
-        worker = AgentRepairWorker(
-            Path("."), object(), aios_dir=aios,
-            contract_id=contract_id, permit_id=permit_id, actor="ci-repair-publisher",
-        )
-        owned = frozenset()
-        for proposal in proposals:
-            files = tuple(ProposedFile(x["path"], x["content"]) for x in proposal["files"])
-            worker.apply_via_aios(
-                base_sha=base,
-                files=files,
-                logical_operation_id=f"ci-repair-publish:{run_id}:attempt:{proposal['attempt']}",
-                allowed_dirty_paths=owned,
-            )
-            owned = frozenset(set(owned) | {x.path for x in files})
+        files = tuple(ProposedFile(x["path"], x["content"]) for x in proposal["files"])
+        for item in files:
+            target = worker._safe_path(item.path)
+            atomic_write(target, item.content)
+            expected.add(item.path)
 
     actual = set(git("diff", "--name-only").splitlines())
     if actual != expected:
-        raise SystemExit(f"mutation scope mismatch: actual={sorted(actual)} expected={sorted(expected)}")
+        raise SystemExit(f"verified patch materialization mismatch: actual={sorted(actual)} expected={sorted(expected)}")
 
     source_branch = os.environ.get("AIOS_REPAIR_SOURCE_BRANCH", "main")
+    if not source_branch or source_branch.startswith("/") or ".." in source_branch.split("/"):
+        raise SystemExit("invalid repair source branch")
     marker = git("show", "-s", "--format=%B", base)
     previous_cycle = 0
     for line in marker.splitlines():
@@ -98,18 +103,16 @@ def main() -> int:
     cycle = previous_cycle + 1
     if cycle > 3:
         raise SystemExit("repair campaign exhausted: maximum 3 full-CI repair cycles")
-    if source_branch == "main":
-        branch = f"aios/autorepair/{run_id}"
-    elif source_branch.startswith("aios/autorepair/"):
-        branch = source_branch
-    else:
-        raise SystemExit(f"unauthorized repair source branch: {source_branch!r}")
+    # Always publish to a fresh, run-scoped candidate branch. Never mutate the
+    # failed source branch, whether it is main, a PR branch, or a prior candidate.
+    branch = f"aios/autorepair/{run_id}"
     git("config", "user.name", "AIOS Repair Worker")
     git("config", "user.email", "aios-repair-worker@users.noreply.github.com")
     git("switch", "-c", branch)
     git("add", "--", *sorted(expected))
     git("commit", "-m", f"fix: autonomous repair for CI run {run_id}", "-m", f"AIOS-REPAIR-CYCLE: {cycle}")
-    print(branch)
+    print(json.dumps({"status": "PUBLISHED_CANDIDATE", "branch": branch,
+                      "reconciliation": reconciliation["status"], "paths": sorted(expected)}))
     return 0
 
 

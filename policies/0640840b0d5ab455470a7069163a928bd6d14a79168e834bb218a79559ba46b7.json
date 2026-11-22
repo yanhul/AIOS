@@ -1,0 +1,12 @@
+{
+  "policy_type": "GOVERNING_POLICY",
+  "policy_id": "central-workload-conformance",
+  "version": "1",
+  "max_attempts": 1,
+  "allowed_effects": ["process_execution"],
+  "evidence_required": ["adapter_result"],
+  "terminal_state_source": "workload_manifest",
+  "require_manifest_authority": "yanhul/AIOS",
+  "require_manifest_capability_binding": true,
+  "policy_digest": "sha256:0640840b0d5ab455470a7069163a928bd6d14a79168e834bb218a79559ba46b7"
+}

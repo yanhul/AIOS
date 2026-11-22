@@ -78,6 +78,17 @@ def test_worker_refuses_protected_paths(tmp_path):
         )
 
 
+@pytest.mark.parametrize("path", [
+    "tests/test_auth.py", "src/tests/test_auth.py", "test/test_auth.py",
+    "conftest.py", "pytest.ini", "pyproject.toml", "sitecustomize.py", "module_test.py",
+])
+def test_worker_refuses_test_and_test_configuration_changes(tmp_path, path):
+    base = init_repo(tmp_path)
+    worker = AgentRepairWorker(tmp_path, FakeAuthority())
+    with pytest.raises(RepairWorkerError, match="protected"):
+        worker.apply(base_sha=base, files=(ProposedFile(path, "tampered"),))
+
+
 def test_worker_refuses_stale_base(tmp_path):
     base = init_repo(tmp_path)
     worker = AgentRepairWorker(tmp_path, FakeAuthority())
