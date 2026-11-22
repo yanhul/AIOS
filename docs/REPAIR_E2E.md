@@ -2,6 +2,15 @@
 
 The autonomous repair workflow is fail-closed. A deploy or provider health check is not a repair result.
 
+## Required GitHub Actions configuration
+
+Configure these repository settings before dispatching the repair workflow:
+
+- `TRY_REPAIR_PROVIDER_URL` (repository secret): base URL of the deployed TRY repair worker.
+- `TRY_REPAIR_PROVIDER_TOKEN` (repository secret): Bearer token accepted by that worker. This is distinct from Gemini credentials.
+
+The workflow maps these existing names to its internal `TRY_REPAIR_WORKER_URL` and `TRY_PROVIDER_TOKEN` environment variables. Do not create duplicate secrets under the old internal names.
+
 ## Required GitHub Actions secrets
 
 Configure these repository secrets before dispatching the repair workflow:
