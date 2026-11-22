@@ -30,7 +30,7 @@ class RepositoryPatchAdapter:
     """
 
     name = "repo_patch"
-    _DENIED_PREFIXES = (".git/", ".github/workflows/", ".aios/", "secrets/")
+    _DENIED_PREFIXES = (".git/", ".github/", ".aios/", "secrets/")
     _DENIED_FILES = frozenset({".env", ".env.local", ".env.production", "credentials.json"})
 
     def __init__(self, repository_root: str | Path, *, signer: ProviderReceiptSigner | None = None):

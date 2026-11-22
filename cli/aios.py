@@ -9,6 +9,7 @@ Stdlib only. Never writes to RX50.
 
 import argparse
 import os
+import re
 import sys
 
 from core.classifier import UNKNOWN
@@ -29,6 +30,8 @@ def _counts(entities):
 
 
 def _project_path(project_id: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", project_id or ""):
+        raise ValueError(f"invalid project id: {project_id!r}")
     # aios.py lives in <AIOS>/cli/, so the repository root is one level up.
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(root, "projects", project_id)
@@ -162,7 +165,11 @@ def main(argv=None) -> int:
                         help="explicit snapshot id (default: auto UTC id)")
 
     args = parser.parse_args(argv)
-    project_dir = _project_path(args.project)
+    try:
+        project_dir = _project_path(args.project)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
     if not os.path.isdir(project_dir):
         print(f"ERROR: project not found: {args.project}", file=sys.stderr)
         return 2

@@ -69,6 +69,8 @@ class DurableCIInbox:
         self.root = root
 
     def _path(self, event_id: str) -> str:
+        if not isinstance(event_id, str) or len(event_id) != 32 or any(c not in "0123456789abcdef" for c in event_id):
+            raise CIEventError("malformed event_id")
         return os.path.join(self.root, f"{event_id}.json")
 
     def receive(self, event: CIEvent, expected_repository: str) -> SupervisorState:

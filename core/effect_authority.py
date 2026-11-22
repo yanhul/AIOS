@@ -46,8 +46,17 @@ def _id(contract_id, logical_operation_id, actor):
     return "EF-" + hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
 
 
+_EFFECT_ID = re.compile(r"EF-[0-9a-f]{64}")
+
+
+def _require_effect_id(effect_id):
+    if not isinstance(effect_id, str) or not _EFFECT_ID.fullmatch(effect_id):
+        raise ValueError("malformed effect_id")
+    return effect_id
+
+
 def _path(aios_dir, effect_id):
-    return os.path.join(aios_dir, "effects", effect_id + ".json")
+    return os.path.join(aios_dir, "effects", _require_effect_id(effect_id) + ".json")
 
 
 def _load(path):
@@ -97,7 +106,7 @@ def _attempt_id(effect_id, attempt):
 
 
 def _effect_rel(effect_id):
-    return os.path.join("effects", effect_id + ".json")
+    return os.path.join("effects", _require_effect_id(effect_id) + ".json")
 
 
 def _expect_unchanged(rel_path, snapshot):
