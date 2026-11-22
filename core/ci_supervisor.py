@@ -31,7 +31,7 @@ class CIEvent:
     @property
     def event_id(self) -> str:
         raw = f"{self.repository}|{self.run_id}|{self.sha}"
-        return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:31]
 
 
 @dataclass(frozen=True)
