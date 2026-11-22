@@ -533,6 +533,7 @@ jobs:
   verify-candidate:
     # Gate before review: no write permissions; the candidate is not pushed unless this passes.
     needs: publish
+    if: ${{ !cancelled() && needs.publish.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -585,7 +586,8 @@ jobs:
 
   submit-candidate:
     # Enters review only after verify-candidate; never targets main and never merges.
-    needs: verify-candidate
+    needs: [publish, verify-candidate]
+    if: ${{ !cancelled() && needs.publish.result == 'success' && needs.verify-candidate.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
