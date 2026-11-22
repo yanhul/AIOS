@@ -541,6 +541,11 @@ jobs:
           gh workflow run CI --repo "${{ github.repository }}" --ref "$branch"
           gh workflow run "G4A CI" --repo "${{ github.repository }}" --ref "$branch"
           # Every repair iteration remains reviewable. No iteration is auto-merged.
-          gh pr create --repo "${{ github.repository }}" --base main --head "$branch" --draft \
-            --title "fix: autonomous repair for CI run ${RUN_ID}" \
-            --body "Draft candidate produced by AIOS bounded repair loop.\n\n- Source CI run: ${RUN_ID}\n- Source branch: ${SOURCE_BRANCH}\n- Candidate branch: $branch\n- Candidate commit: $candidate_sha\n\nHuman review and merge required."
+          existing_pr="$(gh pr list --repo "${{ github.repository }}" --base main --head "$branch" --json number --jq '.[0].number // empty')"
+          if [ -n "$existing_pr" ]; then
+            echo "CANDIDATE_PR_ALREADY_EXISTS=$existing_pr"
+          else
+            gh pr create --repo "${{ github.repository }}" --base main --head "$branch" --draft \
+              --title "fix: autonomous repair for CI run ${RUN_ID}" \
+              --body "Draft candidate produced by AIOS bounded repair loop.\n\n- Failed source CI run: ${RUN_ID}\n- Source branch: ${SOURCE_BRANCH}\n- Candidate branch: $branch\n- Candidate commit: $candidate_sha\n\nHuman review and merge required."
+          fi
