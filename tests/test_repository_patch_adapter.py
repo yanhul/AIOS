@@ -35,6 +35,17 @@ def test_adapter_rejects_protected_paths(tmp_path):
         )
 
 
+@pytest.mark.parametrize("path", [
+    "tests/test_auth.py", "src/tests/test_auth.py", "test/test_auth.py",
+    "conftest.py", "pytest.ini", "pyproject.toml", "sitecustomize.py", "module_test.py",
+])
+def test_adapter_rejects_test_and_test_configuration_paths(tmp_path, path):
+    init_repo(tmp_path)
+    adapter = RepositoryPatchAdapter(tmp_path)
+    with pytest.raises(ValueError, match="protected"):
+        adapter.register("EF-test", (ProposedFile(path, "tampered"),))
+
+
 def test_adapter_rejects_stale_base_before_register(tmp_path):
     init_repo(tmp_path)
     adapter = RepositoryPatchAdapter(tmp_path)

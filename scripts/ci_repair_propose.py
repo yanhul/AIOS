@@ -179,6 +179,11 @@ def main() -> int:
         raise SystemExit(f"TRY_PROVIDER_BLOCKED: {exc}") from exc
     if proposal.get("status") == "HOLD":
         raise SystemExit(f"TRY_PROVIDER_HOLD: {proposal.get('reason', 'provider hold')}")
+    # These lineage fields are stamped by the trusted AIOS client, not the model.
+    proposal["run_id"] = int(run_id)
+    proposal["repository"] = os.environ.get("GITHUB_REPOSITORY", "")
+    if not proposal["repository"]:
+        raise SystemExit("GITHUB_REPOSITORY is required to bind the proposal")
 
     Path("repair-proposal.json").write_text(
         json.dumps(proposal, indent=2, sort_keys=True), encoding="utf-8"

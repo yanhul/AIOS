@@ -30,8 +30,12 @@ class RepositoryPatchAdapter:
     """
 
     name = "repo_patch"
-    _DENIED_PREFIXES = (".git/", ".github/workflows/", ".aios/", "secrets/")
-    _DENIED_FILES = frozenset({".env", ".env.local", ".env.production", "credentials.json"})
+    _DENIED_PREFIXES = (".git/", ".github/workflows/", ".aios/", "secrets/", "tests/", "test/")
+    _DENIED_FILES = frozenset({
+        ".env", ".env.local", ".env.production", "credentials.json",
+        "conftest.py", "pytest.ini", "pyproject.toml", "tox.ini", "setup.cfg",
+        "noxfile.py", "sitecustomize.py", "usercustomize.py", "pytest_plugins.py", ".coveragerc",
+    })
 
     def __init__(self, repository_root: str | Path, *, signer: ProviderReceiptSigner | None = None):
         # Deployment-issued receipt signer; None -> receipts are non-authoritative (UNKNOWN).
@@ -125,7 +129,11 @@ def _safe_repo_path(root: Path, raw: str) -> Path:
     p = Path(path)
     if p.is_absolute() or path.startswith("/") or ".." in p.parts:
         raise ValueError("repository patch path escapes root")
-    if p.name in RepositoryPatchAdapter._DENIED_FILES or any(
+    parts = tuple(part.lower() for part in p.parts)
+    name = p.name.lower()
+    test_code = ("tests" in parts or "test" in parts or name.startswith("test_")
+                 or name.endswith("_test.py"))
+    if test_code or name in RepositoryPatchAdapter._DENIED_FILES or any(
         path == prefix[:-1] or path.startswith(prefix) for prefix in RepositoryPatchAdapter._DENIED_PREFIXES
     ):
         raise ValueError("repository patch path is protected")

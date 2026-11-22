@@ -53,8 +53,12 @@ class AgentRepairWorker:
     paths are rejected.
     """
 
-    _DENIED_PREFIXES = (".git/", ".github/workflows/", ".aios/", "secrets/")
-    _DENIED_FILES = frozenset({".env", ".env.local", ".env.production", "credentials.json"})
+    _DENIED_PREFIXES = (".git/", ".github/workflows/", ".aios/", "secrets/", "tests/", "test/")
+    _DENIED_FILES = frozenset({
+        ".env", ".env.local", ".env.production", "credentials.json",
+        "conftest.py", "pytest.ini", "pyproject.toml", "tox.ini", "setup.cfg",
+        "noxfile.py", "sitecustomize.py", "usercustomize.py", "pytest_plugins.py", ".coveragerc",
+    })
 
     def __init__(
         self,
@@ -68,6 +72,7 @@ class AgentRepairWorker:
         permit_id: str | None = None,
         actor: str | None = None,
         durable_runtime=None,
+        provider_keyring=None,
     ) -> None:
         self.root = Path(repository_root).resolve()
         self.authority = authority
@@ -78,6 +83,7 @@ class AgentRepairWorker:
         self.permit_id = permit_id
         self.actor = actor
         self.durable_runtime = durable_runtime
+        self.provider_keyring = provider_keyring
         self._owned_dirty_paths: set[str] = set()
         if not self.root.is_dir():
             raise RepairWorkerError(f"repository root does not exist: {self.root}")
@@ -99,7 +105,11 @@ class AgentRepairWorker:
             raise RepairWorkerError(f"patch path escapes repository: {raw!r}")
         if normalized.is_absolute() or ".." in normalized.parts:
             raise RepairWorkerError(f"patch path escapes repository: {raw!r}")
-        if normalized.name in self._DENIED_FILES or any(
+        parts = tuple(part.lower() for part in normalized.parts)
+        name = normalized.name.lower()
+        test_code = ("tests" in parts or "test" in parts or name.startswith("test_")
+                     or name.endswith("_test.py"))
+        if test_code or name in self._DENIED_FILES or any(
             path == prefix.rstrip("/") or path.startswith(prefix) for prefix in self._DENIED_PREFIXES
         ):
             raise RepairWorkerError(f"patch path is protected: {raw!r}")
@@ -211,6 +221,7 @@ class AgentRepairWorker:
                 base_sha=base_sha,
                 durable_runtime=self.durable_runtime,
                 allowed_dirty_paths=owned,
+                provider_keyring=self.provider_keyring,
             )
         except Exception as exc:
             raise RepairWorkerError(
@@ -228,10 +239,20 @@ class AgentRepairWorker:
                 raise RepairWorkerError("invalid trusted test command")
             if command not in self.allowed_test_commands:
                 raise RepairWorkerError("test command is not in the trusted worker allowlist")
+        # Trusted tests execute repository-controlled code. Never pass authority,
+        # provider, SCM, or deployment credentials into that process tree.
+        test_env = os.environ.copy()
+        for name in tuple(test_env):
+            upper = name.upper()
+            if any(marker in upper for marker in (
+                "SECRET", "TOKEN", "API_KEY", "SIGNING_KEY", "SIGNING_KEYS",
+                "PRIVATE_KEY", "KEYRING", "CREDENTIAL",
+            )):
+                test_env.pop(name, None)
         results = []
         for i, command in enumerate(selected):
             proc = subprocess.run(command, cwd=self.root, text=True, capture_output=True,
-                                  timeout=self.timeout_seconds, check=False)
+                                  timeout=self.timeout_seconds, check=False, env=test_env)
             results.append({"command": list(command), "returncode": proc.returncode,
                             "stdout_sha256": self._sha256_text(proc.stdout),
                             "stderr_sha256": self._sha256_text(proc.stderr),
