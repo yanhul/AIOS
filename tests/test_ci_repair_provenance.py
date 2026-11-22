@@ -37,7 +37,7 @@ def _setup(tmp_path, monkeypatch, *, content="VALUE = 2\n", extra=None):
              "contract_id": "CT-x", "permit_id": "PT-x", "effects": [{"receipt_id": "PR-1"}]}
     result = tmp_path / "repair-result-1.json"
     result.write_text(json.dumps({"status": "REPAIR_E2E_PASS", "reconciliation": recon}))
-    _git(repo, "switch", "-qc", "aios/autorepair/x")
+    _git(repo, "switch", "-qc", "aios/autorepair/11-99")
     (repo / "mod.py").write_text(content)
     for path, body in (extra or {}).items():
         (repo / path).parent.mkdir(parents=True, exist_ok=True)
@@ -114,3 +114,19 @@ def test_reconciliation_record_swap_is_rejected(tmp_path, monkeypatch):
     result.write_text(json.dumps(data))
     with pytest.raises(SystemExit, match="reconciliation record"):
         _verify(tmp_path, out, pdir, result, verifier, _attestation(tmp_path))
+
+
+def test_candidate_branch_must_be_per_repair_run(tmp_path, monkeypatch):
+    out, pdir, result, verifier = _setup(tmp_path, monkeypatch)
+    path = out / "candidate-provenance.json"
+    body = json.loads(path.read_text())
+    body["candidate_branch"] = "aios/autorepair/e2e-chain"
+    path.write_text(json.dumps(body))
+    with pytest.raises(SystemExit, match="source-ci-run"):
+        _verify(tmp_path, out, pdir, result, verifier, _attestation(tmp_path))
+
+
+def test_candidate_branch_format():
+    assert prov.candidate_branch(44990346556, "45011332245") == "aios/autorepair/44990346556-45011332245"
+    with pytest.raises(SystemExit):
+        prov.candidate_branch("1", "../main")

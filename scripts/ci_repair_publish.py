@@ -9,6 +9,7 @@ from pathlib import Path
 
 from core.agent_repair_worker import AgentRepairWorker, ProposedFile
 from core.effect_authority import ProviderKeyring
+from ci_repair_provenance import candidate_branch
 from core.repair_reconcile import reconcile_repair
 
 
@@ -101,12 +102,9 @@ def main() -> int:
     cycle = previous_cycle + 1
     if cycle > 3:
         raise SystemExit("repair campaign exhausted: maximum 3 full-CI repair cycles")
-    if source_branch == "main":
-        branch = f"aios/autorepair/{run_id}"
-    elif source_branch.startswith("aios/autorepair/"):
-        branch = source_branch
-    else:
+    if source_branch != "main" and not source_branch.startswith("aios/autorepair/"):
         raise SystemExit(f"unauthorized repair source branch: {source_branch!r}")
+    branch = candidate_branch(run_id, os.environ.get("GITHUB_RUN_ID", ""))
     git("config", "user.name", "AIOS Repair Worker")
     git("config", "user.email", "aios-repair-worker@users.noreply.github.com")
     git("switch", "-c", branch)

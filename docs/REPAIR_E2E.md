@@ -52,8 +52,11 @@ A `PUBLISHED_CANDIDATE` commit is built locally in `publish` and is **not** push
    It blocks unless the signer is this workflow, at this workflow SHA, in this run, on a GitHub-hosted
    runner, and the bundled commit is a single-parent child of the failed base whose content equals the
    cumulative proposal files, touches no protected paths, and matches the reconciled patch digest.
-3. Only then `submit-candidate` pushes to `aios/autorepair/*` and, for failures on `main`, opens a
-   **draft** PR. Nothing is merged or pushed to `main` automatically.
+3. Only then `submit-candidate` pushes the commit to its own branch
+   `aios/autorepair/<source-ci-run>-<repair-run>` and opens a **draft** PR (base: `main` for failures
+   on `main`, otherwise the failed `aios/autorepair/*` branch). If the branch or PR already exists,
+   the same commit SHA is a no-op; a different SHA is BLOCKED (no force-push, no overwrite).
+   Nothing is merged or pushed to `main` automatically.
 
 Reviewers can re-check a candidate with
 `gh attestation verify candidate-provenance.json --repo <owner>/<repo> --signer-workflow <owner>/<repo>/.github/workflows/ci-autonomous-repair.yml`

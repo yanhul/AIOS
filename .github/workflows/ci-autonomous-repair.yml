@@ -604,7 +604,7 @@ jobs:
         with:
           name: aios-repair-candidate-${{ env.RUN_ID }}
           path: ${{ github.workspace }}/candidate
-      - name: Push verified candidate and open draft PR for review
+      - name: Push verified candidate to its own branch and open draft PR
         working-directory: target
         env:
           GH_TOKEN: ${{ github.token }}
@@ -613,17 +613,42 @@ jobs:
           prov="$GITHUB_WORKSPACE/candidate/candidate-provenance.json"
           commit="$(jq -r .commit "$prov")"
           branch="$(jq -r .candidate_branch "$prov")"
-          case "$branch" in
-            aios/autorepair/*) ;;
-            *) echo "BLOCKED: unauthorized repair branch: $branch"; exit 1 ;;
+          [ "$branch" = "aios/autorepair/${RUN_ID}-${GITHUB_RUN_ID}" ] || { echo "BLOCKED: unexpected candidate branch: $branch"; exit 1; }
+          case "$SOURCE_BRANCH" in
+            main) pr_base=main ;;
+            aios/autorepair/*) pr_base="$SOURCE_BRANCH" ;;
+            *) echo "BLOCKED: unauthorized source branch"; exit 1 ;;
           esac
           git fetch -q --no-tags "$GITHUB_WORKSPACE/candidate/candidate.bundle" "+HEAD:refs/aios/candidate"
           [ "$(git rev-parse refs/aios/candidate)" = "$commit" ] || { echo "BLOCKED: bundle commit changed after verification"; exit 1; }
-          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "${commit}:refs/heads/${branch}"
-          gh workflow run CI --repo "$GITHUB_REPOSITORY" --ref "$branch"
-          gh workflow run "G4A CI" --repo "$GITHUB_REPOSITORY" --ref "$branch"
-          if [ "$SOURCE_BRANCH" = "main" ]; then
-            gh pr create --draft --repo "$GITHUB_REPOSITORY" --base main --head "$branch" \
-              --title "fix: autonomous repair for CI run ${RUN_ID}" \
-              --body "AIOS repair candidate. Provenance verified in run ${GITHUB_RUN_ID} (commit ${commit}). Human review required; not auto-merged."
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          existing="$(git ls-remote "$remote" "refs/heads/${branch}" | cut -f1)"
+          if [ -z "$existing" ]; then
+            git push "$remote" "${commit}:refs/heads/${branch}"
+            echo "CANDIDATE_PUSHED ${branch} ${commit}"
+            gh workflow run CI --repo "$GITHUB_REPOSITORY" --ref "$branch"
+            gh workflow run "G4A CI" --repo "$GITHUB_REPOSITORY" --ref "$branch"
+          elif [ "$existing" = "$commit" ]; then
+            echo "CANDIDATE_IDEMPOTENT ${branch} ${commit}"
+          else
+            echo "BLOCKED: ${branch} already holds ${existing}, not ${commit}; refusing to overwrite"
+            exit 1
+          fi
+          prs="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state all --json number,headRefOid)"
+          if [ "$(jq length <<<"$prs")" -eq 0 ]; then
+            statement_digest="sha256:$(sha256sum "$prov" | cut -d' ' -f1)"
+            body="AIOS repair candidate (draft, human review required; never auto-merged).
+
+          - Source CI run: ${RUN_ID} (base ${BASE_SHA})
+          - Repair run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          - Candidate commit: ${commit}
+          - Patch digest: $(jq -r .patch_digest "$prov")
+          - Reconciliation digest: $(jq -r .reconciliation_digest "$prov")
+          - Provenance statement: ${statement_digest} (artifact aios-repair-candidate-${RUN_ID}, verified by verify-candidate)"
+            gh pr create --draft --repo "$GITHUB_REPOSITORY" --base "$pr_base" --head "$branch" \
+              --title "fix: autonomous repair for CI run ${RUN_ID}" --body "$body"
+          elif [ "$(jq -r '.[0].headRefOid' <<<"$prs")" != "$commit" ]; then
+            echo "BLOCKED: existing PR for ${branch} points at a different commit"; exit 1
+          else
+            echo "DRAFT_PR_IDEMPOTENT $(jq -r '.[0].number' <<<"$prs")"
           fi

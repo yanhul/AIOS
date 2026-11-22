@@ -26,6 +26,14 @@ WORKFLOW_PATH = ".github/workflows/ci-autonomous-repair.yml"
 FORBIDDEN_PREFIXES = (".github/", ".git/", ".aios/", "tests/", "test/", "secrets/")
 
 
+def candidate_branch(source_run_id, repair_run_id) -> str:
+    """One candidate branch per repair run; never reused across runs."""
+    source, repair = str(source_run_id), str(repair_run_id)
+    if not (source.isdigit() and repair.isdigit()):
+        raise SystemExit("BLOCKED: source CI run and repair run IDs must be numeric")
+    return f"aios/autorepair/{int(source)}-{int(repair)}"
+
+
 def git(*args: str, cwd: str | Path = ".") -> str:
     return subprocess.run(["git", *args], cwd=cwd, text=True, capture_output=True, check=True).stdout.strip()
 
@@ -130,8 +138,8 @@ def verify(statement_path: Path, bundle: Path, attestation_json: Path, proposals
               "base_sha": env.get("AIOS_REPAIR_SHA"), "source_run_id": int(env.get("AIOS_REPAIR_RUN_ID", 0)),
               "pass_attempt": int(env.get("AIOS_REPAIR_PASS_ATTEMPT", 0))}
     errors += [f"statement {k} mismatch" for k, v in expect.items() if prov.get(k) != v]
-    if not prov.get("candidate_branch", "").startswith("aios/autorepair/"):
-        errors.append("candidate branch is not aios/autorepair/*")
+    if prov.get("candidate_branch") != candidate_branch(prov.get("source_run_id"), prov.get("repair_run_id")):
+        errors.append("candidate branch is not aios/autorepair/<source-ci-run>-<repair-run>")
 
     git("fetch", "-q", "--no-tags", str(bundle), f"+HEAD:refs/aios/candidate", cwd=cwd)
     facts = _commit_facts("refs/aios/candidate", cwd=cwd)
