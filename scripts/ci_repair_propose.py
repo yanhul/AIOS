@@ -137,7 +137,7 @@ def failed_test_import_paths(tracked_paths: list[str], failure_log: str, *, sha:
     normalized_log = failure_log.replace("\\", "/")
     failed_tests = {
         match.group(1) for match in re.finditer(
-            r"(?<![A-Za-z0-9_.-])((?:tests|test)/[A-Za-z0-9_./-]+\.py)(?=[:\s,)]|[\"']|$)",
+            r"(?im)^\s*(?:FAILED|ERROR)(?:\s+collecting)?\s+.*?((?:tests|test)/[A-Za-z0-9_./-]+\.py)",
             normalized_log,
         )
     }
