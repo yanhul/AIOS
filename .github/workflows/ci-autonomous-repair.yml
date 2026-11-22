@@ -642,6 +642,8 @@ jobs:
           check_submission_base
           existing="$(git ls-remote "$remote" "refs/heads/${branch}" | cut -f1)"
           if [ -z "$existing" ]; then
+            # Re-resolve once more at the push boundary; any base movement blocks the write.
+            check_submission_base
             git push "$remote" "${commit}:refs/heads/${branch}"
             echo "CANDIDATE_PUSHED ${branch} ${commit}"
             gh workflow run CI --repo "$GITHUB_REPOSITORY" --ref "$branch"
