@@ -67,7 +67,7 @@ jobs:
             if [ "$EVENT" = "push" ] && [ "${{ github.ref_name }}" = "aios/autorepair/g4a-live" ]; then
               workflow_name="G4A CI"
             fi
-            for i in $(seq 1 60); do
+            for _ in $(seq 1 60); do
               run_json="$(gh run list --repo "$REPO" --workflow "$workflow_name" --commit "$SHA" --limit 1 --json databaseId,status,conclusion)"
               ci_run_id="$(jq -r '.[0].databaseId // empty' <<<"$run_json")"
               status="$(jq -r '.[0].status // empty' <<<"$run_json")"
@@ -447,9 +447,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      actions: write
-      contents: write
-      pull-requests: write
+      actions: read
+      contents: read
+      id-token: write
+      attestations: write
+    outputs:
+      pass_attempt: ${{ env.AIOS_REPAIR_PASS_ATTEMPT }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -507,30 +510,168 @@ jobs:
           AIOS_AUTHORITY_ATTESTATION_SECRET: ${{ secrets.AIOS_AUTHORITY_ATTESTATION_SECRET }}
           AIOS_PROVIDER_KEYRING: ${{ secrets.AIOS_PROVIDER_KEYRING }}
         run: python "${{ github.workspace }}/trusted/scripts/ci_repair_publish.py"
-      - name: Push repair branch and open PR
+      - name: Write candidate provenance statement and commit bundle
+        working-directory: target
+        env:
+          PYTHONPATH: ${{ github.workspace }}/trusted
+          AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
+          AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
+          AIOS_REPAIR_SOURCE_BRANCH: ${{ env.SOURCE_BRANCH }}
+          AIOS_REPAIR_PASS_ATTEMPT: ${{ env.AIOS_REPAIR_PASS_ATTEMPT }}
+          AIOS_REPAIR_RESULT_FILE: ${{ github.workspace }}/results/repair-result-${{ env.AIOS_REPAIR_PASS_ATTEMPT }}.json
+        run: python "$GITHUB_WORKSPACE/trusted/scripts/ci_repair_provenance.py" statement "$RUNNER_TEMP/candidate"
+      - name: Sign candidate provenance (GitHub artifact attestation)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ runner.temp }}/candidate/candidate-provenance.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aios-repair-candidate-${{ env.RUN_ID }}
+          path: ${{ runner.temp }}/candidate
+          retention-days: 7
+
+  verify-candidate:
+    # Gate before review: no write permissions; the candidate is not pushed unless this passes.
+    needs: publish
+    if: ${{ !cancelled() && needs.publish.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      attestations: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BASE_SHA }}
+          path: target
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: aios-repair-candidate-${{ env.RUN_ID }}
+          path: ${{ github.workspace }}/candidate
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: aios-repair-proposal-${{ env.RUN_ID }}-*
+          path: ${{ github.workspace }}/proposals
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: aios-repair-result-${{ env.RUN_ID }}-${{ needs.publish.outputs.pass_attempt }}
+          path: ${{ github.workspace }}/results
+      - name: Verify attestation signer, statement and candidate commit
+        working-directory: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PYTHONPATH: ${{ github.workspace }}/trusted
+          AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
+          AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
+          AIOS_REPAIR_SOURCE_BRANCH: ${{ env.SOURCE_BRANCH }}
+          AIOS_REPAIR_PASS_ATTEMPT: ${{ needs.publish.outputs.pass_attempt }}
+        run: |
+          set -euo pipefail
+          gh attestation verify "$GITHUB_WORKSPACE/candidate/candidate-provenance.json" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/ci-autonomous-repair.yml" \
+            --deny-self-hosted-runners --format json > "$RUNNER_TEMP/attestation.json"
+          python "$GITHUB_WORKSPACE/trusted/scripts/ci_repair_provenance.py" verify \
+            "$GITHUB_WORKSPACE/candidate/candidate-provenance.json" "$GITHUB_WORKSPACE/candidate/candidate.bundle" \
+            "$RUNNER_TEMP/attestation.json" "$GITHUB_WORKSPACE/proposals" \
+            "$GITHUB_WORKSPACE/results/repair-result-${AIOS_REPAIR_PASS_ATTEMPT}.json"
+
+  submit-candidate:
+    # Enters review only after verify-candidate; never targets main and never merges.
+    needs: [publish, verify-candidate]
+    if: ${{ !cancelled() && needs.publish.result == 'success' && needs.verify-candidate.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BASE_SHA }}
+          path: target
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: aios-repair-candidate-${{ env.RUN_ID }}
+          path: ${{ github.workspace }}/candidate
+      - name: Push verified candidate to its own branch and open draft PR
         working-directory: target
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "$SOURCE_BRANCH" = "main" ]; then
-            branch="aios/autorepair/${RUN_ID}"
-          else
-            branch="$SOURCE_BRANCH"
-          fi
-          case "$branch" in
-            aios/autorepair/*) ;;
-            *) echo "BLOCKED: unauthorized repair branch: $branch"; exit 1 ;;
+          set -euo pipefail
+          prov="$GITHUB_WORKSPACE/candidate/candidate-provenance.json"
+          commit="$(jq -r .commit "$prov")"
+          branch="$(jq -r .candidate_branch "$prov")"
+          [ "$branch" = "aios/autorepair/${RUN_ID}-${GITHUB_RUN_ID}" ] || { echo "BLOCKED: unexpected candidate branch: $branch"; exit 1; }
+          case "$SOURCE_BRANCH" in
+            main) pr_base=main ;;
+            aios/autorepair/*) pr_base="$SOURCE_BRANCH" ;;
+            *) echo "BLOCKED: unauthorized source branch"; exit 1 ;;
           esac
-          if ! git push --set-upstream "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "$branch"; then
-            git fetch origin "$branch"
-            git diff --quiet "origin/$branch" HEAD -- || {
-              echo "BLOCKED: remote repair branch diverged from verified local repair tree"
-              exit 1
-            }
-            git reset --hard "origin/$branch"
+          git fetch -q --no-tags "$GITHUB_WORKSPACE/candidate/candidate.bundle" "+HEAD:refs/aios/candidate"
+          [ "$(git rev-parse refs/aios/candidate)" = "$commit" ] || { echo "BLOCKED: bundle commit changed after verification"; exit 1; }
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          candidate_tree="$(git rev-parse "${commit}^{tree}")"
+          submission_base_sha=""
+          check_submission_base() {
+            local ref_line base_tree
+            ref_line="$(git ls-remote "$remote" "refs/heads/${pr_base}")"
+            [ -n "$ref_line" ] || { echo "BLOCKED: BASE_REF_UNRESOLVED ${pr_base}"; exit 1; }
+            submission_base_sha="$(cut -f1 <<<"$ref_line")"
+            [ -n "$submission_base_sha" ] || { echo "BLOCKED: BASE_REF_UNRESOLVED ${pr_base}"; exit 1; }
+            base_tree="$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${submission_base_sha}" --jq '.tree.sha')"
+            [ -n "$base_tree" ] || { echo "BLOCKED: BASE_TREE_UNRESOLVED"; exit 1; }
+            python "$GITHUB_WORKSPACE/trusted/scripts/ci_repair_provenance.py" submission-check "$prov" "$submission_base_sha" "$base_tree" "$candidate_tree"
+          }
+          # Gate immediately before any candidate ref is created or pushed.
+          check_submission_base
+          existing="$(git ls-remote "$remote" "refs/heads/${branch}" | cut -f1)"
+          if [ -z "$existing" ]; then
+            # Re-resolve once more at the push boundary; any base movement blocks the write.
+            check_submission_base
+            git push "$remote" "${commit}:refs/heads/${branch}"
+            echo "CANDIDATE_PUSHED ${branch} ${commit}"
+            gh workflow run CI --repo "$GITHUB_REPOSITORY" --ref "$branch"
+            gh workflow run "G4A CI" --repo "$GITHUB_REPOSITORY" --ref "$branch"
+          elif [ "$existing" = "$commit" ]; then
+            echo "CANDIDATE_IDEMPOTENT ${branch} ${commit}"
+          else
+            echo "BLOCKED: ${branch} already holds ${existing}, not ${commit}; refusing to overwrite"
+            exit 1
           fi
-          gh workflow run CI --repo "${{ github.repository }}" --ref "$branch"
-          gh workflow run "G4A CI" --repo "${{ github.repository }}" --ref "$branch"
-          if [ "$SOURCE_BRANCH" = "main" ]; then
-            gh pr create --repo "${{ github.repository }}" --base main --head "$branch" --title "fix: autonomous repair for CI run ${RUN_ID}" --body "Generated by AIOS bounded iterative repair loop."
+          prs="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state all --json number,headRefOid)"
+          if [ "$(jq length <<<"$prs")" -eq 0 ]; then
+            # Re-resolve the base immediately before PR creation; a race blocks PR creation.
+            check_submission_base
+            statement_digest="sha256:$(sha256sum "$prov" | cut -d' ' -f1)"
+            body="AIOS repair candidate (draft, human review required; never auto-merged).
+
+          - Source CI run: ${RUN_ID} (base ${submission_base_sha})
+          - Repair run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          - Candidate commit: ${commit}
+          - Patch digest: $(jq -r .patch_digest "$prov")
+          - Reconciliation digest: $(jq -r .reconciliation_digest "$prov")
+          - Provenance statement: ${statement_digest} (artifact aios-repair-candidate-${RUN_ID}, verified by verify-candidate)"
+            gh pr create --draft --repo "$GITHUB_REPOSITORY" --base "$pr_base" --head "$branch" \
+              --title "fix: autonomous repair for CI run ${RUN_ID}" --body "$body"
+          elif [ "$(jq -r '.[0].headRefOid' <<<"$prs")" != "$commit" ]; then
+            echo "BLOCKED: existing PR for ${branch} points at a different commit"; exit 1
+          else
+            echo "DRAFT_PR_IDEMPOTENT $(jq -r '.[0].number' <<<"$prs")"
           fi
