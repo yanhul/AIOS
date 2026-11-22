@@ -28,7 +28,15 @@ jobs:
         run: python -m pip install --disable-pip-version-check pytest
       - name: Compile changed Python modules
         run: python -m compileall -q scripts/ci_repair_provenance.py tests/test_ci_repair_provenance.py
-      - name: Lint GitHub Actions workflows
-        uses: raven-actions/actionlint@v2
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: Install actionlint
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+      - name: Lint changed GitHub Actions workflows
+        run: |
+          "$(go env GOPATH)/bin/actionlint" \
+            .github/workflows/ci-autonomous-repair.yml \
+            .github/workflows/repair-submission-gate-tests.yml
       - name: Run provenance and submission-gate tests
         run: python -m pytest -q tests/test_ci_repair_provenance.py
