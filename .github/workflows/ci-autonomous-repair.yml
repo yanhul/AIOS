@@ -103,7 +103,7 @@ jobs:
           case "$head_branch" in
             main|aios/autorepair/*) ;;
             *)
-              associated_prs="$(gh api "repos/$REPO/pulls" -f state=all -f head="$REPO:$head_branch" -f base=main)"
+              associated_prs="$(gh api -X GET "repos/$REPO/pulls" -f state=all -f head="$REPO:$head_branch" -f base=main)"
               approved_pr_count="$(jq --arg repo "$REPO" --arg sha "$head_sha" '
                 [ .[] | select(
                     .base.ref == "main" and
