@@ -568,17 +568,15 @@ jobs:
           if [ -n "$existing_pr" ]; then
             echo "CANDIDATE_PR_ALREADY_EXISTS=$existing_pr"
           else
-            body="$(cat <<EOF
-Draft candidate produced by AIOS bounded repair loop.
-
-- Failed source CI run: ${RUN_ID}
-- Source branch: ${SOURCE_BRANCH}
-- Candidate branch: $branch
-- Candidate commit: $candidate_sha
-
-Human review and merge required.
-EOF
-            )"
+            body="$(printf '%s\n' \
+              'Draft candidate produced by AIOS bounded repair loop.' \
+              '' \
+              "- Failed source CI run: ${RUN_ID}" \
+              "- Source branch: ${SOURCE_BRANCH}" \
+              "- Candidate branch: $branch" \
+              "- Candidate commit: $candidate_sha" \
+              '' \
+              'Human review and merge required.')"
             gh pr create --repo "${{ github.repository }}" --base main --head "$branch" --draft \
               --title "fix: autonomous repair for CI run ${RUN_ID}" --body "$body"
           fi
