@@ -8,13 +8,12 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 from pathlib import Path
 
 from core.agent_repair_worker import AgentRepairWorker, ProposedFile
 from scripts.ci_repair_common import (
     APPLY_RECORD_KIND, changed_paths, expected_paths, git, issue_repair_authority,
-    load_proposals, proposals_digest, tree_digests,
+    load_proposals, proposals_digest, repair_state_dir, tree_digests, verify_repair_chain,
 )
 
 
@@ -33,9 +32,7 @@ def main() -> int:
         raise SystemExit("repair proposal base SHA does not match checkout")
     digest = proposals_digest(proposals)
 
-    with tempfile.TemporaryDirectory(prefix="aios-repair-authority-") as td:
-        aios = Path(td) / "aios"
-        aios.mkdir()
+    with repair_state_dir() as aios:
         contract_id, permit_id = issue_repair_authority(
             aios, actor="ci-repair-worker",
             task_id=f"ci-repair-{run_id}-attempt-{attempt}", input_digest=digest)
@@ -54,6 +51,8 @@ def main() -> int:
             )
             applied.append({"attempt": proposal["attempt"], "result": dict(result)})
             owned = frozenset(set(owned) | {x.path for x in files})
+        chain = verify_repair_chain(aios, contract_id=contract_id, permit_id=permit_id, input_digest=digest,
+                                    proposals=proposals, results=[a["result"] for a in applied])
 
     expected = expected_paths(proposals)
     actual = changed_paths()
@@ -63,7 +62,7 @@ def main() -> int:
         "schema": 3, "kind": APPLY_RECORD_KIND, "run_id": run_id, "base_sha": base,
         "attempt": attempt, "attempts": [int(p["attempt"]) for p in proposals],
         "proposals_digest": digest, "files": tree_digests(Path("."), expected),
-        "applied": applied,
+        "applied": applied, "chain": chain,
     }
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(record, indent=2, sort_keys=True), encoding="utf-8")

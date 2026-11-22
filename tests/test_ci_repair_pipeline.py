@@ -120,6 +120,20 @@ def _run(script, cwd, env):
                           capture_output=True, text=True)
 
 
+def test_apply_fails_closed_when_patch_receipt_is_unauthenticated(tmp_path):
+    base = _repo(tmp_path / "apply")
+    path = tmp_path / "repair-proposal-1.json"
+    path.write_text(json.dumps({"schema": 2, "attempt": 1, "base_sha": base,
+                                "files": [{"path": "mod.py", "content": "VALUE = 2\n"}]}))
+    env = {"AIOS_REPAIR_SHA": base, "AIOS_REPAIR_RUN_ID": "7", "AIOS_REPAIR_ATTEMPT": "1",
+           "AIOS_REPAIR_PROPOSALS": str(path), "AIOS_REPAIR_APPLY_RECORD": str(tmp_path / "rec.json"),
+           "AIOS_PROVIDER_SIGNING_KEYS": ""}
+    applied = _run("ci_repair_apply_attempt.py", tmp_path / "apply", env)
+    assert applied.returncode != 0
+    assert "effect state UNKNOWN" in applied.stderr
+    assert not (tmp_path / "rec.json").exists()
+
+
 def test_isolated_test_tree_matches_trusted_apply_record(tmp_path):
     base = _repo(tmp_path / "apply")
     _git(tmp_path, "clone", "-q", str(tmp_path / "apply"), str(tmp_path / "test"))
@@ -136,6 +150,10 @@ def test_isolated_test_tree_matches_trusted_apply_record(tmp_path):
     assert applied.returncode == 0, applied.stderr
     data = json.loads(record.read_text())
     assert set(data["files"]) == {"mod.py", "pkg/new.py"}
+    chain = data["chain"]
+    assert chain["authorize"] == "VERIFIED" and not chain["failures"]
+    assert [e["state"] for e in chain["effects"]] == ["OBSERVED_SUCCESS"] * 2
+    assert all(e["receipt_id"] and all(e["checks"].values()) for e in chain["effects"])
 
     staged = _run("ci_repair_stage_test_tree.py", tmp_path / "test", env)
     assert staged.returncode == 0, staged.stderr

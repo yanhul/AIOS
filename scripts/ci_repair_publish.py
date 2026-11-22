@@ -3,13 +3,12 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 from pathlib import Path
 
 from core.agent_repair_worker import AgentRepairWorker, ProposedFile
 from scripts.ci_repair_common import (
     APPLY_RECORD_KIND, changed_paths, expected_paths, git, issue_repair_authority,
-    load_proposals, proposals_digest, tree_digests,
+    load_proposals, proposals_digest, repair_state_dir, tree_digests, verify_repair_chain,
 )
 
 
@@ -35,9 +34,7 @@ def main() -> int:
 
     expected = expected_paths(proposals)
 
-    with tempfile.TemporaryDirectory(prefix="aios-repair-authority-") as td:
-        aios = Path(td) / "aios"
-        aios.mkdir()
+    with repair_state_dir() as aios:
         contract_id, permit_id = issue_repair_authority(
             aios, actor="ci-repair-publisher",
             task_id=f"ci-repair-publish-{run_id}", input_digest=digest)
@@ -46,15 +43,18 @@ def main() -> int:
             contract_id=contract_id, permit_id=permit_id, actor="ci-repair-publisher",
         )
         owned = frozenset()
+        results = []
         for proposal in proposals:
             files = tuple(ProposedFile(x["path"], x["content"]) for x in proposal["files"])
-            worker.apply_via_aios(
+            results.append(worker.apply_via_aios(
                 base_sha=base,
                 files=files,
                 logical_operation_id=f"ci-repair-publish:{run_id}:attempt:{proposal['attempt']}",
                 allowed_dirty_paths=owned,
-            )
+            ))
             owned = frozenset(set(owned) | {x.path for x in files})
+        chain = verify_repair_chain(aios, contract_id=contract_id, permit_id=permit_id, input_digest=digest,
+                                    proposals=proposals, results=[dict(r) for r in results])
 
     actual = changed_paths()
     if actual != expected:
@@ -85,6 +85,10 @@ def main() -> int:
     git("switch", "-c", branch)
     git("add", "--", *sorted(expected))
     git("commit", "-m", f"fix: autonomous repair for CI run {run_id}", "-m", f"AIOS-REPAIR-CYCLE: {cycle}")
+    report = os.environ.get("AIOS_REPAIR_CHAIN_REPORT")
+    if report:
+        Path(report).parent.mkdir(parents=True, exist_ok=True)
+        Path(report).write_text(json.dumps(chain, indent=2, sort_keys=True, default=str), encoding="utf-8")
     print(branch)
     return 0
 

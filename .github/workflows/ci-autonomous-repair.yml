@@ -93,7 +93,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           path: trusted
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -116,7 +116,17 @@ jobs:
           AIOS_REPAIR_ATTEMPT: "1"
           AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/proposals/repair-proposal-1.json
           AIOS_REPAIR_APPLY_RECORD: ${{ runner.temp }}/apply/repair-apply-1.json
+          AIOS_REPAIR_STATE_DIR: ${{ runner.temp }}/aios-state-apply-1
+          AIOS_PROVIDER_SIGNING_KEYS: ${{ secrets.AIOS_PROVIDER_SIGNING_KEYS }}
+          AIOS_PROVIDER_KEYRING: ${{ secrets.AIOS_PROVIDER_KEYRING }}
         run: python "$GITHUB_WORKSPACE/trusted/scripts/ci_repair_apply_attempt.py"
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-repair-state-${{ env.RUN_ID }}-apply-1
+          path: ${{ runner.temp }}/aios-state-apply-1
+          if-no-files-found: ignore
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: aios-repair-apply-${{ env.RUN_ID }}-1
@@ -132,7 +142,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           path: trusted
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -248,7 +258,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           path: trusted
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -275,7 +285,17 @@ jobs:
           AIOS_REPAIR_ATTEMPT: "2"
           AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/proposals/repair-proposal-1.json,${{ github.workspace }}/proposals/repair-proposal-2.json
           AIOS_REPAIR_APPLY_RECORD: ${{ runner.temp }}/apply/repair-apply-2.json
+          AIOS_REPAIR_STATE_DIR: ${{ runner.temp }}/aios-state-apply-2
+          AIOS_PROVIDER_SIGNING_KEYS: ${{ secrets.AIOS_PROVIDER_SIGNING_KEYS }}
+          AIOS_PROVIDER_KEYRING: ${{ secrets.AIOS_PROVIDER_KEYRING }}
         run: python "$GITHUB_WORKSPACE/trusted/scripts/ci_repair_apply_attempt.py"
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-repair-state-${{ env.RUN_ID }}-apply-2
+          path: ${{ runner.temp }}/aios-state-apply-2
+          if-no-files-found: ignore
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: aios-repair-apply-${{ env.RUN_ID }}-2
@@ -291,7 +311,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           path: trusted
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -411,7 +431,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           path: trusted
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -442,7 +462,17 @@ jobs:
           AIOS_REPAIR_ATTEMPT: "3"
           AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/proposals/repair-proposal-1.json,${{ github.workspace }}/proposals/repair-proposal-2.json,${{ github.workspace }}/proposals/repair-proposal-3.json
           AIOS_REPAIR_APPLY_RECORD: ${{ runner.temp }}/apply/repair-apply-3.json
+          AIOS_REPAIR_STATE_DIR: ${{ runner.temp }}/aios-state-apply-3
+          AIOS_PROVIDER_SIGNING_KEYS: ${{ secrets.AIOS_PROVIDER_SIGNING_KEYS }}
+          AIOS_PROVIDER_KEYRING: ${{ secrets.AIOS_PROVIDER_KEYRING }}
         run: python "$GITHUB_WORKSPACE/trusted/scripts/ci_repair_apply_attempt.py"
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-repair-state-${{ env.RUN_ID }}-apply-3
+          path: ${{ runner.temp }}/aios-state-apply-3
+          if-no-files-found: ignore
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         with:
           name: aios-repair-apply-${{ env.RUN_ID }}-3
@@ -458,7 +488,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           path: trusted
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -531,7 +561,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           path: trusted
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -560,7 +590,20 @@ jobs:
           AIOS_REPAIR_SOURCE_BRANCH: ${{ env.SOURCE_BRANCH }}
           AIOS_REPAIR_PROPOSALS_DIR: ${{ github.workspace }}/proposals
           AIOS_REPAIR_APPLY_DIR: ${{ github.workspace }}/apply
+          AIOS_REPAIR_STATE_DIR: ${{ runner.temp }}/aios-state-publish
+          AIOS_REPAIR_CHAIN_REPORT: ${{ runner.temp }}/aios-state-publish-chain.json
+          AIOS_PROVIDER_SIGNING_KEYS: ${{ secrets.AIOS_PROVIDER_SIGNING_KEYS }}
+          AIOS_PROVIDER_KEYRING: ${{ secrets.AIOS_PROVIDER_KEYRING }}
         run: python "$GITHUB_WORKSPACE/trusted/scripts/ci_repair_publish.py"
+      - if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-repair-state-${{ env.RUN_ID }}-publish
+          path: |
+            ${{ runner.temp }}/aios-state-publish
+            ${{ runner.temp }}/aios-state-publish-chain.json
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Push repair branch and open PR
         working-directory: target
         env:
