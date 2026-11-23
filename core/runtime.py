@@ -5,6 +5,7 @@ resume, planning and agent loops belong to an external execution substrate.
 """
 
 from dataclasses import dataclass
+import os
 from typing import Protocol
 
 from .authority import authorize, load_contract, load_permit
@@ -82,6 +83,8 @@ def validate_receipt(receipt, effect, attempt_id, provider_name):
 
 def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id, *, provider_keyring=None, now=None):
     """Execute exactly one dispatched attempt and record its observation."""
+    if os.environ.get("AIOS_REQUIRE_FIRESTORE_EFFECT_STORE", "").lower() == "true":
+        raise RuntimeError("filesystem-backed execute_attempt is disabled in Firestore-only mode")
     _text(actor, "actor")
     _text(attempt_id, "attempt_id")
     if not isinstance(contract, dict) or not contract:
@@ -147,9 +150,19 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id, *, p
                        f"provider_operation_id={receipt.provider_operation_id}; observation_digest={digest}")
 
 
-def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: DurableRuntime, *,
-                   provider_keyring=None, now=None):
-    """Resume the exact currently-dispatched attempt without allocating a new attempt ID."""
+def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: DurableRuntime | None = None, *,
+                   provider_keyring=None, now=None, effect_store=None, provider_public_keyring=None):
+    """Resume the exact attempt; Firestore-only mode never reads filesystem effect state."""
+    firestore_only = os.environ.get("AIOS_REQUIRE_FIRESTORE_EFFECT_STORE", "").lower() == "true"
+    if firestore_only and effect_store is None:
+        raise RuntimeError("Firestore-only mode requires an injected FirestoreEffectStore; no filesystem fallback")
+    if effect_store is not None:
+        from .firestore_execution import resume_firestore_effect
+        attempt_id = effect.get("attempt_id") if isinstance(effect, dict) else None
+        return resume_firestore_effect(
+            aios_dir, effect_store, effect.get("effect_id"), attempt_id, actor, adapter,
+            provider_keyring=provider_keyring, provider_public_keyring=provider_public_keyring, now=now
+        )
     _text(actor, "actor")
     if not isinstance(contract, dict) or not contract:
         raise ValueError("contract must be a non-empty dict")
@@ -218,6 +231,8 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
     The external runtime may schedule/persist the attempt, but AIOS remains the
     authority boundary for authorization, attempt bounds and evidence acceptance.
     """
+    if os.environ.get("AIOS_REQUIRE_FIRESTORE_EFFECT_STORE", "").lower() == "true":
+        raise RuntimeError("retry is disabled in Firestore-only mode until asymmetric retry issuer integration")
     _text(actor, "actor")
     _text(attempt_id, "attempt_id")
     if not isinstance(effect, dict) or not effect:
@@ -302,8 +317,21 @@ def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapt
 
 
 def execute(aios_dir, contract_id, permit_id, logical_operation_id, actor, adapter,
-            durable_runtime: DurableRuntime | None = None, *, provider_keyring=None, now=None, lineage=None):
-    """Authorize/create/dispatch the first attempt, then delegate execution."""
+            durable_runtime: DurableRuntime | None = None, *, provider_keyring=None, now=None, lineage=None,
+            effect_store=None, provider_public_keyring=None):
+    """Authorize/create/dispatch; Firestore-only mode forbids filesystem fallback."""
+    firestore_only = os.environ.get("AIOS_REQUIRE_FIRESTORE_EFFECT_STORE", "").lower() == "true"
+    if firestore_only and effect_store is None:
+        raise RuntimeError("Firestore-only mode requires an injected FirestoreEffectStore; no filesystem fallback")
+    if effect_store is not None:
+        if durable_runtime is not None:
+            raise ValueError("do not combine FirestoreEffectStore with the legacy DurableRuntime adapter")
+        from .firestore_execution import execute_firestore_effect
+        return execute_firestore_effect(
+            aios_dir, effect_store, contract_id, permit_id, logical_operation_id, actor, adapter,
+            provider_keyring=provider_keyring, provider_public_keyring=provider_public_keyring,
+            now=now, lineage=lineage
+        )
     _text(logical_operation_id, "logical_operation_id")
     _text(actor, "actor")
     if not hasattr(adapter, "name"):

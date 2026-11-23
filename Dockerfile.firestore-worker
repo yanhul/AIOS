@@ -1,0 +1,18 @@
+# Minimal non-root OCI image for the AIOS Firestore worker.
+# Build is separate from Cloud Run deployment; no resources are provisioned.
+# Docker Hub manifest-list digest for python:3.12.8-slim-bookworm.
+FROM python:3.12.8-slim-bookworm@sha256:2199a62885a12290dc9c5be3ca0681d367576ab7bf037da120e564723292a2f0
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    AIOS_REQUIRE_FIRESTORE_EFFECT_STORE=true
+WORKDIR /app
+RUN groupadd --system aios && useradd --system --gid aios --home-dir /nonexistent aios
+COPY requirements-firestore.txt /app/requirements-firestore.txt
+RUN python -m pip install --no-cache-dir --requirement /app/requirements-firestore.txt
+COPY core /app/core
+COPY aios_worker_adapters /app/aios_worker_adapters
+COPY worker_wsgi.py /app/worker_wsgi.py
+USER aios:aios
+EXPOSE 8080
+CMD ["gunicorn", "--bind=0.0.0.0:8080", "--workers=1", "--threads=8", "--timeout=60", "worker_wsgi:app"]
