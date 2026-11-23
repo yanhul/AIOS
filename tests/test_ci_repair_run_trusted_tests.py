@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
-import os
+import shutil
 import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 from scripts import ci_repair_run_trusted_tests as trusted_tests
 
@@ -52,7 +55,11 @@ def test_trusted_test_environment_is_allowlisted_and_uses_private_home(tmp_path)
     assert env["GIT_CONFIG_NOSYSTEM"] == "1"
 
 
-def test_trusted_tests_run_from_git_archive_without_candidate_git_metadata(tmp_path, monkeypatch):
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux") or not all(shutil.which(x) for x in ("sudo", "unshare", "setpriv")),
+    reason="OS namespace sandbox requires Linux sudo, unshare and setpriv",
+)
+def test_trusted_tests_run_in_network_and_pid_sandbox_without_git_metadata(tmp_path, monkeypatch):
     base = init_repo(tmp_path)
     proposal = {
         "schema": 2, "run_id": 17, "repository": "yanhul/AIOS",
@@ -69,7 +76,9 @@ def test_trusted_tests_run_from_git_archive_without_candidate_git_metadata(tmp_p
     monkeypatch.setenv("AIOS_REPAIR_SHA", base)
     monkeypatch.setenv("GITHUB_REPOSITORY", "yanhul/AIOS")
     monkeypatch.setenv("AIOS_REPAIR_PROPOSALS", str(proposal_path))
-    monkeypatch.delenv("AIOS_REPAIR_REQUIRE_OS_SANDBOX", raising=False)
+    monkeypatch.setenv("AIOS_REPAIR_REQUIRE_OS_SANDBOX", "1")
+    monkeypatch.setenv("GITHUB_TOKEN", "must-not-reach-child")
+    monkeypatch.setenv("ACTIONS_RUNTIME_TOKEN", "must-not-reach-child")
     monkeypatch.chdir(tmp_path)
 
     assert trusted_tests.main() == 0
@@ -78,5 +87,9 @@ def test_trusted_tests_run_from_git_archive_without_candidate_git_metadata(tmp_p
     assert result["results"][0]["returncode"] == 0
     assert result["isolation"]["source_checkout_git_metadata"] == "NOT_EXPOSED"
     assert result["isolation"]["environment"] == "ALLOWLIST_ONLY"
+    assert result["isolation"]["os_sandbox"] == "REQUIRED_AND_USED"
+    assert result["isolation"]["network"] == "DENIED"
+    assert result["isolation"]["pid_namespace"] == "ISOLATED"
+    assert result["isolation"]["uid"] == 65534
     assert (tmp_path / "module.py").read_text(encoding="utf-8") == "VALUE = 1\n"
     assert not (tmp_path / "research-artifact.json").exists()
