@@ -32,3 +32,9 @@ def test_file_authority_store_rejects_empty_batch(tmp_path):
     store = FileAuthorityStore(str(tmp_path))
     with pytest.raises(ValueError, match="non-empty"):
         store.commit([])
+
+
+def test_file_authority_store_accepts_pathlib_root(tmp_path):
+    store = FileAuthorityStore(tmp_path)
+    store.commit([("events/path-root.json", {"ok": True})])
+    assert (tmp_path / "events/path-root.json").exists()
