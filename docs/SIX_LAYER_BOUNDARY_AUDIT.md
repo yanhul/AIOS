@@ -109,8 +109,8 @@ This addendum separates work that can be established from the inspected default 
 - **FACT on `main`:** the original `resume_attempt()` called `execute_attempt()` for an already-dispatched attempt.
 - **Candidate implementation:** PR #167 changes resume to call read-only `adapter.reconcile()`; missing/ambiguous provider results remain `UNKNOWN`; resume does not call `adapter.execute()`.
 - **Regression correction:** the existing durable-runtime bridge fixture previously expected resume success from an adapter with no reconciliation method. That expectation contradicted the no-replay invariant. The fixture now supplies an explicit read-only reconciliation method.
-- **Verification:** the earlier PR #167 CI run `45125149786` had 849 passed, 16 skipped, 1 failed. The sole failure was the stale expectation in `tests/test_m6_durable_runtime_bridge.py::test_resume_reuses_exact_dispatched_attempt_after_ambiguous_submission`. The fixture correction is commit `ee635c7cd8c2616c4bc5e6fd29bfe46de4b0cf0c`; its CI run `45129143045` was in progress when this addendum was written.
-- **Status:** implementation candidate present; full CI verification pending; PR #167 remains unmerged. This does not establish provider-side exactly-once behavior.
+- **Verification:** the earlier PR #167 CI run `45125149786` had 849 passed, 16 skipped, 1 failed. The sole failure was the stale expectation in `tests/test_m6_durable_runtime_bridge.py::test_resume_reuses_exact_dispatched_attempt_after_ambiguous_submission`. The fixture correction is commit `ee635c7cd8c2616c4bc5e6fd29bfe46de4b0cf0c`; CI run `45129143045` completed with all 3 jobs PASS and the full suite `850 passed, 16 skipped, 1 warning`.
+- **Status:** code + regression suite PASS on PR #167 head; PR #167 remains unmerged. This does not establish provider-side exactly-once behavior.
 
 ### P1 — L5 persistence/source-of-truth inventory
 
