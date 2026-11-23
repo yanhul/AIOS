@@ -28,19 +28,26 @@ jobs:
           gradle-version: "8.10"
       - name: Install test dependencies
         run: python -m pip install --upgrade pytest PyYAML
+      - name: Checkout pinned harness-gateway protocol v4
+        run: |
+          git clone --depth 1 https://github.com/yanhul/harness-gateway.git "$RUNNER_TEMP/harness-gateway"
+          git -C "$RUNNER_TEMP/harness-gateway" fetch --depth 1 origin bdd8eb4872ecf2b6799754d7e2fe2bcbd93304e3
+          git -C "$RUNNER_TEMP/harness-gateway" checkout --detach bdd8eb4872ecf2b6799754d7e2fe2bcbd93304e3
       - name: Run test suite
+        env:
+          HARNESS_GATEWAY_CLI: ${{ runner.temp }}/harness-gateway/gateway_cli.py
         run: python -m pytest -q
       - name: Checkout registered workloads
         run: |
           git clone --depth 1 https://github.com/yanhul/try.git "$RUNNER_TEMP/try"
-          git -C "$RUNNER_TEMP/try" fetch --depth 1 origin 258377fd1aa6796bae91b81e7a77edc6d966436b
-          git -C "$RUNNER_TEMP/try" checkout --detach 258377fd1aa6796bae91b81e7a77edc6d966436b
+          git -C "$RUNNER_TEMP/try" fetch --depth 1 origin bdd6a7e6e26f2083036a4e4b89cb229b94140969
+          git -C "$RUNNER_TEMP/try" checkout --detach bdd6a7e6e26f2083036a4e4b89cb229b94140969
           git clone --depth 1 https://github.com/yanhul/android-ai-assistant.git "$RUNNER_TEMP/android-ai-assistant"
           git -C "$RUNNER_TEMP/android-ai-assistant" fetch --depth 1 origin b3efa8153cb0a595c491829cc9fd9ce200bd170a
           git -C "$RUNNER_TEMP/android-ai-assistant" checkout --detach b3efa8153cb0a595c491829cc9fd9ce200bd170a
           git clone --depth 1 https://github.com/yanhul/RX50.git "$RUNNER_TEMP/RX50"
-          git -C "$RUNNER_TEMP/RX50" fetch --depth 1 origin 1f1abf3df019b2c40a89218f726620e6e3a96e25
-          git -C "$RUNNER_TEMP/RX50" checkout --detach 1f1abf3df019b2c40a89218f726620e6e3a96e25
+          git -C "$RUNNER_TEMP/RX50" fetch --depth 1 origin 08b19376e82e6f111f742bf6f3911c2abcc3c82a
+          git -C "$RUNNER_TEMP/RX50" checkout --detach 08b19376e82e6f111f742bf6f3911c2abcc3c82a
       - name: Run live registered-workload conformance
         run: |
           python scripts/run_3_workload_conformance.py \
@@ -56,7 +63,9 @@ jobs:
         env:
           MINIMIND_ROOT: ${{ runner.temp }}/minimind
           MINIMIND_EXPECTED_REV: 6fc918beb68a0d8c40452338df6319fe168014ba
-        run: python scripts/check_minimind_capability.py --root "$RUNNER_TEMP/minimind"
+        run: |
+          mkdir -p artifacts/capabilities
+          python scripts/check_minimind_capability.py --root "$RUNNER_TEMP/minimind" | tee artifacts/capabilities/minimind-capability.json
       - name: Require product E2E conformance
         run: |
           python - <<'PY'
@@ -68,9 +77,17 @@ jobs:
               "yanhul__android-ai-assistant.json",
               "yanhul__RX50.json",
           }
-          files = {p.name for p in root.glob("*.json")}
-          assert files == expected, (files, expected)
-          results = {p.name: json.loads(p.read_text()) for p in root.glob("*.json")}
+          receipt_files = {p.name for p in root.glob("*.json") if not p.name.endswith(".result.json")}
+          result_files = {p.name for p in root.glob("*.result.json")}
+          expected_result_files = {name + ".result.json" for name in expected}
+          assert receipt_files == expected, (receipt_files, expected)
+          assert result_files == expected_result_files, (result_files, expected_result_files)
+          results = {name: json.loads((root / name).read_text()) for name in sorted(expected)}
+          for name, receipt in results.items():
+              result_name = receipt.get("result_ref")
+              assert result_name == name + ".result.json", (name, result_name)
+              result = json.loads((root / result_name).read_text())
+              assert result.get("status") == receipt.get("status"), name
           allowed = {"PASS", "BLOCKED", "INCONCLUSIVE", "EDGE_FOUND", "NO_EDGE_FOUND", "REJECT", "PROMOTE"}
           invalid = {name: obj.get("status") for name, obj in results.items() if obj.get("status") not in allowed}
           assert not invalid, f"ungoverned product result: {invalid}"
@@ -82,3 +99,12 @@ jobs:
           summary = {name: obj["status"] for name, obj in sorted(results.items())}
           print(json.dumps({"PRODUCT_E2E_CONFORMANCE_PASS": summary}, sort_keys=True))
           PY
+      - name: Upload conformance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aios-conformance-${{ github.run_id }}
+          path: artifacts/
+
+          if-no-files-found: error
+          retention-days: 14

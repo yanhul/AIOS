@@ -18,9 +18,9 @@ CAPABILITY = "minimind.model@1"
 OWNER = "jingyaogong/minimind"
 REQUIRED_PATHS = (
     "model",
+    "model/model_minimind.py",
     "dataset",
-    "dataset.py",
-    "model.py",
+    "dataset/lm_dataset.py",
     "trainer",
     "trainer/train_agent.py",
     "trainer/rollout_engine.py",

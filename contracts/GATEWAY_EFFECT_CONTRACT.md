@@ -1,4 +1,4 @@
-# AIOS ↔ Harness Gateway Effect Contract v1
+# AIOS ↔ Harness Gateway Effect Contract v2 (Gateway protocol v4)
 
 This document defines the cross-repository adapter boundary. It does not create a second authority plane.
 
@@ -33,7 +33,7 @@ The adapter MUST NOT mint permits, capability versions, evidence, lineage, or au
 
 ## Attempt-fence semantics
 
-`attempt_fence` is a gateway-issued, per-effect monotonic fence attached to exactly one `attempt_id`. A receipt MUST carry the exact fence issued for that attempt. AIOS MUST reject a receipt when the fence is missing, non-integer, negative, or different from the fence bound to the dispatched effect. The adapter does not allocate or advance the fence.
+`attempt_fence` is a gateway-issued, per-effect monotonic fence attached to exactly one `attempt_id`. A receipt MUST carry the exact fence issued for that attempt. AIOS MUST reject a receipt when the fence is missing, non-integer, negative, or different from the fence bound to the dispatched effect. The adapter does not allocate or advance the fence. Gateway protocol v4 persists attempt/receipt history, requires the exact gateway-issued attempt_fence on each receipt, and rejects replayed BEGIN_EFFECT from authorizing a second execution.
 
 ## Target semantics
 
@@ -45,4 +45,29 @@ A receipt MUST bind at least `effect_id`, `attempt_id`, `attempt_fence`, `target
 
 ## Canonical flow
 
-`AIOS Workload Contract → Capability Resolve → AIOS Authority/Permit → Gateway Effect Adapter → Human/Boundary Authorization → Attempt(+attempt_fence,target_sha) → Worker → Receipt → AIOS Reconcile`
+`AIOS Workload Contract → Capability Resolve → AIOS Authority/Permit → Gateway Effect Adapter (protocol v4) → Human/Boundary Authorization → Durable Gateway Attempt(+attempt_fence,target_sha) → Worker → Durable Receipt → AIOS Reconcile`
+
+
+## Protocol v4 transport and recovery
+
+AIOS uses the Gateway JSONL CLI as a one-request process boundary. Every command may start a fresh process; the Gateway state file is the durable source for ticket, attempt, receipt, and hash-chained event history. A transport timeout or malformed response is an unresolved outcome, not permission to repeat the provider operation. A repeated `BEGIN_EFFECT` returns the original attempt with `replayed=true` and `execute_allowed=false`.
+
+The AIOS adapter accepts receipt statuses explicitly and does not infer `COMPLETED` from a timeout, missing receipt, process restart, or `UNKNOWN`. The pinned cross-repository CI test creates and authorizes an isolated ticket, dispatches once, restarts the CLI between operations, records `UNKNOWN`, and verifies one durable attempt and one unresolved receipt.
+
+
+## AIOS dispatch and receipt reconciliation
+
+The Gateway-issued attempt identifier is stored separately as `gateway_attempt_id`; AIOS retains its own canonical `effect_id:attempt:n` identifier. Both identifiers, the Gateway-issued positive `attempt_fence`, target SHA, evidence ref, lineage ref, and idempotency key are persisted on the AIOS effect before a provider may execute.
+
+A replayed Gateway `BEGIN_EFFECT` is never translated into a fresh AIOS dispatch. If the Gateway attempt was allocated but AIOS persistence did not complete, the caller receives a blocked/replay result and must reconcile; it must not execute the provider.
+
+Gateway receipts are persisted before AIOS reconciliation:
+- `UNKNOWN` moves a dispatched AIOS effect to `UNKNOWN`.
+- `OBSERVED` remains non-terminal; AIOS does not promote it.
+- `COMPLETED` or `FAILED` without a valid AIOS evidence observation remain pending reconciliation. Gateway status alone is not proof of AIOS completion.
+- Terminal AIOS observation requires a verified evidence record bound to the same AIOS effect, Gateway attempt, attempt fence, target SHA, and provider.
+
+This adapter does not create retry authority. Retry must remain a separately authorized and reconciled operation; the Gateway replay fence alone is not evidence that an external provider operation is safe to repeat.
+
+
+Gateway-backed AIOS effects in UNKNOWN are not eligible for the local `retry_dispatch` path. Gateway protocol v4 `RETRY` is verification-only and does not allocate a new attempt; AIOS therefore rejects a second attempt unless a future Gateway protocol explicitly issues and fences it. This intentionally blocks retries rather than bypassing Gateway authority.

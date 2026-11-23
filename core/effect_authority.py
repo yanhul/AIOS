@@ -106,7 +106,7 @@ def transition(aios_dir, effect_id, target, actor, **fields):
     if target not in STATES:
         raise ValueError("invalid effect state")
     allowed_fields = {
-        "DISPATCHED": {"attempt", "attempt_id", "provider", "target_sha", "evidence_ref", "lineage_ref", "idempotency_key", "attempt_fence"},
+        "DISPATCHED": {"attempt", "attempt_id", "provider", "target_sha", "evidence_ref", "lineage_ref", "idempotency_key", "attempt_fence", "gateway_attempt_id"},
         "UNKNOWN": {"unknown_reason"},
         "OBSERVED_SUCCESS": {"provider_observation"},
         "OBSERVED_FAILURE": {"provider_observation"},
@@ -140,6 +140,8 @@ def transition(aios_dir, effect_id, target, actor, **fields):
                           ("lineage_ref", fields["lineage_ref"]), ("idempotency_key", fields["idempotency_key"]))
         if not isinstance(fields["attempt_fence"], int) or isinstance(fields["attempt_fence"], bool) or fields["attempt_fence"] < 0:
             raise ValueError("attempt_fence must be a non-negative integer")
+        if "gateway_attempt_id" in fields:
+            _validate_strings(("gateway_attempt_id", fields["gateway_attempt_id"]))
 
     updated = dict(current)
     updated.update(fields)
@@ -167,7 +169,7 @@ def _validate_gateway_refs(evidence_ref, lineage_ref, idempotency_key):
     return evidence_ref.strip(), lineage_ref.strip(), idempotency_key.strip()
 
 
-def dispatch(aios_dir, effect_id, actor, attempt_id, provider, *, target_sha, evidence_ref, lineage_ref, idempotency_key, attempt_fence):
+def dispatch(aios_dir, effect_id, actor, attempt_id, provider, *, target_sha, evidence_ref, lineage_ref, idempotency_key, attempt_fence, gateway_attempt_id=None):
     _validate_strings(("attempt_id", attempt_id), ("provider", provider))
     target_sha, attempt_fence = _validate_binding(target_sha, attempt_fence)
     evidence_ref, lineage_ref, idempotency_key = _validate_gateway_refs(evidence_ref, lineage_ref, idempotency_key)
@@ -184,11 +186,15 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider, *, target_sha, ev
         raise ValueError("attempt_id does not match initial effect attempt")
     if int(current.get("max_attempts", 0)) < 1:
         raise TransitionError("effect has no authorized execution attempts")
-    return transition(aios_dir, effect_id, "DISPATCHED", actor,
-                      attempt=1, attempt_id=attempt_id, provider=provider,
-                      target_sha=target_sha, evidence_ref=evidence_ref,
-                      lineage_ref=lineage_ref, idempotency_key=idempotency_key,
-                      attempt_fence=attempt_fence)
+    fields = {
+        "attempt": 1, "attempt_id": attempt_id, "provider": provider,
+        "target_sha": target_sha, "evidence_ref": evidence_ref,
+        "lineage_ref": lineage_ref, "idempotency_key": idempotency_key,
+        "attempt_fence": attempt_fence,
+    }
+    if gateway_attempt_id is not None:
+        fields["gateway_attempt_id"] = _validate_strings(("gateway_attempt_id", gateway_attempt_id)) or gateway_attempt_id
+    return transition(aios_dir, effect_id, "DISPATCHED", actor, **fields)
 
 
 def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, *, target_sha, attempt_fence):
@@ -208,6 +214,10 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, *,
         raise TransitionError("retry actor does not match effect owner")
     if current.get("state") != "UNKNOWN":
         raise TransitionError(f"retry requires UNKNOWN effect, got {current.get('state')}")
+    if current.get("gateway_attempt_id") is not None:
+        raise TransitionError(
+            "Gateway-backed retry is blocked: protocol v4 RETRY is verification-only and does not issue a new attempt"
+        )
     for field in ("evidence_ref", "lineage_ref", "idempotency_key"):
         if field not in current or not isinstance(current[field], str) or not current[field].strip():
             raise TransitionError(f"effect {field} must be bound before retry")
@@ -278,6 +288,9 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
     expected_fence = current.get("attempt_fence")
     if provider_observation["attempt_fence"] != expected_fence:
         raise ValueError("observation attempt_fence binding mismatch")
+    if current.get("gateway_attempt_id") is not None:
+        if provider_observation.get("gateway_attempt_id") != current["gateway_attempt_id"]:
+            raise ValueError("observation Gateway attempt binding mismatch")
     if not isinstance(evidence, dict) or not verify_evidence(evidence):
         raise ValueError("observation requires a valid AIOS evidence record")
     if evidence.get("evidence_id") != current.get("evidence_ref"):
