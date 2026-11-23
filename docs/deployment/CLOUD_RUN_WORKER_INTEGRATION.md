@@ -29,8 +29,9 @@ The Cloud Run service must set these values explicitly:
 - AIOS_REQUIRE_EXECUTION_LINEAGE=true
 - AIOS_FIRESTORE_PROJECT_ID
 - AIOS_AUTHORITY_TRUST_ANCHOR (JSON Ed25519 public-key trust anchor)
-- AIOS_AUTHORITY_ATTESTATION_SECRET (injected from Secret Manager; never baked
-  into the image)
+- AIOS_AUTHORITY_ATTESTATION_SECRET_VERSION (explicit numeric Secret Manager
+  resource, e.g. projects/PROJECT/secrets/NAME/versions/7; aliases such as
+  latest and raw environment secrets are rejected)
 - AIOS_RECONCILIATION_ADAPTER_FACTORY
   (trusted module:callable under aios_worker_adapters.*)
 - AIOS_CLOUD_TASKS_PROJECT
@@ -46,7 +47,10 @@ The Cloud Run service must set these values explicitly:
 
 The worker runtime service account needs Firestore datastore access, Cloud Tasks
 enqueue permission on the existing queue, and Secret Manager access only to the
-existing authority-attestation secret. Cloud Tasks and Scheduler use separate
+existing authority-attestation secret. At startup, AIOS reads the explicit numeric
+AIOS_AUTHORITY_ATTESTATION_SECRET_VERSION through ADC; it does not accept the HMAC
+secret as a raw environment value. Secret version selection/rotation remains an
+operator-controlled deployment input. Cloud Tasks and Scheduler use separate
 dedicated invoker service accounts. The Terraform module adds service-level
 Cloud Run invoker members and the required token-minting/actAs grants.
 
