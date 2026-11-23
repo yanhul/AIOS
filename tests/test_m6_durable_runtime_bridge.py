@@ -41,6 +41,11 @@ class GoodAdapter:
         return signed(ProviderReceipt(self.name, effect["effect_id"], attempt_id,
                                "provider-op", "OBSERVED_SUCCESS", {"status": "ok"}), effect)
 
+    def reconcile(self, *, contract, effect, attempt_id):
+        # Read-only lookup for the already-dispatched attempt; never executes it.
+        return signed(ProviderReceipt(self.name, effect["effect_id"], attempt_id,
+                               "provider-op", "OBSERVED_SUCCESS", {"status": "ok"}), effect)
+
 
 class GoodRuntime:
     name = "durable-test"

@@ -137,7 +137,14 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id, *, p
 
 def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: DurableRuntime, *,
                    provider_keyring=None, now=None):
-    """Resume the exact currently-dispatched attempt without allocating a new attempt ID."""
+    """Reconcile an in-flight attempt without replaying its external side effect.
+
+    A process may have crashed after the provider committed the operation but
+    before AIOS persisted its receipt. Calling adapter.execute here could
+    replay that operation. Resume therefore requires a read-only provider
+    reconcile method for the existing attempt; absent/ambiguous results
+    remain UNKNOWN and must not be retried without explicit retry authority.
+    """
     _text(actor, "actor")
     if not isinstance(contract, dict) or not contract:
         raise ValueError("contract must be a non-empty dict")
@@ -155,9 +162,34 @@ def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: 
     if "external_effect" not in contract.get("allowed_effects", []):
         raise PermissionError("external effect is not authorized by contract")
     _submit_runtime(durable_runtime, "resume", effect, attempt_id, provider_name)
-    return execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id,
-                           provider_keyring=provider_keyring, now=now)
 
+    reconcile = getattr(adapter, "reconcile", None)
+    if not callable(reconcile):
+        return unknown(aios_dir, effect["effect_id"], actor,
+                       "provider reconciliation unavailable; refusing to replay dispatched attempt")
+    try:
+        receipt = reconcile(contract=dict(contract), effect=dict(effect), attempt_id=attempt_id)
+        if receipt is None:
+            return unknown(aios_dir, effect["effect_id"], actor,
+                           "provider reconciliation returned no authoritative result")
+        validate_receipt(receipt, effect, attempt_id, provider_name)
+        provider_observation = {
+            "provider": receipt.provider,
+            "provider_operation_id": receipt.provider_operation_id,
+            "effect_id": receipt.effect_id,
+            "attempt_id": receipt.attempt_id,
+            "observation": receipt.observation,
+        }
+        if receipt.authentication is not None:
+            provider_observation["authentication"] = receipt.authentication
+        return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, provider_observation,
+                       provider_keyring=provider_keyring, now=now)
+    except ProviderAuthenticationError as exc:
+        return unknown(aios_dir, effect["effect_id"], actor,
+                       f"provider reconciliation was non-authoritative ({exc})")
+    except Exception as exc:
+        return unknown(aios_dir, effect["effect_id"], actor,
+                       f"provider reconciliation ambiguous: {type(exc).__name__}: {exc}")
 
 def execute_retry_attempt(aios_dir, contract_id, permit_id, effect, actor, adapter, attempt_id, attempt,
                           durable_runtime: DurableRuntime | None = None, *, retry_keyring=None,
