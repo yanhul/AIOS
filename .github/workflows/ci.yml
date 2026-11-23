@@ -75,9 +75,17 @@ jobs:
               "yanhul__android-ai-assistant.json",
               "yanhul__RX50.json",
           }
-          files = {p.name for p in root.glob("*.json")}
-          assert files == expected, (files, expected)
-          results = {p.name: json.loads(p.read_text()) for p in root.glob("*.json")}
+          receipt_files = {p.name for p in root.glob("*.json") if not p.name.endswith(".result.json")}
+          result_files = {p.name for p in root.glob("*.result.json")}
+          expected_result_files = {name + ".result.json" for name in expected}
+          assert receipt_files == expected, (receipt_files, expected)
+          assert result_files == expected_result_files, (result_files, expected_result_files)
+          results = {p.name: json.loads((root / p.name).read_text()) for p in sorted(expected)}
+          for name, receipt in results.items():
+              result_name = receipt.get("result_ref")
+              assert result_name == name + ".result.json", (name, result_name)
+              result = json.loads((root / result_name).read_text())
+              assert result.get("status") == receipt.get("status"), name
           allowed = {"PASS", "BLOCKED", "INCONCLUSIVE", "EDGE_FOUND", "NO_EDGE_FOUND", "REJECT", "PROMOTE"}
           invalid = {name: obj.get("status") for name, obj in results.items() if obj.get("status") not in allowed}
           assert not invalid, f"ungoverned product result: {invalid}"
