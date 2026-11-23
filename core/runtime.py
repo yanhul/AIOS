@@ -26,6 +26,7 @@ class ProviderReceipt:
     lineage_ref: str
     idempotency_key: str
     attempt_fence: int
+    gateway_attempt_id: str | None = None
 
 
 class ProviderAdapter(Protocol):
@@ -95,6 +96,9 @@ def validate_receipt(receipt, effect, attempt_id, provider_name):
         raise ValueError("receipt target_sha binding mismatch")
     if receipt.attempt_fence != expected_fence:
         raise ValueError("receipt attempt_fence binding mismatch")
+    if effect.get("gateway_attempt_id") is not None:
+        if receipt.gateway_attempt_id != effect["gateway_attempt_id"]:
+            raise ValueError("receipt Gateway attempt binding mismatch")
     for field in ("evidence_ref", "lineage_ref", "idempotency_key"):
         if field not in effect:
             raise ValueError(f"effect {field} is required before execution")
@@ -157,6 +161,7 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id):
         "lineage_ref": receipt.lineage_ref,
         "idempotency_key": receipt.idempotency_key,
         "attempt_fence": receipt.attempt_fence,
+        "gateway_attempt_id": receipt.gateway_attempt_id,
         "observation": receipt.observation,
         "evidence": receipt.observation["evidence"],
     }
