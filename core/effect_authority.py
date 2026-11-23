@@ -106,7 +106,7 @@ def transition(aios_dir, effect_id, target, actor, **fields):
     if target not in STATES:
         raise ValueError("invalid effect state")
     allowed_fields = {
-        "DISPATCHED": {"attempt", "attempt_id", "provider", "target_sha", "evidence_ref", "lineage_ref", "idempotency_key", "attempt_fence"},
+        "DISPATCHED": {"attempt", "attempt_id", "provider", "target_sha", "evidence_ref", "lineage_ref", "idempotency_key", "attempt_fence", "gateway_attempt_id"},
         "UNKNOWN": {"unknown_reason"},
         "OBSERVED_SUCCESS": {"provider_observation"},
         "OBSERVED_FAILURE": {"provider_observation"},
@@ -140,6 +140,8 @@ def transition(aios_dir, effect_id, target, actor, **fields):
                           ("lineage_ref", fields["lineage_ref"]), ("idempotency_key", fields["idempotency_key"]))
         if not isinstance(fields["attempt_fence"], int) or isinstance(fields["attempt_fence"], bool) or fields["attempt_fence"] < 0:
             raise ValueError("attempt_fence must be a non-negative integer")
+        if "gateway_attempt_id" in fields:
+            _validate_strings(("gateway_attempt_id", fields["gateway_attempt_id"]))
 
     updated = dict(current)
     updated.update(fields)
@@ -167,7 +169,7 @@ def _validate_gateway_refs(evidence_ref, lineage_ref, idempotency_key):
     return evidence_ref.strip(), lineage_ref.strip(), idempotency_key.strip()
 
 
-def dispatch(aios_dir, effect_id, actor, attempt_id, provider, *, target_sha, evidence_ref, lineage_ref, idempotency_key, attempt_fence):
+def dispatch(aios_dir, effect_id, actor, attempt_id, provider, *, target_sha, evidence_ref, lineage_ref, idempotency_key, attempt_fence, gateway_attempt_id=None):
     _validate_strings(("attempt_id", attempt_id), ("provider", provider))
     target_sha, attempt_fence = _validate_binding(target_sha, attempt_fence)
     evidence_ref, lineage_ref, idempotency_key = _validate_gateway_refs(evidence_ref, lineage_ref, idempotency_key)
@@ -184,11 +186,15 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider, *, target_sha, ev
         raise ValueError("attempt_id does not match initial effect attempt")
     if int(current.get("max_attempts", 0)) < 1:
         raise TransitionError("effect has no authorized execution attempts")
-    return transition(aios_dir, effect_id, "DISPATCHED", actor,
-                      attempt=1, attempt_id=attempt_id, provider=provider,
-                      target_sha=target_sha, evidence_ref=evidence_ref,
-                      lineage_ref=lineage_ref, idempotency_key=idempotency_key,
-                      attempt_fence=attempt_fence)
+    fields = {
+        "attempt": 1, "attempt_id": attempt_id, "provider": provider,
+        "target_sha": target_sha, "evidence_ref": evidence_ref,
+        "lineage_ref": lineage_ref, "idempotency_key": idempotency_key,
+        "attempt_fence": attempt_fence,
+    }
+    if gateway_attempt_id is not None:
+        fields["gateway_attempt_id"] = _validate_strings(("gateway_attempt_id", gateway_attempt_id)) or gateway_attempt_id
+    return transition(aios_dir, effect_id, "DISPATCHED", actor, **fields)
 
 
 def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, *, target_sha, attempt_fence):
