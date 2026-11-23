@@ -284,6 +284,9 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation):
     expected_fence = current.get("attempt_fence")
     if provider_observation["attempt_fence"] != expected_fence:
         raise ValueError("observation attempt_fence binding mismatch")
+    if current.get("gateway_attempt_id") is not None:
+        if provider_observation.get("gateway_attempt_id") != current["gateway_attempt_id"]:
+            raise ValueError("observation Gateway attempt binding mismatch")
     if not isinstance(evidence, dict) or not verify_evidence(evidence):
         raise ValueError("observation requires a valid AIOS evidence record")
     if evidence.get("evidence_id") != current.get("evidence_ref"):
