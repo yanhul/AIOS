@@ -138,8 +138,12 @@ def test_test_timeout_propagates_and_never_becomes_pass(tmp_path):
         allowed_test_commands=(command,), timeout_seconds=1,
     )
 
-    with pytest.raises(subprocess.TimeoutExpired):
-        worker.test()
+    result = worker.test()
+
+    assert result.action == "TEST"
+    assert result.status == "FAIL"
+    assert result.details["failure_kind"] == "TIMEOUT"
+    assert result.details["results"][0]["returncode"] == 124
 
 def test_empty_test_allowlist_fails_closed(tmp_path):
     init_repo(tmp_path)
