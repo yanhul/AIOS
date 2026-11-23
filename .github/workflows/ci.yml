@@ -47,6 +47,15 @@ jobs:
         run: python scripts/architecture_boundary_check.py --root "$GITHUB_WORKSPACE"
       - name: Run test suite
         run: python -m pytest -q
+      - name: Assert tests leave research artifacts clean
+        run: |
+          changes="$(git status --porcelain --untracked-files=all -- research/artifacts)"
+          if [ -n "$changes" ]; then
+            printf '%s\n' "$changes"
+            echo "FAIL: tests modified or created persistent research artifacts"
+            exit 1
+          fi
+          echo "PASS: research/artifacts remained clean after the full test suite"
 
   minimind-key-isolation:
     name: minimind-key-isolation
