@@ -9,6 +9,7 @@ journaled mutation primitive.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+import os
 from typing import Any, Protocol
 
 from .mutation import commit_batch as _commit_batch
@@ -34,10 +35,11 @@ class AuthorityStore(Protocol):
 class FileAuthorityStore:
     """Single-tree file-backed L5 adapter using AIOS's journaled commit engine."""
 
-    def __init__(self, aios_dir: str):
-        if not isinstance(aios_dir, str) or not aios_dir.strip():
+    def __init__(self, aios_dir: str | os.PathLike[str]):
+        path = os.fspath(aios_dir)
+        if not isinstance(path, str) or not path.strip():
             raise ValueError("aios_dir must be a non-empty path")
-        self.aios_dir = aios_dir
+        self.aios_dir = path
 
     def commit(self, payloads: Sequence[Payload], *,
                precondition: Precondition | None = None) -> list[str]:
