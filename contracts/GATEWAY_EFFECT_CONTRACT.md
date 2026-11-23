@@ -68,3 +68,6 @@ Gateway receipts are persisted before AIOS reconciliation:
 - Terminal AIOS observation requires a verified evidence record bound to the same AIOS effect, Gateway attempt, attempt fence, target SHA, and provider.
 
 This adapter does not create retry authority. Retry must remain a separately authorized and reconciled operation; the Gateway replay fence alone is not evidence that an external provider operation is safe to repeat.
+
+
+Gateway-backed AIOS effects in UNKNOWN are not eligible for the local `retry_dispatch` path. Gateway protocol v4 `RETRY` is verification-only and does not allocate a new attempt; AIOS therefore rejects a second attempt unless a future Gateway protocol explicitly issues and fences it. This intentionally blocks retries rather than bypassing Gateway authority.
