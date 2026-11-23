@@ -9,6 +9,7 @@ from core.contract import contract_identity, issue_permit
 from core.effect_authority import create_effect, dispatch, retry_dispatch, unknown
 from core.gateway_effect_adapter import (
     GatewayTransportError, begin_and_dispatch_aios_effect, build_gateway_effect_contract,
+    record_gateway_receipt,
 )
 from core.policy_registry import persist_policy
 
@@ -326,6 +327,20 @@ def test_real_gateway_cli_to_aios_effect_mapping_survives_replay(tmp_path, monke
     assert result["effect"]["gateway_attempt_id"] != result["effect"]["attempt_id"]
     assert result["effect"]["attempt_fence"] >= 1
 
+    receipt = {
+        "ticket_id": "T-AIOS-BRIDGE",
+        "attempt_id": result["gateway_attempt_id"],
+        "attempt_fence": result["attempt_fence"],
+        "target_sha": "sha256:target", "effect_id": effect["effect_id"],
+        "status": "UNKNOWN", "evidence_ref": "EV-1", "lineage_ref": "LIN-1",
+    }
+    reconciled = record_gateway_receipt(
+        transport, ticket="T-AIOS-BRIDGE", aios_dir=str(tmp_path),
+        effect_id=effect["effect_id"], actor="aios", receipt=receipt,
+    )
+    assert reconciled["reconciliation"] == "UNKNOWN_RECORDED"
+    assert reconciled["aios_effect"]["state"] == "UNKNOWN"
+
     # Simulate a caller restart with its stale PLANNED snapshot. Gateway's
     # durable replay fence must refuse a second execution before AIOS mutation.
     with pytest.raises(GatewayTransportError, match="replayed"):
@@ -336,6 +351,61 @@ def test_real_gateway_cli_to_aios_effect_mapping_survives_replay(tmp_path, monke
             lineage_ref="LIN-1", idempotency_key="idem-1",
         )
     saved = json.loads((tmp_path / "effects" / (effect["effect_id"] + ".json")).read_text())
-    assert saved["state"] == "DISPATCHED"
+    assert saved["state"] == "UNKNOWN"
     assert saved["attempt"] == 1
     assert saved["gateway_attempt_id"] == result["gateway_attempt_id"]
+
+
+def test_gateway_unknown_receipt_is_persisted_then_reconciled_to_aios_unknown(tmp_path):
+    contract, permit, attestation, effect = _authority(tmp_path)
+    from core.effect_authority import dispatch
+    dispatched = dispatch(
+        str(tmp_path), effect["effect_id"], "aios", effect["effect_id"] + ":attempt:1",
+        "try.research", target_sha="sha256:target", evidence_ref="EV-1",
+        lineage_ref="LIN-1", idempotency_key="idem-1", attempt_fence=7,
+        gateway_attempt_id="TICKET-UNKNOWN:1",
+    )
+    class Transport:
+        def __init__(self): self.saved = None
+        def record_receipt(self, *, ticket, receipt):
+            self.saved = dict(receipt)
+            return {"ticket_id": ticket, "receipt_history": [self.saved]}
+    transport = Transport()
+    receipt = {
+        "ticket_id": "TICKET-UNKNOWN", "attempt_id": "TICKET-UNKNOWN:1",
+        "attempt_fence": 7, "target_sha": "sha256:target",
+        "effect_id": effect["effect_id"], "status": "UNKNOWN",
+        "evidence_ref": "EV-1", "lineage_ref": "LIN-1",
+    }
+    result = record_gateway_receipt(
+        transport, ticket="TICKET-UNKNOWN", aios_dir=str(tmp_path),
+        effect_id=effect["effect_id"], actor="aios", receipt=receipt,
+    )
+    assert transport.saved == receipt
+    assert result["reconciliation"] == "UNKNOWN_RECORDED"
+    assert result["aios_effect"]["state"] == "UNKNOWN"
+
+
+def test_terminal_gateway_receipt_without_aios_evidence_stays_unresolved(tmp_path):
+    contract, permit, attestation, effect = _authority(tmp_path)
+    from core.effect_authority import dispatch
+    dispatched = dispatch(
+        str(tmp_path), effect["effect_id"], "aios", effect["effect_id"] + ":attempt:1",
+        "try.research", target_sha="sha256:target", evidence_ref="EV-1",
+        lineage_ref="LIN-1", idempotency_key="idem-1", attempt_fence=7,
+        gateway_attempt_id="TICKET-TERMINAL:1",
+    )
+    class Transport:
+        def record_receipt(self, *, ticket, receipt): return {"ticket_id": ticket, "saved": True}
+    receipt = {
+        "ticket_id": "TICKET-TERMINAL", "attempt_id": "TICKET-TERMINAL:1",
+        "attempt_fence": 7, "target_sha": "sha256:target",
+        "effect_id": effect["effect_id"], "status": "COMPLETED",
+        "evidence_ref": "EV-1", "lineage_ref": "LIN-1",
+    }
+    result = record_gateway_receipt(
+        Transport(), ticket="TICKET-TERMINAL", aios_dir=str(tmp_path),
+        effect_id=effect["effect_id"], actor="aios", receipt=receipt,
+    )
+    assert result["reconciliation"] == "PENDING_AIOS_EVIDENCE"
+    assert result["aios_effect"]["state"] == "DISPATCHED"
