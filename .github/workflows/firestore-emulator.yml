@@ -59,13 +59,16 @@ jobs:
           GOOGLE_CLOUD_PROJECT: aios-emulator-test
           AIOS_FIRESTORE_PROJECT_ID: aios-emulator-test
         run: python -m pytest -q
-      - name: Build pinned worker OCI image (no push, no deployment)
+      - name: Build worker OCI image twice and compare app/dependency manifests (no push, no deployment)
         run: |
           docker build --pull=false --file Dockerfile.firestore-worker --tag aios-firestore-worker:first .
-          docker image inspect aios-firestore-worker:first --format '{{json .RootFS.Layers}}' > "$RUNNER_TEMP/worker-image-first.layers"
+          docker run --rm aios-firestore-worker:first python -m pip freeze --all | sort > "$RUNNER_TEMP/worker-deps-first.txt"
+          docker run --rm aios-firestore-worker:first python -c 'import hashlib,pathlib; roots=[pathlib.Path("/app/core"),pathlib.Path("/app/aios_worker_adapters"),pathlib.Path("/app/worker_wsgi.py")]; h=hashlib.sha256(); [(h.update(str(p.relative_to("/app")).encode()), h.update(p.read_bytes())) if p.is_file() else [(h.update(str(f.relative_to("/app")).encode()), h.update(f.read_bytes())) for f in sorted(p.rglob("*")) if f.is_file()] for p in roots]; print(h.hexdigest())' > "$RUNNER_TEMP/worker-app-first.sha256"
           docker build --pull=false --no-cache --file Dockerfile.firestore-worker --tag aios-firestore-worker:second .
-          docker image inspect aios-firestore-worker:second --format '{{json .RootFS.Layers}}' > "$RUNNER_TEMP/worker-image-second.layers"
-          diff -u "$RUNNER_TEMP/worker-image-first.layers" "$RUNNER_TEMP/worker-image-second.layers"
+          docker run --rm aios-firestore-worker:second python -m pip freeze --all | sort > "$RUNNER_TEMP/worker-deps-second.txt"
+          docker run --rm aios-firestore-worker:second python -c 'import hashlib,pathlib; roots=[pathlib.Path("/app/core"),pathlib.Path("/app/aios_worker_adapters"),pathlib.Path("/app/worker_wsgi.py")]; h=hashlib.sha256(); [(h.update(str(p.relative_to("/app")).encode()), h.update(p.read_bytes())) if p.is_file() else [(h.update(str(f.relative_to("/app")).encode()), h.update(f.read_bytes())) for f in sorted(p.rglob("*")) if f.is_file()] for p in roots]; print(h.hexdigest())' > "$RUNNER_TEMP/worker-app-second.sha256"
+          diff -u "$RUNNER_TEMP/worker-deps-first.txt" "$RUNNER_TEMP/worker-deps-second.txt"
+          diff -u "$RUNNER_TEMP/worker-app-first.sha256" "$RUNNER_TEMP/worker-app-second.sha256"
           docker run --rm aios-firestore-worker:second python -m pip check
       - name: Preserve emulator logs
         if: always()
