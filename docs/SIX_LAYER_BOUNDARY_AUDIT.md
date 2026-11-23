@@ -98,3 +98,72 @@ Use `docs/SIX_LAYER_ARCHITECTURE.md` as the six-layer boundary contract. Later u
 - Graph scheduling cannot grant authority.
 - Loop/harness/model output cannot self-promote to VERIFIED/PROMOTED.
 - CI rejects at least the tested prohibited dependency and replay patterns.
+
+
+## P0–P5 execution addendum (2026-11-23)
+
+This addendum separates work that can be established from the inspected default branch from candidate changes that remain unmerged.
+
+### P0 — Resume/replay safety
+
+- **FACT on `main`:** the original `resume_attempt()` called `execute_attempt()` for an already-dispatched attempt.
+- **Candidate implementation:** PR #167 changes resume to call read-only `adapter.reconcile()`; missing/ambiguous provider results remain `UNKNOWN`; resume does not call `adapter.execute()`.
+- **Regression correction:** the existing durable-runtime bridge fixture previously expected resume success from an adapter with no reconciliation method. That expectation contradicted the no-replay invariant. The fixture now supplies an explicit read-only reconciliation method.
+- **Verification:** the earlier PR #167 CI run `45125149786` had 849 passed, 16 skipped, 1 failed. The sole failure was the stale expectation in `tests/test_m6_durable_runtime_bridge.py::test_resume_reuses_exact_dispatched_attempt_after_ambiguous_submission`. The fixture correction is commit `ee635c7cd8c2616c4bc5e6fd29bfe46de4b0cf0c`; its CI run `45129143045` was in progress when this addendum was written.
+- **Status:** implementation candidate present; full CI verification pending; PR #167 remains unmerged. This does not establish provider-side exactly-once behavior.
+
+### P1 — L5 persistence/source-of-truth inventory
+
+| Record family | Current implementation observed on `main` | What is actually established | Gap / decision needed |
+|---|---|---|---|
+| Contract / permit / attestation | `core/authority.py`; `<aios_dir>/authority/{contracts,permits,attestations}/`; `commit_batch` | File-backed records; contract identity and permit/attestation validation | Define supported multi-process/multi-host deployment and backup/restore contract |
+| Governing policy | `core/policy_registry.py`; `<aios_dir>/policies/` | Content-addressed immutable JSON policy records | Clarify lifecycle/retention and whether policy records share the same transactional boundary as contract/permit |
+| External effect / attempt / event | `core/effect_authority.py`; `<aios_dir>/effects/` and `<aios_dir>/events/`; `core/mutation.py::commit_batch` | Effect transition and corresponding event are committed in one file mutation batch with a precondition/CAS check | Event history is file-per-event, not a separately demonstrated append-only database ledger; audit retention/recovery at deployment scale |
+| Domain/project state | `core/state.py`, `core/mutation.py`, `.aios/<type>/{events,snapshots,...}/` | Domain entity layout and a staged journal/roll-forward mutation boundary | This domain state is not the same object model as execution effect/attempt state |
+| Durable loop state / memory | `core/durable_loop.py::StateStore`; `core/wal_state_store.py`; `core/durable_wal.py` | WAL-backed state projection and memory namespace; checksummed records and process lock in the WAL implementation | Not shown to be the authoritative store for contract/permit/effect records; no proven cross-store atomic transaction |
+| Capability registry | `core/capability_store.py` | Atomic snapshot replacement of registry data | Snapshot store is separate from authority/effect mutation journal |
+
+**Finding:** L5 is currently a set of distinct persistence mechanisms, not one unified ledger. The repository evidence does not justify declaring any single database or WAL the global source of truth. Keep per-domain authority explicit; define a cross-store consistency/recovery contract before consolidation. In particular, do not describe a WAL snapshot as proof that a provider effect occurred.
+
+### P2 — L6 decision vs L5 persistence boundary
+
+- **FACT:** `core/effect_authority.py` validates contract/permit/effect/attempt transitions and calls `commit_batch` to persist effect records and events.
+- **FACT:** `core/authority.py` persists contract, permit and attestation files through the same mutation primitive.
+- **INFERENCE:** semantic authority and storage mechanics are coupled at module/function level, even though their conceptual responsibilities differ.
+- **Decision:** retain the current implementation boundary for compatibility; define a typed L6 command/query contract and an L5 repository/transaction interface before moving code. The L5 interface may commit only an L6-authorized transition and return committed record/event identities; it must not decide policy or call providers.
+- **Not claimed:** no new interface or atomicity guarantee has been implemented by this audit.
+
+### P3 — L4 graph-orchestration placement
+
+- **FACT:** `core/orchestrator.py` wraps `run_durable_loop()` and `GovernedRuntimeExecutor`; it is not evidence of a general DAG engine.
+- **FACT:** `docs/ARCHITECTURE_CURRENT.md` says external substrates own scheduling, retries, resume, planning and agent loops.
+- **Decision:** L4 remains an external-substrate responsibility for the current architecture. AIOS exposes governed node/effect contracts and consumes committed evidence. Add an optional in-process GraphOrchestrator only after a concrete multi-node DAG use case and its recovery semantics are specified.
+- **Constraint:** a graph node or scheduler event never grants effect authority.
+
+### P4 — Architecture conformance enforcement
+
+- **Current status:** no blocking six-layer import/side-effect conformance gate is established by this audit.
+- **Required first gate:** report-only inventory of imports and side-effect call sites, with explicit allowlist and owner review. It must detect at minimum: provider execution from L5, authority/promotion calls from L1/L2/L3/L4, and resume-to-execute replay.
+- **Promotion rule:** convert a rule to blocking CI only after its baseline and false-positive behavior are reviewed. A grep-only check is not sufficient proof of runtime call behavior.
+- **Not claimed:** no architecture CI test has passed or been added in this addendum.
+
+### P5 — Documentation and review contract
+
+- `docs/ARCHITECTURE_CURRENT.md` remains the current implementation boundary and identifies external substrates as owners of execution mechanics.
+- `docs/TARGET_ARCHITECTURE.md` remains the target vision and explicitly says not all target components are implemented.
+- `docs/SIX_LAYER_ARCHITECTURE.md` refines those documents as a logical ownership map; it does not supersede them or require six services.
+- `docs/ARCHITECTURE.md` is historical M1/M1.5 framing. It should receive a supersession pointer only after a separate minimal edit is reviewed; do not rewrite milestone history.
+- Review checklist for future PRs: identify owning layer, interfaces crossed, authoritative state read/written, authority exercised, provider effects possible, evidence emitted, recovery behavior and tests.
+
+### Consolidated P0–P5 status
+
+| Priority | Outcome in this turn | Evidence / remaining gate |
+|---|---|---|
+| P0 | Candidate fix and stale test-fixture correction committed on PR #167 | Commit `ee635c7...`; CI run `45129143045` pending; PR unmerged |
+| P1 | Source-of-truth inventory documented | Source inspection only; no cross-store consistency proof |
+| P2 | L6/L5 responsibility boundary and interface contract specified | Design decision only; no code interface implemented |
+| P3 | L4 assigned to external substrate for now | Consistent with current architecture; no graph engine added |
+| P4 | Enforcement design and promotion rule documented | No blocking architecture gate added or claimed |
+| P5 | Current/target/six-layer/historical doc precedence clarified | Historical doc edit remains separate; no history rewritten |
+
+This is the maximum evidence-supported P0–P5 closure from the current source snapshot. It is not a claim that all six priorities are implemented or that AIOS is six-layer conformant.
