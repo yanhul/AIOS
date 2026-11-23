@@ -6,6 +6,7 @@ directory. Exactly one state transition may win a contested attempt.
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 import json
+import os
 import tempfile
 
 from core.effect_authority import create_effect, dispatch, retry_dispatch, unknown
