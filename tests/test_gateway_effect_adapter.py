@@ -48,7 +48,7 @@ def _build(tmp_path, contract, permit, attestation, effect, **overrides):
 def test_builds_gateway_v3_contract_from_current_persisted_authority(tmp_path):
     contract, permit, attestation, effect = _authority(tmp_path)
     result = _build(tmp_path, contract, permit, attestation, effect)
-    assert result["protocol_version"] == 3
+    assert result["protocol_version"] == 4
     assert result["effect_id"] == effect["effect_id"]
     assert result["authority_ref"] == permit["permit_id"]
 
@@ -151,3 +151,69 @@ def test_missing_or_undeclared_capability_and_effect_remain_fail_closed(tmp_path
         _build(tmp_path, contract, permit, attestation, effect, capability_ref="try.research@2")
     with pytest.raises(ValueError, match="(not allowed|does not match persisted effect)"):
         _build(tmp_path, contract, permit, attestation, effect, action="push_to_github")
+
+
+def test_gateway_v4_cli_restart_replay_and_unknown_receipt(tmp_path, monkeypatch):
+    import os
+    from pathlib import Path
+    from core.gateway_effect_adapter import GatewayCLITransport
+
+    cli = os.environ.get("HARNESS_GATEWAY_CLI")
+    if not cli:
+        pytest.skip("HARNESS_GATEWAY_CLI is only configured in cross-repository CI")
+    governance = {key: "sha256:" + key for key in (
+        "policy", "evidence_criteria", "promotion_criteria",
+        "terminal_conditions", "trust_roots",
+    )}
+    # A new transport instance per operation simulates process restart.
+    def client():
+        return GatewayCLITransport(
+            cli_path=cli, state_path=tmp_path / "gateway-state.json",
+            human_identity="human:test", governance=governance,
+        )
+
+    contract = {
+        "protocol_version": 4, "effect_id": "EF-CROSS-1",
+        "action": "run_research", "capability_ref": "try.research@1",
+        "authority_ref": "PT-AIOS-1", "evidence_ref": "EV-PRE-1",
+        "lineage_ref": "LIN-1", "idempotency_key": "idem-cross-1",
+    }
+    client().create_ticket(
+        ticket="T-CROSS-1", repository="yanhul/AIOS", target_sha="sha256:target",
+        nonce="nonce-cross-1", ttl_seconds=300, effect_contract=contract,
+    )
+    client().authorize(ticket="T-CROSS-1", nonce="nonce-cross-1",
+                       sender="human:test", target_sha="sha256:target")
+    first = client().begin_effect(ticket="T-CROSS-1", target_sha="sha256:target")
+    replay = client().begin_effect(ticket="T-CROSS-1", target_sha="sha256:target")
+    assert first["execute_allowed"] is True
+    assert replay["replayed"] is True
+    assert replay["execute_allowed"] is False
+    receipt = {
+        "ticket_id": "T-CROSS-1", "attempt_id": first["attempt_id"],
+        "target_sha": "sha256:target", "effect_id": "EF-CROSS-1",
+        "status": "UNKNOWN", "evidence_ref": "EV-PRE-1",
+        "lineage_ref": "LIN-1",
+    }
+    client().record_receipt(ticket="T-CROSS-1", receipt=receipt)
+    status = client().status()
+    saved = status["tickets"]["T-CROSS-1"]
+    assert saved["attempts"] == 1
+    assert saved["attempt_history"][0]["status"] == "UNKNOWN"
+    assert len(saved["receipt_history"]) == 1
+    assert saved["state"] == "AUTHORIZED"
+
+
+def test_gateway_transport_rejects_non_v4_contract_before_io(tmp_path):
+    from core.gateway_effect_adapter import GatewayCLITransport, GatewayTransportError
+    client = GatewayCLITransport(
+        cli_path="missing-gateway-cli.py", state_path=tmp_path / "state.json",
+        human_identity="human:test", governance={key: key for key in (
+            "policy", "evidence_criteria", "promotion_criteria",
+            "terminal_conditions", "trust_roots",
+        )},
+    )
+    with pytest.raises(GatewayTransportError, match="protocol_version must be 4"):
+        client.create_ticket(ticket="T", repository="r", target_sha="s",
+                             nonce="n", ttl_seconds=10,
+                             effect_contract={"protocol_version": 3})

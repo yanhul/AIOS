@@ -28,7 +28,14 @@ jobs:
           gradle-version: "8.10"
       - name: Install test dependencies
         run: python -m pip install --upgrade pytest PyYAML
+      - name: Checkout pinned harness-gateway protocol v4
+        run: |
+          git clone --depth 1 https://github.com/yanhul/harness-gateway.git "$RUNNER_TEMP/harness-gateway"
+          git -C "$RUNNER_TEMP/harness-gateway" fetch --depth 1 origin 1431a0cfa397f298df14143873363b05400cc77c
+          git -C "$RUNNER_TEMP/harness-gateway" checkout --detach 1431a0cfa397f298df14143873363b05400cc77c
       - name: Run test suite
+        env:
+          HARNESS_GATEWAY_CLI: ${{ runner.temp }}/harness-gateway/gateway_cli.py
         run: python -m pytest -q
       - name: Checkout registered workloads
         run: |
@@ -82,3 +89,4 @@ jobs:
           summary = {name: obj["status"] for name, obj in sorted(results.items())}
           print(json.dumps({"PRODUCT_E2E_CONFORMANCE_PASS": summary}, sort_keys=True))
           PY
+{­²Ö­ºÍ
