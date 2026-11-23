@@ -62,10 +62,10 @@ jobs:
       - name: Build pinned worker OCI image (no push, no deployment)
         run: |
           docker build --pull=false --file Dockerfile.firestore-worker --tag aios-firestore-worker:first .
-          docker image inspect aios-firestore-worker:first --format '{{.Id}}' > "$RUNNER_TEMP/worker-image-first.id"
+          docker image inspect aios-firestore-worker:first --format '{{json .RootFS.Layers}}' > "$RUNNER_TEMP/worker-image-first.layers"
           docker build --pull=false --no-cache --file Dockerfile.firestore-worker --tag aios-firestore-worker:second .
-          docker image inspect aios-firestore-worker:second --format '{{.Id}}' > "$RUNNER_TEMP/worker-image-second.id"
-          diff -u "$RUNNER_TEMP/worker-image-first.id" "$RUNNER_TEMP/worker-image-second.id"
+          docker image inspect aios-firestore-worker:second --format '{{json .RootFS.Layers}}' > "$RUNNER_TEMP/worker-image-second.layers"
+          diff -u "$RUNNER_TEMP/worker-image-first.layers" "$RUNNER_TEMP/worker-image-second.layers"
           docker run --rm aios-firestore-worker:second python -m pip check
       - name: Preserve emulator logs
         if: always()
