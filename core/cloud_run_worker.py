@@ -20,6 +20,7 @@ from .firestore_authority import FirestoreAuthorityStore
 from .firestore_authority_resolver import FirestoreAuthorityResolver
 from .firestore_execution import resume_firestore_effect
 from .firestore_worker import create_firestore_effect_store
+from .secret_manager import SecretMaterialUnavailable, read_hmac_attestation_secret
 
 
 class CloudRunWorkerConfigurationError(RuntimeError):
@@ -83,6 +84,26 @@ def _verify_caller(environ: Mapping[str, Any], *, audience: str, expected_email:
     )
 
 
+
+def load_attestation_secret(env: Mapping[str, str], *, client: Any | None = None) -> str:
+    """Read a pinned numeric Secret Manager version using ADC; never accept raw env secrets."""
+    version = _required(env, "AIOS_AUTHORITY_ATTESTATION_SECRET_VERSION")
+    if client is None:
+        try:
+            from google.cloud import secretmanager
+            client = secretmanager.SecretManagerServiceClient()
+        except Exception as exc:
+            raise CloudRunWorkerConfigurationError(
+                "Secret Manager ADC client is unavailable; authority resolution DENY"
+            ) from exc
+    try:
+        return read_hmac_attestation_secret(client=client, version_resource=version)
+    except SecretMaterialUnavailable as exc:
+        raise CloudRunWorkerConfigurationError(
+            "pinned Secret Manager attestation material unavailable; authority resolution DENY"
+        ) from exc
+
+
 def create_production_app(*, environ: Mapping[str, str] | None = None):
     """Compose production adapters; all external configuration is explicit."""
     env = os.environ if environ is None else environ
@@ -95,7 +116,7 @@ def create_production_app(*, environ: Mapping[str, str] | None = None):
         trust_anchor = json.loads(trust_anchor_raw)
     except ValueError as exc:
         raise CloudRunWorkerConfigurationError("AIOS_AUTHORITY_TRUST_ANCHOR must be valid JSON") from exc
-    attestation_secret = _required(env, "AIOS_AUTHORITY_ATTESTATION_SECRET")
+    attestation_secret = load_attestation_secret(env)
     authority_store = FirestoreAuthorityStore(store.client, project_id=project_id)
     resolver = FirestoreAuthorityResolver(
         authority_store, trust_anchor=trust_anchor,
@@ -179,4 +200,4 @@ def create_production_app(*, environ: Mapping[str, str] | None = None):
     )
 
 
-__all__ = ["CloudRunWorkerConfigurationError", "create_production_app"]
+__all__ = ["CloudRunWorkerConfigurationError", "create_production_app", "load_attestation_secret"]
