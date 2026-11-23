@@ -27,7 +27,8 @@ from collections.abc import Mapping
 from .authority import authorize, load_contract, load_permit
 from .contract import verify_permit
 from .evidence import EvidenceRecord, verify_evidence
-from .mutation import TransitionError, canonical_json, commit_batch, recover_pending
+from .mutation import TransitionError, canonical_json
+from .authority_store import commit_authority_batch as commit_batch, recover_authority_store as recover_pending
 from . import provider_ed25519 as _ed
 
 STATES = ("PLANNED", "DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE")

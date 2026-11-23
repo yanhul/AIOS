@@ -43,6 +43,8 @@ jobs:
           gradle-version: "8.10"
       - name: Install test dependencies
         run: python -m pip install --upgrade pytest PyYAML cryptography
+      - name: Six-layer L5 dependency boundary (report-only baseline)
+        run: python scripts/architecture_boundary_check.py --root "$GITHUB_WORKSPACE"
       - name: Run test suite
         run: python -m pytest -q
 
