@@ -18,6 +18,7 @@ from pathlib import Path
 from .attestation import verify_attestation
 from .authority import authorize, load_attestation, load_contract, load_permit
 from .contract import verify_permit
+from .effect_authority import dispatch as dispatch_aios_effect
 
 GATEWAY_PROTOCOL_VERSION = 4
 REQUIRED_WORKLOAD_FIELDS = (
@@ -230,3 +231,43 @@ class GatewayCLITransport:
 
     def status(self) -> dict[str, object]:
         return self.request("STATUS")["status"]
+
+
+def begin_and_dispatch_aios_effect(
+    transport: GatewayCLITransport, *, ticket: str, target_sha: str,
+    aios_dir: str, effect: Mapping[str, object], actor: str, provider: str,
+    evidence_ref: str, lineage_ref: str, idempotency_key: str,
+) -> dict[str, object]:
+    """Cross the Gateway fence, then persist its exact attempt binding in AIOS.
+
+    This function never executes the provider. Callers may execute only when
+    the returned execute_allowed flag is true. A replayed Gateway attempt is
+    fail-closed: it is not copied into a new executable AIOS dispatch.
+    """
+    required = ("effect_id", "state", "actor", "attempt")
+    if any(effect.get(key) in (None, "") for key in required):
+        raise GatewayTransportError("AIOS effect is missing dispatch identity/state")
+    if effect.get("state") != "PLANNED" or effect.get("attempt") != 0:
+        raise GatewayTransportError("AIOS effect must be PLANNED attempt=0 before Gateway dispatch")
+    target_sha = _required_text(target_sha, "target_sha")
+    provider = _required_text(provider, "provider")
+    response = transport.begin_effect(ticket=ticket, target_sha=target_sha)
+    if response.get("execute_allowed") is not True or response.get("replayed") is True:
+        raise GatewayTransportError("Gateway attempt is replayed or not authorized for first execution")
+    gateway_attempt_id = _required_text(response.get("attempt_id"), "Gateway attempt_id")
+    fence = response.get("fence")
+    if not isinstance(fence, int) or isinstance(fence, bool) or fence < 1:
+        raise GatewayTransportError("Gateway returned an invalid attempt fence")
+    effect_id = _required_text(effect.get("effect_id"), "effect.effect_id")
+    aios_attempt_id = f"{effect_id}:attempt:1"
+    persisted = dispatch_aios_effect(
+        aios_dir, effect_id, actor, aios_attempt_id, provider,
+        target_sha=target_sha, evidence_ref=evidence_ref,
+        lineage_ref=lineage_ref, idempotency_key=idempotency_key,
+        attempt_fence=fence, gateway_attempt_id=gateway_attempt_id,
+    )
+    return {
+        "effect": persisted, "execute_allowed": True,
+        "gateway_attempt_id": gateway_attempt_id,
+        "aios_attempt_id": aios_attempt_id, "attempt_fence": fence,
+    }
