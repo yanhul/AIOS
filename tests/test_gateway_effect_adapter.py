@@ -432,3 +432,21 @@ def test_provider_receipt_must_bind_gateway_attempt_identity():
     base["gateway_attempt_id"] = "T-OTHER:1"
     with pytest.raises(ValueError, match="Gateway attempt binding"):
         validate_receipt(ProviderReceipt(**base), effect, "EF-1:attempt:1", "try.research")
+
+
+def test_gateway_backed_unknown_effect_cannot_bypass_gateway_for_retry(tmp_path):
+    from core.effect_authority import dispatch, retry_dispatch, unknown
+    contract, permit, attestation, effect = _authority(tmp_path)
+    dispatch(
+        str(tmp_path), effect["effect_id"], "aios", effect["effect_id"] + ":attempt:1",
+        "try.research", target_sha="sha256:target", evidence_ref="EV-1",
+        lineage_ref="LIN-1", idempotency_key="idem-1", attempt_fence=7,
+        gateway_attempt_id="TICKET-RETRY:1",
+    )
+    unknown(str(tmp_path), effect["effect_id"], "aios", "provider outcome unknown")
+    with pytest.raises(Exception, match="Gateway-backed retry is blocked"):
+        retry_dispatch(
+            str(tmp_path), effect["effect_id"], "aios",
+            effect["effect_id"] + ":attempt:2", "try.research", 2,
+            target_sha="sha256:target", attempt_fence=8,
+        )
