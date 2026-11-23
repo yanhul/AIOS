@@ -286,3 +286,56 @@ def test_gateway_invalid_fence_never_dispatches_aios(tmp_path):
         )
     saved = json.loads((tmp_path / "effects" / (effect["effect_id"] + ".json")).read_text())
     assert saved["state"] == "PLANNED"
+
+
+def test_real_gateway_cli_to_aios_effect_mapping_survives_replay(tmp_path, monkeypatch):
+    import os
+    from core.gateway_effect_adapter import GatewayCLITransport
+
+    cli = os.environ.get("HARNESS_GATEWAY_CLI")
+    if not cli:
+        pytest.skip("HARNESS_GATEWAY_CLI is only configured in cross-repository CI")
+    contract, permit, attestation, effect = _authority(tmp_path)
+    governance = {key: "sha256:" + key for key in (
+        "policy", "evidence_criteria", "promotion_criteria",
+        "terminal_conditions", "trust_roots",
+    )}
+    transport = GatewayCLITransport(
+        cli_path=cli, state_path=tmp_path / "gateway-state.json",
+        human_identity="human:test", governance=governance,
+    )
+    gateway_contract = _build(tmp_path, contract, permit, attestation, effect)
+    transport.create_ticket(
+        ticket="T-AIOS-BRIDGE", repository="yanhul/AIOS",
+        target_sha="sha256:target", nonce="nonce-aios-bridge",
+        ttl_seconds=300, effect_contract=gateway_contract,
+    )
+    transport.authorize(
+        ticket="T-AIOS-BRIDGE", nonce="nonce-aios-bridge",
+        sender="human:test", target_sha="sha256:target",
+    )
+    result = begin_and_dispatch_aios_effect(
+        transport, ticket="T-AIOS-BRIDGE", target_sha="sha256:target",
+        aios_dir=str(tmp_path), effect=effect, actor="aios",
+        provider="try.research", evidence_ref="EV-1",
+        lineage_ref="LIN-1", idempotency_key="idem-1",
+    )
+    assert result["execute_allowed"] is True
+    assert result["effect"]["state"] == "DISPATCHED"
+    assert result["effect"]["attempt_id"] == effect["effect_id"] + ":attempt:1"
+    assert result["effect"]["gateway_attempt_id"] != result["effect"]["attempt_id"]
+    assert result["effect"]["attempt_fence"] >= 1
+
+    # Simulate a caller restart with its stale PLANNED snapshot. Gateway's
+    # durable replay fence must refuse a second execution before AIOS mutation.
+    with pytest.raises(GatewayTransportError, match="replayed"):
+        begin_and_dispatch_aios_effect(
+            transport, ticket="T-AIOS-BRIDGE", target_sha="sha256:target",
+            aios_dir=str(tmp_path), effect=effect, actor="aios",
+            provider="try.research", evidence_ref="EV-1",
+            lineage_ref="LIN-1", idempotency_key="idem-1",
+        )
+    saved = json.loads((tmp_path / "effects" / (effect["effect_id"] + ".json")).read_text())
+    assert saved["state"] == "DISPATCHED"
+    assert saved["attempt"] == 1
+    assert saved["gateway_attempt_id"] == result["gateway_attempt_id"]
