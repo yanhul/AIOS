@@ -33,7 +33,7 @@ The adapter MUST NOT mint permits, capability versions, evidence, lineage, or au
 
 ## Attempt-fence semantics
 
-`attempt_fence` is a gateway-issued, per-effect monotonic fence attached to exactly one `attempt_id`. A receipt MUST carry the exact fence issued for that attempt. AIOS MUST reject a receipt when the fence is missing, non-integer, negative, or different from the fence bound to the dispatched effect. The adapter does not allocate or advance the fence. Gateway protocol v4 persists attempt/receipt history and rejects replayed BEGIN_EFFECT from authorizing a second execution.
+`attempt_fence` is a gateway-issued, per-effect monotonic fence attached to exactly one `attempt_id`. A receipt MUST carry the exact fence issued for that attempt. AIOS MUST reject a receipt when the fence is missing, non-integer, negative, or different from the fence bound to the dispatched effect. The adapter does not allocate or advance the fence. Gateway protocol v4 persists attempt/receipt history, requires the exact gateway-issued attempt_fence on each receipt, and rejects replayed BEGIN_EFFECT from authorizing a second execution.
 
 ## Target semantics
 

@@ -230,4 +230,3 @@ class GatewayCLITransport:
 
     def status(self) -> dict[str, object]:
         return self.request("STATUS")["status"]
-{­²Ö­ºÍ

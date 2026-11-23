@@ -191,7 +191,7 @@ def test_gateway_v4_cli_restart_replay_and_unknown_receipt(tmp_path, monkeypatch
     assert replay["execute_allowed"] is False
     receipt = {
         "ticket_id": "T-CROSS-1", "attempt_id": first["attempt_id"],
-        "target_sha": "sha256:target", "effect_id": "EF-CROSS-1",
+        "attempt_fence": first["fence"], "target_sha": "sha256:target", "effect_id": "EF-CROSS-1",
         "status": "UNKNOWN", "evidence_ref": "EV-PRE-1",
         "lineage_ref": "LIN-1",
     }

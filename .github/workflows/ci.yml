@@ -31,8 +31,8 @@ jobs:
       - name: Checkout pinned harness-gateway protocol v4
         run: |
           git clone --depth 1 https://github.com/yanhul/harness-gateway.git "$RUNNER_TEMP/harness-gateway"
-          git -C "$RUNNER_TEMP/harness-gateway" fetch --depth 1 origin 1431a0cfa397f298df14143873363b05400cc77c
-          git -C "$RUNNER_TEMP/harness-gateway" checkout --detach 1431a0cfa397f298df14143873363b05400cc77c
+          git -C "$RUNNER_TEMP/harness-gateway" fetch --depth 1 origin bdd8eb4872ecf2b6799754d7e2fe2bcbd93304e3
+          git -C "$RUNNER_TEMP/harness-gateway" checkout --detach bdd8eb4872ecf2b6799754d7e2fe2bcbd93304e3
       - name: Run test suite
         env:
           HARNESS_GATEWAY_CLI: ${{ runner.temp }}/harness-gateway/gateway_cli.py
@@ -89,4 +89,3 @@ jobs:
           summary = {name: obj["status"] for name, obj in sorted(results.items())}
           print(json.dumps({"PRODUCT_E2E_CONFORMANCE_PASS": summary}, sort_keys=True))
           PY
-{­²Ö­ºÍ
