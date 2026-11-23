@@ -239,27 +239,37 @@ class AgentRepairWorker:
                 raise RepairWorkerError("invalid trusted test command")
             if command not in self.allowed_test_commands:
                 raise RepairWorkerError("test command is not in the trusted worker allowlist")
-        # Trusted tests execute repository-controlled code. Never pass authority,
-        # provider, SCM, or deployment credentials into that process tree.
-        test_env = os.environ.copy()
-        for name in tuple(test_env):
-            upper = name.upper()
-            if any(marker in upper for marker in (
-                "SECRET", "TOKEN", "API_KEY", "SIGNING_KEY", "SIGNING_KEYS",
-                "PRIVATE_KEY", "KEYRING", "CREDENTIAL",
-            )):
-                test_env.pop(name, None)
-        results = []
-        for i, command in enumerate(selected):
-            proc = subprocess.run(command, cwd=self.root, text=True, capture_output=True,
-                                  timeout=self.timeout_seconds, check=False, env=test_env)
-            results.append({"command": list(command), "returncode": proc.returncode,
-                            "stdout_sha256": self._sha256_text(proc.stdout),
-                            "stderr_sha256": self._sha256_text(proc.stderr),
-                            "stdout_tail": proc.stdout[-4000:], "stderr_tail": proc.stderr[-4000:]})
-            if proc.returncode:
-                return WorkerEvidence("TEST", "FAIL", tuple(f"test:{j}:{r['returncode']}" for j, r in enumerate(results)),
-                                      {"results": results})
+        # Environment allowlist: do not copy runner, authority, provider, SCM or
+        # deployment credentials into repository-controlled test subprocesses.
+        with tempfile.TemporaryDirectory(prefix="aios-worker-test-home-") as home:
+            test_env = {
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                "HOME": home,
+                "TMPDIR": home,
+                "TEMP": home,
+                "TMP": home,
+                "LANG": os.environ.get("LANG", "C.UTF-8"),
+                "LC_ALL": os.environ.get("LC_ALL", "C.UTF-8"),
+                "CI": "true",
+                "PYTHONDONTWRITEBYTECODE": "1",
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_CONFIG_GLOBAL": os.devnull,
+                "GIT_TERMINAL_PROMPT": "0",
+            }
+            for name in ("JAVA_HOME", "ANDROID_HOME", "ANDROID_SDK_ROOT", "GRADLE_HOME"):
+                if os.environ.get(name):
+                    test_env[name] = os.environ[name]
+            results = []
+            for i, command in enumerate(selected):
+                proc = subprocess.run(command, cwd=self.root, text=True, capture_output=True,
+                                      timeout=self.timeout_seconds, check=False, env=test_env)
+                results.append({"command": list(command), "returncode": proc.returncode,
+                                "stdout_sha256": self._sha256_text(proc.stdout),
+                                "stderr_sha256": self._sha256_text(proc.stderr),
+                                "stdout_tail": proc.stdout[-4000:], "stderr_tail": proc.stderr[-4000:]})
+                if proc.returncode:
+                    return WorkerEvidence("TEST", "FAIL", tuple(f"test:{j}:{r['returncode']}" for j, r in enumerate(results)),
+                                          {"results": results})
         return WorkerEvidence("TEST", "PASS", tuple(f"test:{j}:{r['returncode']}" for j, r in enumerate(results)),
                               {"results": results})
 

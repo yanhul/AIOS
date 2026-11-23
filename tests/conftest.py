@@ -17,3 +17,20 @@ def _deployment_trust_anchors(monkeypatch):
     monkeypatch.setenv("AIOS_EVIDENCE_SIGNING_SECRET", "unit-test-evidence-secret-32")
     if ED25519_PUBLIC_KEYRING_JSON is not None:
         monkeypatch.setenv(ED25519_KEYRING_ENV, ED25519_PUBLIC_KEYRING_JSON)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_absorption_artifacts(tmp_path, monkeypatch):
+    """Keep pytest and nested pytest runs from writing into tracked research artifacts."""
+    outputs = (
+        "AIOS_ABSORPTION_OUT",
+        "AIOS_ABSORPTION_VERIFY",
+        "AIOS_ABSORPTION_EXECUTOR_OUT",
+        "AIOS_ABSORPTION_VERIFY_OUT",
+        "AIOS_ABSORPTION_PROMOTION_OUT",
+        "AIOS_ABSORPTION_RUNTIME_PROOF_OUT",
+        "AIOS_ABSORPTION_REPAIR_OUT",
+        "AIOS_ABSORPTION_OUTCOME",
+    )
+    for name in outputs:
+        monkeypatch.setenv(name, str(tmp_path / (name.lower() + ".json")))

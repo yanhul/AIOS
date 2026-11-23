@@ -17,7 +17,7 @@ from core.evidence import EvidenceRecord, verify_evidence
 from core.artifact_attestation import attest_artifact
 from research.absorbed_capabilities import run_conformance
 
-OUT = Path(os.environ.get("AIOS_ABSORPTION_RUNTIME_PROOF_OUT", "research/artifacts/absorption-runtime-proof.json"))
+OUT = Path("research/artifacts/absorption-runtime-proof.json")
 
 def _digest(v):
     return hashlib.sha256(json.dumps(v, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
@@ -90,8 +90,9 @@ def run():
     else:
         result["overall"] = "BLOCKED"
         result["attestation_error"] = "trusted artifact signing secret is not configured"
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(result, indent=2, sort_keys=True)+"\n", encoding="utf-8")
+    out = Path(os.environ.get("AIOS_ABSORPTION_RUNTIME_PROOF_OUT", str(OUT)))
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(result, indent=2, sort_keys=True)+"\n", encoding="utf-8")
     return result
 
 if __name__ == "__main__":

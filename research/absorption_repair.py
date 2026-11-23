@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib, json, os, subprocess, sys
 from pathlib import Path
 
-OUT = Path(os.environ.get("AIOS_ABSORPTION_REPAIR_OUT", "research/artifacts/absorption-repair.json"))
+OUT = Path("research/artifacts/absorption-repair.json")
 MAX_ATTEMPTS = int(os.environ.get("AIOS_ABSORPTION_REPAIR_MAX_ATTEMPTS", "2"))
 if MAX_ATTEMPTS < 1:
     raise ValueError("AIOS_ABSORPTION_REPAIR_MAX_ATTEMPTS must be >= 1")
@@ -17,6 +17,10 @@ def _tests():
     p = subprocess.run([sys.executable, "-m", "pytest", *TESTS, "-q"],
                         capture_output=True, text=True, timeout=180)
     return p.returncode == 0, _digest((p.stdout or "") + (p.stderr or ""))
+
+def _output_path():
+    """Resolve at call time so pytest fixtures and child processes can isolate writes."""
+    return Path(os.environ.get("AIOS_ABSORPTION_REPAIR_OUT", str(OUT)))
 
 def run(verification: dict, *, run_id: str):
     lineage_errors = []
@@ -34,8 +38,9 @@ def run(verification: dict, *, run_id: str):
                   "blocked_count": 1, "obligations": obligations, "overall": "BLOCKED",
                   "authority": "AIOS_CONTROL_PLANE", "source_mutation": False,
                   "external_code_execution": False, "digest": _digest(obligations)}
-        OUT.parent.mkdir(parents=True, exist_ok=True)
-        OUT.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        out = _output_path()
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return result
 
     obligations = [
@@ -66,8 +71,9 @@ def run(verification: dict, *, run_id: str):
         "authority": "AIOS_CONTROL_PLANE", "source_mutation": False,
         "external_code_execution": False, "digest": _digest(obligations),
     }
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    out = _output_path()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return result
 
 if __name__ == "__main__":

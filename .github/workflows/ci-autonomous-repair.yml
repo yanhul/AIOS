@@ -187,6 +187,7 @@ jobs:
       - name: Run trusted tests in a separate credential-free step
         working-directory: target
         env:
+          AIOS_REPAIR_REQUIRE_OS_SANDBOX: "1"
           PYTHONPATH: ${{ github.workspace }}/trusted
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
@@ -315,6 +316,7 @@ jobs:
       - name: Run trusted tests in a separate credential-free step
         working-directory: target
         env:
+          AIOS_REPAIR_REQUIRE_OS_SANDBOX: "1"
           PYTHONPATH: ${{ github.workspace }}/trusted
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
@@ -437,6 +439,7 @@ jobs:
       - name: Run trusted tests in a separate credential-free step
         working-directory: target
         env:
+          AIOS_REPAIR_REQUIRE_OS_SANDBOX: "1"
           PYTHONPATH: ${{ github.workspace }}/trusted
           AIOS_REPAIR_SHA: ${{ env.BASE_SHA }}
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
