@@ -3,3 +3,4 @@ google-cloud-firestore==2.21.0
 cryptography==50.0.2
 google-cloud-tasks==2.19.3
 gunicorn==23.0.0
+google-cloud-secret-manager==2.32.0
