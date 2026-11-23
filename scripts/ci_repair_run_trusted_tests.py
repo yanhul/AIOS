@@ -157,7 +157,14 @@ def main() -> int:
             returncode = 124
             stdout = exc.stdout.decode("utf-8", "replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
             stderr = exc.stderr.decode("utf-8", "replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
-            stderr += "\ntrusted test command timed out after 900 seconds"
+            stderr += "\\ntrusted test command timed out after 900 seconds"
+        finally:
+            if require_sandbox:
+                # Restore ownership so TemporaryDirectory can securely remove the tree.
+                owner = f"{os.getuid()}:{os.getgid()}"
+                subprocess.run(["sudo", "-n", "chown", "-R", owner,
+                                str(test_root), str(home), str(tmp)],
+                               check=True, capture_output=True, text=True)
 
     result = {
         "status": "PASS" if returncode == 0 else "FAIL", "run_id": run_id,
