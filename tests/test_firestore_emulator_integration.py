@@ -385,7 +385,7 @@ def test_independent_retry_grant_is_consumed_once_in_real_firestore_transaction(
         "state": "UNKNOWN", "state_revision": unknown["revision"],
         "state_digest": effect_state_digest(unknown),
         "not_applied_proof_digest": "a" * 64,
-        "nonce": "emulator-single-use-nonce-0001",
+        "nonce": "emulator-single-use-nonce-" + uuid.uuid4().hex,
         "issued_at": 100.0, "expires_at": 200.0,
         "policy_digest": unknown["policy_digest"],
     }
