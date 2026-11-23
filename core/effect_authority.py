@@ -214,6 +214,10 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, *,
         raise TransitionError("retry actor does not match effect owner")
     if current.get("state") != "UNKNOWN":
         raise TransitionError(f"retry requires UNKNOWN effect, got {current.get('state')}")
+    if current.get("gateway_attempt_id") is not None:
+        raise TransitionError(
+            "Gateway-backed retry is blocked: protocol v4 RETRY is verification-only and does not issue a new attempt"
+        )
     for field in ("evidence_ref", "lineage_ref", "idempotency_key"):
         if field not in current or not isinstance(current[field], str) or not current[field].strip():
             raise TransitionError(f"effect {field} must be bound before retry")
