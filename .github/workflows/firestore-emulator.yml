@@ -60,7 +60,13 @@ jobs:
           AIOS_FIRESTORE_PROJECT_ID: aios-emulator-test
         run: python -m pytest -q
       - name: Build pinned worker OCI image (no push, no deployment)
-        run: docker build --pull=false --file Dockerfile.firestore-worker --tag aios-firestore-worker:ci .
+        run: |
+          docker build --pull=false --file Dockerfile.firestore-worker --tag aios-firestore-worker:first .
+          docker image inspect aios-firestore-worker:first --format '{{.Id}}' > "$RUNNER_TEMP/worker-image-first.id"
+          docker build --pull=false --no-cache --file Dockerfile.firestore-worker --tag aios-firestore-worker:second .
+          docker image inspect aios-firestore-worker:second --format '{{.Id}}' > "$RUNNER_TEMP/worker-image-second.id"
+          diff -u "$RUNNER_TEMP/worker-image-first.id" "$RUNNER_TEMP/worker-image-second.id"
+          docker run --rm aios-firestore-worker:second python -m pip check
       - name: Preserve emulator logs
         if: always()
         uses: actions/upload-artifact@v4
