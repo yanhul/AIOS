@@ -352,14 +352,15 @@ class FirestoreEffectStore:
     def consume_retry_authorization(self, *, authorization: Mapping[str, Any],
                                     issuer_keyring: Any, not_applied_verifier: Callable[..., bool],
                                     now: float | None = None) -> dict[str, Any]:
-        """Atomically consume an independently signed retry grant exactly once.
+        """Consume a signed retry grant and allocate the next dispatch atomically.
 
-        Signature/proof validation occurs before the transaction; the transaction
-        then re-reads and re-binds the exact UNKNOWN state before consuming nonce
-        and returning the effect to PLANNED. No attempt is executed here.
+        The nonce consumption, exact UNKNOWN-state CAS, immutable next attempt,
+        dispatch event and Cloud Tasks outbox obligation commit in one Firestore
+        transaction. No provider call occurs in this method.
         """
         import time
         from .retry_issuer import RetryAuthorizationRejected, effect_state_digest
+        from .cloud_tasks_contract import deterministic_task_name, dispatch_event_digest
 
         if not isinstance(authorization, Mapping):
             raise ValueError("authorization must be a mapping")
@@ -373,13 +374,14 @@ class FirestoreEffectStore:
             authorization, now=time.time() if now is None else now,
             effect=effect, attempt=attempt, not_applied_verifier=not_applied_verifier,
         )
-        nonce_key = sha256((claims["issuer_id"] + "\0" + claims["nonce"]).encode()).hexdigest()
+        nonce_key = sha256((claims["issuer_id"] + "\\0" + claims["nonce"]).encode()).hexdigest()
         nonce_ref = self.client.collection("retry_authorization_consumptions").document(nonce_key)
         effect_ref = self._effect_ref(effect_id)
         attempt_ref = self._attempt_ref(effect_id, attempt_id)
-        event_id = _digest({"event": "RETRY_AUTHORIZATION_CONSUMED",
-                            "effect_id": effect_id, "attempt_id": attempt_id,
-                            "issuer_id": claims["issuer_id"], "nonce": claims["nonce"]})
+        retry_event_id = _digest({"event": "RETRY_AUTHORIZATION_CONSUMED",
+                                  "effect_id": effect_id, "attempt_id": attempt_id,
+                                  "issuer_id": claims["issuer_id"], "nonce": claims["nonce"]})
+        retry_event_ref = self._event_ref(effect_id, retry_event_id)
 
         def body(tx: Any) -> dict[str, Any]:
             current = _data(effect_ref.get(transaction=tx))
@@ -398,33 +400,84 @@ class FirestoreEffectStore:
                 raise EffectStoreConflict("retry authorization became stale before transaction commit")
             if current.get("attempt") != claims["attempt_number"]:
                 raise EffectStoreConflict("retry attempt number binding mismatch")
-            if current.get("attempt", 0) >= current.get("max_attempts", 0):
+            next_number = current.get("attempt", 0) + 1
+            if next_number > current.get("max_attempts", 0):
                 raise EffectStoreConflict("retry exceeds effect max_attempts")
+
+            next_attempt_id = f"{effect_id}:attempt:{next_number}"
+            next_attempt_ref = self._attempt_ref(effect_id, next_attempt_id)
+            dispatch_event_id = _digest({"event": "DISPATCHED", "effect_id": effect_id,
+                                         "attempt_id": next_attempt_id})
+            dispatch_event_ref = self._event_ref(effect_id, dispatch_event_id)
+            task_id = deterministic_task_name(effect_id, next_attempt_id)
+            outbox_ref = self._outbox_ref(task_id)
+            # Read every transaction document before any write (Firestore rule).
+            next_attempt_old = _data(next_attempt_ref.get(transaction=tx))
+            dispatch_event_old = _data(dispatch_event_ref.get(transaction=tx))
+            outbox_old = _data(outbox_ref.get(transaction=tx))
+            if next_attempt_old is not None or dispatch_event_old is not None or outbox_old is not None:
+                raise EffectStoreConflict("next retry attempt/event/outbox already exists; refusing replay")
+
             consumed_record = {
                 "record_type": "AIOS_RETRY_AUTHORIZATION_CONSUMPTION",
                 "issuer_id": claims["issuer_id"], "key_id": claims["key_id"],
                 "nonce": claims["nonce"], "effect_id": effect_id,
-                "attempt_id": attempt_id, "state_digest": claims["state_digest"],
+                "attempt_id": attempt_id, "next_attempt_id": next_attempt_id,
+                "state_digest": claims["state_digest"],
                 "not_applied_proof_digest": claims["not_applied_proof_digest"],
                 "authorization_digest": _digest(dict(authorization)),
             }
-            updated = dict(current, state="PLANNED", revision=current["revision"] + 1,
-                           retry_authorization_digest=_digest(dict(authorization)),
-                           retry_authorization_issuer=claims["issuer_id"])
+            idempotency_key = "aios-" + sha256(
+                f"{effect_id}\\0{next_attempt_id}".encode()
+            ).hexdigest()
+            next_attempt = {
+                "effect_id": effect_id, "attempt_id": next_attempt_id,
+                "attempt_number": next_number, "provider": current["provider"],
+                "idempotency_key": idempotency_key, "state": "DISPATCHED",
+                "lineage_digest": _digest(current["execution_lineage"])
+                    if current.get("execution_lineage") else None,
+                "retry_authorization_digest": consumed_record["authorization_digest"],
+            }
+            next_revision = current["revision"] + 1
+            updated = dict(
+                current, state="DISPATCHED", attempt=next_number,
+                attempt_id=next_attempt_id, revision=next_revision,
+                retry_authorization_digest=consumed_record["authorization_digest"],
+                retry_authorization_issuer=claims["issuer_id"],
+            )
             updated.pop("unknown_reason", None)
+            dispatch_event = {
+                "event_type": "DISPATCH_INTENT_COMMITTED", "effect_id": effect_id,
+                "attempt_id": next_attempt_id, "attempt_number": next_number,
+                "provider": current["provider"], "idempotency_key": idempotency_key,
+                "from_revision": next_revision - 1, "to_revision": next_revision,
+                "retry_authorization_digest": consumed_record["authorization_digest"],
+            }
+            outbox = {
+                "schema": "aios.dispatch-outbox.v1", "task_id": task_id,
+                "effect_id": effect_id, "attempt_id": next_attempt_id,
+                "expected_revision": next_revision,
+                "dispatch_event_digest": dispatch_event_digest(effect_id, next_attempt_id),
+                "state": "PENDING", "lease_generation": 0,
+            }
+
             tx.create(nonce_ref, consumed_record)
             tx.set(effect_ref, updated)
-            tx.create(self._event_ref(effect_id, event_id), {
+            tx.create(retry_event_ref, {
                 "event_type": "RETRY_AUTHORIZATION_CONSUMED",
                 "effect_id": effect_id, "attempt_id": attempt_id,
-                "issuer_id": claims["issuer_id"],
+                "next_attempt_id": next_attempt_id, "issuer_id": claims["issuer_id"],
                 "authorization_digest": consumed_record["authorization_digest"],
                 "not_applied_proof_digest": claims["not_applied_proof_digest"],
-                "from_revision": current["revision"], "to_revision": updated["revision"],
+                "from_revision": current["revision"], "to_revision": next_revision,
             })
+            tx.create(next_attempt_ref, next_attempt)
+            tx.create(dispatch_event_ref, dispatch_event)
+            tx.create(outbox_ref, outbox)
             return updated
+
         try:
-            return self._confirmed("retry authorization consumption transaction", body)
+            return self._confirmed("retry authorization + next dispatch transaction", body)
         except RetryAuthorizationRejected as exc:
             raise EffectStoreConflict("retry authorization rejected; DENY") from exc
 
