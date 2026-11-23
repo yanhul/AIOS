@@ -409,3 +409,26 @@ def test_terminal_gateway_receipt_without_aios_evidence_stays_unresolved(tmp_pat
     )
     assert result["reconciliation"] == "PENDING_AIOS_EVIDENCE"
     assert result["aios_effect"]["state"] == "DISPATCHED"
+
+
+def test_provider_receipt_must_bind_gateway_attempt_identity():
+    from core.runtime import ProviderReceipt, validate_receipt
+    effect = {
+        "effect_id": "EF-1", "attempt_id": "EF-1:attempt:1",
+        "target_sha": "sha256:target", "attempt_fence": 7,
+        "gateway_attempt_id": "T-1:1", "evidence_ref": "EV-1",
+        "lineage_ref": "LIN-1", "idempotency_key": "idem-1",
+    }
+    base = dict(
+        provider="try.research", effect_id="EF-1",
+        attempt_id="EF-1:attempt:1", provider_operation_id="op-1",
+        outcome="OBSERVED_SUCCESS",
+        observation={"evidence": {"evidence_id": "EV-1"}},
+        target_sha="sha256:target", evidence_ref="EV-1",
+        lineage_ref="LIN-1", idempotency_key="idem-1", attempt_fence=7,
+        gateway_attempt_id="T-1:1",
+    )
+    validate_receipt(ProviderReceipt(**base), effect, "EF-1:attempt:1", "try.research")
+    base["gateway_attempt_id"] = "T-OTHER:1"
+    with pytest.raises(ValueError, match="Gateway attempt binding"):
+        validate_receipt(ProviderReceipt(**base), effect, "EF-1:attempt:1", "try.research")
