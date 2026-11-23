@@ -80,7 +80,7 @@ jobs:
           expected_result_files = {name + ".result.json" for name in expected}
           assert receipt_files == expected, (receipt_files, expected)
           assert result_files == expected_result_files, (result_files, expected_result_files)
-          results = {p.name: json.loads((root / p.name).read_text()) for p in sorted(expected)}
+          results = {name: json.loads((root / name).read_text()) for name in sorted(expected)}
           for name, receipt in results.items():
               result_name = receipt.get("result_ref")
               assert result_name == name + ".result.json", (name, result_name)
