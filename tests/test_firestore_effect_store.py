@@ -242,7 +242,7 @@ def test_failed_transaction_does_not_partially_commit():
 
 
 
-def test_retry_authorization_nonce_consumed_once_and_returns_effect_to_planned():
+def test_retry_authorization_nonce_and_next_dispatch_commit_atomically():
     import hashlib
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -282,10 +282,19 @@ def test_retry_authorization_nonce_consumed_once_and_returns_effect_to_planned()
         authorization=authorization, issuer_keyring=keyring,
         not_applied_verifier=verify_proof, now=150,
     )
-    assert resumed["state"] == "PLANNED"
+    assert resumed["state"] == "DISPATCHED"
     assert resumed["revision"] == unknown["revision"] + 1
-    assert resumed["attempt"] == 1
+    assert resumed["attempt"] == 2
+    next_attempt_id = "EF-crash-001:attempt:2"
+    assert resumed["attempt_id"] == next_attempt_id
+    assert client.data["effects/EF-crash-001/attempts/EF-crash-001:attempt:1"]["state"] == "UNKNOWN"
+    assert client.data["effects/EF-crash-001/attempts/EF-crash-001:attempt:2"]["state"] == "DISPATCHED"
     assert len([key for key in client.data if key.startswith("retry_authorization_consumptions/")]) == 1
+    from core.cloud_tasks_contract import deterministic_task_name
+    task_id = deterministic_task_name("EF-crash-001", next_attempt_id)
+    outbox = client.data["dispatch_outbox/" + task_id]
+    assert outbox["state"] == "PENDING"
+    assert outbox["expected_revision"] == resumed["revision"]
 
     # A replay is denied before entering the transaction because the
     # first consumption already moved the effect out of UNKNOWN.
