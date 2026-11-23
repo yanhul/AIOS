@@ -108,7 +108,7 @@ def test_symlink_cannot_escape_repository(tmp_path):
     worker = AgentRepairWorker(tmp_path, authority)
 
     with pytest.raises(RepairWorkerError, match="escapes repository"):
-        worker.apply(base_sha=base, files=(ProposedFile("escape.py", "SAFE = False\\n"),))
+        worker.apply(base_sha=base, files=(ProposedFile("escape.py", "SAFE = False\\n"),), allowed_dirty_paths=frozenset({"escape.py"}))
 
     assert authority.calls == []
     assert outside.read_text(encoding="utf-8") == "SAFE = True\\n"
