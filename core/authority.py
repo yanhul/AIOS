@@ -9,7 +9,8 @@ from .contract import contract_identity, issue_permit, validate_contract, verify
 from .attestation import issue_attestation, verify_attestation
 from .capabilities import CapabilityError, CapabilityRegistry
 from .policy_registry import resolve_policy
-from .mutation import TransitionError, canonical_json, commit_batch, recover_pending
+from .mutation import TransitionError, canonical_json
+from .authority_store import commit_authority_batch as commit_batch, recover_authority_store as recover_pending
 
 AUTHORITY_DIR = "authority"
 CONTRACTS_DIR = "contracts"
