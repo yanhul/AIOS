@@ -188,3 +188,41 @@ def test_execute_retry_attempt_rejects_over_max_before_dispatch(tmp_path):
         execute_retry_attempt(str(tmp_path), cid, pid, effect, "agent:test", GoodAdapter(),
                               f"{effect['effect_id']}:attempt:2", 2)
     assert effect["state"] == "UNKNOWN"
+
+
+def test_execute_attempt_reloads_authority_and_rejects_stale_dispatched_snapshot(tmp_path):
+    c, cid, pid = setup_authority(tmp_path)
+    effect = create_effect(str(tmp_path), cid, "op-stale", "agent:test", pid, "external_effect")
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    dispatched = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")
+    transition(str(tmp_path), effect["effect_id"], "UNKNOWN", "agent:test", unknown_reason="crash recovery")
+
+    class CountingAdapter(GoodAdapter):
+        calls = 0
+        def execute(self, **kwargs):
+            self.calls += 1
+            return super().execute(**kwargs)
+
+    adapter = CountingAdapter()
+    with pytest.raises(RuntimeError, match="persisted effect must be DISPATCHED"):
+        execute_attempt(str(tmp_path), c, dispatched, "agent:test", adapter, attempt_id)
+    assert adapter.calls == 0
+
+
+def test_execute_attempt_rejects_adapter_not_bound_to_dispatched_provider(tmp_path):
+    c, cid, pid = setup_authority(tmp_path)
+    effect = create_effect(str(tmp_path), cid, "op-provider", "agent:test", pid, "external_effect")
+    attempt_id = f"{effect['effect_id']}:attempt:1"
+    effect = dispatch(str(tmp_path), effect["effect_id"], "agent:test", attempt_id, "fake-provider")
+
+    class WrongAdapter:
+        name = "fake-provider-alias"
+        calls = 0
+        def execute(self, **kwargs):
+            self.calls += 1
+            raise AssertionError("wrong provider must not execute")
+
+    adapter = WrongAdapter()
+    with pytest.raises(PermissionError, match="does not match persisted dispatched provider"):
+        execute_attempt(str(tmp_path), c, effect, "agent:test", adapter, attempt_id)
+    assert adapter.calls == 0
