@@ -344,3 +344,88 @@ def test_provider_operation_id_binding_rejects_cross_attempt_identity():
             effect_id=effect_id, attempt_id=effect_id + ":attempt:2", provider="gemini",
             provider_operation_id="v1_interaction_fixture_001",
         )
+
+def test_independent_retry_grant_is_consumed_once_in_real_firestore_transaction():
+    import hashlib
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from core.retry_issuer import (
+        SCHEMA, RetryAuthorizationRejected, RetryIssuerKeyring,
+        canonical_payload, effect_state_digest,
+    )
+
+    store = make_store()
+    effect_id, effect = make_effect()
+    effect["max_attempts"] = 2
+    store.create_effect(effect)
+    attempt_id = effect_id + ":attempt:1"
+    store.dispatch(
+        effect_id=effect_id, attempt_id=attempt_id,
+        provider="provider-fixture", expected_revision=0,
+    )
+    unknown = store.mark_unknown(
+        effect_id=effect_id, attempt_id=attempt_id,
+        reason="emulator fixture: outcome is ambiguous", expected_revision=1,
+    )
+    attempt = store.get_attempt(effect_id, attempt_id)
+
+    # The private key exists only in this test process. Production AIOS stores
+    # only the independent issuer's pinned public key.
+    private = Ed25519PrivateKey.generate()
+    public_hex = private.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    ).hex()
+    key_id = "retry-ed25519:" + hashlib.sha256(bytes.fromhex(public_hex)).hexdigest()[:32]
+    payload = {
+        "schema": SCHEMA, "issuer_id": "emulator-independent-issuer",
+        "key_id": key_id, "effect_id": effect_id,
+        "contract_id": unknown["contract_id"], "permit_id": unknown["permit_id"],
+        "actor": unknown["actor"], "provider": unknown["provider"],
+        "attempt_id": attempt_id, "attempt_number": unknown["attempt"],
+        "state": "UNKNOWN", "state_revision": unknown["revision"],
+        "state_digest": effect_state_digest(unknown),
+        "not_applied_proof_digest": "a" * 64,
+        "nonce": "emulator-single-use-nonce-0001",
+        "issued_at": 100.0, "expires_at": 200.0,
+        "policy_digest": unknown["policy_digest"],
+    }
+    authorization = dict(payload, signature=private.sign(canonical_payload(payload)).hex())
+    keyring = RetryIssuerKeyring({"emulator-independent-issuer": {
+        "key_id": key_id, "public_key": public_hex, "revoked": False,
+    }})
+
+    def verify_fixture_not_applied(*, proof_digest, effect, attempt):
+        return (
+            proof_digest == "a" * 64
+            and effect["state"] == "UNKNOWN"
+            and attempt["attempt_id"] == attempt_id
+        )
+
+    resumed = store.consume_retry_authorization(
+        authorization=authorization, issuer_keyring=keyring,
+        not_applied_verifier=verify_fixture_not_applied, now=150,
+    )
+    assert resumed["state"] == "PLANNED"
+    assert resumed["revision"] == unknown["revision"] + 1
+    assert resumed["attempt"] == 1
+
+    # A fresh client observes the committed nonce and state transition.
+    restarted = make_store()
+    consumed = list(restarted.client.collection("retry_authorization_consumptions").stream())
+    assert len([doc for doc in consumed if doc.to_dict().get("nonce") == payload["nonce"]]) == 1
+    with pytest.raises(RetryAuthorizationRejected, match="UNKNOWN"):
+        restarted.consume_retry_authorization(
+            authorization=authorization, issuer_keyring=keyring,
+            not_applied_verifier=verify_fixture_not_applied, now=150,
+        )
+
+    # Only after the one-time grant moves the effect back to PLANNED can the
+    # normal dispatch CAS allocate attempt 2; the old attempt remains immutable.
+    next_attempt_id = effect_id + ":attempt:2"
+    next_effect = restarted.dispatch(
+        effect_id=effect_id, attempt_id=next_attempt_id,
+        provider="provider-fixture", expected_revision=resumed["revision"],
+    )
+    assert next_effect["attempt"] == 2
+    assert restarted.get_attempt(effect_id, attempt_id)["state"] == "UNKNOWN"
+    assert restarted.get_attempt(effect_id, next_attempt_id)["state"] == "DISPATCHED"
