@@ -7,7 +7,9 @@ from core.authority import load_permit, persist_attestation, persist_contract, p
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity, issue_permit
 from core.effect_authority import create_effect, dispatch, retry_dispatch, unknown
-from core.gateway_effect_adapter import build_gateway_effect_contract
+from core.gateway_effect_adapter import (
+    GatewayTransportError, begin_and_dispatch_aios_effect, build_gateway_effect_contract,
+)
 from core.policy_registry import persist_policy
 
 SECRET = "test-secret"
@@ -217,3 +219,70 @@ def test_gateway_transport_rejects_non_v4_contract_before_io(tmp_path):
         client.create_ticket(ticket="T", repository="r", target_sha="s",
                              nonce="n", ttl_seconds=10,
                              effect_contract={"protocol_version": 3})
+
+
+class _FakeGateway:
+    def __init__(self, response):
+        self.response = response
+        self.calls = 0
+
+    def begin_effect(self, *, ticket, target_sha):
+        self.calls += 1
+        return dict(self.response)
+
+
+def test_gateway_attempt_is_mapped_to_distinct_aios_and_gateway_ids(tmp_path):
+    contract, permit, attestation, effect = _authority(tmp_path)
+    gateway = _FakeGateway({
+        "attempt_id": "TICKET-1:1", "fence": 7,
+        "execute_allowed": True, "replayed": False,
+    })
+    result = begin_and_dispatch_aios_effect(
+        gateway, ticket="TICKET-1", target_sha="sha256:target",
+        aios_dir=str(tmp_path), effect=effect, actor="aios",
+        provider="try.research", evidence_ref="EV-1",
+        lineage_ref="LIN-1", idempotency_key="idem-1",
+    )
+    assert result["execute_allowed"] is True
+    assert result["aios_attempt_id"] == effect["effect_id"] + ":attempt:1"
+    assert result["gateway_attempt_id"] == "TICKET-1:1"
+    assert result["effect"]["attempt_id"] == result["aios_attempt_id"]
+    assert result["effect"]["gateway_attempt_id"] == "TICKET-1:1"
+    assert result["effect"]["attempt_fence"] == 7
+    assert result["effect"]["state"] == "DISPATCHED"
+    assert gateway.calls == 1
+
+
+def test_gateway_replay_does_not_dispatch_aios_or_authorize_execution(tmp_path):
+    contract, permit, attestation, effect = _authority(tmp_path)
+    gateway = _FakeGateway({
+        "attempt_id": "TICKET-1:1", "fence": 7,
+        "execute_allowed": False, "replayed": True,
+    })
+    with pytest.raises(GatewayTransportError, match="replayed"):
+        begin_and_dispatch_aios_effect(
+            gateway, ticket="TICKET-1", target_sha="sha256:target",
+            aios_dir=str(tmp_path), effect=effect, actor="aios",
+            provider="try.research", evidence_ref="EV-1",
+            lineage_ref="LIN-1", idempotency_key="idem-1",
+        )
+    saved = json.loads((tmp_path / "effects" / (effect["effect_id"] + ".json")).read_text())
+    assert saved["state"] == "PLANNED"
+    assert saved["attempt"] == 0
+
+
+def test_gateway_invalid_fence_never_dispatches_aios(tmp_path):
+    contract, permit, attestation, effect = _authority(tmp_path)
+    gateway = _FakeGateway({
+        "attempt_id": "TICKET-1:1", "fence": True,
+        "execute_allowed": True, "replayed": False,
+    })
+    with pytest.raises(GatewayTransportError, match="invalid attempt fence"):
+        begin_and_dispatch_aios_effect(
+            gateway, ticket="TICKET-1", target_sha="sha256:target",
+            aios_dir=str(tmp_path), effect=effect, actor="aios",
+            provider="try.research", evidence_ref="EV-1",
+            lineage_ref="LIN-1", idempotency_key="idem-1",
+        )
+    saved = json.loads((tmp_path / "effects" / (effect["effect_id"] + ".json")).read_text())
+    assert saved["state"] == "PLANNED"
