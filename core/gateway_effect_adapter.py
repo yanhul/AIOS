@@ -18,7 +18,10 @@ from pathlib import Path
 from .attestation import verify_attestation
 from .authority import authorize, load_attestation, load_contract, load_permit
 from .contract import verify_permit
-from .effect_authority import dispatch as dispatch_aios_effect
+from .effect_authority import (
+    dispatch as dispatch_aios_effect, observe as observe_aios_effect,
+    unknown as mark_aios_unknown,
+)
 
 GATEWAY_PROTOCOL_VERSION = 4
 REQUIRED_WORKLOAD_FIELDS = (
@@ -271,3 +274,61 @@ def begin_and_dispatch_aios_effect(
         "gateway_attempt_id": gateway_attempt_id,
         "aios_attempt_id": aios_attempt_id, "attempt_fence": fence,
     }
+
+
+def record_gateway_receipt(
+    transport: GatewayCLITransport, *, ticket: str, aios_dir: str,
+    effect_id: str, actor: str, receipt: Mapping[str, object],
+    provider_observation: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Persist a Gateway receipt first, then reconcile only evidence-backed AIOS state.
+
+    UNKNOWN is reflected into AIOS as UNKNOWN. OBSERVED remains non-terminal.
+    COMPLETED/FAILED without a verifiable AIOS observation remain DISPATCHED or
+    UNKNOWN and are explicitly reported as pending reconciliation.
+    """
+    current = _load_persisted_effect(aios_dir, effect_id)
+    if current.get("actor") != actor:
+        raise GatewayTransportError("receipt actor does not own the AIOS effect")
+    if current.get("state") not in {"DISPATCHED", "UNKNOWN"}:
+        raise GatewayTransportError("Gateway receipt requires a dispatched or unresolved AIOS effect")
+    required = ("ticket_id", "attempt_id", "attempt_fence", "target_sha",
+                "effect_id", "status", "evidence_ref", "lineage_ref")
+    if any(receipt.get(key) in (None, "") for key in required):
+        raise GatewayTransportError("Gateway receipt is missing required binding fields")
+    expected = {
+        "ticket_id": ticket, "attempt_id": current.get("gateway_attempt_id"),
+        "attempt_fence": current.get("attempt_fence"),
+        "target_sha": current.get("target_sha"), "effect_id": effect_id,
+        "evidence_ref": current.get("evidence_ref"),
+        "lineage_ref": current.get("lineage_ref"),
+    }
+    for key, value in expected.items():
+        if receipt.get(key) != value:
+            raise GatewayTransportError(f"Gateway receipt {key} binding mismatch")
+    status = receipt.get("status")
+    if status not in {"UNKNOWN", "OBSERVED", "FAILED", "COMPLETED"}:
+        raise GatewayTransportError("Gateway receipt status is invalid")
+
+    # Gateway is the durable receipt ledger. Do not mutate AIOS until this write succeeds.
+    ticket_state = transport.record_receipt(ticket=ticket, receipt=receipt)
+    if status == "UNKNOWN":
+        if current["state"] == "DISPATCHED":
+            updated = mark_aios_unknown(aios_dir, effect_id, actor, "Gateway recorded UNKNOWN receipt")
+            return {"ticket": ticket_state, "aios_effect": updated, "reconciliation": "UNKNOWN_RECORDED"}
+        return {"ticket": ticket_state, "aios_effect": current, "reconciliation": "ALREADY_UNKNOWN"}
+
+    if status == "OBSERVED":
+        return {"ticket": ticket_state, "aios_effect": current, "reconciliation": "WAITING_FOR_TERMINAL_RECEIPT"}
+
+    if provider_observation is None:
+        return {"ticket": ticket_state, "aios_effect": current, "reconciliation": "PENDING_AIOS_EVIDENCE"}
+    if not isinstance(provider_observation, Mapping):
+        raise GatewayTransportError("provider_observation must be a mapping")
+    if provider_observation.get("gateway_attempt_id") != current.get("gateway_attempt_id"):
+        raise GatewayTransportError("provider observation Gateway attempt binding mismatch")
+    outcome = "OBSERVED_SUCCESS" if status == "COMPLETED" else "OBSERVED_FAILURE"
+    updated = observe_aios_effect(
+        aios_dir, effect_id, actor, outcome, dict(provider_observation),
+    )
+    return {"ticket": ticket_state, "aios_effect": updated, "reconciliation": "RECONCILED"}
