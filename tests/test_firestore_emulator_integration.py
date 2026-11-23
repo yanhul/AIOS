@@ -405,11 +405,16 @@ def test_independent_retry_grant_is_consumed_once_in_real_firestore_transaction(
         authorization=authorization, issuer_keyring=keyring,
         not_applied_verifier=verify_fixture_not_applied, now=150,
     )
-    assert resumed["state"] == "PLANNED"
+    # Retry grant consumption, next attempt allocation, dispatch event and
+    # Cloud Tasks outbox obligation are one Firestore transaction.
+    next_attempt_id = effect_id + ":attempt:2"
+    assert resumed["state"] == "DISPATCHED"
     assert resumed["revision"] == unknown["revision"] + 1
-    assert resumed["attempt"] == 1
+    assert resumed["attempt"] == 2
+    assert resumed["attempt_id"] == next_attempt_id
 
-    # A fresh client observes the committed nonce and state transition.
+    # A fresh client observes the nonce, immutable old attempt, new attempt,
+    # and deterministic pending outbox after the transaction committed.
     restarted = make_store()
     consumed = list(restarted.client.collection("retry_authorization_consumptions").stream())
     assert len([doc for doc in consumed if doc.to_dict().get("nonce") == payload["nonce"]]) == 1
@@ -418,14 +423,10 @@ def test_independent_retry_grant_is_consumed_once_in_real_firestore_transaction(
             authorization=authorization, issuer_keyring=keyring,
             not_applied_verifier=verify_fixture_not_applied, now=150,
         )
-
-    # Only after the one-time grant moves the effect back to PLANNED can the
-    # normal dispatch CAS allocate attempt 2; the old attempt remains immutable.
-    next_attempt_id = effect_id + ":attempt:2"
-    next_effect = restarted.dispatch(
-        effect_id=effect_id, attempt_id=next_attempt_id,
-        provider="provider-fixture", expected_revision=resumed["revision"],
-    )
-    assert next_effect["attempt"] == 2
     assert restarted.get_attempt(effect_id, attempt_id)["state"] == "UNKNOWN"
-    assert restarted.get_attempt(effect_id, next_attempt_id)["state"] == "DISPATCHED"
+    next_attempt = restarted.get_attempt(effect_id, next_attempt_id)
+    assert next_attempt["state"] == "DISPATCHED"
+    outbox = restarted.get_dispatch_outbox(effect_id=effect_id, attempt_id=next_attempt_id)
+    assert outbox is not None
+    assert outbox["state"] == "PENDING"
+    assert outbox["expected_revision"] == resumed["revision"]
