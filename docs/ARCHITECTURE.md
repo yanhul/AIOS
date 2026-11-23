@@ -1,3 +1,5 @@
+> **Document status (2026-11-23):** This file preserves the historical M1/M1.5 architecture and milestone record. For current implementation boundaries, use [ARCHITECTURE_CURRENT.md](ARCHITECTURE_CURRENT.md); for the target control/capability-plane design, use [TARGET_ARCHITECTURE.md](TARGET_ARCHITECTURE.md); for the six-layer logical ownership contract, use [SIX_LAYER_ARCHITECTURE.md](SIX_LAYER_ARCHITECTURE.md). Do not treat historical future-work statements below as the current implementation status.
+
 # AIOS Architecture
 
 Status: M1 implemented (read-only inspection/import/snapshot pipeline) plus M1.5 writer enforcement (`core/mutation.py` — the single validated mutation boundary). State-machine transitions, gates, policy, verification and agents remain future work (see docs/ROADMAP.md).
