@@ -5,6 +5,7 @@ from core.cloud_run_worker import (
     _load_adapter_factory,
     _positive_int,
     _verify_caller,
+    load_attestation_secret,
 )
 
 
@@ -29,3 +30,54 @@ def test_identity_verification_rejects_missing_bearer_token():
         audience="https://worker.example",
         expected_email="tasks@example.iam.gserviceaccount.com",
     ) is False
+
+
+class _SecretPayload:
+    data = b"attestation-secret-material"
+
+
+class _SecretResponse:
+    payload = _SecretPayload()
+
+
+class _FakeSecretManager:
+    def __init__(self, fail=False):
+        self.fail = fail
+        self.names = []
+
+    def access_secret_version(self, request):
+        self.names.append(request["name"])
+        if self.fail:
+            raise RuntimeError("permission denied")
+        return _SecretResponse()
+
+
+def test_worker_loads_only_pinned_secret_manager_version():
+    client = _FakeSecretManager()
+    secret = load_attestation_secret(
+        {"AIOS_AUTHORITY_ATTESTATION_SECRET_VERSION":
+         "projects/aios-test/secrets/attestation/versions/7"},
+        client=client,
+    )
+    assert secret == "attestation-secret-material"
+    assert client.names == [
+        "projects/aios-test/secrets/attestation/versions/7"
+    ]
+
+
+def test_worker_secret_manager_failure_fails_closed():
+    with pytest.raises(CloudRunWorkerConfigurationError, match="DENY"):
+        load_attestation_secret(
+            {"AIOS_AUTHORITY_ATTESTATION_SECRET_VERSION":
+             "projects/aios-test/secrets/attestation/versions/7"},
+            client=_FakeSecretManager(fail=True),
+        )
+
+
+def test_worker_rejects_unpinned_or_latest_secret_version():
+    for version in ("", "projects/test/secrets/attestation/versions/latest"):
+        with pytest.raises(CloudRunWorkerConfigurationError):
+            load_attestation_secret(
+                {"AIOS_AUTHORITY_ATTESTATION_SECRET_VERSION": version},
+                client=_FakeSecretManager(),
+            )
