@@ -251,15 +251,27 @@ class AgentRepairWorker:
                 test_env.pop(name, None)
         results = []
         for i, command in enumerate(selected):
-            proc = subprocess.run(command, cwd=self.root, text=True, capture_output=True,
-                                  timeout=self.timeout_seconds, check=False, env=test_env)
-            results.append({"command": list(command), "returncode": proc.returncode,
-                            "stdout_sha256": self._sha256_text(proc.stdout),
-                            "stderr_sha256": self._sha256_text(proc.stderr),
-                            "stdout_tail": proc.stdout[-4000:], "stderr_tail": proc.stderr[-4000:]})
-            if proc.returncode:
+            try:
+                proc = subprocess.run(command, cwd=self.root, text=True, capture_output=True,
+                                      timeout=self.timeout_seconds, check=False, env=test_env)
+                returncode, stdout, stderr = proc.returncode, proc.stdout, proc.stderr
+                failure_kind = None
+            except subprocess.TimeoutExpired as exc:
+                returncode = 124
+                stdout = exc.stdout.decode("utf-8", "replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+                stderr = exc.stderr.decode("utf-8", "replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+                stderr += f"\\ntrusted test command timed out after {self.timeout_seconds} seconds"
+                failure_kind = "TIMEOUT"
+            results.append({"command": list(command), "returncode": returncode,
+                            "stdout_sha256": self._sha256_text(stdout),
+                            "stderr_sha256": self._sha256_text(stderr),
+                            "stdout_tail": stdout[-4000:], "stderr_tail": stderr[-4000:]})
+            if returncode:
+                details = {"results": results}
+                if failure_kind:
+                    details["failure_kind"] = failure_kind
                 return WorkerEvidence("TEST", "FAIL", tuple(f"test:{j}:{r['returncode']}" for j, r in enumerate(results)),
-                                      {"results": results})
+                                      details)
         return WorkerEvidence("TEST", "PASS", tuple(f"test:{j}:{r['returncode']}" for j, r in enumerate(results)),
                               {"results": results})
 
