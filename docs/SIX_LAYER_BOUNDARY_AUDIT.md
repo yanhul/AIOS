@@ -167,3 +167,22 @@ This addendum separates work that can be established from the inspected default 
 | P5 | Current/target/six-layer/historical doc precedence clarified | Historical doc edit remains separate; no history rewritten |
 
 This is the maximum evidence-supported P0–P5 closure from the current source snapshot. It is not a claim that all six priorities are implemented or that AIOS is six-layer conformant.
+
+
+## Implementation follow-through — P2/P4 (2026-11-23)
+
+### P2 — L6→L5 persistence seam
+
+- Added `core/authority_store.py` with a typed `AuthorityStore` protocol and `FileAuthorityStore` adapter.
+- Routed contract/permit/attestation and external-effect journal commits/recovery through this L5 adapter from `core/authority.py` and `core/effect_authority.py`.
+- The adapter delegates atomic batch/CAS mechanics to the existing journaled mutation primitive. It receives payloads and preconditions; it does not authorize policy, validate provider receipts, choose providers, or execute effects.
+- This is a first in-process boundary seam, not a unified database, cross-store transaction, or multi-host consistency guarantee.
+
+### P4 — report-only L5 dependency gate
+
+- Added `scripts/architecture_boundary_check.py` and focused tests.
+- Initial scope is deliberately narrow: the five named L5 persistence modules must not import adapter/provider/network execution surfaces.
+- Added the report-only checker to the existing full-suite CI job. It emits machine-readable JSON and does not fail CI for baseline findings.
+- `--strict` is available for a later reviewed promotion; it is not enabled in this change.
+- This does not yet enforce every cross-layer rule or prove runtime call graphs.
+
