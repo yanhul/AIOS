@@ -327,6 +327,16 @@ def test_real_gateway_cli_to_aios_effect_mapping_survives_replay(tmp_path, monke
     assert result["effect"]["gateway_attempt_id"] != result["effect"]["attempt_id"]
     assert result["effect"]["attempt_fence"] >= 1
 
+    # Simulate a caller restart with its stale PLANNED snapshot. Gateway's
+    # durable replay fence must refuse a second execution before AIOS mutation.
+    with pytest.raises(GatewayTransportError, match="replayed"):
+        begin_and_dispatch_aios_effect(
+            transport, ticket="T-AIOS-BRIDGE", target_sha="sha256:target",
+            aios_dir=str(tmp_path), effect=effect, actor="aios",
+            provider="try.research", evidence_ref="EV-1",
+            lineage_ref="LIN-1", idempotency_key="idem-1",
+        )
+
     receipt = {
         "ticket_id": "T-AIOS-BRIDGE",
         "attempt_id": result["gateway_attempt_id"],
@@ -341,17 +351,32 @@ def test_real_gateway_cli_to_aios_effect_mapping_survives_replay(tmp_path, monke
     assert reconciled["reconciliation"] == "UNKNOWN_RECORDED"
     assert reconciled["aios_effect"]["state"] == "UNKNOWN"
 
-    # Simulate a caller restart with its stale PLANNED snapshot. Gateway's
-    # durable replay fence must refuse a second execution before AIOS mutation.
-    with pytest.raises(GatewayTransportError, match="replayed"):
-        begin_and_dispatch_aios_effect(
-            transport, ticket="T-AIOS-BRIDGE", target_sha="sha256:target",
-            aios_dir=str(tmp_path), effect=effect, actor="aios",
-            provider="try.research", evidence_ref="EV-1",
-            lineage_ref="LIN-1", idempotency_key="idem-1",
-        )
+    from core.evidence import EvidenceRecord
+    evidence = EvidenceRecord(
+        evidence_id="EV-1", level="EVIDENCED", source_ref="provider:try.research",
+        claim="Gateway operation completed", run_id="run-gateway-1",
+        provider="try.research", artifact_ref="artifact:gateway-result",
+    ).as_record()
+    completed_receipt = dict(receipt, status="COMPLETED")
+    provider_observation = {
+        "provider": "try.research", "provider_operation_id": "provider-op-1",
+        "effect_id": effect["effect_id"],
+        "attempt_id": result["aios_attempt_id"],
+        "gateway_attempt_id": result["gateway_attempt_id"],
+        "target_sha": "sha256:target", "evidence_ref": "EV-1",
+        "lineage_ref": "LIN-1", "idempotency_key": "idem-1",
+        "attempt_fence": result["attempt_fence"], "evidence": evidence,
+    }
+    completed = record_gateway_receipt(
+        transport, ticket="T-AIOS-BRIDGE", aios_dir=str(tmp_path),
+        effect_id=effect["effect_id"], actor="aios", receipt=completed_receipt,
+        provider_observation=provider_observation,
+    )
+    assert completed["reconciliation"] == "RECONCILED"
+    assert completed["aios_effect"]["state"] == "OBSERVED_SUCCESS"
+
     saved = json.loads((tmp_path / "effects" / (effect["effect_id"] + ".json")).read_text())
-    assert saved["state"] == "UNKNOWN"
+    assert saved["state"] == "OBSERVED_SUCCESS"
     assert saved["attempt"] == 1
     assert saved["gateway_attempt_id"] == result["gateway_attempt_id"]
 
