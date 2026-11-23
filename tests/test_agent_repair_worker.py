@@ -125,6 +125,24 @@ def test_worker_reports_test_failure_without_claiming_pass(tmp_path):
     assert result.details["results"][0]["returncode"] != 0
 
 
+def test_worker_test_subprocess_does_not_inherit_credentials(tmp_path, monkeypatch):
+    init_repo(tmp_path)
+    monkeypatch.setenv("GITHUB_TOKEN", "must-not-leak")
+    monkeypatch.setenv("ACTIONS_RUNTIME_TOKEN", "must-not-leak")
+    monkeypatch.setenv("AIOS_AUTHORITY_ATTESTATION_SECRET", "must-not-leak")
+    command = (
+        "python", "-c",
+        "import os; "
+        "assert 'GITHUB_TOKEN' not in os.environ; "
+        "assert 'ACTIONS_RUNTIME_TOKEN' not in os.environ; "
+        "assert 'AIOS_AUTHORITY_ATTESTATION_SECRET' not in os.environ; "
+        "assert 'aios-worker-test-home-' in os.environ['HOME']"
+    )
+    worker = AgentRepairWorker(tmp_path, FakeAuthority(), allowed_test_commands=(command,))
+    result = worker.test()
+    assert result.status == "PASS"
+
+
 def test_worker_full_repair_path(tmp_path):
     base = init_repo(tmp_path)
     trusted = ("python", "-c", "assert open('module.py').read().strip() == 'VALUE = 2'")
