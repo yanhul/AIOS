@@ -63,7 +63,7 @@ The repository contains the M1/M1.5 state and mutation foundation plus implement
 
 The v5 retry path is disabled unless both trust roots are explicitly configured:
 
-- TRY Worker: `TRY_OPERATION_RECEIPT_SECRET` (32+ random characters) and `TRY_OPERATION_RECEIPT_KEY_ID`. AIOS pins the same issuer/key under `AIOS_TRY_OPERATION_KEYRING` with scope `try.operation.receipt.verify`. The bearer token is transport authentication only.
+- TRY Worker: `TRY_OPERATION_RECEIPT_PRIVATE_KEY` (base64 PKCS#8 Ed25519 private key) and `TRY_OPERATION_RECEIPT_KEY_ID`. AIOS pins only the matching raw 32-byte public key (base64) under `AIOS_TRY_OPERATION_KEYRING` with scope `try.operation.receipt.verify`. HMAC receipts are rejected; the bearer token is transport authentication only.
 - AIOS RetryPermit: `AIOS_GATEWAY_RETRY_PRIVATE_KEY_FILE` points to a PEM Ed25519 private key readable only by the AIOS service account (mode `0600`). AIOS derives key ID `ed25519:<first-32-hex-of-SHA256(raw-public-key)>`.
 - Gateway: `AIOS_GATEWAY_RETRY_PUBLIC_KEYS` is a JSON object mapping that key ID to the 32-byte raw public key as 64 lowercase hex characters. Gateway never receives the private key.
 
