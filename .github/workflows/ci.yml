@@ -28,6 +28,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout pinned Harness Gateway v5 CLI for cross-repository retry tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/harness-gateway"
+          git -C "$RUNNER_TEMP/harness-gateway" init
+          git -C "$RUNNER_TEMP/harness-gateway" remote add origin https://github.com/yanhul/harness-gateway.git
+          git -C "$RUNNER_TEMP/harness-gateway" fetch --depth 1 origin ec6a2b5ed78f5229c4081237886717510f8c9d66
+          git -C "$RUNNER_TEMP/harness-gateway" checkout --detach FETCH_HEAD
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -46,6 +53,8 @@ jobs:
       - name: Six-layer L5 dependency boundary (report-only baseline)
         run: python scripts/architecture_boundary_check.py --root "$GITHUB_WORKSPACE"
       - name: Run test suite
+        env:
+          HARNESS_GATEWAY_CLI: ${{ runner.temp }}/harness-gateway/gateway_cli.py
         run: python -m pytest -q
       - name: Assert tests leave research artifacts clean
         run: |

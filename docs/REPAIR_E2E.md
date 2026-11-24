@@ -11,6 +11,24 @@ Configure these repository settings before dispatching the repair workflow:
 
 The workflow maps these existing names to its internal `TRY_REPAIR_WORKER_URL` and `TRY_PROVIDER_TOKEN` environment variables. Do not create duplicate secrets under the old internal names.
 
+## TRY operation receipt trust
+
+The TRY Worker signs `TRY_PROPOSAL_OPERATION_RECEIPT_V1` with Ed25519. Configure
+`TRY_OPERATION_RECEIPT_PRIVATE_KEY` (base64 PKCS#8 DER private key) and
+`TRY_OPERATION_RECEIPT_KEY_ID` as Cloudflare Worker secrets. Configure AIOS deployment
+variable `AIOS_TRY_OPERATION_KEYRING` with only the corresponding raw 32-byte public key
+(base64), pinned to issuer `try.repair`, key ID, and scope
+`try.operation.receipt.verify`, for example:
+
+```json
+{"try.repair":{"key_id":"try-op-ed25519-v1","public_key":"<base64-raw-32-byte-public-key>","scopes":["try.operation.receipt.verify"],"revoked":false}}
+```
+
+Never put the private key in AIOS, Git, CI artifacts, or the Worker response. Do not configure
+the former shared HMAC secret: HMAC receipts are no longer accepted. Rotate by pinning the
+new public key in AIOS before switching the Worker to the matching private key and key ID;
+revoke the old public key after the transition.
+
 ## Required GitHub Actions secrets
 
 Configure these repository secrets before dispatching the repair workflow:

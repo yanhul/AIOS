@@ -9,6 +9,7 @@ HMAC-SHA256 keys, following the model of `core/attestation.py`.
 | `AIOS_RETRY_ISSUER_KEYRING` | AIOS verifier | `retry_dispatch`, `issue_retry_authorization` | Registered retry approvers: `{"<issuer>": {"secret": "...", "scopes": ["effect.retry.approve"], "revoked": false}}` |
 | `AIOS_PROVIDER_KEYRING` | AIOS verifier | `observe` (via `core.runtime`) | Registered providers: `{"<provider>": {"secret": "...", "scopes": ["provider.receipt.sign"], "revoked": false}}` |
 | `AIOS_PROVIDER_ED25519_KEYRING` | AIOS verifier | `observe` | Ed25519 **public** keys only: `{"<provider>": {"key_id": "ed25519:<sha256(pub)[:32]>", "public_key": "<32-byte hex>", "revoked": false}}`. Any other field is rejected. |
+| `AIOS_TRY_OPERATION_KEYRING` | AIOS verifier | TRY operation receipt reconciliation | Ed25519 **public** key only: `{"try.repair": {"key_id": "<TRY key id>", "public_key": "<base64 raw 32-byte public key>", "scopes": ["try.operation.receipt.verify"], "revoked": false}}`. The private key stays in the TRY Worker. |
 | `AIOS_PROVIDER_SIGNING_KEYS` | Provider side only | `ProviderReceiptSigner.from_env` | `{"<provider>": "<secret>"}`. Lives in the provider process or the AIOS adapter that supervises it. Never give it to the agent. Must **not** contain `minimind` in the AIOS process (see below). |
 
 Secrets must be at least 16 characters long. They are never written to AIOS state. Keyring and
