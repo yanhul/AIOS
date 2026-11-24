@@ -609,7 +609,7 @@ def _gateway_retry_fixture(tmp_path, now=1000.0):
     import hashlib, json
     receipt_digest = hashlib.sha256(json.dumps(gateway_receipt, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     ticket_state = {
-        "state": "AUTHORIZED", "repository": "yanhul/AIOS", "target_sha": target_sha,
+        "state": "AUTHORIZED", "repository": "yanhul/AIOS", "target_sha": target_sha, "attempts": 1,
         "effect_contract": {"effect_id": effect["effect_id"], "contract_id": contract_identity(contract),
                             "actor": "aios", "authority_ref": permit["permit_id"], "action": "run_research",
                             "capability_ref": "try.repair@1",
@@ -698,6 +698,34 @@ def test_unknown_try_operation_receipt_cannot_issue_gateway_retry_permit(tmp_pat
             issuer_secret=ISSUER_SECRETS["operator:test"], retry_keyring=RETRY_KEYRING,
             signer=signer, operation_keyring=operation_keyring, now=now,
         )
+
+
+def test_unmapped_later_gateway_attempt_blocks_issuing_another_permit(tmp_path):
+    import time
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    _contract, _permit, effect, dispatched, request_digest, _receipt_digest, ticket_state = _gateway_retry_fixture(tmp_path)
+    now = time.time()
+    secret = "try-operation-secret-for-tests-0123456789"
+    operation_keyring = _try_receipt_keyring(secret)
+    receipt = _signed_try_preflight_receipt(
+        secret=secret, request_id=dispatched["attempt_id"], request_digest=request_digest,
+        repository="yanhul/AIOS", sha="a" * 40, attempt=1, now=now,
+    )
+    # Simulate Gateway committed fence 2 but AIOS crashed before persisting the mapping.
+    ticket_state["attempts"] = 2
+    ticket_state["attempt_history"].append({
+        "attempt_id": "T-RETRY:2", "attempt_number": 2, "fence": 2, "status": "DISPATCHED",
+    })
+    signer = GatewayRetryPermitSigner(Ed25519PrivateKey.generate())
+    with pytest.raises(GatewayTransportError, match="later/unmapped attempt"):
+        prepare_gateway_retry_permit(
+            _FakeGatewayRetryTransport(ticket_state=ticket_state), ticket="T-RETRY",
+            aios_dir=str(tmp_path), effect_id=effect["effect_id"], actor="aios",
+            operation_receipt=receipt, issuer="operator:test", reason="must remain blocked",
+            issuer_secret=ISSUER_SECRETS["operator:test"], retry_keyring=RETRY_KEYRING,
+            signer=signer, operation_keyring=operation_keyring, now=now,
+        )
+    assert not list((tmp_path / "gateway_retry_permits").glob("*.json"))
 
 
 def test_gateway_retry_replay_crash_gap_never_maps_or_executes(tmp_path):
@@ -795,11 +823,11 @@ def _real_gateway_retry_setup(tmp_path, monkeypatch):
         operation_receipt=operation_receipt, issuer="operator:test", reason="verified TRY preflight non-submission",
         issuer_secret=ISSUER_SECRETS["operator:test"], retry_keyring=RETRY_KEYRING,
         signer=signer, operation_keyring=operation_keyring, now=now)
-    return client, effect, signer, permit_record, operation_keyring, now
+    return client, effect, signer, permit_record, operation_keyring, operation_receipt, now
 
 
 def test_real_gateway_v5_retry_permit_end_to_end(tmp_path, monkeypatch):
-    client, effect, signer, permit_record, _operation_keyring, now = _real_gateway_retry_setup(tmp_path, monkeypatch)
+    client, effect, signer, permit_record, _operation_keyring, _operation_receipt, now = _real_gateway_retry_setup(tmp_path, monkeypatch)
     result = retry_gateway_effect(
         client, ticket="T-RETRY", aios_dir=str(tmp_path), effect_id=effect["effect_id"], actor="aios",
         provider="try.repair", retry_permit=permit_record, signer=signer,
@@ -815,7 +843,7 @@ def test_real_gateway_v5_retry_permit_end_to_end(tmp_path, monkeypatch):
 
 
 def test_real_gateway_v5_crash_after_allocation_replay_is_never_executable(tmp_path, monkeypatch):
-    client, effect, signer, permit_record, _operation_keyring, now = _real_gateway_retry_setup(tmp_path, monkeypatch)
+    client, effect, signer, permit_record, operation_keyring, operation_receipt, now = _real_gateway_retry_setup(tmp_path, monkeypatch)
     allocated = client.retry_effect(ticket="T-RETRY", retry_permit=permit_record)
     assert allocated["execute_allowed"] is True
     # Simulate process death after Gateway commit but before AIOS maps/executes.
@@ -832,3 +860,10 @@ def test_real_gateway_v5_crash_after_allocation_replay_is_never_executable(tmp_p
     assert saved["attempts"] == 2
     assert saved["attempt_history"][1]["fence"] == 2
     assert saved["attempt_history"][1]["status"] == "DISPATCHED"
+    with pytest.raises(GatewayTransportError, match="later/unmapped attempt"):
+        prepare_gateway_retry_permit(
+            client, ticket="T-RETRY", aios_dir=str(tmp_path), effect_id=effect["effect_id"], actor="aios",
+            operation_receipt=operation_receipt, issuer="operator:test", reason="must stay blocked",
+            issuer_secret=ISSUER_SECRETS["operator:test"], retry_keyring=RETRY_KEYRING,
+            signer=signer, operation_keyring=operation_keyring, now=now,
+        )

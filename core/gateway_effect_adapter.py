@@ -425,6 +425,10 @@ def prepare_gateway_retry_permit(
         raise GatewayTransportError("Gateway ticket is not eligible for a governed retry")
     attempts = ticket_state.get("attempt_history", [])
     receipts = ticket_state.get("receipt_history", [])
+    if (not isinstance(attempts, list) or not attempts
+            or ticket_state.get("attempts") != current.get("attempt")
+            or attempts[-1].get("attempt_id") != current.get("gateway_attempt_id")):
+        raise GatewayTransportError("Gateway has a later/unmapped attempt; explicit reconciliation is required before another permit")
     prior_attempt = next((item for item in reversed(attempts)
                           if item.get("attempt_id") == current.get("gateway_attempt_id")), None)
     prior_receipt = next((item for item in reversed(receipts)
