@@ -125,9 +125,18 @@ def lookup_proposal(*, request_id: str, expected_request_digest: str | None = No
             status_code = getattr(response, "status", 200)
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        if exc.code == 404:
-            return None
         detail = exc.read().decode("utf-8", errors="replace")[:500]
+        if exc.code == 404:
+            try:
+                error_payload = json.loads(detail)
+            except (TypeError, ValueError):
+                error_payload = {}
+            if isinstance(error_payload, dict) and error_payload.get("error") == "proposal_operation_not_found":
+                return None
+            # An older Worker returns generic 404/not_found because it has no
+            # operation ledger. Do not treat that as proof that the POST never
+            # reached Gemini; otherwise the legacy retry loop can duplicate it.
+            raise TryRepairProviderError("provider operation lookup endpoint unavailable; refusing replay") from exc
         raise TryRepairProviderError(f"provider operation lookup failed: HTTP {exc.code}: {detail or exc.reason}") from exc
     except Exception as exc:
         raise TryRepairProviderError(f"provider operation lookup failed: {type(exc).__name__}: {exc}") from exc

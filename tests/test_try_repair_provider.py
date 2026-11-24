@@ -302,3 +302,20 @@ def test_propose_does_not_retry_unknown_operation_after_503(monkeypatch):
             failure={}, source={"core/x.py": "x=1\n"},
         )
     assert calls == ["POST", "GET"]
+
+
+
+def test_lookup_missing_operation_is_distinct_from_unsupported_old_worker(monkeypatch):
+    import io
+    import urllib.error
+    monkeypatch.setenv("TRY_REPAIR_WORKER_URL", "http://127.0.0.1:8787")
+    monkeypatch.setenv("TRY_PROVIDER_TOKEN", "x")
+    def missing(*a, **k):
+        raise urllib.error.HTTPError("u", 404, "missing", {}, io.BytesIO(b'{"error":"proposal_operation_not_found"}'))
+    monkeypatch.setattr(try_repair_provider, "_open", missing)
+    assert try_repair_provider.lookup_proposal(request_id="req-1") is None
+    def old_worker(*a, **k):
+        raise urllib.error.HTTPError("u", 404, "missing", {}, io.BytesIO(b'{"error":"not_found"}'))
+    monkeypatch.setattr(try_repair_provider, "_open", old_worker)
+    with pytest.raises(try_repair_provider.TryRepairProviderError, match="endpoint unavailable"):
+        try_repair_provider.lookup_proposal(request_id="req-1")
