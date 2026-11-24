@@ -25,6 +25,12 @@ class ProviderReceipt:
     # Provider receipt signature (core.provider_authority). Without it the
     # observation is non-authoritative and the effect is recorded UNKNOWN.
     authentication: dict | None = None
+    target_sha: str | None = None
+    evidence_ref: str | None = None
+    lineage_ref: str | None = None
+    idempotency_key: str | None = None
+    attempt_fence: int | None = None
+    gateway_attempt_id: str | None = None
 
 
 class ProviderAdapter(Protocol):
@@ -77,6 +83,16 @@ def validate_receipt(receipt, effect, attempt_id, provider_name):
         raise ValueError("receipt outcome must be an observed terminal outcome")
     if not isinstance(receipt.observation, dict) or not receipt.observation:
         raise ValueError("receipt observation must be a non-empty dict")
+    if effect.get("gateway_attempt_id") is not None:
+        bindings = {
+            "target_sha": effect.get("target_sha"), "evidence_ref": effect.get("evidence_ref"),
+            "lineage_ref": effect.get("lineage_ref"), "idempotency_key": effect.get("idempotency_key"),
+            "attempt_fence": effect.get("attempt_fence"), "gateway_attempt_id": effect.get("gateway_attempt_id"),
+        }
+        for field, expected in bindings.items():
+            actual = getattr(receipt, field)
+            if actual != expected:
+                raise ValueError(f"receipt Gateway {field} binding mismatch")
 
 
 def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id, *, provider_keyring=None, now=None):
@@ -119,6 +135,8 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id, *, p
         "attempt_id": receipt.attempt_id,
         "observation": receipt.observation,
     }
+    if receipt.gateway_attempt_id is not None:
+        provider_observation["gateway_attempt_id"] = receipt.gateway_attempt_id
     if receipt.authentication is not None:
         provider_observation["authentication"] = receipt.authentication
     try:
@@ -180,6 +198,8 @@ def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: 
             "attempt_id": receipt.attempt_id,
             "observation": receipt.observation,
         }
+        if receipt.gateway_attempt_id is not None:
+            provider_observation["gateway_attempt_id"] = receipt.gateway_attempt_id
         if receipt.authentication is not None:
             provider_observation["authentication"] = receipt.authentication
         return observe(aios_dir, effect["effect_id"], actor, receipt.outcome, provider_observation,

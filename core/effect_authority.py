@@ -88,6 +88,18 @@ def _validate_persisted_effect(aios_dir, effect):
         raise TransitionError("effect policy digest differs from authorized contract")
     if effect["max_attempts"] != contract["max_attempts"]:
         raise TransitionError("effect attempt budget differs from authorized contract")
+    # Gateway metadata is an indivisible, persisted attempt binding. Legacy
+    # non-Gateway effects remain valid, but a partial Gateway binding fails closed.
+    gateway_fields = ("gateway_attempt_id", "attempt_fence", "target_sha", "evidence_ref",
+                      "lineage_ref", "idempotency_key")
+    present = [key for key in gateway_fields if key in effect]
+    if present and len(present) != len(gateway_fields):
+        raise TransitionError("persisted Gateway attempt binding is incomplete")
+    if present:
+        _validate_strings(*((key, effect[key]) for key in gateway_fields if key != "attempt_fence"))
+        fence = effect["attempt_fence"]
+        if not isinstance(fence, int) or isinstance(fence, bool) or fence < 1:
+            raise TransitionError("persisted Gateway attempt fence is invalid")
     if not isinstance(effect["attempt"], int) or isinstance(effect["attempt"], bool) or effect["attempt"] < 0:
         raise TransitionError("persisted effect attempt is invalid")
     return contract, permit
@@ -193,7 +205,8 @@ def transition(aios_dir, effect_id, target, actor, **fields):
     if target not in STATES:
         raise ValueError("invalid effect state")
     allowed_fields = {
-        "DISPATCHED": {"attempt", "attempt_id", "provider"},
+        "DISPATCHED": {"attempt", "attempt_id", "provider", "target_sha", "evidence_ref",
+                       "lineage_ref", "idempotency_key", "attempt_fence", "gateway_attempt_id"},
         "UNKNOWN": {"unknown_reason"},
         "OBSERVED_SUCCESS": {"provider_observation"},
         "OBSERVED_FAILURE": {"provider_observation"},
@@ -242,6 +255,11 @@ def _transition_dispatch(aios_dir, current, actor, *, attempt, attempt_id, provi
         "from_state": current["state"], "to_state": "DISPATCHED", "actor": actor,
         "attempt": attempt, "attempt_id": attempt_id, "provider": provider,
     }
+    if extra_fields:
+        for key in ("gateway_attempt_id", "attempt_fence", "target_sha", "evidence_ref",
+                    "lineage_ref", "idempotency_key"):
+            if key in extra_fields:
+                event[key] = extra_fields[key]
     payloads = [(_effect_rel(effect_id), updated),
                 (os.path.join("events", "effect-" + effect_id + "-DISPATCHED-attempt-" + str(attempt) + ".json"), event)]
     payloads.extend(extra_payloads)
@@ -250,8 +268,17 @@ def _transition_dispatch(aios_dir, current, actor, *, attempt, attempt_id, provi
     return updated
 
 
-def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
+def dispatch(aios_dir, effect_id, actor, attempt_id, provider, *, target_sha=None,
+             evidence_ref=None, lineage_ref=None, idempotency_key=None, attempt_fence=None,
+             gateway_attempt_id=None):
     _validate_strings(("attempt_id", attempt_id), ("provider", provider))
+    gateway_values = (target_sha, evidence_ref, lineage_ref, idempotency_key, attempt_fence, gateway_attempt_id)
+    if any(value is not None for value in gateway_values):
+        _validate_strings(("target_sha", target_sha), ("evidence_ref", evidence_ref),
+                          ("lineage_ref", lineage_ref), ("idempotency_key", idempotency_key),
+                          ("gateway_attempt_id", gateway_attempt_id))
+        if not isinstance(attempt_fence, int) or isinstance(attempt_fence, bool) or attempt_fence < 1:
+            raise ValueError("attempt_fence must be a positive integer")
     current, contract = _load_owned_effect(aios_dir, effect_id, actor, "dispatch")
     _require_provider_authorized(contract, provider)
     if current.get("state") != "PLANNED":
@@ -261,8 +288,14 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider):
         raise ValueError("attempt_id does not match initial effect attempt")
     if int(current.get("max_attempts", 0)) < 1:
         raise TransitionError("effect has no authorized execution attempts")
+    extra = None
+    if any(value is not None for value in gateway_values):
+        extra = {"target_sha": target_sha, "evidence_ref": evidence_ref,
+                 "lineage_ref": lineage_ref, "idempotency_key": idempotency_key,
+                 "attempt_fence": attempt_fence, "gateway_attempt_id": gateway_attempt_id}
     return _transition_dispatch(aios_dir, current, actor,
-                                attempt=1, attempt_id=attempt_id, provider=provider)
+                                attempt=1, attempt_id=attempt_id, provider=provider,
+                                extra_fields=extra)
 
 
 # --- Retry authority -------------------------------------------------------
@@ -567,6 +600,8 @@ def retry_dispatch(aios_dir, effect_id, actor, attempt_id, provider, attempt, re
     if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 2:
         raise ValueError("retry attempt must be an integer >= 2")
     current, contract = _load_owned_effect(aios_dir, effect_id, actor, "retry")
+    if current.get("gateway_attempt_id") is not None:
+        raise TransitionError("Gateway-backed retry is blocked until Gateway issues and authorizes a new attempt")
     _require_provider_authorized(contract, provider)
     _verify_consumption_history(aios_dir, current)
     if current.get("state") != "UNKNOWN":
@@ -616,7 +651,7 @@ def observation_digest(observation):
 
 MAX_OBSERVATION_BYTES = 1024 * 1024
 _OBSERVATION_KEYS = {"provider", "provider_operation_id", "effect_id", "attempt_id", "observation",
-                     "authentication", "evidence"}
+                     "authentication", "evidence", "gateway_attempt_id"}
 EVIDENCE_AUTHORITY = "AIOS_OBSERVE_BOUNDARY:HMAC_PROVIDER_RECEIPT+SHA256_CONTENT_BINDING"
 
 # --- Provider receipt authority (audit F-04) --------------------------------
@@ -795,8 +830,10 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation, *, provid
     if extra:
         raise ValueError(f"provider_observation contains unsupported fields: {sorted(extra)}")
     current, _contract = _load_owned_effect(aios_dir, effect_id, actor, "observation")
-    if current.get("state") != "DISPATCHED":
-        raise TransitionError("observation requires a currently DISPATCHED attempt")
+    if current.get("state") not in {"DISPATCHED", "UNKNOWN"}:
+        raise TransitionError("observation requires a DISPATCHED or same-attempt Gateway UNKNOWN effect")
+    if current.get("state") == "UNKNOWN" and current.get("gateway_attempt_id") is None:
+        raise TransitionError("late observation after UNKNOWN requires a Gateway-bound attempt")
     attempt_id = provider_observation.get("attempt_id")
     provider = provider_observation.get("provider")
     if attempt_id != current.get("attempt_id"):
@@ -805,6 +842,11 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation, *, provid
         raise TransitionError("observation provider does not match dispatched provider")
     if provider_observation.get("effect_id") != effect_id:
         raise TransitionError("observation effect does not match effect")
+    if current.get("gateway_attempt_id") is not None:
+        if provider_observation.get("gateway_attempt_id") != current.get("gateway_attempt_id"):
+            raise TransitionError("observation Gateway attempt binding mismatch")
+    elif provider_observation.get("gateway_attempt_id") is not None:
+        raise TransitionError("non-Gateway effect cannot accept a Gateway attempt assertion")
     raw = provider_observation.get("observation")
     if not isinstance(raw, dict) or not raw:
         raise ValueError("observation requires a non-empty raw provider observation")
