@@ -80,7 +80,7 @@ AIOS may prepare a Gateway retry permit only after all of the following are true
 
 1. The current persisted effect is `UNKNOWN` and its complete Gateway attempt binding is intact.
 2. The exact TRY request identity (`request_id`, canonical request digest, repository, target SHA, and attempt) was persisted in AIOS before the POST could be sent.
-3. The TRY operation receipt verifies against the deployment-pinned `AIOS_TRY_OPERATION_KEYRING` issuer/key ID and is bound to that exact request.
+3. The TRY operation receipt verifies as Ed25519 against the deployment-pinned `AIOS_TRY_OPERATION_KEYRING` public key/issuer/key ID and is bound to that exact request; HMAC downgrade is rejected.
 4. The signed TRY receipt states `FAILED / NOT_SUBMITTED` with one of the preflight-only failure codes. `UNKNOWN`, `COMPLETED`, Gemini HTTP errors, timeouts, malformed responses, and post-submission crashes cannot produce a permit.
 5. Gateway's durable status contains the exact prior attempt and receipt digest for the effect/ticket/fence.
 6. A separate trusted issuer (not the executing actor) issues the existing AIOS `effect.retry.approve` decision.
