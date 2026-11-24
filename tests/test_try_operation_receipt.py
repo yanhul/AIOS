@@ -1,22 +1,23 @@
 import hashlib
-import hmac
 import json
+import base64
 import time
 
 import pytest
+
+from tests.try_operation_receipt_fixtures import PUBLIC_KEY_B64, sign_receipt
 
 from core.try_operation_receipt import (
     TryOperationReceiptError, TryOperationReceiptKeyring, SIGNED_FIELDS,
     verify_try_operation_receipt,
 )
 
-SECRET = "try-operation-receipt-secret-for-adversarial-tests"
 KEY_ID = "try-op-test-v1"
 
 
 def _keyring(revoked=False):
     return TryOperationReceiptKeyring({"try.repair": {
-        "key_id": KEY_ID, "secret": SECRET,
+        "key_id": KEY_ID, "public_key": PUBLIC_KEY_B64,
         "scopes": ["try.operation.receipt.verify"], "revoked": revoked,
     }})
 
@@ -33,14 +34,10 @@ def _receipt(status="FAILED", **changes):
             "COMPLETED" if status == "COMPLETED" else "IN_PROGRESS_OR_AMBIGUOUS"),
         "failure_code": "provider_not_configured" if status == "FAILED" else None,
         "proposal_digest": "d" * 64 if status == "COMPLETED" else None,
-        "issued_at": now, "expires_at": now + 300, "algorithm": "HMAC-SHA256",
+        "issued_at": now, "expires_at": now + 300, "algorithm": "Ed25519",
     }
     body.update(changes)
-    signed = {key: body[key] for key in SIGNED_FIELDS}
-    body["signature"] = hmac.new(SECRET.encode(), json.dumps(
-        signed, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False
-    ).encode(), hashlib.sha256).hexdigest()
-    return body
+    return sign_receipt(body, SIGNED_FIELDS)
 
 
 def _verify(receipt, keyring=None, **changes):
@@ -74,7 +71,7 @@ def test_provider_http_failure_cannot_be_relabelled_as_pre_submission_failure():
 
 def test_signature_tampering_and_key_id_substitution_fail_closed():
     receipt = _receipt()
-    receipt["signature"] = "0" * 64
+    receipt["signature"] = base64.b64encode(b"0" * 64).decode("ascii")
     with pytest.raises(TryOperationReceiptError, match="signature is invalid"):
         _verify(receipt)
     receipt = _receipt(key_id="untrusted-key")
@@ -100,3 +97,18 @@ def test_expired_or_revoked_receipt_trust_is_rejected():
         _verify(expired)
     with pytest.raises(TryOperationReceiptError, match="unavailable or revoked"):
         _verify(_receipt(), keyring=_keyring(revoked=True))
+
+
+def test_hmac_downgrade_is_rejected_even_with_a_valid_ed25519_key():
+    receipt = _receipt()
+    receipt["algorithm"] = "HMAC-SHA256"
+    with pytest.raises(TryOperationReceiptError, match="identity/signature is malformed"):
+        _verify(receipt)
+
+
+def test_shared_secret_only_keyring_is_rejected():
+    with pytest.raises(ValueError, match="key entry is malformed"):
+        TryOperationReceiptKeyring({"try.repair": {
+            "key_id": KEY_ID, "secret": "legacy-shared-secret-that-must-not-be-used",
+            "scopes": ["try.operation.receipt.verify"], "revoked": False,
+        }})
