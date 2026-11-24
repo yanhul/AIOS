@@ -2,11 +2,11 @@
 
 ## Trust boundary
 
-`GET /v1/repair/proposal/{request_id}` returns a signed operation receipt in addition to the cached operation state. The receipt is authenticated independently of the bearer transport token using HMAC-SHA256. TRY stores `TRY_OPERATION_RECEIPT_SECRET` and `TRY_OPERATION_RECEIPT_KEY_ID`; AIOS pins the same issuer/key ID/secret under `AIOS_TRY_OPERATION_KEYRING` with scope `try.operation.receipt.verify`.
+`GET /v1/repair/proposal/{request_id}` returns a signed operation receipt in addition to the cached operation state. The receipt is authenticated independently of the bearer transport token using Ed25519. TRY stores a base64-encoded PKCS#8 private key in `TRY_OPERATION_RECEIPT_PRIVATE_KEY` and its identifier in `TRY_OPERATION_RECEIPT_KEY_ID`; AIOS pins only the matching base64-encoded raw 32-byte public key under `AIOS_TRY_OPERATION_KEYRING` with scope `try.operation.receipt.verify`.
 
 The signed body binds: receipt type, issuer, key ID, receipt ID, request ID, canonical request digest, repository, target SHA, attempt, status, execution classification, failure code, proposal digest, issued/expiry timestamps, and algorithm. AIOS rejects an unsigned response, unknown/revoked key, key-ID mismatch, invalid signature, expired/future receipt, request identity mismatch, or a response whose status differs from the signed receipt.
 
-HMAC is symmetric: the Worker and AIOS verifier both hold the secret. It authenticates the Worker to components that do not possess that secret, but is not asymmetric non-repudiation. The Gateway does not receive this secret. Gateway trust is a separate AIOS Ed25519 public-key verification of the RetryPermit.
+Ed25519 is asymmetric: the Worker alone holds the private key, while AIOS holds only the pinned public key. The Gateway does not receive either key. Gateway trust is a separate AIOS Ed25519 public-key verification of the RetryPermit. HMAC-SHA256 operation receipts are rejected; there is no algorithm downgrade or shared-secret fallback.
 
 ## Execution classification
 
