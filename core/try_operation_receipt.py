@@ -1,19 +1,23 @@
 """Verify TRY's durable proposal-operation receipts before AIOS reconciliation.
 
-The receipt is HMAC-SHA256 authenticated by the separately configured TRY
-operation-signing secret. The bearer transport token is not a trust anchor.
-This is a symmetric trust model: both TRY and the AIOS verifier hold the key.
+The receipt is Ed25519 authenticated by a deployment-pinned TRY public key.
+The signing private key remains inside the TRY Worker; AIOS holds only the
+public verification key. The bearer transport token is not a trust anchor.
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
-import hmac
 import json
 import math
 import os
 import re
 import time
 from collections.abc import Mapping
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from .mutation import TransitionError, canonical_json
 
@@ -37,27 +41,33 @@ class TryOperationReceiptError(TransitionError):
 
 
 class TryOperationReceiptKeyring:
-    """Deployment-pinned HMAC key for the TRY operation-receipt issuer."""
+    """Deployment-pinned Ed25519 public key for the TRY receipt issuer."""
 
     def __init__(self, issuers: Mapping[str, object]):
         if not isinstance(issuers, Mapping) or RECEIPT_ISSUER not in issuers:
             raise ValueError("TRY operation receipt issuer is not pinned")
         entry = issuers[RECEIPT_ISSUER]
-        if not isinstance(entry, Mapping):
+        if not isinstance(entry, Mapping) or set(entry) - {"public_key", "key_id", "scopes", "revoked"}:
             raise ValueError("TRY operation receipt key entry is malformed")
-        secret = entry.get("secret")
+        public_key = entry.get("public_key")
         key_id = entry.get("key_id")
         scopes = entry.get("scopes", [])
         revoked = entry.get("revoked", False)
-        if not isinstance(secret, str) or len(secret) < 32:
-            raise ValueError("TRY operation receipt secret must contain at least 32 characters")
+        if not isinstance(public_key, str) or len(public_key) != 44:
+            raise ValueError("TRY operation receipt public_key is missing or malformed")
+        try:
+            decoded_public_key = base64.b64decode(public_key, validate=True)
+            if len(decoded_public_key) != 32:
+                raise ValueError("Ed25519 public key must be exactly 32 bytes")
+            self.public_key = Ed25519PublicKey.from_public_bytes(decoded_public_key)
+        except (ValueError, binascii.Error) as exc:
+            raise ValueError("TRY operation receipt public_key is invalid") from exc
         if not isinstance(key_id, str) or not key_id.strip():
             raise ValueError("TRY operation receipt key_id is missing")
         if not isinstance(scopes, list) or RECEIPT_SCOPE not in scopes:
             raise ValueError("TRY operation receipt verification scope is missing")
         if not isinstance(revoked, bool):
             raise ValueError("TRY operation receipt revoked flag is invalid")
-        self.secret = secret.encode("utf-8")
         self.key_id = key_id
         self.revoked = revoked
 
@@ -82,9 +92,9 @@ def verify_try_operation_receipt(receipt, *, request_id, request_digest, reposit
         raise TryOperationReceiptError("TRY operation receipt schema mismatch")
     record = dict(receipt)
     if (record.get("type") != RECEIPT_TYPE or record.get("issuer") != RECEIPT_ISSUER
-            or record.get("algorithm") != "HMAC-SHA256"
+            or record.get("algorithm") != "Ed25519"
             or not isinstance(record.get("receipt_id"), str) or not _RECEIPT_ID.fullmatch(record["receipt_id"])
-            or not isinstance(record.get("signature"), str) or not _HEX64.fullmatch(record["signature"])):
+            or not isinstance(record.get("signature"), str) or len(record["signature"]) != 88):
         raise TryOperationReceiptError("TRY operation receipt identity/signature is malformed")
     if keyring is None:
         keyring = TryOperationReceiptKeyring.from_env()
@@ -111,9 +121,13 @@ def verify_try_operation_receipt(receipt, *, request_id, request_digest, reposit
     if current_time > record["expires_at"] or record["issued_at"] > current_time + _CLOCK_SKEW:
         raise TryOperationReceiptError("TRY operation receipt is expired or issued in the future")
     signed = {key: record[key] for key in SIGNED_FIELDS}
-    expected = hmac.new(keyring.secret, canonical_json(signed).encode("utf-8"), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(record["signature"], expected):
-        raise TryOperationReceiptError("TRY operation receipt signature is invalid")
+    try:
+        signature = base64.b64decode(record["signature"], validate=True)
+        if len(signature) != 64:
+            raise ValueError("Ed25519 signature must be exactly 64 bytes")
+        keyring.public_key.verify(signature, canonical_json(signed).encode("utf-8"))
+    except (ValueError, binascii.Error, InvalidSignature) as exc:
+        raise TryOperationReceiptError("TRY operation receipt signature is invalid") from exc
     state = record.get("status")
     execution_state = record.get("execution_state")
     if state == "COMPLETED":
