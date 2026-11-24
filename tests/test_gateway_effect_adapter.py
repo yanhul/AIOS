@@ -15,6 +15,7 @@ from core.gateway_effect_adapter import (
 )
 from core.gateway_retry_permit import GatewayRetryPermitSigner
 from core.try_operation_receipt import TryOperationReceiptKeyring, SIGNED_FIELDS
+from tests.try_operation_receipt_fixtures import PUBLIC_KEY_B64, sign_receipt
 from tests.retry_issuers import KEYRING as RETRY_KEYRING, ISSUER_SECRETS
 from core.policy_registry import persist_policy
 
@@ -560,14 +561,14 @@ class _FakeGatewayRetryTransport:
         return dict(self.retry_response)
 
 
-def _try_receipt_keyring(secret):
-    spec = {"try.repair": {"key_id": "try-op-test-v1", "secret": secret,
+def _try_receipt_keyring():
+    spec = {"try.repair": {"key_id": "try-op-test-v1", "public_key": PUBLIC_KEY_B64,
                            "scopes": ["try.operation.receipt.verify"], "revoked": False}}
     return TryOperationReceiptKeyring(spec)
 
 
-def _signed_try_preflight_receipt(*, secret, request_id, request_digest, repository, sha, attempt, now):
-    import hashlib, hmac, json
+def _signed_try_preflight_receipt(*, request_id, request_digest, repository, sha, attempt, now):
+    import hashlib, json
     body = {
         "type": "TRY_PROPOSAL_OPERATION_RECEIPT_V1", "issuer": "try.repair",
         "key_id": "try-op-test-v1", "receipt_id": "TR-" + "b" * 32,
@@ -575,13 +576,9 @@ def _signed_try_preflight_receipt(*, secret, request_id, request_digest, reposit
         "repository": repository, "sha": sha, "attempt": attempt,
         "status": "FAILED", "execution_state": "NOT_SUBMITTED",
         "failure_code": "provider_not_configured", "proposal_digest": None,
-        "issued_at": now, "expires_at": now + 300, "algorithm": "HMAC-SHA256",
+        "issued_at": now, "expires_at": now + 300, "algorithm": "Ed25519",
     }
-    signed = {key: body[key] for key in SIGNED_FIELDS}
-    body["signature"] = hmac.new(secret.encode(), json.dumps(
-        signed, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode(), hashlib.sha256).hexdigest()
-    return body
+    return sign_receipt(body, SIGNED_FIELDS)
 
 
 def _gateway_retry_fixture(tmp_path, now=1000.0):
@@ -625,10 +622,9 @@ def test_try_preflight_receipt_issues_signed_retry_permit_and_maps_gateway_fence
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     contract, permit, effect, dispatched, request_digest, receipt_digest, ticket_state = _gateway_retry_fixture(tmp_path)
     now = time.time()
-    secret = "try-operation-secret-for-tests-0123456789"
-    operation_keyring = _try_receipt_keyring(secret)
+    operation_keyring = _try_receipt_keyring()
     receipt = _signed_try_preflight_receipt(
-        secret=secret, request_id=dispatched["attempt_id"], request_digest=request_digest,
+        request_id=dispatched["attempt_id"], request_digest=request_digest,
         repository="yanhul/AIOS", sha="a" * 40, attempt=1, now=now,
     )
     private = Ed25519PrivateKey.generate()
@@ -677,18 +673,15 @@ def test_unknown_try_operation_receipt_cannot_issue_gateway_retry_permit(tmp_pat
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     contract, permit, effect, dispatched, request_digest, _receipt_digest, ticket_state = _gateway_retry_fixture(tmp_path)
     now = time.time()
-    secret = "try-operation-secret-for-tests-0123456789"
-    operation_keyring = _try_receipt_keyring(secret)
+    operation_keyring = _try_receipt_keyring()
     receipt = _signed_try_preflight_receipt(
-        secret=secret, request_id=dispatched["attempt_id"], request_digest=request_digest,
+        request_id=dispatched["attempt_id"], request_digest=request_digest,
         repository="yanhul/AIOS", sha="a" * 40, attempt=1, now=now,
     )
     receipt["status"] = "UNKNOWN"
     receipt["execution_state"] = "IN_PROGRESS_OR_AMBIGUOUS"
     receipt["failure_code"] = None
-    signed = {key: receipt[key] for key in SIGNED_FIELDS}
-    import hashlib, hmac, json
-    receipt["signature"] = hmac.new(secret.encode(), json.dumps(signed, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode(), hashlib.sha256).hexdigest()
+    sign_receipt(receipt, SIGNED_FIELDS)
     signer = GatewayRetryPermitSigner(Ed25519PrivateKey.generate())
     with pytest.raises(GatewayTransportError, match="does not prove Gemini was never submitted"):
         prepare_gateway_retry_permit(
@@ -705,10 +698,9 @@ def test_unmapped_later_gateway_attempt_blocks_issuing_another_permit(tmp_path):
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     _contract, _permit, effect, dispatched, request_digest, _receipt_digest, ticket_state = _gateway_retry_fixture(tmp_path)
     now = time.time()
-    secret = "try-operation-secret-for-tests-0123456789"
-    operation_keyring = _try_receipt_keyring(secret)
+    operation_keyring = _try_receipt_keyring()
     receipt = _signed_try_preflight_receipt(
-        secret=secret, request_id=dispatched["attempt_id"], request_digest=request_digest,
+        request_id=dispatched["attempt_id"], request_digest=request_digest,
         repository="yanhul/AIOS", sha="a" * 40, attempt=1, now=now,
     )
     # Simulate Gateway committed fence 2 but AIOS crashed before persisting the mapping.
@@ -733,10 +725,9 @@ def test_gateway_retry_replay_crash_gap_never_maps_or_executes(tmp_path):
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     contract, permit, effect, dispatched, request_digest, _receipt_digest, ticket_state = _gateway_retry_fixture(tmp_path)
     now = time.time()
-    secret = "try-operation-secret-for-tests-0123456789"
-    operation_keyring = _try_receipt_keyring(secret)
+    operation_keyring = _try_receipt_keyring()
     receipt = _signed_try_preflight_receipt(
-        secret=secret, request_id=dispatched["attempt_id"], request_digest=request_digest,
+        request_id=dispatched["attempt_id"], request_digest=request_digest,
         repository="yanhul/AIOS", sha="a" * 40, attempt=1, now=now,
     )
     signer = GatewayRetryPermitSigner(Ed25519PrivateKey.generate())
@@ -809,10 +800,9 @@ def _real_gateway_retry_setup(tmp_path, monkeypatch):
     record_gateway_receipt(client, ticket="T-RETRY", aios_dir=str(tmp_path),
                            effect_id=effect["effect_id"], actor="aios", receipt=receipt)
     now = time.time()
-    operation_secret = "try-operation-secret-for-tests-0123456789"
-    operation_keyring = _try_receipt_keyring(operation_secret)
+    operation_keyring = _try_receipt_keyring()
     operation_receipt = _signed_try_preflight_receipt(
-        secret=operation_secret, request_id=current["attempt_id"], request_digest=request_digest,
+        request_id=current["attempt_id"], request_digest=request_digest,
         repository="yanhul/AIOS", sha=target_sha, attempt=1, now=now)
     private = Ed25519PrivateKey.generate()
     signer = GatewayRetryPermitSigner(private)
