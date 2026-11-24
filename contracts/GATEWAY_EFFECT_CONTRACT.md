@@ -1,4 +1,4 @@
-# AIOS ↔ Harness Gateway Effect Contract v4
+# AIOS ↔ Harness Gateway Effect Contract v5
 
 This document defines the cross-repository adapter boundary. It does not create a second authority plane.
 
@@ -43,9 +43,9 @@ The adapter MUST NOT mint permits, capability versions, evidence, lineage, or au
 
 A receipt MUST bind at least `effect_id`, `attempt_id`, `attempt_fence`, `target_sha`, `evidence_ref`, `lineage_ref`, and `idempotency_key`. `UNKNOWN` is not success and MUST remain unresolved until an explicit governed reconciliation occurs.
 
-## Protocol v4 execution boundary
+## Protocol v5 execution boundary
 
-AIOS sends the validated effect contract to Gateway protocol v4. Gateway owns
+AIOS sends the validated effect contract to Gateway protocol v5. Gateway owns
 its durable ticket, authorization, BEGIN_EFFECT replay fence, attempt ID and
 monotonic fence. The AIOS adapter maps the returned Gateway attempt into the
 already-persisted AIOS effect before provider execution is allowed. A replayed
@@ -72,3 +72,25 @@ Gateway-backed UNKNOWN is intentionally non-retryable through this adapter.
 ## Canonical flow
 
 `AIOS Workload Contract → Capability Resolve → AIOS Authority/Permit → Gateway Effect Adapter → Human/Boundary Authorization → Attempt(+attempt_fence,target_sha) → Worker → Receipt → AIOS Reconcile`
+
+
+## RetryPermit v5 trust and reconciliation
+
+AIOS may prepare a Gateway retry permit only after all of the following are true:
+
+1. The current persisted effect is `UNKNOWN` and its complete Gateway attempt binding is intact.
+2. The exact TRY request identity (`request_id`, canonical request digest, repository, target SHA, and attempt) was persisted in AIOS before the POST could be sent.
+3. The TRY operation receipt verifies against the deployment-pinned `AIOS_TRY_OPERATION_KEYRING` issuer/key ID and is bound to that exact request.
+4. The signed TRY receipt states `FAILED / NOT_SUBMITTED` with one of the preflight-only failure codes. `UNKNOWN`, `COMPLETED`, Gemini HTTP errors, timeouts, malformed responses, and post-submission crashes cannot produce a permit.
+5. Gateway's durable status contains the exact prior attempt and receipt digest for the effect/ticket/fence.
+6. A separate trusted issuer (not the executing actor) issues the existing AIOS `effect.retry.approve` decision.
+
+AIOS creates a reconciliation evidence record and signs an Ed25519 `AIOS_GATEWAY_RETRY_PERMIT_V1`. The permit binds the AIOS effect/contract/authority/actor, Gateway ticket/target, prior Gateway attempt/fence/receipt digest, TRY operation receipt digest, reconciliation evidence digest, issuer decision, next attempt number/ID/fence, nonce, and validity window. AIOS persists the permit and evidence before sending it to Gateway.
+
+Gateway has only the pinned Ed25519 public key (`AIOS_GATEWAY_RETRY_PUBLIC_KEYS`); it cannot mint a permit. `RETRY_EFFECT` verifies all signed fields against the ticket and durable receipt history, consumes the permit ID and nonce once, and allocates exactly the next fence. Exact replay returns the same attempt with `execute_allowed=false`. AIOS maps a first-use response into `DISPATCHED` only after rechecking the persisted permit, reconciliation evidence, separate issuer authorization, and exact attempt/fence. Direct `retry_dispatch()` remains blocked for every Gateway-backed effect.
+
+The TRY operation receipt currently uses HMAC-SHA256 with a dedicated shared secret and pinned key ID. This authenticates the TRY Worker to AIOS against principals that do not hold that secret; it is not asymmetric non-repudiation. The Gateway RetryPermit is asymmetric Ed25519. The TRY Worker only reports `NOT_SUBMITTED` for local preflight failures before the Gemini POST. All ambiguous provider outcomes remain `UNKNOWN`.
+
+### Crash/replay boundary
+
+If Gateway commits a retry attempt but the process dies before AIOS durably maps it, the next `RETRY_EFFECT` returns the same attempt as non-executable. AIOS refuses to map that replay as a fresh dispatch or call the provider. The ticket/effect remain blocked for explicit reconciliation; the system does not automatically spend another permit or advance again. If AIOS had already mapped the attempt before the crash, the effect is `DISPATCHED` and must go through read-only provider reconciliation, never a second execute call.

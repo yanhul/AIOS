@@ -100,6 +100,20 @@ def _validate_persisted_effect(aios_dir, effect):
         fence = effect["attempt_fence"]
         if not isinstance(fence, int) or isinstance(fence, bool) or fence < 1:
             raise TransitionError("persisted Gateway attempt fence is invalid")
+    operation_binding = effect.get("try_operation_binding")
+    if operation_binding is not None:
+        required_binding = {"request_id", "request_digest", "repository", "sha", "attempt"}
+        if not isinstance(operation_binding, dict) or set(operation_binding) != required_binding:
+            raise TransitionError("persisted TRY operation binding is malformed")
+        if (effect.get("provider") != "try.repair"
+                or operation_binding.get("request_id") != effect.get("attempt_id")
+                or operation_binding.get("sha") != effect.get("target_sha")
+                or operation_binding.get("attempt") != effect.get("attempt")
+                or not isinstance(operation_binding.get("request_digest"), str)
+                or not re.fullmatch(r"[0-9a-f]{64}", operation_binding["request_digest"])
+                or not isinstance(operation_binding.get("repository"), str)
+                or not operation_binding["repository"].strip()):
+            raise TransitionError("persisted TRY operation binding does not match current attempt")
     if not isinstance(effect["attempt"], int) or isinstance(effect["attempt"], bool) or effect["attempt"] < 0:
         raise TransitionError("persisted effect attempt is invalid")
     return contract, permit
@@ -296,6 +310,157 @@ def dispatch(aios_dir, effect_id, actor, attempt_id, provider, *, target_sha=Non
     return _transition_dispatch(aios_dir, current, actor,
                                 attempt=1, attempt_id=attempt_id, provider=provider,
                                 extra_fields=extra)
+
+
+def bind_try_operation_request(aios_dir, effect_id, actor, *, request_id, request_digest, repository, sha):
+    """Persist exact TRY request identity before the external POST can be sent."""
+    _validate_strings(("request_id", request_id), ("repository", repository), ("sha", sha))
+    if not isinstance(request_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", request_digest):
+        raise ValueError("request_digest must be a lowercase SHA-256 digest")
+    current, _contract = _load_owned_effect(aios_dir, effect_id, actor, "TRY operation binding")
+    if current.get("state") != "DISPATCHED" or current.get("provider") != "try.repair":
+        raise TransitionError("TRY operation binding requires a dispatched try.repair attempt")
+    binding = {"request_id": request_id, "request_digest": request_digest,
+               "repository": repository, "sha": sha.lower(), "attempt": current["attempt"]}
+    if (request_id != current.get("attempt_id") or sha.lower() != current.get("target_sha")):
+        raise TransitionError("TRY operation request does not match dispatched AIOS/Gateway attempt")
+    prior = current.get("try_operation_binding")
+    if prior is not None:
+        if canonical_json(prior) == canonical_json(binding):
+            return current
+        raise TransitionError("TRY operation binding is immutable for a dispatched attempt")
+    updated = dict(current, try_operation_binding=binding)
+    event = {"kind": "external_effect", "action": "try_operation_bound", "effect_id": effect_id,
+             "attempt_id": current["attempt_id"], "request_digest": request_digest,
+             "repository": repository, "sha": sha.lower(), "actor": actor}
+    commit_batch(aios_dir, [(_effect_rel(effect_id), updated),
+                            (os.path.join("events", "effect-" + effect_id + "-TRY-OPERATION-BOUND.json"), event)],
+                 precondition=_expect_unchanged(_effect_rel(effect_id), current))
+    return updated
+
+
+def gateway_retry_dispatch(aios_dir, effect_id, actor, provider, gateway_attempt, retry_permit,
+                           *, signer, retry_keyring=None, now=None):
+    """Map a first-use Gateway v5 retry attempt into AIOS atomically.
+
+    This is the only Gateway-backed UNKNOWN -> DISPATCHED transition. It
+    requires the exact persisted AIOS-signed permit and consumes both the
+    existing separation-of-duties retry authorization and the Gateway permit.
+    Replayed Gateway responses are deliberately rejected here.
+    """
+    _validate_strings(("effect_id", effect_id), ("actor", actor), ("provider", provider))
+    if not isinstance(gateway_attempt, Mapping) or not isinstance(retry_permit, Mapping):
+        raise TransitionError("Gateway retry attempt and permit must be mappings")
+    if gateway_attempt.get("execute_allowed") is not True or gateway_attempt.get("replayed") is not False:
+        raise TransitionError("replayed Gateway retry attempt is non-executable")
+    current, contract = _load_owned_effect(aios_dir, effect_id, actor, "Gateway retry dispatch")
+    if current.get("state") != "UNKNOWN" or current.get("gateway_attempt_id") is None:
+        raise TransitionError("Gateway retry requires the exact current Gateway-backed UNKNOWN effect")
+    permit_id = retry_permit.get("permit_id")
+    if not isinstance(permit_id, str) or not re.fullmatch(r"GRP-[0-9a-f]{32}", permit_id):
+        raise TransitionError("Gateway retry permit identity is invalid")
+    permit_rel = os.path.join("gateway_retry_permits", permit_id + ".json")
+    stored_permit = _load_json_dict(aios_dir, permit_rel, "Gateway retry permit")
+    if canonical_json(stored_permit) != canonical_json(dict(retry_permit)):
+        raise TransitionError("supplied Gateway retry permit differs from persisted AIOS permit")
+    if not callable(getattr(signer, "verify", None)) or not signer.verify(stored_permit):
+        raise TransitionError("Gateway retry permit signature is invalid at AIOS mapping boundary")
+    evidence_rel = os.path.join("gateway_retry_permits", permit_id + ".evidence.json")
+    evidence = _load_json_dict(aios_dir, evidence_rel, "Gateway retry reconciliation evidence")
+    evidence_digest = hashlib.sha256(canonical_json(evidence).encode("utf-8")).hexdigest()
+    if (evidence_digest != stored_permit.get("reconciliation_evidence_digest")
+            or evidence.get("effect_id") != effect_id
+            or evidence.get("contract_id") != current.get("contract_id")
+            or evidence.get("authority_permit_id") != current.get("permit_id")
+            or evidence.get("actor") != actor
+            or evidence.get("gateway_attempt_id") != current.get("gateway_attempt_id")
+            or evidence.get("gateway_fence") != current.get("attempt_fence")
+            or evidence.get("gateway_ticket_id") != stored_permit.get("ticket_id")
+            or evidence.get("try_operation_receipt_digest") != stored_permit.get("operation_receipt_digest")
+            or evidence.get("try_request_id") != (current.get("try_operation_binding") or {}).get("request_id")
+            or evidence.get("try_request_digest") != (current.get("try_operation_binding") or {}).get("request_digest")
+            or evidence.get("gateway_receipt_digest") != stored_permit.get("prior_gateway_receipt_digest")
+            or evidence.get("execution_state") != "NOT_SUBMITTED"
+            or evidence.get("reconciliation_outcome") != "PROVEN_NOT_SUBMITTED"):
+        raise TransitionError("Gateway retry reconciliation evidence is not bound to the current effect/receipt")
+    attempt = int(current["attempt"]) + 1
+    attempt_id = _attempt_id(effect_id, attempt)
+    gateway_fields = {
+        "gateway_attempt_id": gateway_attempt.get("attempt_id"),
+        "attempt_fence": gateway_attempt.get("fence"),
+        "target_sha": gateway_attempt.get("target_sha"),
+        "evidence_ref": gateway_attempt.get("evidence_ref"),
+        "lineage_ref": gateway_attempt.get("lineage_ref"),
+        "idempotency_key": gateway_attempt.get("idempotency_key"),
+    }
+    expected = {
+        "effect_id": effect_id, "contract_id": current["contract_id"],
+        "authority_ref": current["permit_id"], "actor": actor,
+        "ticket_id": retry_permit.get("ticket_id"), "target_sha": current.get("target_sha"),
+        "prior_gateway_attempt_id": current.get("gateway_attempt_id"),
+        "prior_fence": current.get("attempt_fence"),
+        "next_attempt_number": attempt, "next_attempt_id": gateway_fields["gateway_attempt_id"],
+        "next_fence": gateway_fields["attempt_fence"],
+    }
+    for key, value in expected.items():
+        if retry_permit.get(key) != value:
+            raise TransitionError(f"Gateway retry permit {key} binding mismatch")
+    if (gateway_attempt.get("effect_id") != effect_id
+            or gateway_attempt.get("ticket_id") != retry_permit.get("ticket_id")
+            or gateway_attempt.get("contract_id") != current.get("contract_id")
+            or gateway_attempt.get("authority_ref") != current.get("permit_id")
+            or gateway_attempt.get("actor") != actor
+            or gateway_attempt.get("action") != current.get("effect_type")):
+        raise TransitionError("Gateway retry response effect/contract/authority/actor/ticket binding mismatch")
+    if gateway_attempt.get("retry_permit_id") != permit_id:
+        raise TransitionError("Gateway retry response permit binding mismatch")
+    if gateway_attempt.get("attempt_number") != attempt:
+        raise TransitionError("Gateway retry response attempt number mismatch")
+    if gateway_fields["attempt_fence"] != int(current["attempt_fence"]) + 1:
+        raise TransitionError("Gateway retry fence did not increase by exactly one")
+    if gateway_fields["target_sha"] != current.get("target_sha"):
+        raise TransitionError("Gateway retry target SHA mismatch")
+    if gateway_fields["evidence_ref"] != current.get("evidence_ref") or gateway_fields["lineage_ref"] != current.get("lineage_ref"):
+        raise TransitionError("Gateway retry evidence/lineage binding mismatch")
+    if gateway_fields["idempotency_key"] != current.get("idempotency_key"):
+        raise TransitionError("Gateway retry idempotency binding mismatch")
+    _require_provider_authorized(contract, provider)
+    retry_auth_id = retry_permit.get("retry_authorization_id")
+    auth_rel, auth = _verify_retry_authorization(
+        aios_dir, retry_auth_id, current, actor, attempt, attempt_id, retry_keyring, now)
+    if (stored_permit.get("issuer") != auth.get("issuer")
+            or stored_permit.get("retry_authorization_id") != auth.get("authorization_id")
+            or stored_permit.get("decision_id") != auth.get("authorization_id")):
+        raise TransitionError("Gateway RetryPermit does not bind the verified AIOS issuer decision")
+    auth_consumption = {
+        "record_type": "RETRY_AUTHORIZATION_CONSUMPTION", "authorization_id": retry_auth_id,
+        "authorization_signature": auth["signature"], "effect_id": effect_id,
+        "consumed_by_attempt_id": attempt_id, "consumed_provider": provider,
+        "consumed_from_state_digest": auth["effect_state_digest"],
+    }
+    auth_consumption["digest"] = _consumption_digest(auth_consumption)
+    permit_digest = hashlib.sha256(canonical_json(stored_permit).encode("utf-8")).hexdigest()
+    permit_consumption_rel = os.path.join("gateway_retry_permits", permit_id + ".consumed.json")
+    permit_consumption = {"permit_id": permit_id, "permit_digest": permit_digest,
+                          "gateway_attempt_id": gateway_fields["gateway_attempt_id"],
+                          "attempt_fence": gateway_fields["attempt_fence"],
+                          "consumed_at": _now(now)}
+    permit_consumption["digest"] = hashlib.sha256(canonical_json(permit_consumption).encode("utf-8")).hexdigest()
+    consumed = list(current.get("consumed_retry_authorizations", [])) + [retry_auth_id]
+    extra = {**gateway_fields, "consumed_retry_authorizations": consumed,
+             "retry_authorization_id": retry_auth_id, "gateway_retry_permit_id": permit_id,
+             "gateway_retry_operation_receipt_digest": retry_permit["operation_receipt_digest"],
+             "gateway_retry_reconciliation_evidence_digest": retry_permit["reconciliation_evidence_digest"],
+             "try_operation_binding": None}
+    return _transition_dispatch(
+        aios_dir, current, actor, attempt=attempt, attempt_id=attempt_id, provider=provider,
+        extra_fields=extra,
+        extra_payloads=[(_retry_consumption_rel(retry_auth_id), auth_consumption),
+                        (permit_consumption_rel, permit_consumption)],
+        extra_checks=[_expect_unchanged(auth_rel, auth),
+                      _expect_unchanged(permit_rel, stored_permit),
+                      _expect_unchanged(permit_consumption_rel, None)],
+    )
 
 
 # --- Retry authority -------------------------------------------------------
@@ -885,4 +1050,5 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation, *, provid
 __all__ = ["STATES", "create_effect", "transition", "dispatch", "retry_dispatch", "unknown", "observe",
            "issue_retry_authorization", "observation_digest", "mint_observation_evidence",
            "RetryIssuerKeyring", "ProviderKeyring", "ProviderAuthenticationError", "provider_receipt_body",
-           "provider_receipt_signature", "PROVIDER_RECEIPT_SCOPE", "RETRY_AUTH_DIR", "RETRY_APPROVE_SCOPE", "RETRY_KEYRING_ENV"]
+           "provider_receipt_signature", "PROVIDER_RECEIPT_SCOPE", "RETRY_AUTH_DIR", "RETRY_APPROVE_SCOPE", "RETRY_KEYRING_ENV",
+           "bind_try_operation_request", "gateway_retry_dispatch"]

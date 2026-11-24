@@ -198,3 +198,13 @@ Before declaring permit revocation implemented, AIOS MUST have tests demonstrati
 8. contract-wide epoch invalidation rejects prior-epoch permits if epochs are implemented;
 9. in-flight attempt semantics remain distinct from new authorization;
 10. Gateway crossing cannot create or bypass lifecycle state.
+
+## Gateway RetryPermit v5 (Gateway-backed effects only)
+
+A Gateway-backed `UNKNOWN` effect cannot use the generic `retry_dispatch()` path. The only permitted transition is `prepare_gateway_retry_permit()` followed by `retry_gateway_effect()` and the atomic AIOS mapping boundary.
+
+The preparation step requires: (1) a pre-POST persisted TRY request binding on the current attempt; (2) a valid HMAC-signed TRY operation receipt matching request ID, digest, repository, target SHA and attempt; (3) the receipt's exact `FAILED / NOT_SUBMITTED` classification, currently limited to local provider configuration preflight failures; (4) the exact prior Gateway attempt/fence/receipt digest from Gateway's durable status; and (5) a separate issuer approval from the deployment-pinned retry issuer keyring. `UNKNOWN`, provider HTTP failures, timeouts, `COMPLETED`, and malformed receipts cannot produce a permit.
+
+AIOS persists reconciliation evidence and an Ed25519-signed `AIOS_GATEWAY_RETRY_PERMIT_V1` before sending it to Gateway. The permit is one-use and binds both the previous attempt and the exact next Gateway attempt/fence. Gateway verifies with public keys only, consumes the nonce atomically, and returns an executable attempt only on first use. AIOS then re-verifies the permit, evidence digest, issuer authorization and Gateway response before atomically recording `DISPATCHED` with the new attempt/fence.
+
+A replay after Gateway allocation is always non-executable. If Gateway committed the attempt but AIOS did not persist the mapping, the adapter leaves AIOS `UNKNOWN` and blocks execution; it does not infer success, issue another attempt, or spend another permit. If AIOS already persisted `DISPATCHED`, resume must reconcile the provider attempt and must not invoke it again.

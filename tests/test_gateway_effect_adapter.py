@@ -6,11 +6,16 @@ from core.attestation import issue_attestation
 from core.authority import load_permit, persist_attestation, persist_contract, persist_permit
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity, issue_permit
-from core.effect_authority import create_effect, dispatch, retry_dispatch, unknown
+from core.effect_authority import (
+    create_effect, dispatch, retry_dispatch, unknown, bind_try_operation_request,
+)
 from core.gateway_effect_adapter import (
     GatewayTransportError, begin_and_dispatch_aios_effect, build_gateway_effect_contract,
-    record_gateway_receipt,
+    record_gateway_receipt, prepare_gateway_retry_permit, retry_gateway_effect,
 )
+from core.gateway_retry_permit import GatewayRetryPermitSigner
+from core.try_operation_receipt import TryOperationReceiptKeyring, SIGNED_FIELDS
+from tests.retry_issuers import KEYRING as RETRY_KEYRING, ISSUER_SECRETS
 from core.policy_registry import persist_policy
 
 SECRET = "unit-test-authority-secret-32"
@@ -21,11 +26,12 @@ def _authority(tmp_path):
     os.environ["AIOS_AUTHORITY_ATTESTATION_SECRET"] = SECRET
     registry = CapabilityRegistry()
     registry.register(Capability("try.research", "1", "test", "research", status="ACTIVE"))
+    registry.register(Capability("try.repair", "1", "test", "repair", status="ACTIVE"))
     registry.persist(str(tmp_path), "test")
     policy = persist_policy(str(tmp_path), {"policy_type": "GOVERNING_POLICY", "name": "gateway-test"})
     contract = {
         "contract_type": "EXECUTION_CONTRACT", "task_id": "task-1", "scope": "try",
-        "actor": "aios", "capabilities": ["try.research@1"],
+        "actor": "aios", "capabilities": ["try.research@1", "try.repair@1"],
         "input_digest": "sha256:input", "allowed_effects": ["run_research"],
         "evidence_required": ["experiment_ledger"], "max_attempts": 2,
         "terminal_states": ["PASS", "BLOCKED", "INCONCLUSIVE"], "policy_digest": policy,
@@ -50,10 +56,12 @@ def _build(tmp_path, contract, permit, attestation, effect, **overrides):
     return build_gateway_effect_contract(contract, **args)
 
 
-def test_builds_gateway_v4_contract_from_current_persisted_authority(tmp_path):
+def test_builds_gateway_v5_contract_from_current_persisted_authority(tmp_path):
     contract, permit, attestation, effect = _authority(tmp_path)
     result = _build(tmp_path, contract, permit, attestation, effect)
-    assert result["protocol_version"] == 4
+    assert result["protocol_version"] == 5
+    assert result["contract_id"] == contract_identity(contract)
+    assert result["actor"] == "aios"
     assert result["effect_id"] == effect["effect_id"]
     assert result["authority_ref"] == permit["permit_id"]
 
@@ -159,7 +167,7 @@ def test_missing_or_undeclared_capability_and_effect_remain_fail_closed(tmp_path
         _build(tmp_path, contract, permit, attestation, effect, action="push_to_github")
 
 
-def test_gateway_v4_cli_restart_replay_and_unknown_receipt(tmp_path, monkeypatch):
+def test_gateway_v5_cli_restart_replay_and_unknown_receipt(tmp_path, monkeypatch):
     import os
     from pathlib import Path
     from core.gateway_effect_adapter import GatewayCLITransport
@@ -179,7 +187,7 @@ def test_gateway_v4_cli_restart_replay_and_unknown_receipt(tmp_path, monkeypatch
         )
 
     contract = {
-        "protocol_version": 4, "effect_id": "EF-CROSS-1",
+        "protocol_version": 5, "effect_id": "EF-CROSS-1", "contract_id": "C-CROSS-1", "actor": "aios",
         "action": "run_research", "capability_ref": "try.research@1",
         "authority_ref": "PT-AIOS-1", "evidence_ref": "EV-PRE-1",
         "lineage_ref": "LIN-1", "idempotency_key": "idem-cross-1",
@@ -210,7 +218,7 @@ def test_gateway_v4_cli_restart_replay_and_unknown_receipt(tmp_path, monkeypatch
     assert saved["state"] == "AUTHORIZED"
 
 
-def test_gateway_transport_rejects_non_v4_contract_before_io(tmp_path):
+def test_gateway_transport_rejects_non_v5_contract_before_io(tmp_path):
     from core.gateway_effect_adapter import GatewayCLITransport, GatewayTransportError
     client = GatewayCLITransport(
         cli_path="missing-gateway-cli.py", state_path=tmp_path / "state.json",
@@ -219,7 +227,7 @@ def test_gateway_transport_rejects_non_v4_contract_before_io(tmp_path):
             "terminal_conditions", "trust_roots",
         )},
     )
-    with pytest.raises(GatewayTransportError, match="protocol_version must be 4"):
+    with pytest.raises(GatewayTransportError, match="protocol_version must be 5"):
         client.create_ticket(ticket="T", repository="r", target_sha="s",
                              nonce="n", ttl_seconds=10,
                              effect_contract={"protocol_version": 3})
@@ -538,3 +546,289 @@ def test_partial_gateway_attempt_binding_is_rejected_on_reload(tmp_path):
     from core.effect_authority import unknown
     with pytest.raises(Exception, match="Gateway attempt binding is incomplete"):
         unknown(str(tmp_path), effect["effect_id"], "aios", "tampered")
+
+
+class _FakeGatewayRetryTransport:
+    def __init__(self, *, ticket_state, retry_response=None):
+        self.ticket_state = ticket_state
+        self.retry_response = retry_response
+        self.retry_calls = 0
+    def status(self):
+        return {"tickets": {"T-RETRY": self.ticket_state}}
+    def retry_effect(self, *, ticket, retry_permit):
+        self.retry_calls += 1
+        return dict(self.retry_response)
+
+
+def _try_receipt_keyring(secret):
+    spec = {"try.repair": {"key_id": "try-op-test-v1", "secret": secret,
+                           "scopes": ["try.operation.receipt.verify"], "revoked": False}}
+    return TryOperationReceiptKeyring(spec)
+
+
+def _signed_try_preflight_receipt(*, secret, request_id, request_digest, repository, sha, attempt, now):
+    import hashlib, hmac, json
+    body = {
+        "type": "TRY_PROPOSAL_OPERATION_RECEIPT_V1", "issuer": "try.repair",
+        "key_id": "try-op-test-v1", "receipt_id": "TR-" + "b" * 32,
+        "request_id": request_id, "request_digest": request_digest,
+        "repository": repository, "sha": sha, "attempt": attempt,
+        "status": "FAILED", "execution_state": "NOT_SUBMITTED",
+        "failure_code": "provider_not_configured", "proposal_digest": None,
+        "issued_at": now, "expires_at": now + 300, "algorithm": "HMAC-SHA256",
+    }
+    signed = {key: body[key] for key in SIGNED_FIELDS}
+    body["signature"] = hmac.new(secret.encode(), json.dumps(
+        signed, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode(), hashlib.sha256).hexdigest()
+    return body
+
+
+def _gateway_retry_fixture(tmp_path, now=1000.0):
+    contract, permit, attestation, effect = _authority(tmp_path)
+    target_sha = "a" * 40
+    dispatched = dispatch(
+        str(tmp_path), effect["effect_id"], "aios", effect["effect_id"] + ":attempt:1", "try.repair",
+        target_sha=target_sha, evidence_ref="EV-1", lineage_ref="LIN-1",
+        idempotency_key="idem-1", attempt_fence=1, gateway_attempt_id="T-RETRY:1",
+    )
+    request_body = {"request_id": dispatched["attempt_id"], "repository": "yanhul/AIOS",
+                    "sha": target_sha, "attempt": 1, "failure": {}, "source_snapshot": {"core/a.py": "x"}}
+    from core.try_repair_provider import _request_digest
+    request_digest = _request_digest(request_body)
+    bind_try_operation_request(
+        str(tmp_path), effect["effect_id"], "aios", request_id=dispatched["attempt_id"],
+        request_digest=request_digest, repository="yanhul/AIOS", sha=target_sha,
+    )
+    unknown(str(tmp_path), effect["effect_id"], "aios", "TRY preflight result needs trusted reconciliation")
+    gateway_receipt = {
+        "ticket_id": "T-RETRY", "attempt_id": "T-RETRY:1", "attempt_fence": 1,
+        "target_sha": target_sha, "effect_id": effect["effect_id"], "status": "UNKNOWN",
+        "evidence_ref": "EV-1", "lineage_ref": "LIN-1",
+    }
+    import hashlib, json
+    receipt_digest = hashlib.sha256(json.dumps(gateway_receipt, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    ticket_state = {
+        "state": "AUTHORIZED", "repository": "yanhul/AIOS", "target_sha": target_sha,
+        "effect_contract": {"effect_id": effect["effect_id"], "contract_id": contract_identity(contract),
+                            "actor": "aios", "authority_ref": permit["permit_id"], "action": "run_research",
+                            "capability_ref": "try.repair@1",
+                            "evidence_ref": "EV-1", "lineage_ref": "LIN-1", "idempotency_key": "idem-1"},
+        "attempt_history": [{"attempt_id": "T-RETRY:1", "attempt_number": 1, "fence": 1, "status": "UNKNOWN"}],
+        "receipt_history": [{"receipt": gateway_receipt, "digest": receipt_digest}],
+    }
+    return contract, permit, effect, dispatched, request_digest, receipt_digest, ticket_state
+
+
+def test_try_preflight_receipt_issues_signed_retry_permit_and_maps_gateway_fence(tmp_path):
+    import time
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    contract, permit, effect, dispatched, request_digest, receipt_digest, ticket_state = _gateway_retry_fixture(tmp_path)
+    now = time.time()
+    secret = "try-operation-secret-for-tests-0123456789"
+    operation_keyring = _try_receipt_keyring(secret)
+    receipt = _signed_try_preflight_receipt(
+        secret=secret, request_id=dispatched["attempt_id"], request_digest=request_digest,
+        repository="yanhul/AIOS", sha="a" * 40, attempt=1, now=now,
+    )
+    private = Ed25519PrivateKey.generate()
+    signer = GatewayRetryPermitSigner(private)
+    transport = _FakeGatewayRetryTransport(ticket_state=ticket_state)
+    permit_record = prepare_gateway_retry_permit(
+        transport, ticket="T-RETRY", aios_dir=str(tmp_path), effect_id=effect["effect_id"], actor="aios",
+        operation_receipt=receipt, issuer="operator:test", reason="TRY preflight proved no Gemini submission",
+        issuer_secret=ISSUER_SECRETS["operator:test"], retry_keyring=RETRY_KEYRING,
+        signer=signer, operation_keyring=operation_keyring, now=now,
+    )
+    assert signer.verify(permit_record)
+    assert permit_record["reconciliation_outcome"] == "PROVEN_NOT_SUBMITTED"
+    assert permit_record["prior_gateway_receipt_digest"] == receipt_digest
+    assert permit_record["next_fence"] == 2
+    assert (tmp_path / "gateway_retry_permits" / f"{permit_record['permit_id']}.evidence.json").exists()
+    response = {
+        **ticket_state["effect_contract"], "ticket_id": "T-RETRY", "attempt_id": "T-RETRY:2",
+        "attempt_number": 2, "fence": 2, "target_sha": "a" * 40,
+        "retry_permit_id": permit_record["permit_id"], "replayed": False, "execute_allowed": True,
+    }
+    transport.retry_response = response
+    result = retry_gateway_effect(
+        transport, ticket="T-RETRY", aios_dir=str(tmp_path), effect_id=effect["effect_id"],
+        actor="aios", provider="try.repair", retry_permit=permit_record, signer=signer,
+        retry_keyring=RETRY_KEYRING, now=now,
+    )
+    assert result["execute_allowed"] is True
+    assert result["attempt_fence"] == 2
+    assert result["effect"]["state"] == "DISPATCHED"
+    assert result["effect"]["attempt"] == 2
+    assert result["effect"]["gateway_attempt_id"] == "T-RETRY:2"
+    assert (tmp_path / "gateway_retry_permits" / f"{permit_record['permit_id']}.consumed.json").exists()
+    calls_before = transport.retry_calls
+    with pytest.raises(GatewayTransportError, match="current UNKNOWN effect"):
+        retry_gateway_effect(
+            transport, ticket="T-RETRY", aios_dir=str(tmp_path), effect_id=effect["effect_id"], actor="aios",
+            provider="try.repair", retry_permit=permit_record, signer=signer,
+            retry_keyring=RETRY_KEYRING, now=now,
+        )
+    assert transport.retry_calls == calls_before
+
+
+def test_unknown_try_operation_receipt_cannot_issue_gateway_retry_permit(tmp_path):
+    import time
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    contract, permit, effect, dispatched, request_digest, _receipt_digest, ticket_state = _gateway_retry_fixture(tmp_path)
+    now = time.time()
+    secret = "try-operation-secret-for-tests-0123456789"
+    operation_keyring = _try_receipt_keyring(secret)
+    receipt = _signed_try_preflight_receipt(
+        secret=secret, request_id=dispatched["attempt_id"], request_digest=request_digest,
+        repository="yanhul/AIOS", sha="a" * 40, attempt=1, now=now,
+    )
+    receipt["status"] = "UNKNOWN"
+    receipt["execution_state"] = "IN_PROGRESS_OR_AMBIGUOUS"
+    receipt["failure_code"] = None
+    signed = {key: receipt[key] for key in SIGNED_FIELDS}
+    import hashlib, hmac, json
+    receipt["signature"] = hmac.new(secret.encode(), json.dumps(signed, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode(), hashlib.sha256).hexdigest()
+    signer = GatewayRetryPermitSigner(Ed25519PrivateKey.generate())
+    with pytest.raises(GatewayTransportError, match="does not prove Gemini was never submitted"):
+        prepare_gateway_retry_permit(
+            _FakeGatewayRetryTransport(ticket_state=ticket_state), ticket="T-RETRY",
+            aios_dir=str(tmp_path), effect_id=effect["effect_id"], actor="aios",
+            operation_receipt=receipt, issuer="operator:test", reason="not enough evidence",
+            issuer_secret=ISSUER_SECRETS["operator:test"], retry_keyring=RETRY_KEYRING,
+            signer=signer, operation_keyring=operation_keyring, now=now,
+        )
+
+
+def test_gateway_retry_replay_crash_gap_never_maps_or_executes(tmp_path):
+    import time
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    contract, permit, effect, dispatched, request_digest, _receipt_digest, ticket_state = _gateway_retry_fixture(tmp_path)
+    now = time.time()
+    secret = "try-operation-secret-for-tests-0123456789"
+    operation_keyring = _try_receipt_keyring(secret)
+    receipt = _signed_try_preflight_receipt(
+        secret=secret, request_id=dispatched["attempt_id"], request_digest=request_digest,
+        repository="yanhul/AIOS", sha="a" * 40, attempt=1, now=now,
+    )
+    signer = GatewayRetryPermitSigner(Ed25519PrivateKey.generate())
+    permit_record = prepare_gateway_retry_permit(
+        _FakeGatewayRetryTransport(ticket_state=ticket_state), ticket="T-RETRY",
+        aios_dir=str(tmp_path), effect_id=effect["effect_id"], actor="aios",
+        operation_receipt=receipt, issuer="operator:test", reason="verified not submitted",
+        issuer_secret=ISSUER_SECRETS["operator:test"], retry_keyring=RETRY_KEYRING,
+        signer=signer, operation_keyring=operation_keyring, now=now,
+    )
+    replay = {"effect_id": effect["effect_id"], "ticket_id": "T-RETRY", "attempt_id": "T-RETRY:2",
+             "attempt_number": 2, "fence": 2, "target_sha": "a" * 40,
+             "evidence_ref": "EV-1", "lineage_ref": "LIN-1", "idempotency_key": "idem-1",
+             "retry_permit_id": permit_record["permit_id"], "replayed": True, "execute_allowed": False}
+    transport = _FakeGatewayRetryTransport(ticket_state=ticket_state, retry_response=replay)
+    with pytest.raises(GatewayTransportError, match="replayed/non-executable"):
+        retry_gateway_effect(
+            transport, ticket="T-RETRY", aios_dir=str(tmp_path), effect_id=effect["effect_id"],
+            actor="aios", provider="try.repair", retry_permit=permit_record,
+            signer=signer, retry_keyring=RETRY_KEYRING, now=now,
+        )
+    current = json.loads((tmp_path / "effects" / f"{effect['effect_id']}.json").read_text())
+    assert current["state"] == "UNKNOWN"
+    assert current["attempt"] == 1
+    assert current["gateway_attempt_id"] == "T-RETRY:1"
+    assert transport.retry_calls == 1
+
+
+def _real_gateway_retry_setup(tmp_path, monkeypatch):
+    import json, os, time
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from core.gateway_effect_adapter import GatewayCLITransport
+    cli = os.environ.get("HARNESS_GATEWAY_CLI")
+    if not cli:
+        pytest.skip("HARNESS_GATEWAY_CLI is only configured in cross-repository CI")
+    contract, permit, attestation, effect = _authority(tmp_path)
+    target_sha = "a" * 40
+    governance = {key: "sha256:" + key for key in (
+        "policy", "evidence_criteria", "promotion_criteria", "terminal_conditions", "trust_roots")}
+    client = GatewayCLITransport(cli_path=cli, state_path=tmp_path / "gateway-v5.json",
+                                 human_identity="human:test", governance=governance)
+    gateway_contract = {
+        "protocol_version": 5, "effect_id": effect["effect_id"],
+        "contract_id": contract_identity(contract), "actor": "aios",
+        "action": "run_research", "capability_ref": "try.repair@1",
+        "authority_ref": permit["permit_id"], "evidence_ref": "EV-1",
+        "lineage_ref": "LIN-1", "idempotency_key": "idem-1",
+    }
+    client.create_ticket(ticket="T-RETRY", repository="yanhul/AIOS", target_sha=target_sha,
+                         nonce="nonce-1", ttl_seconds=600, effect_contract=gateway_contract)
+    client.authorize(ticket="T-RETRY", nonce="nonce-1", sender="human:test", target_sha=target_sha)
+    initial = begin_and_dispatch_aios_effect(
+        client, ticket="T-RETRY", target_sha=target_sha, aios_dir=str(tmp_path),
+        effect=effect, actor="aios", provider="try.repair", evidence_ref="EV-1",
+        lineage_ref="LIN-1", idempotency_key="idem-1",
+    )
+    current = initial["effect"]
+    request_body = {"request_id": current["attempt_id"], "repository": "yanhul/AIOS",
+                    "sha": target_sha, "attempt": 1, "failure": {}, "source_snapshot": {"core/a.py": "x"}}
+    from core.try_repair_provider import _request_digest
+    request_digest = _request_digest(request_body)
+    bind_try_operation_request(str(tmp_path), effect["effect_id"], "aios",
+                               request_id=current["attempt_id"], request_digest=request_digest,
+                               repository="yanhul/AIOS", sha=target_sha)
+    receipt = {"ticket_id": "T-RETRY", "attempt_id": current["gateway_attempt_id"],
+               "attempt_fence": current["attempt_fence"], "target_sha": target_sha,
+               "effect_id": effect["effect_id"], "status": "UNKNOWN",
+               "evidence_ref": "EV-1", "lineage_ref": "LIN-1"}
+    record_gateway_receipt(client, ticket="T-RETRY", aios_dir=str(tmp_path),
+                           effect_id=effect["effect_id"], actor="aios", receipt=receipt)
+    now = time.time()
+    operation_secret = "try-operation-secret-for-tests-0123456789"
+    operation_keyring = _try_receipt_keyring(operation_secret)
+    operation_receipt = _signed_try_preflight_receipt(
+        secret=operation_secret, request_id=current["attempt_id"], request_digest=request_digest,
+        repository="yanhul/AIOS", sha=target_sha, attempt=1, now=now)
+    private = Ed25519PrivateKey.generate()
+    signer = GatewayRetryPermitSigner(private)
+    public_keys = {signer.key_id: signer.public_key_hex}
+    monkeypatch.setenv("AIOS_GATEWAY_RETRY_PUBLIC_KEYS", json.dumps(public_keys))
+    permit_record = prepare_gateway_retry_permit(
+        client, ticket="T-RETRY", aios_dir=str(tmp_path), effect_id=effect["effect_id"], actor="aios",
+        operation_receipt=operation_receipt, issuer="operator:test", reason="verified TRY preflight non-submission",
+        issuer_secret=ISSUER_SECRETS["operator:test"], retry_keyring=RETRY_KEYRING,
+        signer=signer, operation_keyring=operation_keyring, now=now)
+    return client, effect, signer, permit_record, operation_keyring, now
+
+
+def test_real_gateway_v5_retry_permit_end_to_end(tmp_path, monkeypatch):
+    client, effect, signer, permit_record, _operation_keyring, now = _real_gateway_retry_setup(tmp_path, monkeypatch)
+    result = retry_gateway_effect(
+        client, ticket="T-RETRY", aios_dir=str(tmp_path), effect_id=effect["effect_id"], actor="aios",
+        provider="try.repair", retry_permit=permit_record, signer=signer,
+        retry_keyring=RETRY_KEYRING, now=now)
+    assert result["execute_allowed"] is True
+    assert result["effect"]["state"] == "DISPATCHED"
+    assert result["effect"]["attempt"] == 2
+    assert result["effect"]["gateway_attempt_id"] == "T-RETRY:2"
+    assert result["attempt_fence"] == 2
+    saved = client.status()["tickets"]["T-RETRY"]
+    assert [a["fence"] for a in saved["attempt_history"]] == [1, 2]
+    assert saved["retry_permit_history"][0]["permit_id"] == permit_record["permit_id"]
+
+
+def test_real_gateway_v5_crash_after_allocation_replay_is_never_executable(tmp_path, monkeypatch):
+    client, effect, signer, permit_record, _operation_keyring, now = _real_gateway_retry_setup(tmp_path, monkeypatch)
+    allocated = client.retry_effect(ticket="T-RETRY", retry_permit=permit_record)
+    assert allocated["execute_allowed"] is True
+    # Simulate process death after Gateway commit but before AIOS maps/executes.
+    with pytest.raises(GatewayTransportError, match="replayed/non-executable"):
+        retry_gateway_effect(
+            client, ticket="T-RETRY", aios_dir=str(tmp_path), effect_id=effect["effect_id"], actor="aios",
+            provider="try.repair", retry_permit=permit_record, signer=signer,
+            retry_keyring=RETRY_KEYRING, now=now)
+    current = json.loads((tmp_path / "effects" / f"{effect['effect_id']}.json").read_text())
+    assert current["state"] == "UNKNOWN"
+    assert current["attempt"] == 1
+    assert current["gateway_attempt_id"] == "T-RETRY:1"
+    saved = client.status()["tickets"]["T-RETRY"]
+    assert saved["attempts"] == 2
+    assert saved["attempt_history"][1]["fence"] == 2
+    assert saved["attempt_history"][1]["status"] == "DISPATCHED"

@@ -57,3 +57,16 @@ Initial workload registrations live in `capabilities/registry.yaml`.
 ## Current implementation
 
 The repository contains the M1/M1.5 state and mutation foundation plus implemented authority, verification, reconciliation, contract, runtime and durable-execution components. A dependency-free governed durable loop is implemented in `core/durable_loop.py` with coverage for bounded execution, persistence, terminal gating and resume. Capability identity/registry, first-class execution context, and governed workload adapters are now established; full cross-repository training execution and promotion automation remain separate implementation work.
+
+
+## Gateway protocol v5 retry trust configuration
+
+The v5 retry path is disabled unless both trust roots are explicitly configured:
+
+- TRY Worker: `TRY_OPERATION_RECEIPT_SECRET` (32+ random characters) and `TRY_OPERATION_RECEIPT_KEY_ID`. AIOS pins the same issuer/key under `AIOS_TRY_OPERATION_KEYRING` with scope `try.operation.receipt.verify`. The bearer token is transport authentication only.
+- AIOS RetryPermit: `AIOS_GATEWAY_RETRY_PRIVATE_KEY_FILE` points to a PEM Ed25519 private key readable only by the AIOS service account (mode `0600`). AIOS derives key ID `ed25519:<first-32-hex-of-SHA256(raw-public-key)>`.
+- Gateway: `AIOS_GATEWAY_RETRY_PUBLIC_KEYS` is a JSON object mapping that key ID to the 32-byte raw public key as 64 lowercase hex characters. Gateway never receives the private key.
+
+The TRY operation HMAC key and AIOS RetryPermit Ed25519 key are separate trust domains. Rotate TRY keys by pinning the new key ID before switching the Worker. Rotate AIOS/Gateway keys by pinning the new public key before deploying the AIOS signer, then retire the old public key after outstanding permits expire.
+
+The only current retry-eligible TRY receipt is `FAILED / NOT_SUBMITTED` for local provider configuration preflight failure before Gemini POST. HTTP errors, 429, 5xx, timeouts, malformed responses and any ambiguous post-submission failure remain `UNKNOWN` and cannot produce a RetryPermit.
