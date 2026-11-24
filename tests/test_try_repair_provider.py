@@ -5,13 +5,13 @@
 # AIOS-BASELINE: Existing schema-2 proposal, HOLD, identity, path-safety, and retry contracts remain enforced.
 import json
 import hashlib
-import hmac
 import time
 
 import pytest
 
 from core import try_repair_provider
 from core.try_operation_receipt import TryOperationReceiptKeyring, SIGNED_FIELDS
+from tests.try_operation_receipt_fixtures import PUBLIC_KEY_B64, PRIVATE_KEY, sign_receipt
 
 
 def test_provider_requires_try_url(monkeypatch):
@@ -193,14 +193,13 @@ def _provider_body():
 
 
 def _operation_keyring(monkeypatch):
-    secret = "try-operation-secret-for-tests-0123456789"
-    spec = {"try.repair": {"key_id": "try-op-test-v1", "secret": secret,
+    spec = {"try.repair": {"key_id": "try-op-test-v1", "public_key": PUBLIC_KEY_B64,
                            "scopes": ["try.operation.receipt.verify"], "revoked": False}}
     monkeypatch.setenv("AIOS_TRY_OPERATION_KEYRING", json.dumps(spec))
-    return TryOperationReceiptKeyring(spec), secret
+    return TryOperationReceiptKeyring(spec), PRIVATE_KEY
 
 
-def _signed_operation_receipt(*, secret, status="COMPLETED", request_digest, repository="yanhul/AIOS",
+def _signed_operation_receipt(*, status="COMPLETED", request_digest, repository="yanhul/AIOS",
                               sha="a" * 40, attempt=1, proposal=None):
     proposal = proposal or {"schema": 2, "files": [{"path": "core/x.py", "content": "x=2"}]}
     body = {
@@ -215,21 +214,17 @@ def _signed_operation_receipt(*, secret, status="COMPLETED", request_digest, rep
         "proposal_digest": hashlib.sha256(json.dumps(
             proposal, sort_keys=True, separators=(",", ":"), ensure_ascii=True
         ).encode()).hexdigest() if status == "COMPLETED" else None,
-        "issued_at": time.time(), "expires_at": time.time() + 300, "algorithm": "HMAC-SHA256",
+        "issued_at": time.time(), "expires_at": time.time() + 300, "algorithm": "Ed25519",
     }
-    signed = {key: body[key] for key in SIGNED_FIELDS}
-    body["signature"] = hmac.new(secret.encode(), json.dumps(
-        signed, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode(), hashlib.sha256).hexdigest()
-    return body
+    return sign_receipt(body, SIGNED_FIELDS)
 
 
 def test_lookup_proposal_returns_digest_bound_completed_result(monkeypatch):
     proposal = {"schema": 2, "files": [{"path": "core/x.py", "content": "x=2"}]}
     body = _provider_body()
     digest = try_repair_provider._request_digest(body)
-    _keyring, secret = _operation_keyring(monkeypatch)
-    receipt = _signed_operation_receipt(secret=secret, request_digest=digest, proposal=proposal)
+    _keyring, _private_key = _operation_keyring(monkeypatch)
+    receipt = _signed_operation_receipt(request_digest=digest, proposal=proposal)
     class Resp:
         status = 200
         def __enter__(self): return self
@@ -252,8 +247,8 @@ def test_lookup_proposal_returns_digest_bound_completed_result(monkeypatch):
 def test_lookup_proposal_unknown_is_never_retry_permission(monkeypatch):
     body = _provider_body()
     digest = try_repair_provider._request_digest(body)
-    _keyring, secret = _operation_keyring(monkeypatch)
-    receipt = _signed_operation_receipt(secret=secret, status="UNKNOWN", request_digest=digest)
+    _keyring, _private_key = _operation_keyring(monkeypatch)
+    receipt = _signed_operation_receipt(status="UNKNOWN", request_digest=digest)
     class Resp:
         status = 202
         def __enter__(self): return self
@@ -298,9 +293,9 @@ def test_propose_recovers_cached_result_after_503_without_repeating_gemini(monke
     import urllib.error
     body = _provider_body()
     digest = try_repair_provider._request_digest(body)
-    _keyring, secret = _operation_keyring(monkeypatch)
+    _keyring, _private_key = _operation_keyring(monkeypatch)
     proposal = {"schema": 2, "files": [{"path": "core/x.py", "content": "x=2"}]}
-    receipt = _signed_operation_receipt(secret=secret, request_digest=digest, proposal=proposal)
+    receipt = _signed_operation_receipt(request_digest=digest, proposal=proposal)
     calls = []
     class Resp:
         status = 200
@@ -331,8 +326,8 @@ def test_propose_does_not_retry_unknown_operation_after_503(monkeypatch):
     import urllib.error
     body = _provider_body()
     digest = try_repair_provider._request_digest(body)
-    _keyring, secret = _operation_keyring(monkeypatch)
-    receipt = _signed_operation_receipt(secret=secret, status="UNKNOWN", request_digest=digest)
+    _keyring, _private_key = _operation_keyring(monkeypatch)
+    receipt = _signed_operation_receipt(status="UNKNOWN", request_digest=digest)
     calls = []
     class Resp:
         status = 202
@@ -436,8 +431,8 @@ def test_propose_never_posts_when_aios_operation_binding_fails(monkeypatch):
 def test_lookup_failed_not_submitted_receipt_is_reconciliation_input_not_auto_retry(monkeypatch):
     body = _provider_body()
     digest = try_repair_provider._request_digest(body)
-    _keyring, secret = _operation_keyring(monkeypatch)
-    receipt = _signed_operation_receipt(secret=secret, status="FAILED", request_digest=digest)
+    _keyring, _private_key = _operation_keyring(monkeypatch)
+    receipt = _signed_operation_receipt(status="FAILED", request_digest=digest)
     class Resp:
         status = 200
         def __enter__(self): return self
