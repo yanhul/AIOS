@@ -22,6 +22,7 @@ _PROTECTED_STATE_FIELDS = frozenset({
     "continue_contract",
     "policy_digest",
     "in_flight_attempt",
+    "validator_provenance",
 })
 
 class StateStore(Protocol):
@@ -53,6 +54,10 @@ class LoopPolicy:
     continue_contract_builder: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None
     # Appended to preserve positional compatibility for earlier LoopPolicy fields.
     state_patch_validator: Callable[[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]], None] | None = None
+    # Deployment identity is supplied by trusted host integration, never policy JSON.
+    deployment_id: str | None = None
+    deployment_digest: str | None = None
+    validator_provenance: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
@@ -232,10 +237,11 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
             raise ValueError(f"in-flight effect_id already exists in persisted history: {effect_id}")
         if attempt_id in seen_attempt_ids and not matching_unknown_in_flight:
             raise ValueError(f"in-flight attempt_id already exists in persisted history: {attempt_id}")
-    if state.get("status") in policy.terminal_states:
-        _validate_terminal_evidence(state)
+    if state.get("status") in policy.terminal_states:        _validate_terminal_evidence(state)
     if policy.policy_digest is not None and state.get("policy_digest") != policy.policy_digest:
         raise ValueError("persisted policy digest does not match current policy")
+    if policy.validator_provenance is not None and state.get("validator_provenance") != dict(policy.validator_provenance):
+        raise ValueError("persisted validator provenance does not match trusted deployment")
     if policy.resume_validator is not None:
         policy.resume_validator(state)
     if policy.continue_contract_builder is not None:
@@ -350,6 +356,8 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
     state.setdefault("history", [])
     if policy.policy_digest is not None:
         state.setdefault("policy_digest", policy.policy_digest)
+    if policy.require_execution_receipt:
+        state.setdefault("validator_provenance", deepcopy(dict(policy.validator_provenance or {})))
     try:
         _validate_loaded_state(state, policy)
     except Exception as exc:
@@ -468,8 +476,7 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                 return state
             return state
         state["step"] += 1
-        state["history"].append({"step": state["step"], "observation": deepcopy(observation), "decision": deepcopy(decision), "action": deepcopy(action_result), "verification": deepcopy(verification)})
-        # Only an OBSERVED receipt closes the prepared intent. UNKNOWN keeps it
+        state["history"].append({"step": state["step"], "observation": deepcopy(observation), "decision": deepcopy(decision), "action": deepcopy(action_result), "verification": deepcopy(verification)})        # Only an OBSERVED receipt closes the prepared intent. UNKNOWN keeps it
         # durable for explicit reconciliation; it can never authorize a replay.
         if policy.require_execution_receipt and receipt is not None and receipt["status"] == "OBSERVED":
             state.pop("in_flight_attempt", None)
