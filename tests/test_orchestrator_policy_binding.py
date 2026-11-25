@@ -100,7 +100,6 @@ def test_caller_resume_validator_is_chained_not_dropped(authority, monkeypatch):
 
 
 def test_authority_persists_and_reloads_acceptance_predicates(tmp_path, monkeypatch):
-    monkeypatch.setenv("AIOS_AUTHORITY_ATTESTATION_SECRET", "t" * 32)
     reg = CapabilityRegistry()
     reg.register(Capability("cap", "1", "AIOS", "external_effect", inputs=("x",), outputs=("y",),
                             status="ACTIVE"))

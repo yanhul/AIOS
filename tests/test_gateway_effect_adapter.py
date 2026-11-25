@@ -19,12 +19,10 @@ from tests.try_operation_receipt_fixtures import PUBLIC_KEY_B64, sign_receipt
 from tests.retry_issuers import KEYRING as RETRY_KEYRING, ISSUER_SECRETS
 from core.policy_registry import persist_policy
 
-SECRET = "unit-test-authority-secret-32"
+from tests.authority_keys import signer as _authority_signer
 
 
 def _authority(tmp_path):
-    import os
-    os.environ["AIOS_AUTHORITY_ATTESTATION_SECRET"] = SECRET
     registry = CapabilityRegistry()
     registry.register(Capability("try.research", "1", "test", "research", status="ACTIVE"))
     registry.register(Capability("try.repair", "1", "test", "repair", status="ACTIVE"))
@@ -39,7 +37,7 @@ def _authority(tmp_path):
     }
     stored = persist_contract(str(tmp_path), contract)
     permit = persist_permit(str(tmp_path), stored, "AIOS_AUTHORITY")
-    attestation = persist_attestation(str(tmp_path), stored, permit, SECRET)
+    attestation = persist_attestation(str(tmp_path), stored, permit, _authority_signer())
     effect = create_effect(str(tmp_path), contract_identity(contract), "op-1", "aios", permit["permit_id"], "run_research")
     return contract, permit, attestation, effect
 
@@ -50,7 +48,7 @@ def _build(tmp_path, contract, permit, attestation, effect, **overrides):
         "effect_id": effect["effect_id"], "action": "run_research",
         "capability_ref": "try.research@1", "authority_ref": permit["permit_id"],
         "authority_permit": permit, "authority_attestation": attestation,
-        "attestation_secret": SECRET, "evidence_ref": "EV-1",
+        "evidence_ref": "EV-1",
         "lineage_ref": "LIN-1", "idempotency_key": "idem-1",
     }
     args.update(overrides)
@@ -76,7 +74,7 @@ def test_stale_permit_is_rejected(tmp_path):
 
 def test_stale_attestation_is_rejected(tmp_path):
     contract, permit, attestation, effect = _authority(tmp_path)
-    stale = issue_attestation(contract, issue_permit(contract, "OLD_AUTHORITY"), SECRET)
+    stale = issue_attestation(contract, issue_permit(contract, "OLD_AUTHORITY"), _authority_signer())
     with pytest.raises(ValueError, match="attestation"):
         _build(tmp_path, contract, permit, stale, effect)
 
@@ -103,7 +101,7 @@ def test_changed_policy_artifact_is_rejected_fail_closed(tmp_path):
 def test_permit_a_cannot_cross_effect_b(tmp_path):
     contract, permit_a, attestation_a, _effect_a = _authority(tmp_path)
     permit_b = persist_permit(str(tmp_path), contract, "SECOND_AUTHORITY")
-    attestation_b = persist_attestation(str(tmp_path), contract, permit_b, SECRET)
+    attestation_b = persist_attestation(str(tmp_path), contract, permit_b, _authority_signer())
     effect_b = create_effect(str(tmp_path), contract_identity(contract), "op-2", "aios", permit_b["permit_id"], "run_research")
     with pytest.raises(ValueError, match="persisted effect permit"):
         _build(tmp_path, contract, permit_a, attestation_a, effect_b)
@@ -115,7 +113,7 @@ def test_contract_a_cannot_cross_effect_b(tmp_path):
     contract_b = dict(contract_a, task_id="task-2", input_digest="sha256:other")
     stored_b = persist_contract(str(tmp_path), contract_b)
     permit_b = persist_permit(str(tmp_path), stored_b, "AIOS_AUTHORITY")
-    attestation_b = persist_attestation(str(tmp_path), stored_b, permit_b, SECRET)
+    attestation_b = persist_attestation(str(tmp_path), stored_b, permit_b, _authority_signer())
     effect_b = create_effect(str(tmp_path), contract_identity(contract_b), "op-2", "aios", permit_b["permit_id"], "run_research")
     with pytest.raises(ValueError, match="workload contract"):
         _build(tmp_path, contract_a, permit_b, attestation_b, effect_b)

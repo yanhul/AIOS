@@ -1,12 +1,14 @@
 """Durable authority records for AIOS contract/permit enforcement.
 
 Permit hashes bind fields but do not authenticate the issuer. Every production
-authorization therefore requires a deployment-held HMAC attestation secret.
+authorization therefore requires an Ed25519 attestation issued by the authority
+signer (private key) and verified here with public keys only.
 """
 import os
 import json
 from .contract import contract_identity, issue_permit, validate_contract, verify_permit
-from .attestation import issue_attestation, verify_attestation
+from .attestation import (ALGORITHM, LEGACY_ALGORITHM, SIGNING_KEY_FILE_ENV, AttestationError, AuthoritySigner,
+                          AuthorityVerifier, issue_attestation, signing_material_present)
 from .capabilities import CapabilityError, CapabilityRegistry
 from .policy_registry import resolve_policy
 from .mutation import TransitionError, canonical_json
@@ -16,7 +18,20 @@ AUTHORITY_DIR = "authority"
 CONTRACTS_DIR = "contracts"
 PERMITS_DIR = "permits"
 ATTESTATIONS_DIR = "attestations"
-AUTHORITY_ATTESTATION_SECRET_ENV = "AIOS_AUTHORITY_ATTESTATION_SECRET"
+AUTHORITY_ATTESTATION_SECRET_ENV = "AIOS_AUTHORITY_ATTESTATION_SECRET"  # legacy; never read
+_process_signer = None
+
+
+def register_process_signer(signer):
+    """Install the signer for this *authority-signer* process (or a test harness).
+
+    Execution runtimes never call this: they hold no private key to construct
+    an AuthoritySigner from.
+    """
+    global _process_signer
+    if signer is not None and not isinstance(signer, AuthoritySigner):
+        raise TypeError("process signer must be an AuthoritySigner")
+    _process_signer = signer
 _CONTRACT_FIELDS = ("contract_type", "task_id", "scope", "actor", "capabilities", "input_digest",
                     "allowed_effects", "evidence_required", "max_attempts", "terminal_states", "policy_digest")
 # Optional fields validated by core.contract and bound into contract/permit identity.
@@ -85,7 +100,7 @@ def persist_contract(aios_dir, contract):
     return record
 
 
-def persist_permit(aios_dir, contract, issuer):
+def persist_permit(aios_dir, contract, issuer, signer=None):
     canonical = _canonical_contract(contract)
     stored = persist_contract(aios_dir, canonical)
     canonical = _canonical_contract(stored)
@@ -100,30 +115,38 @@ def persist_permit(aios_dir, contract, issuer):
         permit = existing
     else:
         commit_batch(aios_dir, [(os.path.join(AUTHORITY_DIR, PERMITS_DIR, permit["permit_id"] + ".json"), permit)])
-    # Attestation is created only by the trusted deployment process. Without
-    # the secret the permit may be recorded, but authorize() will fail closed.
-    secret = os.environ.get(AUTHORITY_ATTESTATION_SECRET_ENV)
-    if secret:
-        persist_attestation(aios_dir, canonical, permit, secret)
+    # Attestation is created only by the authority signer. Without one the
+    # permit is recorded unattested and authorize() fails closed.
+    signer = signer if signer is not None else _process_signer
+    if signer is not None:
+        persist_attestation(aios_dir, canonical, permit, signer)
     return permit
 
 
-def persist_attestation(aios_dir, contract, permit, secret):
-    """Atomically persist an authenticity attestation for an issued permit."""
-    if not isinstance(secret, str) or len(secret) < 16:
-        raise TransitionError("authority attestation secret must contain at least 16 characters")
+def persist_attestation(aios_dir, contract, permit, signer, *, reissue=False):
+    """Atomically persist an Ed25519 attestation issued by the authority signer.
+
+    An existing legacy HMAC attestation is replaced (explicit migration by the
+    signer); an existing Ed25519 attestation is replaced only with an explicit
+    ``reissue=True`` (key rotation/revocation), never silently.
+    """
+    if not isinstance(signer, AuthoritySigner):
+        raise TransitionError("attestations can only be issued by an AuthoritySigner")
     canonical = _canonical_contract(contract)
     verify_permit(canonical, permit)
     _resolve_capabilities(aios_dir, canonical)
     _resolve_policy(aios_dir, canonical)
-    attestation = issue_attestation(canonical, permit, secret)
+    attestation = issue_attestation(canonical, permit, signer)
     recover_pending(aios_dir)
     path = _path(aios_dir, ATTESTATIONS_DIR, permit["permit_id"])
     if os.path.exists(path):
         existing = _load(path)
-        if canonical_json(existing) != canonical_json(attestation):
-            raise TransitionError("existing attestation identity has different content")
-        return existing
+        if existing.get("algorithm") == ALGORITHM and not reissue:
+            if canonical_json(existing) != canonical_json(attestation):
+                raise TransitionError("existing Ed25519 attestation has different content; revoke and re-issue explicitly")
+            return existing
+        if existing.get("algorithm") not in (ALGORITHM, LEGACY_ALGORITHM):
+            raise TransitionError("existing attestation has an unknown algorithm")
     commit_batch(aios_dir, [(os.path.join(AUTHORITY_DIR, ATTESTATIONS_DIR, permit["permit_id"] + ".json"), attestation)])
     return attestation
 
@@ -150,10 +173,15 @@ def load_attestation(aios_dir, permit_id):
     return _load(_path(aios_dir, ATTESTATIONS_DIR, permit_id))
 
 
-def authorize(aios_dir, contract_id, permit_id):
-    secret = os.environ.get(AUTHORITY_ATTESTATION_SECRET_ENV)
-    if not secret or len(secret) < 16:
-        raise TransitionError(f"deployment secret {AUTHORITY_ATTESTATION_SECRET_ENV} is required")
+def authorize(aios_dir, contract_id, permit_id, verifier=None):
+    # Separation of duties: a verifying (execution) process must not be
+    # configured with authority signing material.
+    if signing_material_present():
+        raise TransitionError(f"{SIGNING_KEY_FILE_ENV} must not be configured in a verifying process")
+    try:
+        verifier = verifier if verifier is not None else AuthorityVerifier.from_env()
+    except AttestationError as exc:
+        raise TransitionError(f"authority verifier unavailable: {exc}") from exc
     contract = load_contract(aios_dir, contract_id)
     _resolve_capabilities(aios_dir, contract)
     _resolve_policy(aios_dir, contract)
@@ -164,11 +192,11 @@ def authorize(aios_dir, contract_id, permit_id):
     except FileNotFoundError as exc:
         raise TransitionError("permit issuer attestation is missing") from exc
     try:
-        verify_attestation(contract, permit, attestation, secret)
+        verifier.verify(contract, permit, attestation)
     except ValueError as exc:
         raise TransitionError(f"permit issuer attestation rejected: {exc}") from exc
     return True
 
 
-__all__ = ["AUTHORITY_ATTESTATION_SECRET_ENV", "persist_contract", "persist_permit",
+__all__ = ["AUTHORITY_ATTESTATION_SECRET_ENV", "register_process_signer", "persist_contract", "persist_permit",
            "persist_attestation", "load_contract", "load_permit", "load_attestation", "authorize"]

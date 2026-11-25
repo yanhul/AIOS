@@ -49,7 +49,7 @@ Initial workload registrations live in `capabilities/registry.yaml`.
 
 ## Security deployment requirements
 
-- Set `AIOS_AUTHORITY_ATTESTATION_SECRET` to a deployment-held secret of at least 16 characters. Permit creation persists an HMAC attestation when this secret is present; `authorize()` rejects execution when the secret or matching attestation is absent or invalid. Never expose this secret to agents or workload code.
+- Permit attestations are **Ed25519**. The private key lives only with the external authority signer (`scripts/aios_authority_signer.py`, `AIOS_AUTHORITY_SIGNING_KEY_FILE`, mode 0600, dedicated service account). Execution runtimes receive only the public keyring `AIOS_AUTHORITY_TRUSTED_KEYS` and `authorize()` refuses to run where signing material is configured. Legacy HMAC attestations and `AIOS_AUTHORITY_ATTESTATION_SECRET` are no longer accepted. See `docs/AUTHORITY_SIGNING.md`.
 - Set `AIOS_EVIDENCE_SIGNING_SECRET` to a separate deployment-held secret of at least 16 characters. Only the trusted verifier should receive it to attest evidence; promotion verifies the attestation and rejects caller-declared levels without it.
 - Keep both secrets in the deployment secret manager / GitHub Actions secrets. Do not commit values to the repository, artifacts, logs, or test fixtures. Unit-test fixtures are non-production only.
 - Absorption verification, runtime proof, promotion, and apply artifacts must all carry the same current `GITHUB_RUN_ID`. A missing or mismatched run ID blocks promotion and materialization.
