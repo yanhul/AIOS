@@ -307,7 +307,8 @@ class TestAtomicity(Base):
             with mock.patch.object(mutation, "_replace", self._flaky_replace(1)):
                 apply_mutations(aios, [dict(e) for e in ents], ACTOR)
         staged = self.pending_batches(aios)
-        self.assertFalse(any(os.path.exists(os.path.join(aios, ".staging", b, "journal.json")) for b in staged),
+        self.assertFalse(any(os.path.exists(os.path.join(aios, ".staging", b, j))
+                             for b in staged for j in ("journal.json", "journal.v2.json")),
                          "crash before the commit point must not publish a journal")
         recover_pending(aios)
         self.assertEqual(self.pending_batches(aios), [])
