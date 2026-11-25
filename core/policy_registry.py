@@ -62,6 +62,26 @@ def resolve_policy(aios_dir, digest):
         raise ValueError("governing policy artifact not found") from exc
     if policy.get("policy_digest") != digest:
         raise ValueError("stored governing policy digest mismatch")
+    # Runtime enforcement declarations are part of the content-addressed policy.
+    # Older artifacts remain readable, but malformed declarations fail closed.
+    if "require_execution_receipt" in policy and not isinstance(policy["require_execution_receipt"], bool):
+        raise ValueError("governing policy require_execution_receipt must be boolean")
+    if "acceptance_predicates" in policy:
+        from .acceptance import AcceptancePredicate
+        predicates = policy["acceptance_predicates"]
+        if not isinstance(predicates, list):
+            raise ValueError("governing policy acceptance_predicates must be a list")
+        seen = set()
+        for raw in predicates:
+            if not isinstance(raw, dict):
+                raise ValueError("governing policy acceptance predicate must be a mapping")
+            try:
+                predicate = AcceptancePredicate.from_mapping(raw)
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(f"invalid governing policy acceptance predicate: {exc}") from exc
+            if predicate.predicate_id in seen:
+                raise ValueError(f"duplicate governing policy acceptance predicate id: {predicate.predicate_id}")
+            seen.add(predicate.predicate_id)
     content = dict(policy)
     content.pop("policy_digest", None)
     if policy_digest(content) != digest:
