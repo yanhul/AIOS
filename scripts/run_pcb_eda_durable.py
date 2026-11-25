@@ -357,6 +357,9 @@ def main():
     policy = LoopPolicy(
         max_steps=a.max_steps, terminal_evaluator=terminal,
         action_authorizer=authorize_action, require_execution_receipt=True,
+        # Canonical L3 operation identity (Decision A): phase op + persisted step.
+        operation_identity=lambda decision, state: {"contract_id": f"pcb.eda/{a.task_id}", "actor": "AIOS_CONTROL_PLANE",
+            "logical_operation_id": f"{decision['logical_operation_id']}:step-{state.get('step', 0)}"},
         execution_receipt_validator=validate_execution_receipt,
         state_patch_validator=validate_state_patch,
         blocked_continuation=continuation,

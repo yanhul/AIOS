@@ -3,11 +3,11 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Protocol
-from uuid import uuid4
 
 from .fix_protocol import FixPlan, require_fix_plan, require_fix_proof, FixProof
 from .acceptance import AcceptancePredicate, evaluate_acceptance
 from .continue_contract import validate_continue_contract
+from .effect_identity import operation_identity as _derive_operation_identity, verify_operation_identity
 
 TERMINAL = frozenset({"PASS", "BLOCKED", "INCONCLUSIVE"})
 
@@ -53,6 +53,10 @@ class LoopPolicy:
     continue_contract_builder: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None
     # Appended to preserve positional compatibility for earlier LoopPolicy fields.
     state_patch_validator: Callable[[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]], None] | None = None
+    # Decision A (B-1): returns {"contract_id", "actor", "logical_operation_id"} for a
+    # decision. The intent's effect/attempt identity is derived from it with the
+    # same canonical function L5 uses; L3 never mints random effect identities.
+    operation_identity: Callable[[Any, Mapping[str, Any]], Mapping[str, str]] | None = None
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
@@ -98,6 +102,13 @@ class LoopPolicy:
             raise ValueError("blocked_continuation must be callable")
         if self.continue_contract_builder is not None and not callable(self.continue_contract_builder):
             raise ValueError("continue_contract_builder must be callable")
+        if self.operation_identity is not None and not callable(self.operation_identity):
+            raise ValueError("operation_identity must be callable")
+        if self.require_execution_receipt and self.operation_identity is None:
+            raise ValueError(
+                "require_execution_receipt requires operation_identity; the write-ahead intent must "
+                "carry the canonical L5 effect/attempt identity, not a random one"
+            )
 
 def _validate_execution_receipt(verification: Any) -> Mapping[str, Any]:
     """Fail closed unless verification contains a complete execution receipt."""
@@ -212,6 +223,9 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
         attempt_id = in_flight.get("attempt_id")
         if not isinstance(effect_id, str) or not effect_id.strip() or not isinstance(attempt_id, str) or not attempt_id.strip():
             raise ValueError("persisted in-flight execution lineage is incomplete")
+        if "identity_version" in in_flight:
+            # Any edit to contract_id/actor/logical_operation_id/effect_id/attempt_id breaks derivation.
+            verify_operation_identity(in_flight)
         # An UNKNOWN receipt is intentionally retained in history while its
         # matching intent remains in-flight for explicit reconciliation. Permit
         # only that exact final-history pair; all other identity reuse blocks.
@@ -368,7 +382,11 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
     # external side-effect boundary without committing its receipt. Never replay it.
     if policy.require_execution_receipt and state.get("in_flight_attempt") is not None:
         state["status"] = policy.failure_state
-        state["block_reason"] = "unresolved in-flight execution attempt; explicit provider reconciliation required"
+        if "identity_version" not in state["in_flight_attempt"]:
+            state["block_reason"] = ("LEGACY_UNRECONCILED: in-flight intent predates canonical operation identity "
+                                     "(random IDs); it is never promoted or backfilled")
+        else:
+            state["block_reason"] = "unresolved in-flight execution attempt; explicit provider reconciliation required"
         _persist_or_fail_closed(state, store, policy)
         return state
     # Preflight and durably commit the continuation projection before any side effect.
@@ -402,9 +420,12 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
             if policy.require_execution_receipt:
                 # Write-ahead intent: persist stable effect/attempt identity before
                 # invoking provider code. A crash after this point blocks replay.
+                identity = policy.operation_identity(deepcopy(decision), deepcopy(state))
+                if not isinstance(identity, Mapping):
+                    raise ValueError("operation_identity must return a mapping")
                 intent = {
-                    "effect_id": "effect-" + uuid4().hex,
-                    "attempt_id": "attempt-" + uuid4().hex,
+                    **_derive_operation_identity(identity.get("contract_id"), identity.get("logical_operation_id"),
+                                                 identity.get("actor")),
                     "decision": deepcopy(decision),
                     "observation": deepcopy(observation),
                     "status": "PREPARED",

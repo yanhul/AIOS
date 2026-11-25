@@ -1,11 +1,13 @@
 """Central governed execution bridge."""
 from __future__ import annotations
+import os
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from typing import Any, Callable, Mapping
 from .acceptance import AcceptancePredicate
 from .authority import authorize, load_contract
-from .durable_loop import Executor, LoopPolicy, StateStore, run_durable_loop
+from .durable_loop import Executor, LoopPolicy, StateStore, reconcile_in_flight_attempt, run_durable_loop
+from .effect_identity import verify_operation_identity
 from .runtime import ProviderAdapter, execute
 
 @dataclass(frozen=True)
@@ -74,6 +76,7 @@ def run_governed_execution(*, executor: GovernedRuntimeExecutor, store: StateSto
         policy_digest=contract["policy_digest"],
         terminal_states=governing_terminal_states,
         acceptance_predicates=governing_predicates,
+        operation_identity=_governed_operation_identity(executor),
     )
     loaded = store.load()
     if loaded is None:
@@ -85,6 +88,92 @@ def run_governed_execution(*, executor: GovernedRuntimeExecutor, store: StateSto
             state["block_reason"] = "persisted execution binding does not match current authority context"
             store.save(state)
             return state
+        if bound_policy.require_execution_receipt and state.get("in_flight_attempt") is not None:
+            reconciled = reconcile_with_ledger(executor=executor, store=store, policy=bound_policy)
+            if reconciled.get("status") != "RUNNING":
+                return reconciled
     return run_durable_loop(executor, store, bound_policy)
 
-__all__ = ["GovernedRuntimeExecutor", "run_governed_execution"]
+
+def _governed_operation_identity(executor: GovernedRuntimeExecutor):
+    """Decision A: identity = (governing contract, decision's logical operation, executor actor)."""
+    def identity(decision: Any, state: Mapping[str, Any]) -> Mapping[str, str]:
+        if not isinstance(decision, Mapping):
+            raise ValueError("runtime decision must be a mapping")
+        return {"contract_id": executor.contract_id, "actor": executor.actor,
+                "logical_operation_id": decision.get("logical_operation_id")}
+    return identity
+
+
+def _block(store: StateStore, state: dict, policy: LoopPolicy, classification: str, detail: str) -> Mapping[str, Any]:
+    state["status"] = policy.failure_state
+    state["block_reason"] = f"L5_RECONCILIATION {classification}: {detail}"
+    state["reconciliation"] = {"classification": classification, "detail": detail}
+    state["terminal_evidence"] = {"step": state.get("step", 0), "status": policy.failure_state,
+                                  "verification": {"reason": state["block_reason"]}}
+    store.save(deepcopy(state))  # the in-flight intent is preserved untouched
+    return state
+
+
+def reconcile_with_ledger(*, executor: GovernedRuntimeExecutor, store: StateStore, policy: LoopPolicy) -> Mapping[str, Any]:
+    """Restart path: reconcile the persisted L3 intent against the L5 ledger. Never dispatches.
+
+    OBSERVED_* with valid identity/ledger/receipt lineage -> closed through the
+    existing reconcile_in_flight_attempt (same validators). Everything else is
+    BLOCKED with a classification; nothing is inferred or backfilled.
+    """
+    from .effect_authority import _load, _path, verify_effect_ledger  # L5 read-only queries
+    state = deepcopy(dict(store.load() or {}))
+    intent = state.get("in_flight_attempt")
+    if not isinstance(intent, Mapping) or "identity_version" not in intent:
+        return _block(store, state, policy, "LEGACY_UNRECONCILED",
+                      "in-flight intent has no canonical operation identity (random IDs)")
+    try:
+        verify_operation_identity(intent)
+    except ValueError as exc:
+        return _block(store, state, policy, "IDENTITY_INVALID", str(exc))
+    decision = intent.get("decision")
+    if (intent["contract_id"], intent["actor"]) != (executor.contract_id, executor.actor) or not isinstance(
+            decision, Mapping) or decision.get("logical_operation_id") != intent["logical_operation_id"]:
+        return _block(store, state, policy, "IDENTITY_MISMATCH",
+                      "intent contract/actor/decision does not match the governed execution context")
+    effect_path = _path(executor.aios_dir, intent["effect_id"])
+    if not os.path.exists(effect_path):
+        return _block(store, state, policy, "LEDGER_MISSING_EFFECT",
+                      "no L5 effect for this logical operation; not inferring whether the provider ran")
+    effect = _load(effect_path)
+    expected = {"effect_id": intent["effect_id"], "contract_id": intent["contract_id"], "actor": intent["actor"],
+                "logical_operation_id": intent["logical_operation_id"], "permit_id": executor.permit_id}
+    if any(effect.get(k) != v for k, v in expected.items()):
+        return _block(store, state, policy, "LEDGER_IDENTITY_MISMATCH", "L5 effect identity differs from the intent")
+    try:
+        ledger = verify_effect_ledger(executor.aios_dir, intent["effect_id"])
+    except Exception as exc:  # noqa: BLE001 - any ledger failure is fail-closed
+        return _block(store, state, policy, "LEDGER_INCONSISTENT", f"{type(exc).__name__}: {exc}")
+    if ledger["status"] != "CONSISTENT":
+        return _block(store, state, policy, "LEDGER_UNVERIFIABLE", ledger["status"])
+    if effect.get("state") not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
+        return _block(store, state, policy, f"LEDGER_{effect.get('state')}",
+                      "effect outcome is not observed; no automatic dispatch or promotion")
+    if effect.get("attempt_id") != intent["attempt_id"]:
+        return _block(store, state, policy, "ATTEMPT_MISMATCH", "observed attempt differs from the intent attempt")
+    try:
+        authorize(executor.aios_dir, executor.contract_id, executor.permit_id)
+        action_result = {**deepcopy(effect), "evidence": deepcopy(effect["provider_observation"])}
+        verification = executor.verify(action_result, deepcopy(state))
+        receipt = verification.get("receipt") if isinstance(verification, Mapping) else None
+        if not isinstance(receipt, Mapping) or receipt.get("status") != "OBSERVED" or (
+                receipt.get("effect_id"), receipt.get("attempt_id")) != (intent["effect_id"], intent["attempt_id"]):
+            return _block(store, state, policy, "RECEIPT_MISMATCH",
+                          "verifier receipt does not bind the observed L5 effect/attempt")
+
+        def ledger_authorizer(pending: Mapping[str, Any], validated: Mapping[str, Any]) -> None:
+            if (validated.get("effect_id"), validated.get("attempt_id")) != (effect["effect_id"], effect["attempt_id"]):
+                raise PermissionError("receipt does not match the L5 ledger")
+            authorize(executor.aios_dir, executor.contract_id, executor.permit_id)
+        return reconcile_in_flight_attempt(store, policy, dict(receipt), authorizer=ledger_authorizer)
+    except Exception as exc:  # noqa: BLE001
+        return _block(store, deepcopy(dict(store.load() or state)), policy, "RECONCILIATION_REJECTED",
+                      f"{type(exc).__name__}: {exc}")
+
+__all__ = ["GovernedRuntimeExecutor", "reconcile_with_ledger", "run_governed_execution"]

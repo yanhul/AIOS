@@ -7,6 +7,7 @@
 import pytest
 
 from core.durable_loop import LoopPolicy, _validate_loaded_state
+from tests.l3_identity import TEST_OPERATION_IDENTITY
 
 
 def test_resume_rejects_historical_receipt_without_evidence():
@@ -14,7 +15,7 @@ def test_resume_rejects_historical_receipt_without_evidence():
         max_steps=3,
         terminal_evaluator=lambda verification, state: None,
         action_authorizer=lambda decision, state: None,
-        require_execution_receipt=True,
+        require_execution_receipt=True, operation_identity=TEST_OPERATION_IDENTITY,
         execution_receipt_validator=lambda receipt, state: None,
         state_patch_validator=lambda patch, receipt, state: None,
     )

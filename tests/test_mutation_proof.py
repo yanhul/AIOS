@@ -58,6 +58,7 @@ def test_retry_attempt_identity_mutation_is_killed():
     harness = r'''
 import tempfile
 from core.authority import persist_contract, persist_permit
+from tests.l3_identity import TEST_OPERATION_IDENTITY
 from core.capabilities import Capability, CapabilityRegistry
 from core.contract import contract_identity
 from core.effect_authority import create_effect, dispatch, retry_dispatch, unknown
@@ -126,7 +127,7 @@ policy = LoopPolicy(
     max_steps=1,
     terminal_evaluator=lambda verification, state: "PASS",
     action_authorizer=lambda decision, state: None,
-    require_execution_receipt=True,
+    require_execution_receipt=True, operation_identity=TEST_OPERATION_IDENTITY,
 )
 result = run_durable_loop(Executor(), MemoryStateStore(), policy)
 

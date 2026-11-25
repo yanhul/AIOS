@@ -30,6 +30,7 @@ from .evidence import EvidenceRecord, verify_evidence
 from .mutation import TransitionError, canonical_json
 from .authority_store import commit_authority_batch as commit_batch, recover_authority_store as recover_pending
 from . import provider_ed25519 as _ed
+from .effect_identity import attempt_identity, effect_identity
 
 STATES = ("PLANNED", "DISPATCHED", "UNKNOWN", "OBSERVED_SUCCESS", "OBSERVED_FAILURE")
 _ALLOWED = {
@@ -43,8 +44,8 @@ _OBSERVED = frozenset({"OBSERVED_SUCCESS", "OBSERVED_FAILURE"})
 
 
 def _id(contract_id, logical_operation_id, actor):
-    value = {"contract_id": contract_id, "logical_operation_id": logical_operation_id, "actor": actor}
-    return "EF-" + hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+    # Single canonical identity shared with L3 intents (Decision A, B-1).
+    return effect_identity(contract_id, logical_operation_id, actor)
 
 
 def _path(aios_dir, effect_id):
@@ -120,7 +121,7 @@ def _validate_persisted_effect(aios_dir, effect):
 
 
 def _attempt_id(effect_id, attempt):
-    return f"{effect_id}:attempt:{attempt}"
+    return attempt_identity(effect_id, attempt)
 
 
 def _effect_rel(effect_id):
