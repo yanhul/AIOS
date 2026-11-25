@@ -7,6 +7,7 @@ from .acceptance import AcceptancePredicate
 from .authority import authorize, load_contract
 from .durable_loop import Executor, LoopPolicy, StateStore, run_durable_loop
 from .runtime import ProviderAdapter, execute
+from .policy_registry import resolve_policy
 
 @dataclass(frozen=True)
 class GovernedRuntimeExecutor(Executor):
@@ -36,6 +37,16 @@ def run_governed_execution(*, executor: GovernedRuntimeExecutor, store: StateSto
     contract = load_contract(executor.aios_dir, executor.contract_id)
     if policy.policy_digest != contract["policy_digest"]:
         raise PermissionError("execution policy digest does not match governing contract")
+    try:
+        governing_policy = resolve_policy(executor.aios_dir, contract["policy_digest"])
+    except ValueError as exc:
+        raise PermissionError(f"governing policy could not be resolved: {exc}") from exc
+    missing_policy_fields = {"require_execution_receipt", "acceptance_predicates"} - set(governing_policy)
+    if missing_policy_fields:
+        raise PermissionError(
+            "governing policy lacks explicit runtime enforcement declarations: "
+            + ", ".join(sorted(missing_policy_fields))
+        )
     if policy.max_steps > contract["max_attempts"]:
         raise PermissionError("execution budget exceeds governing contract max_attempts")
     governing_terminal_states = frozenset(contract["terminal_states"])
@@ -51,12 +62,29 @@ def run_governed_execution(*, executor: GovernedRuntimeExecutor, store: StateSto
     # Acceptance criteria are authority-owned contract data, not caller-owned
     # runtime options. Derive the effective predicates from the loaded contract;
     # reject conflicting caller configuration rather than silently weakening it.
+    policy_predicates = tuple(
+        AcceptancePredicate.from_mapping(raw)
+        for raw in governing_policy.get("acceptance_predicates", ())
+    )
     contract_predicates = tuple(
         AcceptancePredicate.from_mapping(raw)
         for raw in contract.get("acceptance_predicates", ())
     )
-    if policy.acceptance_predicates and policy.acceptance_predicates != contract_predicates:
-        raise PermissionError("execution acceptance predicates do not match governing contract")
+    if contract_predicates != policy_predicates:
+        raise PermissionError(
+            "execution contract acceptance predicates do not match governing policy artifact"
+        )
+    if policy.acceptance_predicates and policy.acceptance_predicates != policy_predicates:
+        raise PermissionError("execution acceptance predicates do not match governing policy")
+    # The content-addressed policy, not the caller's LoopPolicy, owns whether
+    # receipt enforcement is mandatory. Stronger caller enforcement is allowed;
+    # caller weakening is impossible. LoopPolicy construction then fails closed
+    # if trusted validator implementations are not supplied. Validator callbacks
+    # are executable host-integration code, never policy JSON or model output.
+    require_execution_receipt = (
+        policy.require_execution_receipt
+        or governing_policy.get("require_execution_receipt", False)
+    )
 
     def validate_resume(state: Mapping[str, Any]) -> None:
         if state.get("contract_id") != executor.contract_id: raise ValueError("persisted contract binding does not match execution context")
@@ -71,7 +99,8 @@ def run_governed_execution(*, executor: GovernedRuntimeExecutor, store: StateSto
         resume_validator=validate_resume,
         policy_digest=contract["policy_digest"],
         terminal_states=governing_terminal_states,
-        acceptance_predicates=contract_predicates,
+        acceptance_predicates=policy_predicates,
+        require_execution_receipt=require_execution_receipt,
     )
     loaded = store.load()
     if loaded is None:
