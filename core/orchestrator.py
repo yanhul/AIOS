@@ -1,6 +1,8 @@
 """Central governed execution bridge."""
 from __future__ import annotations
 from copy import deepcopy
+import hashlib
+import inspect
 from dataclasses import dataclass, replace
 from typing import Any, Callable, Mapping
 from .acceptance import AcceptancePredicate
@@ -30,6 +32,53 @@ class GovernedRuntimeExecutor(Executor):
             return {**deepcopy(dict(result)), "evidence": deepcopy(result["provider_observation"])}
         return result
     def verify(self, action_result: Any, state: Mapping[str, Any]) -> Any: return self.verifier(deepcopy(action_result), deepcopy(state))
+
+
+def _validator_identity(callback: Callable[..., Any], role: str) -> dict[str, str]:
+    """Describe the actual host callback implementation for durable audit.
+
+    This is provenance, not authentication: Python host code is the declared
+    trust boundary. The deployment digest is supplied by deployment tooling.
+    """
+    module = getattr(callback, "__module__", None)
+    qualname = getattr(callback, "__qualname__", None)
+    if not isinstance(module, str) or not module or not isinstance(qualname, str) or not qualname:
+        raise PermissionError(f"{role} must expose a stable module and qualified name")
+    try:
+        source_file = inspect.getsourcefile(callback) or inspect.getfile(callback)
+        with open(source_file, "rb") as handle:
+            source_file_digest = "sha256:" + hashlib.sha256(handle.read()).hexdigest()
+        implementation = inspect.getsource(callback)
+        implementation_digest = "sha256:" + hashlib.sha256(implementation.encode("utf-8")).hexdigest()
+    except (OSError, TypeError) as exc:
+        raise PermissionError(f"{role} source implementation cannot be fingerprinted") from exc
+    return {
+        "role": role, "module": module, "qualified_name": qualname,
+        "implementation_digest": implementation_digest,
+        "source_file_digest": source_file_digest,
+    }
+
+
+def _build_validator_provenance(policy: LoopPolicy) -> dict[str, Any]:
+    if not policy.deployment_id or not policy.deployment_id.strip():
+        raise PermissionError("receipt-governed execution requires deployment_id from trusted host integration")
+    digest = policy.deployment_digest
+    if not isinstance(digest, str) or len(digest) != 71 or not digest.startswith("sha256:") or any(c not in "0123456789abcdef" for c in digest[7:]):
+        raise PermissionError("receipt-governed execution requires canonical deployment_digest from trusted host integration")
+    if policy.execution_receipt_validator is None or policy.state_patch_validator is None:
+        raise ValueError("receipt-governed execution requires an execution_receipt_validator and state_patch_validator")
+    return {
+        "schema": "AIOS_VALIDATOR_PROVENANCE_V1",
+        "deployment_id": policy.deployment_id,
+        "deployment_digest": digest,
+        "validators": [
+            _validator_identity(policy.execution_receipt_validator, "execution_receipt_validator"),
+            _validator_identity(policy.state_patch_validator, "state_patch_validator"),
+        ],
+        "trust_boundary": "TRUSTED_PYTHON_HOST",
+        "authentication_scope": "AUDIT_ONLY_NOT_IN_PROCESS_CALLER_AUTHENTICATION",
+    }
+
 
 def run_governed_execution(*, executor: GovernedRuntimeExecutor, store: StateStore, policy: LoopPolicy) -> Mapping[str, Any]:
     """Run/resume the single AIOS durable loop with authority-bound state."""
@@ -94,6 +143,7 @@ def run_governed_execution(*, executor: GovernedRuntimeExecutor, store: StateSto
     # dataclasses.replace preserves every LoopPolicy control (receipt and state
     # patch validators, fix plan, acceptance gates, continuation callbacks,
     # and future fields) while replacing only authority-bound values.
+    validator_provenance = _build_validator_provenance(policy) if require_execution_receipt else None
     bound_policy = replace(
         policy,
         resume_validator=validate_resume,
@@ -101,6 +151,7 @@ def run_governed_execution(*, executor: GovernedRuntimeExecutor, store: StateSto
         terminal_states=governing_terminal_states,
         acceptance_predicates=policy_predicates,
         require_execution_receipt=require_execution_receipt,
+        validator_provenance=validator_provenance,
     )
     loaded = store.load()
     if loaded is None:
