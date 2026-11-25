@@ -1,8 +1,9 @@
 """Central governed execution bridge."""
 from __future__ import annotations
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Callable, Mapping
+from .acceptance import AcceptancePredicate
 from .authority import authorize, load_contract
 from .durable_loop import Executor, LoopPolicy, StateStore, run_durable_loop
 from .runtime import ProviderAdapter, execute
@@ -47,21 +48,32 @@ def run_governed_execution(*, executor: GovernedRuntimeExecutor, store: StateSto
     if policy.budget_exhaustion_state not in governing_terminal_states:
         raise PermissionError("budget exhaustion state is not authorized by governing contract")
 
+    # Acceptance predicates are contract-bound authority: the loop must enforce
+    # exactly the predicates the permit was issued for, never fewer or others.
+    governing_predicates = tuple(
+        AcceptancePredicate(predicate_id=p["predicate_id"], path=p["path"],
+                            operator=p["operator"], expected=p.get("expected"))
+        for p in contract.get("acceptance_predicates", []))
+    if tuple(policy.acceptance_predicates) != governing_predicates:
+        raise PermissionError("execution acceptance predicates do not match governing contract")
+
+    caller_resume_validator = policy.resume_validator
+
     def validate_resume(state: Mapping[str, Any]) -> None:
         if state.get("contract_id") != executor.contract_id: raise ValueError("persisted contract binding does not match execution context")
         if state.get("permit_id") != executor.permit_id: raise ValueError("persisted permit binding does not match execution context")
         authorize(executor.aios_dir, executor.contract_id, executor.permit_id)
+        if caller_resume_validator is not None: caller_resume_validator(state)
 
-    bound_policy = LoopPolicy(
-        max_steps=policy.max_steps,
-        terminal_evaluator=policy.terminal_evaluator,
-        action_authorizer=policy.action_authorizer,
+    # replace() forwards every LoopPolicy field (receipt gates, fix plan,
+    # acceptance, continuation, state-patch validation); only authority-bound
+    # fields are overridden from the governing contract.
+    bound_policy = replace(
+        policy,
         resume_validator=validate_resume,
         policy_digest=contract["policy_digest"],
         terminal_states=governing_terminal_states,
-        budget_exhaustion_state=policy.budget_exhaustion_state,
-        failure_state=policy.failure_state,
-        blocked_continuation=policy.blocked_continuation,
+        acceptance_predicates=governing_predicates,
     )
     loaded = store.load()
     if loaded is None:
