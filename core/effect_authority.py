@@ -149,6 +149,18 @@ def _expect_unchanged(rel_path, snapshot):
     return _check
 
 
+EVENT_VERSION = 2
+
+
+def _ledger_event(effect_id, attempt, action, to_state, **fields):
+    """L5 contract 5/6: deterministic identity, attempt-scoped, create-only path."""
+    event_id = f"{effect_id}:{attempt}:{action}:{to_state}"
+    event = {"kind": "external_effect", "event_version": EVENT_VERSION, "event_id": event_id,
+             "action": action, "effect_id": effect_id, "attempt": attempt, "to_state": to_state, **fields}
+    name = f"effect-{effect_id}-a{attempt}-{action}-{to_state}.json"
+    return os.path.join("events", name), event
+
+
 def _all_of(*checks):
     def _check(aios_dir):
         for check in checks:
@@ -198,15 +210,16 @@ def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id,
         if canonical_json(existing) == canonical_json(rec):
             return existing
         raise TransitionError("external effect identity collision with different content")
-    event = {"kind": "external_effect", "action": "create", "effect_id": effect_id,
-             "contract_id": contract_id, "permit_id": permit_id, "effect_type": effect_type,
-             "state": "PLANNED", "actor": actor}
+    event_rel, event = _ledger_event(effect_id, 0, "create", "PLANNED", contract_id=contract_id,
+                                     permit_id=permit_id, effect_type=effect_type, actor=actor)
     try:
-        commit_batch(aios_dir, [(_effect_rel(effect_id), rec),
-                                (os.path.join("events", "effect-create-" + effect_id + ".json"), event)],
-                     precondition=_expect_unchanged(_effect_rel(effect_id), None))
+        commit_batch(aios_dir, [(_effect_rel(effect_id), rec), (event_rel, event)],
+                     precondition=_all_of(_expect_unchanged(_effect_rel(effect_id), None),
+                                          _expect_unchanged(event_rel, None)))
     except TransitionError:
         # Lost a create race: idempotent only if the winner wrote identical content.
+        if not os.path.exists(path):
+            raise TransitionError("effect ledger conflict: create event exists without its projection")
         existing = _load(path)
         if canonical_json(existing) == canonical_json(rec):
             return existing
@@ -243,14 +256,12 @@ def _commit_transition(aios_dir, current, actor, target, fields):
     updated = dict(current)
     updated.update(fields)
     updated["state"] = target
-    event = {
-        "kind": "external_effect", "action": "transition", "effect_id": effect_id,
-        "from_state": current["state"], "to_state": target, "actor": actor,
-        "attempt": updated.get("attempt", 0),
-    }
-    commit_batch(aios_dir, [(_effect_rel(effect_id), updated),
-                            (os.path.join("events", "effect-" + effect_id + "-" + target + ".json"), event)],
-                 precondition=_expect_unchanged(_effect_rel(effect_id), current))
+    event_rel, event = _ledger_event(effect_id, updated.get("attempt", 0), "transition", target,
+                                     from_state=current["state"], actor=actor,
+                                     attempt_id=updated.get("attempt_id"))
+    commit_batch(aios_dir, [(_effect_rel(effect_id), updated), (event_rel, event)],
+                 precondition=_all_of(_expect_unchanged(_effect_rel(effect_id), current),
+                                      _expect_unchanged(event_rel, None)))
     return updated
 
 
@@ -264,21 +275,19 @@ def _transition_dispatch(aios_dir, current, actor, *, attempt, attempt_id, provi
                     "attempt_id": attempt_id, "provider": provider})
     if extra_fields:
         updated.update(extra_fields)
-    event = {
-        "kind": "external_effect", "action": "dispatch", "effect_id": effect_id,
-        "from_state": current["state"], "to_state": "DISPATCHED", "actor": actor,
-        "attempt": attempt, "attempt_id": attempt_id, "provider": provider,
-    }
+    event_rel, event = _ledger_event(effect_id, attempt, "dispatch", "DISPATCHED",
+                                     from_state=current["state"], actor=actor,
+                                     attempt_id=attempt_id, provider=provider)
     if extra_fields:
         for key in ("gateway_attempt_id", "attempt_fence", "target_sha", "evidence_ref",
                     "lineage_ref", "idempotency_key"):
             if key in extra_fields:
                 event[key] = extra_fields[key]
-    payloads = [(_effect_rel(effect_id), updated),
-                (os.path.join("events", "effect-" + effect_id + "-DISPATCHED-attempt-" + str(attempt) + ".json"), event)]
+    payloads = [(_effect_rel(effect_id), updated), (event_rel, event)]
     payloads.extend(extra_payloads)
     commit_batch(aios_dir, payloads,
-                 precondition=_all_of(_expect_unchanged(_effect_rel(effect_id), current), *extra_checks))
+                 precondition=_all_of(_expect_unchanged(_effect_rel(effect_id), current),
+                                      _expect_unchanged(event_rel, None), *extra_checks))
     return updated
 
 
@@ -1047,8 +1056,59 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation, *, provid
     return _commit_transition(aios_dir, current, actor, outcome, {"provider_observation": record})
 
 
-__all__ = ["STATES", "create_effect", "transition", "dispatch", "retry_dispatch", "unknown", "observe",
+__all__ = ["STATES", "EVENT_VERSION", "verify_effect_ledger", "create_effect", "transition", "dispatch", "retry_dispatch", "unknown", "observe",
            "issue_retry_authorization", "observation_digest", "mint_observation_evidence",
            "RetryIssuerKeyring", "ProviderKeyring", "ProviderAuthenticationError", "provider_receipt_body",
            "provider_receipt_signature", "PROVIDER_RECEIPT_SCOPE", "RETRY_AUTH_DIR", "RETRY_APPROVE_SCOPE", "RETRY_KEYRING_ENV",
            "bind_try_operation_request", "gateway_retry_dispatch"]
+
+
+_EVENT_RANK = {("create", "PLANNED"): 0, ("dispatch", "DISPATCHED"): 1, ("transition", "UNKNOWN"): 2,
+               ("transition", "OBSERVED_SUCCESS"): 3, ("transition", "OBSERVED_FAILURE"): 3}
+
+
+def verify_effect_ledger(aios_dir, effect_id):
+    """Fold the v2 append-only event history and require it to match the projection.
+
+    Returns ``{"status": "CONSISTENT", ...}``; effects without a v2 create event
+    return ``LEGACY_UNVERIFIABLE`` (never a pass). Any gap, duplicate, reorder or
+    projection mismatch raises ``TransitionError``. Read-only: never repairs.
+    """
+    _validate_strings(("effect_id", effect_id))
+    recover_pending(aios_dir)
+    record = _load(_path(aios_dir, effect_id))
+    events_dir = os.path.join(aios_dir, "events")
+    prefix = f"effect-{effect_id}-a"
+    events = []
+    for name in sorted(os.listdir(events_dir)) if os.path.isdir(events_dir) else []:
+        if not (name.startswith(prefix) and name.endswith(".json")):
+            continue
+        ev = _load(os.path.join(events_dir, name))
+        if ev.get("event_version") != EVENT_VERSION:
+            continue
+        key = (ev.get("action"), ev.get("to_state"))
+        rel, expected = _ledger_event(effect_id, ev.get("attempt"), *key)
+        if (key not in _EVENT_RANK or ev.get("effect_id") != effect_id or ev.get("event_id") != expected["event_id"]
+                or os.path.basename(rel) != name):
+            raise TransitionError(f"ledger event identity mismatch: {name}")
+        events.append(ev)
+    if not any(ev["action"] == "create" for ev in events):
+        return {"status": "LEGACY_UNVERIFIABLE", "effect_id": effect_id, "events": len(events)}
+    events.sort(key=lambda ev: (ev["attempt"], _EVENT_RANK[(ev["action"], ev["to_state"])]))
+    if (events[0]["action"], events[0]["attempt"]) != ("create", 0) or sum(e["action"] == "create" for e in events) != 1:
+        raise TransitionError("ledger must start with exactly one create event at attempt 0")
+    state, attempt, attempt_id = "PLANNED", 0, None
+    for ev in events[1:]:
+        target = ev["to_state"]
+        if ev["action"] == "dispatch":
+            if ev["attempt"] != attempt + 1 or state not in ("PLANNED", "UNKNOWN") or (state == "PLANNED") != (attempt == 0):
+                raise TransitionError(f"ledger dispatch out of order at attempt {ev['attempt']}")
+            attempt, attempt_id = ev["attempt"], ev.get("attempt_id")
+        elif ev["attempt"] != attempt or target not in _ALLOWED.get(state, ()):
+            raise TransitionError(f"ledger transition {state}->{target} invalid at attempt {ev['attempt']}")
+        state = target
+    if (record.get("state"), record.get("attempt", 0)) != (state, attempt) or (
+            attempt and record.get("attempt_id") != attempt_id):
+        raise TransitionError("effect projection does not match its event ledger")
+    return {"status": "CONSISTENT", "effect_id": effect_id, "state": state, "attempt": attempt,
+            "events": len(events)}
