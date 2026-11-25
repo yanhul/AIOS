@@ -18,9 +18,13 @@ def digest(value):
     return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
 
 
-def make_receipt(grid=None, path=None):
+_DEFAULT_PATH = object()
+
+
+def make_receipt(grid=None, path=_DEFAULT_PATH):
     grid = grid or ["S..", ".#.", "..G"]
-    path = path or [[0, 0], [0, 1], [0, 2], [1, 2], [2, 2]]
+    if path is _DEFAULT_PATH:
+        path = [[0, 0], [0, 1], [0, 2], [1, 2], [2, 2]]
     candidate = {"path": path, "expansions": 8}
     receipt = {
         "schema": "try.algorithm-execution-receipt.v1",
