@@ -12,7 +12,7 @@ RECEIPT_SCOPE = "try.algorithm.execution.receipt.verify"
 KEYRING_ENV = "AIOS_TRY_ALGORITHM_KEYRING"
 SIGNED_FIELDS = (
     "type", "issuer", "key_id", "receipt_id", "contract_id", "permit_id",
-    "execution_id", "attempt_id", "attempt_number", "worker_id",
+    "execution_id", "effect_id", "dispatch_id", "dispatch_digest", "attempt_id", "attempt_number", "worker_id",
     "worker_build_sha256", "executor_revision", "executor_sha256",
     "spec_sha256", "input_sha256", "artifact_sha256", "output_sha256",
     "status", "execution_state", "issued_at", "expires_at", "algorithm",
@@ -74,7 +74,7 @@ def verify_algorithm_worker_receipt(receipt, *, expected, keyring=None, now=None
     if not isinstance(receipt, Mapping) or set(receipt) != set(SIGNED_FIELDS) | {"signature"}:
         raise AlgorithmWorkerReceiptError("algorithm worker receipt schema mismatch")
     required = {
-        "contract_id", "permit_id", "execution_id", "attempt_id", "attempt_number",
+        "contract_id", "permit_id", "execution_id", "effect_id", "dispatch_id", "dispatch_digest", "attempt_id", "attempt_number",
         "worker_id", "worker_build_sha256", "executor_revision", "executor_sha256",
         "spec_sha256", "input_sha256",
     }
@@ -100,7 +100,7 @@ def verify_algorithm_worker_receipt(receipt, *, expected, keyring=None, now=None
         raise AlgorithmWorkerReceiptError("algorithm worker attempt_number is invalid")
     if not isinstance(record.get("worker_id"), str) or not record["worker_id"].strip():
         raise AlgorithmWorkerReceiptError("algorithm worker identity is invalid")
-    for field in ("worker_build_sha256", "executor_sha256", "spec_sha256", "input_sha256"):
+    for field in ("dispatch_digest", "worker_build_sha256", "executor_sha256", "spec_sha256", "input_sha256"):
         if not _digest(record.get(field)):
             raise AlgorithmWorkerReceiptError(f"algorithm worker {field} is malformed")
     if not isinstance(record.get("executor_revision"), str) or not _GIT_REVISION.fullmatch(record["executor_revision"]):
