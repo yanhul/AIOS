@@ -33,6 +33,8 @@ def make_policy(**overrides):
         "action_authorizer": lambda decision, state: None,
         "policy_digest": "policy-1",
         "terminal_states": frozenset(GOVERNING_CONTRACT["terminal_states"]),
+        "deployment_id": "test-deployment",
+        "deployment_digest": "sha256:" + "a" * 64,
     }
     values.update(overrides)
     return LoopPolicy(**values)
@@ -259,3 +261,56 @@ def test_contract_cannot_add_acceptance_predicates_absent_from_governing_policy(
             executor=_executor(), store=MemoryStateStore(), policy=make_policy(),
         )
     assert loop_called == []
+
+
+def test_validator_provenance_is_persisted_and_binds_actual_callbacks(monkeypatch):
+    artifact = {
+        "policy_type": "GOVERNING_POLICY", "policy_digest": "policy-1",
+        "require_execution_receipt": True, "acceptance_predicates": [],
+    }
+    _patch_authority(monkeypatch, [], governing_policy=artifact)
+    receipt_validator = lambda receipt, state: None
+    patch_validator = lambda patch, receipt, state: None
+    store = MemoryStateStore()
+    policy = make_policy(
+        execution_receipt_validator=receipt_validator,
+        state_patch_validator=patch_validator,
+    )
+    monkeypatch.setattr("core.orchestrator.execute", lambda *args: {"ok": True})
+    result = run_governed_execution(executor=_executor(), store=store, policy=policy)
+    provenance = result["validator_provenance"]
+    assert provenance["schema"] == "AIOS_VALIDATOR_PROVENANCE_V1"
+    assert provenance["deployment_id"] == "test-deployment"
+    assert provenance["deployment_digest"] == "sha256:" + "a" * 64
+    assert [item["role"] for item in provenance["validators"]] == [
+        "execution_receipt_validator", "state_patch_validator"
+    ]
+    assert all(item["implementation_digest"].startswith("sha256:") and item["source_file_digest"].startswith("sha256:") for item in provenance["validators"])
+    assert provenance["trust_boundary"] == "TRUSTED_PYTHON_HOST"
+
+
+def test_resume_blocks_when_deployment_validator_provenance_changes(monkeypatch):
+    artifact = {
+        "policy_type": "GOVERNING_POLICY", "policy_digest": "policy-1",
+        "require_execution_receipt": True, "acceptance_predicates": [],
+    }
+    _patch_authority(monkeypatch, [], governing_policy=artifact)
+    receipt_validator = lambda receipt, state: None
+    patch_validator = lambda patch, receipt, state: None
+    store = MemoryStateStore()
+    first = make_policy(
+        execution_receipt_validator=receipt_validator,
+        state_patch_validator=patch_validator,
+        terminal_evaluator=lambda verification, state: None,
+    )
+    monkeypatch.setattr("core.orchestrator.execute", lambda *args: {"ok": True})
+    # Force a durable non-terminal result so a second invocation must validate provenance.
+    run_governed_execution(executor=_executor(), store=store, policy=first)
+    changed = make_policy(
+        deployment_digest="sha256:" + "b" * 64,
+        execution_receipt_validator=receipt_validator,
+        state_patch_validator=patch_validator,
+    )
+    blocked = run_governed_execution(executor=_executor(), store=store, policy=changed)
+    assert blocked["status"] == "BLOCKED"
+    assert "validator provenance" in blocked["block_reason"]
