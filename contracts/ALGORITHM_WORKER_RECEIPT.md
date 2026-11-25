@@ -8,7 +8,7 @@ the deployment keyring under issuer try.algorithm_executor and scope
 try.algorithm.execution.receipt.verify. The private key must remain in the
 worker's secret store. The keyring is deployment policy, not request input.
 
-The signed body binds contract, permit, execution ID, attempt ID and number,
+The signed body binds contract, permit, effect ID, dispatch ID/digest, execution ID, attempt ID and number,
 worker identity/build digest, executor Git revision/source digest, algorithm
 specification digest, input digest, output artifact digest, result digest,
 status, validity window, and signing key ID.
