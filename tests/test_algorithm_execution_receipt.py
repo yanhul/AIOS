@@ -1,4 +1,3 @@
-import copy
 import hashlib
 
 import pytest
@@ -91,10 +90,15 @@ def test_wrong_contract_pins_fail_closed():
 
 
 def test_non_shortest_candidate_is_rejected_even_if_try_says_verified():
-    receipt = make_receipt(path=[[0, 0], [1, 0], [2, 0], [2, 1], [2, 2], [1, 2], [0, 2]])
+    grid = ["S..", "...", "..G"]
+    path = [[0, 0], [0, 1], [1, 1], [1, 0], [2, 0], [2, 1], [2, 2]]
+    receipt = make_receipt(grid, path)
     resign(receipt)
     with pytest.raises(AlgorithmExecutionReceiptError, match="not a shortest path"):
-        verify(receipt)
+        verify_algorithm_execution_receipt(
+            receipt, grid=grid, spec=SPEC,
+            expected_executor_revision=REVISION, expected_executor_sha256=EXECUTOR_SHA,
+        )
 
 
 def test_forged_wall_crossing_candidate_is_rejected():
