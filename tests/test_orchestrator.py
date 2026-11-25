@@ -16,9 +16,14 @@ GOVERNING_CONTRACT = {
 }
 
 
-def _patch_authority(monkeypatch, calls):
+def _patch_authority(monkeypatch, calls, *, governing_policy=None):
     monkeypatch.setattr("core.orchestrator.authorize", lambda *args: calls.append("authorize"))
     monkeypatch.setattr("core.orchestrator.load_contract", lambda *args: dict(GOVERNING_CONTRACT))
+    artifact = governing_policy or {
+        "policy_type": "GOVERNING_POLICY", "policy_digest": "policy-1",
+        "require_execution_receipt": False, "acceptance_predicates": [],
+    }
+    monkeypatch.setattr("core.orchestrator.resolve_policy", lambda *args: dict(artifact))
 
 
 def make_policy(**overrides):
@@ -121,6 +126,10 @@ def test_custom_terminal_states_are_preserved_and_enforced(monkeypatch):
     contract["terminal_states"] = ["PROMOTE", "REJECT", "INCONCLUSIVE", "BLOCKED"]
     monkeypatch.setattr("core.orchestrator.authorize", lambda *args: calls.append("authorize"))
     monkeypatch.setattr("core.orchestrator.load_contract", lambda *args: dict(contract))
+    monkeypatch.setattr("core.orchestrator.resolve_policy", lambda *args: {
+        "policy_type": "GOVERNING_POLICY", "policy_digest": "policy-1",
+        "require_execution_receipt": False, "acceptance_predicates": [],
+    })
     monkeypatch.setattr("core.orchestrator.execute", lambda *args: {"ok": True})
     policy = make_policy(
         terminal_states=frozenset(contract["terminal_states"]),
@@ -140,6 +149,11 @@ def test_governed_bridge_preserves_receipt_and_continuation_controls(monkeypatch
     }]
     monkeypatch.setattr("core.orchestrator.authorize", lambda *args: None)
     monkeypatch.setattr("core.orchestrator.load_contract", lambda *args: dict(contract))
+    monkeypatch.setattr("core.orchestrator.resolve_policy", lambda *args: {
+        "policy_type": "GOVERNING_POLICY", "policy_digest": "policy-1",
+        "require_execution_receipt": True,
+        "acceptance_predicates": list(contract["acceptance_predicates"]),
+    })
     receipt_validator = lambda receipt, state: None
     patch_validator = lambda patch, receipt, state: None
     blocked_continuation = lambda verification, state: None
@@ -176,11 +190,72 @@ def test_caller_cannot_replace_contract_acceptance_predicates(monkeypatch):
     }]
     monkeypatch.setattr("core.orchestrator.authorize", lambda *args: None)
     monkeypatch.setattr("core.orchestrator.load_contract", lambda *args: dict(contract))
+    monkeypatch.setattr("core.orchestrator.resolve_policy", lambda *args: {
+        "policy_type": "GOVERNING_POLICY", "policy_digest": "policy-1",
+        "require_execution_receipt": False,
+        "acceptance_predicates": list(contract["acceptance_predicates"]),
+    })
     conflicting = AcceptancePredicate(
         predicate_id="attacker-rule", path="verified", operator="eq", expected=False,
     )
-    with pytest.raises(PermissionError, match="acceptance predicates"):
+    with pytest.raises(PermissionError, match="acceptance predicates do not match governing policy"):
         run_governed_execution(
             executor=_executor(), store=MemoryStateStore(),
             policy=make_policy(acceptance_predicates=(conflicting,)),
         )
+
+
+def test_governing_policy_forces_receipt_even_if_caller_disables_it(monkeypatch):
+    calls = []
+    artifact = {
+        "policy_type": "GOVERNING_POLICY", "policy_digest": "policy-1",
+        "require_execution_receipt": True, "acceptance_predicates": [],
+    }
+    _patch_authority(monkeypatch, calls, governing_policy=artifact)
+    receipt_validator = lambda receipt, state: None
+    patch_validator = lambda patch, receipt, state: None
+    captured = {}
+    monkeypatch.setattr(
+        "core.orchestrator.run_durable_loop",
+        lambda executor, store, policy: captured.setdefault("policy", policy),
+    )
+    caller_policy = make_policy(
+        require_execution_receipt=False,
+        execution_receipt_validator=receipt_validator,
+        state_patch_validator=patch_validator,
+    )
+    run_governed_execution(executor=_executor(), store=MemoryStateStore(), policy=caller_policy)
+    assert captured["policy"].require_execution_receipt is True
+
+
+def test_governing_policy_receipt_requirement_without_validators_blocks_before_loop(monkeypatch):
+    calls = []
+    artifact = {
+        "policy_type": "GOVERNING_POLICY", "policy_digest": "policy-1",
+        "require_execution_receipt": True, "acceptance_predicates": [],
+    }
+    _patch_authority(monkeypatch, calls, governing_policy=artifact)
+    loop_called = []
+    monkeypatch.setattr("core.orchestrator.run_durable_loop", lambda *args: loop_called.append(True))
+    with pytest.raises(ValueError, match="requires an execution_receipt_validator"):
+        run_governed_execution(
+            executor=_executor(), store=MemoryStateStore(), policy=make_policy(),
+        )
+    assert loop_called == []
+
+
+def test_contract_cannot_add_acceptance_predicates_absent_from_governing_policy(monkeypatch):
+    calls = []
+    contract = dict(GOVERNING_CONTRACT)
+    contract["acceptance_predicates"] = [{
+        "predicate_id": "must-be-true", "path": "verified", "operator": "eq", "expected": True,
+    }]
+    _patch_authority(monkeypatch, calls)
+    monkeypatch.setattr("core.orchestrator.load_contract", lambda *args: dict(contract))
+    loop_called = []
+    monkeypatch.setattr("core.orchestrator.run_durable_loop", lambda *args: loop_called.append(True))
+    with pytest.raises(PermissionError, match="do not match governing policy artifact"):
+        run_governed_execution(
+            executor=_executor(), store=MemoryStateStore(), policy=make_policy(),
+        )
+    assert loop_called == []
