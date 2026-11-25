@@ -18,7 +18,8 @@ PERMITS_DIR = "permits"
 ATTESTATIONS_DIR = "attestations"
 AUTHORITY_ATTESTATION_SECRET_ENV = "AIOS_AUTHORITY_ATTESTATION_SECRET"
 _CONTRACT_FIELDS = ("contract_type", "task_id", "scope", "actor", "capabilities", "input_digest",
-                    "allowed_effects", "evidence_required", "max_attempts", "terminal_states", "policy_digest")
+                    "allowed_effects", "evidence_required", "max_attempts", "terminal_states", "policy_digest",
+                    "acceptance_predicates")
 
 
 def _require_id(value, name):
@@ -128,7 +129,7 @@ def persist_attestation(aios_dir, contract, permit, secret):
 def load_contract(aios_dir, contract_id):
     _require_id(contract_id, "contract_id")
     record = _load(_path(aios_dir, CONTRACTS_DIR, contract_id))
-    contract = {k: record[k] for k in _CONTRACT_FIELDS}
+    contract = {k: record[k] for k in _CONTRACT_FIELDS if k in record}
     if contract_identity(contract) != contract_id:
         raise TransitionError("stored contract identity mismatch")
     validate_contract(contract)
