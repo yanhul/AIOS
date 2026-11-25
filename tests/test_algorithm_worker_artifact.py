@@ -57,7 +57,7 @@ def fixture(path=None, grid=None):
         expected_executor_revision="b" * 40, expected_executor_sha256="c" * 64,
         keyring=keyring,
     )
-    return result, receipt, artifact_bytes, expected, spec, grid, keyring
+    return result, receipt, artifact_bytes, expected, spec, grid, keyring, private
 
 
 def test_signed_artifact_is_hashed_and_independently_verified():
@@ -81,45 +81,58 @@ def test_artifact_bytes_must_match_signed_digest():
 
 
 def test_signed_but_nonoptimal_path_is_rejected():
-    _, _, _, _, _, _, _ = fixture(path=[[0, 0], [1, 0], [2, 0], [2, 1], [2, 2]])
-    # Rebuild a fully signed artifact with a valid digest but deliberately longer path.
-    result, receipt, _, expected, spec, grid, keyring = fixture()
-    artifact = {
+    _, receipt, _, expected, spec, grid, keyring, private = fixture()
+    bad_artifact = {
         "schema": "try.algorithm-artifact.v1", "operation": "maze.shortest_path",
-        "version": 1, "path": [[0, 0], [1, 0], [2, 0], [2, 1], [2, 2]], "expansions": 8,
+        "version": 1,
+        "path": [[0, 0], [1, 0], [1, 1], [0, 1], [0, 2]],
+        "expansions": 8,
     }
-    raw = canonical_json(artifact).encode("utf-8")
-    # A worker signature authenticates bytes, not correctness; a new signer is not
-    # available here, so this test validates the independent route oracle directly
-    # by constructing the signed payload with the fixture key path below.
-    from core.algorithm_worker_artifact import _parse_grid, _shortest_distance
-    rows, start, goal = _parse_grid(grid)
-    assert len(artifact["path"]) - 1 == _shortest_distance(rows, start, goal)
+    raw = canonical_json(bad_artifact).encode("utf-8")
+    digest = hashlib.sha256(raw).hexdigest()
+    bad_receipt = dict(receipt, artifact_sha256=digest, output_sha256=digest)
+    signed = {field: bad_receipt[field] for field in SIGNED_FIELDS}
+    bad_receipt["signature"] = base64.b64encode(
+        private.sign(canonical_json(signed).encode("utf-8"))
+    ).decode("ascii")
+    with pytest.raises(AlgorithmWorkerArtifactError, match="not shortest"):
+        verify_algorithm_worker_artifact(
+            bad_receipt, raw, expected=expected, grid=["S.G", "..."],
+            spec=spec, expected_executor_revision="b" * 40,
+            expected_executor_sha256="c" * 64, keyring=keyring,
+        )
 
 
 def test_unknown_receipt_cannot_be_used_as_completed_artifact():
-    _, receipt, artifact_bytes, expected, spec, grid, keyring = fixture()
-    receipt["status"] = "UNKNOWN"
-    receipt["execution_state"] = "IN_PROGRESS_OR_AMBIGUOUS"
-    receipt["artifact_sha256"] = None
-    receipt["output_sha256"] = None
-    signed = {field: receipt[field] for field in SIGNED_FIELDS}
-    # Signature is now invalid too; verifier must fail closed before artifact trust.
-    with pytest.raises(Exception):
+    _, receipt, artifact_bytes, expected, spec, grid, keyring, private = fixture()
+    unknown = dict(
+        receipt, status="UNKNOWN", execution_state="IN_PROGRESS_OR_AMBIGUOUS",
+        artifact_sha256=None, output_sha256=None,
+    )
+    signed = {field: unknown[field] for field in SIGNED_FIELDS}
+    unknown["signature"] = base64.b64encode(
+        private.sign(canonical_json(signed).encode("utf-8"))
+    ).decode("ascii")
+    with pytest.raises(AlgorithmWorkerArtifactError, match="receipt is UNKNOWN"):
         verify_algorithm_worker_artifact(
-            receipt, artifact_bytes, expected=expected, grid=grid, spec=spec,
+            unknown, artifact_bytes, expected=expected, grid=grid, spec=spec,
             expected_executor_revision="b" * 40, expected_executor_sha256="c" * 64,
             keyring=keyring,
         )
 
 
 def test_duplicate_json_keys_are_rejected_even_when_digest_is_signed():
-    _, receipt, _, expected, spec, grid, keyring = fixture()
+    _, receipt, _, expected, spec, grid, keyring, private = fixture()
     raw = b'{"schema":"try.algorithm-artifact.v1","schema":"try.algorithm-artifact.v1"}'
-    # Signed digest mismatch is detected before parsing; either way no artifact is trusted.
-    with pytest.raises(AlgorithmWorkerArtifactError):
+    digest = hashlib.sha256(raw).hexdigest()
+    malformed = dict(receipt, artifact_sha256=digest, output_sha256=digest)
+    signed = {field: malformed[field] for field in SIGNED_FIELDS}
+    malformed["signature"] = base64.b64encode(
+        private.sign(canonical_json(signed).encode("utf-8"))
+    ).decode("ascii")
+    with pytest.raises(AlgorithmWorkerArtifactError, match="duplicate JSON keys"):
         verify_algorithm_worker_artifact(
-            receipt, raw, expected=expected, grid=grid, spec=spec,
+            malformed, raw, expected=expected, grid=grid, spec=spec,
             expected_executor_revision="b" * 40, expected_executor_sha256="c" * 64,
             keyring=keyring,
         )
