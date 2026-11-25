@@ -19,6 +19,9 @@ ATTESTATIONS_DIR = "attestations"
 AUTHORITY_ATTESTATION_SECRET_ENV = "AIOS_AUTHORITY_ATTESTATION_SECRET"
 _CONTRACT_FIELDS = ("contract_type", "task_id", "scope", "actor", "capabilities", "input_digest",
                     "allowed_effects", "evidence_required", "max_attempts", "terminal_states", "policy_digest")
+# Optional fields validated by core.contract and bound into contract/permit identity.
+_OPTIONAL_CONTRACT_FIELDS = ("acceptance_predicates",)
+_ALL_CONTRACT_FIELDS = _CONTRACT_FIELDS + _OPTIONAL_CONTRACT_FIELDS
 
 
 def _require_id(value, name):
@@ -38,11 +41,11 @@ def _load(path):
 def _canonical_contract(contract):
     if not isinstance(contract, dict):
         raise ValueError("contract must be a dict")
-    extra = set(contract) - set(_CONTRACT_FIELDS)
+    extra = set(contract) - set(_ALL_CONTRACT_FIELDS)
     allowed_record_metadata = {"record_type", "contract_id"}
     if extra - allowed_record_metadata:
         raise ValueError(f"contract contains unsupported fields: {sorted(extra - allowed_record_metadata)}")
-    canonical = {k: contract[k] for k in _CONTRACT_FIELDS if k in contract}
+    canonical = {k: contract[k] for k in _ALL_CONTRACT_FIELDS if k in contract}
     validate_contract(canonical)
     if "contract_id" in contract and contract["contract_id"] != contract_identity(canonical):
         raise TransitionError("stored contract identity mismatch")
@@ -129,6 +132,7 @@ def load_contract(aios_dir, contract_id):
     _require_id(contract_id, "contract_id")
     record = _load(_path(aios_dir, CONTRACTS_DIR, contract_id))
     contract = {k: record[k] for k in _CONTRACT_FIELDS}
+    contract.update({k: record[k] for k in _OPTIONAL_CONTRACT_FIELDS if k in record})
     if contract_identity(contract) != contract_id:
         raise TransitionError("stored contract identity mismatch")
     validate_contract(contract)
