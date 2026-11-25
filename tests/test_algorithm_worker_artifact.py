@@ -70,7 +70,7 @@ def test_signed_artifact_is_hashed_and_independently_verified():
 
 
 def test_artifact_bytes_must_match_signed_digest():
-    _, receipt, artifact_bytes, expected, spec, grid, keyring = fixture()
+    _, receipt, artifact_bytes, expected, spec, grid, keyring, _private = fixture()
     tampered = artifact_bytes + b" "
     with pytest.raises(AlgorithmWorkerArtifactError, match="artifact bytes do not match"):
         verify_algorithm_worker_artifact(
@@ -81,7 +81,9 @@ def test_artifact_bytes_must_match_signed_digest():
 
 
 def test_signed_but_nonoptimal_path_is_rejected():
-    _, receipt, _, expected, spec, grid, keyring, private = fixture()
+    _, receipt, _, expected, spec, grid, keyring, private = fixture(
+        path=[[0, 0], [0, 1], [0, 2]], grid=["S.G", "..."]
+    )
     bad_artifact = {
         "schema": "try.algorithm-artifact.v1", "operation": "maze.shortest_path",
         "version": 1,
