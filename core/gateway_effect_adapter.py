@@ -89,7 +89,7 @@ def build_gateway_effect_contract(
     authority_ref: str,
     authority_permit: Mapping[str, object],
     authority_attestation: Mapping[str, object],
-    attestation_secret: str,
+    authority_verifier=None,
     evidence_ref: str,
     lineage_ref: str,
     idempotency_key: str,
@@ -131,12 +131,12 @@ def build_gateway_effect_contract(
     if authority_ref != stored_permit_id:
         raise ValueError("authority_ref does not match persisted effect permit")
 
-    authorize(aios_dir, stored_contract_id, stored_permit_id)
+    authorize(aios_dir, stored_contract_id, stored_permit_id, authority_verifier)
     current_contract = load_contract(aios_dir, stored_contract_id)
     current_permit = load_permit(aios_dir, stored_permit_id)
     current_attestation = load_attestation(aios_dir, stored_permit_id)
     verify_permit(current_contract, current_permit)
-    verify_attestation(current_contract, current_permit, current_attestation, attestation_secret)
+    verify_attestation(current_contract, current_permit, current_attestation, authority_verifier)
 
     if dict(current_contract) != dict(workload_contract):
         raise ValueError("workload contract does not match persisted authority contract")

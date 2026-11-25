@@ -40,11 +40,11 @@ def test_persist_and_reload_attestation():
         assert authorize(td, contract_identity(c), p["permit_id"])
 
 
-def test_authorize_fails_closed_without_deployment_secret(tmp_path, monkeypatch):
+def test_authorize_fails_closed_without_trusted_keys(tmp_path, monkeypatch):
     c, p = setup_authority(str(tmp_path))
-    monkeypatch.delenv("AIOS_AUTHORITY_ATTESTATION_SECRET")
+    monkeypatch.delenv("AIOS_AUTHORITY_TRUSTED_KEYS")
     from core.contract import contract_identity
-    with pytest.raises(TransitionError, match="deployment secret"):
+    with pytest.raises(TransitionError, match="verifier unavailable"):
         authorize(str(tmp_path), contract_identity(c), p["permit_id"])
 
 
@@ -52,14 +52,14 @@ def test_authorize_rejects_tampered_issuer_attestation(tmp_path):
     c, p = setup_authority(str(tmp_path))
     path = tmp_path / "authority" / "attestations" / (p["permit_id"] + ".json")
     attestation = json.loads(path.read_text())
-    attestation["signature"] = "0" * 64
+    attestation["signature"] = "0" * 128
     path.write_text(json.dumps(attestation))
     from core.contract import contract_identity
     with pytest.raises(TransitionError, match="attestation rejected"):
         authorize(str(tmp_path), contract_identity(c), p["permit_id"])
 
 
-def test_persist_attestation_rejects_short_secret(tmp_path):
+def test_persist_attestation_rejects_non_signer(tmp_path):
     c, p = setup_authority(str(tmp_path))
-    with pytest.raises(TransitionError, match="at least 16 characters"):
-        persist_attestation(str(tmp_path), c, p, "short")
+    with pytest.raises(TransitionError, match="AuthoritySigner"):
+        persist_attestation(str(tmp_path), c, p, "an-hmac-secret-string")

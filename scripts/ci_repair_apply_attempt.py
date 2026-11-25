@@ -40,8 +40,15 @@ def authority(root: Path, actor: str, run_id: int, base_sha: str, repository: st
         "policy_digest": policy_digest,
     }
     stored = persist_contract(root, contract)
+    # No authority private key exists in GitHub Actions. The permit is recorded
+    # unattested; execution stays BLOCKED until the external authority signer
+    # attests it (scripts/aios_authority_signer.py, separate service account).
     permit = persist_permit(root, stored, issuer="ci-repair-authority")
-    authorize(str(root), stored["contract_id"], permit["permit_id"])
+    try:
+        authorize(str(root), stored["contract_id"], permit["permit_id"])
+    except Exception as exc:
+        raise SystemExit("BLOCKED: repair permit requires an attestation from the external AIOS "
+                         f"authority signer ({permit['permit_id']}): {exc}") from None
     return stored["contract_id"], permit["permit_id"]
 
 
@@ -68,9 +75,8 @@ def main() -> int:
     authority_dir.mkdir(parents=True, exist_ok=True)
     if any(authority_dir.iterdir()):
         raise SystemExit("AIOS_REPAIR_AUTHORITY_DIR must be empty at the start of an apply job")
-    authority_secret = os.environ.get("AIOS_AUTHORITY_ATTESTATION_SECRET", "")
-    if len(authority_secret) < 16:
-        raise SystemExit("AIOS_AUTHORITY_ATTESTATION_SECRET is required (minimum 16 characters)")
+    if not os.environ.get("AIOS_AUTHORITY_TRUSTED_KEYS"):
+        raise SystemExit("AIOS_AUTHORITY_TRUSTED_KEYS (public Ed25519 keyring) is required")
     signing_spec = json.loads(os.environ.get("AIOS_PROVIDER_SIGNING_KEYS", "{}"))
     verifier_spec = json.loads(os.environ.get("AIOS_PROVIDER_KEYRING", "{}"))
     signing_secret = signing_spec.get("repo_patch") if isinstance(signing_spec, dict) else None

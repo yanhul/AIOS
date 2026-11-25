@@ -170,7 +170,7 @@ jobs:
           name: aios-repair-proposal-${{ env.RUN_ID }}-1
           path: ${{ github.workspace }}/p1
       - name: Install test dependencies
-        run: python -m pip install --upgrade pytest PyYAML
+        run: python -m pip install --upgrade pytest PyYAML cryptography
       - name: Apply cumulative proposal patch(es) through AIOS authority
         id: apply
         working-directory: target
@@ -180,7 +180,7 @@ jobs:
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/p1/repair-proposal-1.json
           AIOS_REPAIR_AUTHORITY_DIR: ${{ runner.temp }}/aios-repair-authority
-          AIOS_AUTHORITY_ATTESTATION_SECRET: ${{ secrets.AIOS_AUTHORITY_ATTESTATION_SECRET }}
+          AIOS_AUTHORITY_TRUSTED_KEYS: ${{ vars.AIOS_AUTHORITY_TRUSTED_KEYS }}
           AIOS_PROVIDER_SIGNING_KEYS: ${{ secrets.AIOS_PROVIDER_SIGNING_KEYS }}
           AIOS_PROVIDER_KEYRING: ${{ secrets.AIOS_PROVIDER_KEYRING }}
         run: python "${{ github.workspace }}/trusted/scripts/ci_repair_apply_attempt.py"
@@ -202,7 +202,7 @@ jobs:
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/p1/repair-proposal-1.json
           AIOS_REPAIR_AUTHORITY_DIR: ${{ runner.temp }}/aios-repair-authority
-          AIOS_AUTHORITY_ATTESTATION_SECRET: ${{ secrets.AIOS_AUTHORITY_ATTESTATION_SECRET }}
+          AIOS_AUTHORITY_TRUSTED_KEYS: ${{ vars.AIOS_AUTHORITY_TRUSTED_KEYS }}
           AIOS_PROVIDER_KEYRING: ${{ secrets.AIOS_PROVIDER_KEYRING }}
         run: |
           python "${{ github.workspace }}/trusted/scripts/ci_repair_reconcile.py"
@@ -299,7 +299,7 @@ jobs:
           name: aios-repair-proposal-${{ env.RUN_ID }}-2
           path: ${{ github.workspace }}/p2
       - name: Install test dependencies
-        run: python -m pip install --upgrade pytest PyYAML
+        run: python -m pip install --upgrade pytest PyYAML cryptography
       - name: Apply cumulative proposal patch(es) through AIOS authority
         id: apply
         working-directory: target
@@ -309,7 +309,7 @@ jobs:
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/p1/repair-proposal-1.json,${{ github.workspace }}/p2/repair-proposal-2.json
           AIOS_REPAIR_AUTHORITY_DIR: ${{ runner.temp }}/aios-repair-authority
-          AIOS_AUTHORITY_ATTESTATION_SECRET: ${{ secrets.AIOS_AUTHORITY_ATTESTATION_SECRET }}
+          AIOS_AUTHORITY_TRUSTED_KEYS: ${{ vars.AIOS_AUTHORITY_TRUSTED_KEYS }}
           AIOS_PROVIDER_SIGNING_KEYS: ${{ secrets.AIOS_PROVIDER_SIGNING_KEYS }}
           AIOS_PROVIDER_KEYRING: ${{ secrets.AIOS_PROVIDER_KEYRING }}
         run: python "${{ github.workspace }}/trusted/scripts/ci_repair_apply_attempt.py"
@@ -331,7 +331,7 @@ jobs:
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/p1/repair-proposal-1.json,${{ github.workspace }}/p2/repair-proposal-2.json
           AIOS_REPAIR_AUTHORITY_DIR: ${{ runner.temp }}/aios-repair-authority
-          AIOS_AUTHORITY_ATTESTATION_SECRET: ${{ secrets.AIOS_AUTHORITY_ATTESTATION_SECRET }}
+          AIOS_AUTHORITY_TRUSTED_KEYS: ${{ vars.AIOS_AUTHORITY_TRUSTED_KEYS }}
           AIOS_PROVIDER_KEYRING: ${{ secrets.AIOS_PROVIDER_KEYRING }}
         run: |
           python "${{ github.workspace }}/trusted/scripts/ci_repair_reconcile.py"
@@ -422,7 +422,7 @@ jobs:
           name: aios-repair-proposal-${{ env.RUN_ID }}-3
           path: ${{ github.workspace }}/p3
       - name: Install test dependencies
-        run: python -m pip install --upgrade pytest PyYAML
+        run: python -m pip install --upgrade pytest PyYAML cryptography
       - name: Apply cumulative proposal patch(es) through AIOS authority
         id: apply
         working-directory: target
@@ -432,7 +432,7 @@ jobs:
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/p1/repair-proposal-1.json,${{ github.workspace }}/p2/repair-proposal-2.json,${{ github.workspace }}/p3/repair-proposal-3.json
           AIOS_REPAIR_AUTHORITY_DIR: ${{ runner.temp }}/aios-repair-authority
-          AIOS_AUTHORITY_ATTESTATION_SECRET: ${{ secrets.AIOS_AUTHORITY_ATTESTATION_SECRET }}
+          AIOS_AUTHORITY_TRUSTED_KEYS: ${{ vars.AIOS_AUTHORITY_TRUSTED_KEYS }}
           AIOS_PROVIDER_SIGNING_KEYS: ${{ secrets.AIOS_PROVIDER_SIGNING_KEYS }}
           AIOS_PROVIDER_KEYRING: ${{ secrets.AIOS_PROVIDER_KEYRING }}
         run: python "${{ github.workspace }}/trusted/scripts/ci_repair_apply_attempt.py"
@@ -454,7 +454,7 @@ jobs:
           AIOS_REPAIR_RUN_ID: ${{ env.RUN_ID }}
           AIOS_REPAIR_PROPOSALS: ${{ github.workspace }}/p1/repair-proposal-1.json,${{ github.workspace }}/p2/repair-proposal-2.json,${{ github.workspace }}/p3/repair-proposal-3.json
           AIOS_REPAIR_AUTHORITY_DIR: ${{ runner.temp }}/aios-repair-authority
-          AIOS_AUTHORITY_ATTESTATION_SECRET: ${{ secrets.AIOS_AUTHORITY_ATTESTATION_SECRET }}
+          AIOS_AUTHORITY_TRUSTED_KEYS: ${{ vars.AIOS_AUTHORITY_TRUSTED_KEYS }}
           AIOS_PROVIDER_KEYRING: ${{ secrets.AIOS_PROVIDER_KEYRING }}
         run: |
           python "${{ github.workspace }}/trusted/scripts/ci_repair_reconcile.py"
@@ -536,7 +536,7 @@ jobs:
           AIOS_REPAIR_PROPOSALS_DIR: ${{ github.workspace }}/proposals
           AIOS_REPAIR_RESULT_FILE: ${{ github.workspace }}/results/repair-result-${{ env.AIOS_REPAIR_PASS_ATTEMPT }}.json
           AIOS_REPAIR_AUTHORITY_DIR: ${{ github.workspace }}/authority
-          AIOS_AUTHORITY_ATTESTATION_SECRET: ${{ secrets.AIOS_AUTHORITY_ATTESTATION_SECRET }}
+          AIOS_AUTHORITY_TRUSTED_KEYS: ${{ vars.AIOS_AUTHORITY_TRUSTED_KEYS }}
           AIOS_PROVIDER_KEYRING: ${{ secrets.AIOS_PROVIDER_KEYRING }}
         run: python "${{ github.workspace }}/trusted/scripts/ci_repair_publish.py"
       - name: Push verified candidate branch and reopen the governed CI/review loop
