@@ -65,7 +65,14 @@ def test_effect_transition_is_atomic_and_audited(tmp_path):
     done = observe(str(tmp_path), effect["effect_id"], "agent-1", "OBSERVED_SUCCESS",
                    sign_observation(effect, _observation(effect["effect_id"], attempt=2)))
     assert done["state"] == "OBSERVED_SUCCESS"
-    assert (tmp_path / "events" / ("effect-" + effect["effect_id"] + "-OBSERVED_SUCCESS.json")).exists()
+    events = tmp_path / "events"
+    eid = effect["effect_id"]
+    # v2 ledger: attempt-scoped, append-only -- attempt 1's UNKNOWN is not overwritten.
+    for name in ("a0-create-PLANNED", "a1-dispatch-DISPATCHED", "a1-transition-UNKNOWN",
+                 "a2-dispatch-DISPATCHED", "a2-transition-OBSERVED_SUCCESS"):
+        assert (events / f"effect-{eid}-{name}.json").exists(), name
+    from core.effect_authority import verify_effect_ledger
+    assert verify_effect_ledger(str(tmp_path), eid)["status"] == "CONSISTENT"
 
 
 def test_unknown_cannot_return_to_dispatch(tmp_path):

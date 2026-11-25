@@ -300,7 +300,20 @@ class TestAtomicity(Base):
     def test_MN_interrupted_commit_recovers_with_pairing_intact(self):
         ents = [make_entity(eid="D-01"), make_entity(eid="D-02")]
         total_ops = len(ents) * 2  # entity renames + event renames
-        for fail_at in range(1, total_ops + 1):
+        # Replace #1 is the atomic journal publish (L5 commit point); crashing
+        # there leaves an uncommitted batch that recovery must discard.
+        aios = os.path.join(self.tmp, "case-commit-point", ".aios")
+        with self.assertRaises(RuntimeError):
+            with mock.patch.object(mutation, "_replace", self._flaky_replace(1)):
+                apply_mutations(aios, [dict(e) for e in ents], ACTOR)
+        staged = self.pending_batches(aios)
+        self.assertFalse(any(os.path.exists(os.path.join(aios, ".staging", b, "journal.json")) for b in staged),
+                         "crash before the commit point must not publish a journal")
+        recover_pending(aios)
+        self.assertEqual(self.pending_batches(aios), [])
+        written = [f for _r, _d, fs in os.walk(aios) for f in fs if f.startswith(("D-01", "D-02"))]
+        self.assertEqual(written, [], "uncommitted batch must leave no entity files")
+        for fail_at in range(2, total_ops + 2):
             aios = os.path.join(self.tmp, f"case{fail_at}", ".aios")
             with self.assertRaises(RuntimeError):
                 with mock.patch.object(mutation, "_replace",

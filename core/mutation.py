@@ -313,6 +313,25 @@ def _event_relpath(event):
 _JOURNAL_NAME = "journal.json"
 
 
+def _read_journal(journal_path):
+    """Return a committed journal, or None for an uncommitted/torn batch.
+
+    New batches publish the journal by atomic rename, so a torn journal can
+    only be a legacy batch that crashed while writing it -- before any
+    destination was replaced (journal fsync precedes every replace).
+    """
+    if not os.path.isfile(journal_path):
+        return None
+    try:
+        with open(journal_path, "r", encoding="utf-8") as fh:
+            journal = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(journal, dict) or not isinstance(journal.get("ops"), list):
+        return None
+    return journal
+
+
 def _recover_pending_unlocked(aios_dir):
     """Roll forward journaled batches; caller owns the mutation lock."""
     staging = os.path.join(aios_dir, ".staging")
@@ -321,28 +340,35 @@ def _recover_pending_unlocked(aios_dir):
     for entry in sorted(os.listdir(staging)):
         batch_dir = os.path.join(staging, entry)
         journal_path = os.path.join(batch_dir, _JOURNAL_NAME)
-        if os.path.isfile(journal_path):
-            with open(journal_path, "r", encoding="utf-8") as fh:
-                journal = json.load(fh)
+        journal = _read_journal(journal_path)
+        if journal is not None:
+            # Committed batch (L5 contract 3.2): roll forward every op.
             for op in journal["ops"]:
                 dest = op["dest"]
                 tmp = op["tmp"]
-                if os.path.exists(dest):
+                if os.path.exists(tmp):
+                    # Not yet replaced. The staged file was fsynced before the
+                    # commit point; verify it is the journaled content.
+                    with open(tmp, "rb") as fh:
+                        if _digest_bytes(fh.read()) != op["digest"]:
+                            raise StateConflictError(f"staged file diverges from journal: {dest}")
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    _replace(tmp, dest)
+                    _fsync_dir(os.path.dirname(dest))
+                elif os.path.exists(dest):
                     with open(dest, "rb") as fh:
                         actual = _digest_bytes(fh.read())
                     if actual != op["digest"]:
                         raise StateConflictError(
                             f"committed file diverges from journal: {dest}"
                         )
-                elif os.path.exists(tmp):
-                    os.makedirs(os.path.dirname(dest), exist_ok=True)
-                    _replace(tmp, dest)
-                    _fsync_dir(os.path.dirname(dest))
                 else:
                     raise StateConflictError(
                         f"journal op unrecoverable (temp and dest both missing): {dest}"
                     )
             os.unlink(journal_path)
+        # No (parseable) journal => the batch never reached its commit point and
+        # nothing was replaced (contract 3.3): discard it.
         shutil.rmtree(batch_dir, ignore_errors=True)
 
 
@@ -425,6 +451,8 @@ def commit_batch(aios_dir, payloads, precondition=None):
     """
     with _MutationLock(aios_dir):
         state_layout.ensure_state_dirs(aios_dir)
+        # Contract 3.4: never evaluate a precondition over a half-applied batch.
+        _recover_pending_unlocked(aios_dir)
         if precondition is not None:
             precondition(aios_dir)
         staging_root = os.path.join(aios_dir, ".staging")
@@ -444,10 +472,12 @@ def commit_batch(aios_dir, payloads, precondition=None):
             })
 
         journal_path = os.path.join(batch_dir, _JOURNAL_NAME)
+        journal_tmp = journal_path + ".tmp"
         _write_staged(
-            journal_path,
+            journal_tmp,
             canonical_json({"batch_id": batch_id, "ops": ops}).encode("utf-8"),
         )
+        _replace(journal_tmp, journal_path)  # commit point (contract 3.1)
         _fsync_dir(batch_dir)
 
         for op in ops:
