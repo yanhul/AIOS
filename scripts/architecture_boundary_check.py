@@ -29,7 +29,23 @@ FORBIDDEN_EXACT = frozenset({
 })
 
 
-DYNAMIC_IMPORTS = frozenset({"importlib", "__import__"})
+# Dynamic-loading surface. Detection is syntactic (AST) and therefore partial:
+#  * any import of a module whose top level is in DYNAMIC_IMPORT_ROOTS;
+#  * any *reference* (call, alias assignment, attribute) to a name in
+#    DYNAMIC_LOADER_NAMES, e.g. ``f = importlib.import_module`` or
+#    ``imp = __import__``;
+#  * any string literal equal to one of DYNAMIC_LOADER_NAMES, which covers
+#    ``getattr(builtins, "__import__")`` and ``__builtins__["__import__"]``;
+#  * direct calls of the builtins in DYNAMIC_EXEC_BUILTINS (``exec`` etc.),
+#    because the executed source is not visible to the AST.
+# NOT detected: names assembled at runtime (``getattr(b, "__imp" + "ort__")``),
+# loaders reached through objects obtained from other modules, decoded or
+# downloaded code, and C extensions. A clean result means "no recognised
+# pattern", not "no dynamic import is possible".
+DYNAMIC_IMPORT_ROOTS = frozenset({"importlib", "imp", "runpy", "pkgutil", "zipimport"})
+DYNAMIC_LOADER_NAMES = frozenset({"__import__", "import_module"})
+DYNAMIC_EXEC_BUILTINS = frozenset({"exec", "eval", "compile"})
+DYNAMIC_IMPORTS = frozenset({*DYNAMIC_IMPORT_ROOTS, "__import__", *DYNAMIC_EXEC_BUILTINS})
 
 
 def _resolve_relative(relative: str, level: int, module: str | None) -> str:
@@ -56,11 +72,16 @@ def _imports(tree: ast.AST, relative: str = "") -> Iterable[tuple[str, int]]:
                 yield node.module, node.lineno
                 for alias in node.names:
                     yield f"{node.module}.{alias.name}", node.lineno
-        elif isinstance(node, ast.Call):
-            func = node.func
-            name = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else None
-            if name in {"__import__", "import_module"}:
-                yield "__import__", node.lineno
+        elif isinstance(node, ast.Name) and node.id in DYNAMIC_LOADER_NAMES:
+            yield "__import__", node.lineno
+        elif isinstance(node, ast.Attribute) and node.attr in DYNAMIC_LOADER_NAMES:
+            yield "__import__", node.lineno
+        elif (isinstance(node, ast.Constant) and isinstance(node.value, str)
+              and node.value in DYNAMIC_LOADER_NAMES):
+            yield "__import__", node.lineno
+        elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+              and node.func.id in DYNAMIC_EXEC_BUILTINS):
+            yield node.func.id, node.lineno
 
 
 def inspect_file(root: Path, relative: str) -> list[dict[str, object]]:
@@ -77,7 +98,9 @@ def inspect_file(root: Path, relative: str) -> list[dict[str, object]]:
         if line in flagged_lines:
             continue
         top = module.split(".", 1)[0]
-        if top in FORBIDDEN_ROOTS or module in FORBIDDEN_EXACT or module in DYNAMIC_IMPORTS:
+        if (top in FORBIDDEN_ROOTS or top in DYNAMIC_IMPORT_ROOTS
+                or any(module == x or module.startswith(x + ".") for x in FORBIDDEN_EXACT)
+                or module in DYNAMIC_IMPORTS):
             flagged_lines.add(line)
             findings.append({
                 "rule": "L5-NO-EXECUTION-DEPENDENCY",

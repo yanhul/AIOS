@@ -295,11 +295,11 @@ class TestAtomicity(Base):
     def _flaky_replace(fail_at):
         calls = {"n": 0}
 
-        def fake(src, dst):
+        def fake(src, dst, **kw):
             calls["n"] += 1
             if calls["n"] == fail_at:
                 raise RuntimeError(f"injected failure at replace #{fail_at}")
-            return os.replace(src, dst)
+            return os.replace(src, dst, **kw)
         return fake
 
     def test_MN_interrupted_commit_recovers_with_pairing_intact(self):

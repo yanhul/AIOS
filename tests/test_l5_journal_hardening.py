@@ -22,11 +22,11 @@ class Crash(BaseException):
 def _crash_at(monkeypatch, n):
     real, calls = mutation._replace, {"n": 0}
 
-    def fake(src, dst):
+    def fake(src, dst, **kw):
         calls["n"] += 1
         if calls["n"] == n:
             raise Crash()
-        return real(src, dst)
+        return real(src, dst, **kw)
     monkeypatch.setattr(mutation, "_replace", fake)
     return lambda: monkeypatch.setattr(mutation, "_replace", real)
 

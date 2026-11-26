@@ -28,11 +28,13 @@ Stdlib only. Never writes outside ``<aios_dir>``.
 """
 
 import datetime
+import errno
 import hashlib
 import json
 import os
 import re
 import shutil
+import stat
 import uuid
 
 from . import state as state_layout
@@ -398,6 +400,161 @@ def _within(root, path):
         return False
 
 
+# ---------------------------------------------------------------------------
+# Store confinement (F-02)
+#
+# Threat model: a principal that can write ``.staging`` (or plant symlinks in
+# the store) but does not hold the mutation lock. Defences, in order:
+#   1. lexical: every destination is a store-relative path, never ``..``,
+#      never under a reserved L5 directory (.staging, .quarantine);
+#   2. check time: no component of the destination or staged path may be a
+#      symlink, and realpath() must stay inside the store;
+#   3. use time (POSIX with dir_fd support): directories are walked with
+#      O_NOFOLLOW from a descriptor on the store root and the rename is done
+#      relative to those descriptors, so a symlink swapped into a parent
+#      component after step 2 is refused instead of followed. After the
+#      rename the destination is re-checked to be a regular file.
+# Residual (documented, not claimed fixed): a principal that can rename real
+# directories of the store itself, or platforms without dir_fd support
+# (_FD_SAFE False, e.g. Windows), are only covered by checks 1-2.
+# ---------------------------------------------------------------------------
+
+_RESERVED_TOP = frozenset({".staging", QUARANTINE_DIR})
+_RESERVED_STAGED_NAMES = frozenset({_JOURNAL_V2_NAME, _JOURNAL_NAME,
+                                    _JOURNAL_V2_NAME + ".tmp", "QUARANTINE.json"})
+# os.replace shares os.rename's renameat() path but CPython only lists rename.
+_FD_SAFE = (os.rename in os.supports_dir_fd and os.unlink in os.supports_dir_fd
+            and os.open in os.supports_dir_fd
+            and os.mkdir in os.supports_dir_fd and os.stat in os.supports_dir_fd
+            and hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"))
+_ESCAPE_ERRNOS = frozenset(e for e in (errno.ELOOP, errno.ENOTDIR, getattr(errno, "EMLINK", None))
+                           if e is not None)
+
+
+class _PathEscape(Exception):
+    """A journal/commit path would leave, or be redirected out of, the store."""
+
+
+def _rel_parts(root, path):
+    """Lexical components of ``path`` relative to ``root``, or None if outside."""
+    try:
+        for base in (os.path.abspath(root), os.path.realpath(root)):
+            rel = os.path.relpath(os.path.abspath(path), base)
+            parts = rel.split(os.sep)
+            if rel != os.curdir and os.pardir not in parts and not os.path.isabs(rel):
+                return parts
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
+def _no_symlink_components(root, parts):
+    cur = os.path.abspath(root)
+    for comp in parts:
+        cur = os.path.join(cur, comp)
+        try:
+            st = os.lstat(cur)
+        except FileNotFoundError:
+            return  # remaining components will be created by L5 itself
+        if stat.S_ISLNK(st.st_mode):
+            raise _PathEscape(f"symlink in path: {cur}")
+
+
+def _dest_parts(aios_dir, dest):
+    """Validate a destination at check time; return its store-relative parts."""
+    parts = _rel_parts(aios_dir, dest)
+    if parts is None:
+        raise _PathEscape(f"outside the L5 store: {dest}")
+    if parts[0] in _RESERVED_TOP:
+        raise _PathEscape(f"targets reserved L5 path {parts[0]!r}: {dest}")
+    _no_symlink_components(aios_dir, parts)
+    if not _within(aios_dir, dest):
+        raise _PathEscape(f"resolves outside the L5 store: {dest}")
+    return parts
+
+
+def _staged_name(batch_dir, tmp):
+    """Validate a staged file at check time; return its name inside batch_dir."""
+    parts = _rel_parts(batch_dir, tmp)
+    if parts is None or len(parts) != 1 or parts[0] in _RESERVED_STAGED_NAMES:
+        raise _PathEscape(f"staged file is not a payload of this batch: {tmp}")
+    try:
+        if stat.S_ISLNK(os.lstat(batch_dir).st_mode):
+            raise _PathEscape(f"batch directory is a symlink: {batch_dir}")
+        st = os.lstat(os.path.join(batch_dir, parts[0]))
+        if not stat.S_ISREG(st.st_mode):
+            raise _PathEscape(f"staged file is not a regular file: {tmp}")
+    except FileNotFoundError:
+        pass  # already applied before a crash; destination is verified instead
+    return parts[0]
+
+
+def _read_nofollow(path):
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError as exc:
+        if exc.errno in _ESCAPE_ERRNOS:
+            raise _PathEscape(f"symlink at {path}") from exc
+        raise
+    with os.fdopen(fd, "rb") as fh:
+        return fh.read()
+
+
+def _open_dir_at(dir_fd, name, create):
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    try:
+        try:
+            return os.open(name, flags, dir_fd=dir_fd)
+        except FileNotFoundError:
+            if not create:
+                raise
+            try:
+                os.mkdir(name, 0o777, dir_fd=dir_fd)
+            except FileExistsError:
+                pass
+            return os.open(name, flags, dir_fd=dir_fd)
+    except OSError as exc:
+        if exc.errno in _ESCAPE_ERRNOS:
+            raise _PathEscape(f"path component {name!r} is a symlink or not a directory") from exc
+        raise
+
+
+def _apply_op(aios_dir, batch_dir, tmp_name, dest_parts):
+    """Move one staged payload into the store, refusing symlink redirection."""
+    if not _FD_SAFE:
+        dest = os.path.join(aios_dir, *dest_parts)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        _replace(os.path.join(batch_dir, tmp_name), dest)
+        _fsync_dir(os.path.dirname(dest))
+        return
+    fds = [os.open(aios_dir, os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0))]
+    try:
+        fds.append(_open_dir_at(fds[0], ".staging", create=False))
+        src_fd = _open_dir_at(fds[-1], os.path.basename(batch_dir), create=False)
+        fds.append(src_fd)
+        parent = fds[0]
+        for comp in dest_parts[:-1]:
+            parent = _open_dir_at(parent, comp, create=True)
+            fds.append(parent)
+        st = os.stat(tmp_name, dir_fd=src_fd, follow_symlinks=False)
+        if not stat.S_ISREG(st.st_mode):
+            raise _PathEscape(f"staged file {tmp_name!r} is not a regular file")
+        _replace(tmp_name, dest_parts[-1], src_dir_fd=src_fd, dst_dir_fd=parent)
+        st = os.stat(dest_parts[-1], dir_fd=parent, follow_symlinks=False)
+        if not stat.S_ISREG(st.st_mode):
+            # Lost a race on the staged entry: never leave a link in the store.
+            os.unlink(dest_parts[-1], dir_fd=parent)
+            raise _PathEscape(f"staged file swapped for a non-regular file: {tmp_name!r}")
+        try:
+            os.fsync(parent)
+        except OSError:
+            pass
+    finally:
+        for fd in reversed(fds):
+            os.close(fd)
+
+
 def _recover_pending_unlocked(aios_dir):
     """Roll forward committed batches; caller owns the mutation lock.
 
@@ -419,33 +576,38 @@ def _recover_pending_unlocked(aios_dir):
             _quarantine(aios_dir, batch_dir, classification, journal)
         if classification == "COMMITTED":
             # Validate every op before touching any destination.
-            problems = []
             # A journal names absolute paths and its digest is unkeyed, so a
             # writer of .staging could otherwise roll forward attacker bytes to
             # any path this process can write. Confine every op before I/O.
+            problems, plan = [], []
             for op in journal["ops"]:
-                if not _within(batch_dir, op["tmp"]) or not _within(aios_dir, op["dest"]):
-                    problems.append(f"journal op escapes the L5 store: {op['dest']}")
+                try:
+                    plan.append((op, _staged_name(batch_dir, op["tmp"]), _dest_parts(aios_dir, op["dest"])))
+                except _PathEscape as exc:
+                    problems.append(f"journal op escapes the L5 store: {exc}")
             if problems:
                 _quarantine(aios_dir, batch_dir, "UNRECOVERABLE_COMMITTED", "; ".join(problems))
-            for op in journal["ops"]:
-                if os.path.exists(op["tmp"]):
-                    with open(op["tmp"], "rb") as fh:
-                        if _digest_bytes(fh.read()) != op["digest"]:
+            try:
+                for op, _, _ in plan:
+                    if os.path.lexists(op["tmp"]):
+                        if _digest_bytes(_read_nofollow(op["tmp"])) != op["digest"]:
                             problems.append(f"staged file diverges from journal: {op['dest']}")
-                elif os.path.exists(op["dest"]):
-                    with open(op["dest"], "rb") as fh:
-                        if _digest_bytes(fh.read()) != op["digest"]:
+                    elif os.path.lexists(op["dest"]):
+                        if _digest_bytes(_read_nofollow(op["dest"])) != op["digest"]:
                             problems.append(f"staged file missing and destination diverges: {op['dest']}")
-                else:
-                    problems.append(f"staged file and destination both missing: {op['dest']}")
+                    else:
+                        problems.append(f"staged file and destination both missing: {op['dest']}")
+            except _PathEscape as exc:
+                problems.append(f"journal op escapes the L5 store: {exc}")
             if problems:
                 _quarantine(aios_dir, batch_dir, "UNRECOVERABLE_COMMITTED", "; ".join(problems))
-            for op in journal["ops"]:
-                if os.path.exists(op["tmp"]):
-                    os.makedirs(os.path.dirname(op["dest"]), exist_ok=True)
-                    _replace(op["tmp"], op["dest"])
-                    _fsync_dir(os.path.dirname(op["dest"]))
+            try:
+                for op, tmp_name, parts in plan:
+                    if os.path.lexists(op["tmp"]):
+                        _apply_op(aios_dir, batch_dir, tmp_name, parts)
+            except _PathEscape as exc:
+                _quarantine(aios_dir, batch_dir, "UNRECOVERABLE_COMMITTED",
+                            f"store path changed during roll-forward: {exc}")
             for name in (_JOURNAL_V2_NAME, _JOURNAL_NAME):
                 path = os.path.join(batch_dir, name)
                 if os.path.exists(path):
@@ -558,10 +720,16 @@ def commit_batch(aios_dir, payloads, precondition=None):
         batch_dir = os.path.join(staging_root, f"batch-{batch_id}")
         os.makedirs(batch_dir, exist_ok=True)
 
-        ops = []
+        ops, plan = [], []
+        for rel_dest, _obj in payloads:
+            try:
+                if not isinstance(rel_dest, str) or os.path.isabs(rel_dest):
+                    raise _PathEscape("destination must be store-relative")
+                plan.append(_dest_parts(aios_dir, os.path.join(aios_dir, rel_dest)))
+            except _PathEscape as exc:
+                shutil.rmtree(batch_dir, ignore_errors=True)
+                raise StateConflictError(f"commit destination escapes the L5 store: {rel_dest!r} ({exc})")
         for rel_dest, obj in payloads:
-            if os.path.isabs(rel_dest) or not _within(aios_dir, os.path.join(aios_dir, rel_dest)):
-                raise StateConflictError(f"commit destination escapes the L5 store: {rel_dest!r}")
             payload = (canonical_json(obj) + "\n").encode("utf-8")
             tmp = os.path.join(batch_dir, f"{uuid.uuid4().hex}.tmp")
             _write_staged(tmp, payload)
@@ -581,10 +749,12 @@ def commit_batch(aios_dir, payloads, precondition=None):
         _replace(journal_tmp, journal_path)  # commit point (contract 3.1)
         _fsync_dir(batch_dir)
 
-        for op in ops:
-            os.makedirs(os.path.dirname(op["dest"]), exist_ok=True)
-            _replace(op["tmp"], op["dest"])
-            _fsync_dir(os.path.dirname(op["dest"]))
+        try:
+            for op, parts in zip(ops, plan):
+                _apply_op(aios_dir, batch_dir, os.path.basename(op["tmp"]), parts)
+        except _PathEscape as exc:
+            _quarantine(aios_dir, batch_dir, "UNRECOVERABLE_COMMITTED",
+                        f"store path changed during commit: {exc}")
 
         os.unlink(journal_path)
         shutil.rmtree(batch_dir, ignore_errors=True)

@@ -33,11 +33,11 @@ def _crash_on_replace(monkeypatch, n):
     real = mutation._replace
     calls = {"n": 0}
 
-    def fake(src, dst):
+    def fake(src, dst, **kw):
         calls["n"] += 1
         if calls["n"] == n:
             raise Crash()
-        return real(src, dst)
+        return real(src, dst, **kw)
     monkeypatch.setattr(mutation, "_replace", fake)
     return lambda: monkeypatch.setattr(mutation, "_replace", real)
 
@@ -131,10 +131,10 @@ def test_real_process_death_mid_commit_then_restart(tmp_path, crash_at):
     child = textwrap.dedent(f"""
         import os, core.mutation as m
         real, n = m._replace, {{"n": 0}}
-        def fake(s, t):
+        def fake(s, t, **kw):
             n["n"] += 1
             if n["n"] == {crash_at}: os._exit(9)
-            real(s, t)
+            real(s, t, **kw)
         m._replace = fake
         m.commit_batch({d!r}, [("effects/A.json", {{"v": 2}}), ("events/A-2.json", {{"e": 2}})])
     """)
