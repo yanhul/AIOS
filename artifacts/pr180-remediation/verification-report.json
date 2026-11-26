@@ -1,0 +1,42 @@
+{
+  "status": "VERIFIED_LOCAL",
+  "scope": "local tests only; CI not observed at artifact creation time",
+  "closure": {
+    "P1-A": {
+      "severity": "P1",
+      "status": "CLOSED",
+      "evidence": "VERIFIED"
+    },
+    "P1-B": {
+      "severity": "P1",
+      "status": "CLOSED",
+      "evidence": "VERIFIED"
+    },
+    "P2-A": {
+      "severity": "P2",
+      "status": "CLOSED",
+      "evidence": "VERIFIED"
+    },
+    "P2-B": {
+      "severity": "P2",
+      "status": "CLOSED",
+      "evidence": "VERIFIED"
+    }
+  },
+  "suites": {
+    "full_baseline_d5013f6": "13 failed, 1000 passed, 25 skipped",
+    "full_fix": "13 failed, 1038 passed, 25 skipped (identical failure set)",
+    "pre_existing_with_pyyaml": "11 of 13 resolve by installing PyYAML; 2 test_repair_reconcile remain on base and fix",
+    "new_adversarial_on_fix": "62 passed (with tests/test_l5_event_ledger.py)",
+    "new_adversarial_on_d5013f6": "29 failed, 9 passed",
+    "architecture_boundary_check": "finding_count=0 (report-only)",
+    "test_audit_gate_pr_diff": "PASS (12 files)"
+  },
+  "not_claimed": [
+    "production safety",
+    "CI pass",
+    "fsync durability on power loss",
+    "authenticated L3 WAL"
+  ],
+  "merge_recommendation": "DO NOT MERGE automatically. PR #180 is stacked on #179/#178/#177; merge only after human review of the full stack and a green CI run on the pushed head."
+}

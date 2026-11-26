@@ -1,0 +1,48 @@
+{
+  "evidence": "VERIFIED",
+  "method": "os.walk snapshot of (relpath -> size, sha256, mtime_ns) before/after 3x inspect_effect_ledger",
+  "cases": [
+    {
+      "case": "clean",
+      "entries": 25,
+      "snapshot_sha256_before": "013b1fea41579d89749e36ad32169b89aaaf06e883bbdca9108c160aa8ddd875",
+      "snapshot_sha256_after": "013b1fea41579d89749e36ad32169b89aaaf06e883bbdca9108c160aa8ddd875",
+      "byte_identical_names_hashes_sizes_mtimes": true,
+      "verdicts": [
+        "VERIFIED",
+        "VERIFIED",
+        "VERIFIED"
+      ],
+      "status": "CONSISTENT",
+      "deterministic": true
+    },
+    {
+      "case": "corrupt_v2_journal",
+      "entries": 27,
+      "snapshot_sha256_before": "59f381ef35f174cfd5e9758c72804ecf8ed76e3720f9c5f61675023c71c9ecc7",
+      "snapshot_sha256_after": "59f381ef35f174cfd5e9758c72804ecf8ed76e3720f9c5f61675023c71c9ecc7",
+      "byte_identical_names_hashes_sizes_mtimes": true,
+      "verdicts": [
+        "UNKNOWN",
+        "UNKNOWN",
+        "UNKNOWN"
+      ],
+      "status": "PENDING_RECOVERY",
+      "deterministic": true
+    },
+    {
+      "case": "uncommitted_batch",
+      "entries": 26,
+      "snapshot_sha256_before": "787707fb0b8cecc319dd32150ed6278ec04dc3748e03ffc8211ab6049f518ae4",
+      "snapshot_sha256_after": "787707fb0b8cecc319dd32150ed6278ec04dc3748e03ffc8211ab6049f518ae4",
+      "byte_identical_names_hashes_sizes_mtimes": true,
+      "verdicts": [
+        "UNKNOWN",
+        "UNKNOWN",
+        "UNKNOWN"
+      ],
+      "status": "PENDING_RECOVERY",
+      "deterministic": true
+    }
+  ]
+}

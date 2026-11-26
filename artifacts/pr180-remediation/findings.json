@@ -1,0 +1,162 @@
+{
+  "pr": 180,
+  "target_commit": "d5013f63f8215b144842ecd9acd3e5d90244312e",
+  "findings": [
+    {
+      "id": "P1-A",
+      "severity": "P1",
+      "title": "Recovery discarded recomputed verification and state patch; RECEIPT_VALIDATED record not bound",
+      "location": {
+        "file": "core/orchestrator.py",
+        "line": 174,
+        "base_commit": "d5013f6",
+        "also": [
+          "core/durable_loop.py:652 (base)",
+          "core/durable_loop.py:623-641 (base)"
+        ]
+      },
+      "root_cause": "reconcile_with_ledger called executor.verify() but passed only dict(receipt) to reconcile_in_flight_attempt; for a PREPARED intent the verification's state_patch was dropped and replaced by a synthetic {status, receipt}. For RECEIPT_VALIDATED, persisted validated_verification/validated_action_result were trusted without any binding to the receipt or patch, and the fresh verification was ignored.",
+      "reproduction": [
+        "tests/test_pr180_remediation.py::test_crash_before_receipt_persistence_recovers_state_patch",
+        "tests/test_pr180_remediation.py::test_crash_during_receipt_validated_save_recovers_from_l5",
+        "tests/test_pr180_remediation.py::test_tampered_or_partial_recovery_record_is_rejected[*]"
+      ],
+      "fix": "durable_loop._recovery_binding (sha256 over identity+receipt+patch+verification+action) persisted with RECEIPT_VALIDATED; reconcile_in_flight_attempt(verification=, action_result=) recomputes binding, requires persisted verification to bind receipt+patch, requires fresh verification to agree, and applies a fresh patch only after state_patch_validator; orchestrator passes the recomputed verification.",
+      "fix_location": [
+        "core/durable_loop.py:280",
+        "core/durable_loop.py:657",
+        "core/durable_loop.py:693",
+        "core/orchestrator.py:185"
+      ],
+      "fix_commit": "8223587953022ad7977e84bf632efb7c35f56c2c",
+      "classification": "VERIFIED",
+      "verification_evidence": "3 crash tests + 7 tamper/partial cases fail on d5013f6 and pass on fix; full suite has no new failures.",
+      "remaining_uncertainty": "recovery_binding is an unkeyed digest: a writer with full L3 WAL write access can forge a self-consistent record. That forgery is still rejected unless the recomputed verification (from the L5 ledger and the same verifier) agrees, so the L3 WAL stays unauthenticated (ASSUMPTION: the L5 ledger and verifier are trusted)."
+    },
+    {
+      "id": "P1-B",
+      "severity": "P1",
+      "title": "Ledger fold trusted event identity fields instead of canonical derivation",
+      "location": {
+        "file": "core/effect_authority.py",
+        "line": 1107,
+        "base_commit": "d5013f6",
+        "also": [
+          "core/effect_authority.py:1088 (version skip)",
+          "core/effect_authority.py:211 (create event lacks logical_operation_id)"
+        ]
+      },
+      "root_cause": "verify_effect_ledger took the dispatch attempt_id from the event and checked it only against the projection, never recomputed effect_id from (contract, logical_operation_id, actor), never compared create-event contract/actor with the projection, ignored attempt_id on transition events, and silently skipped events with a foreign event_version.",
+      "reproduction": [
+        "tests/test_pr180_remediation.py::test_identity_attacks_are_conflict[*] (11 cases)",
+        "tests/test_pr180_remediation.py::test_orchestrator_blocks_recovery_on_forged_ledger_identity"
+      ],
+      "fix": "_fold_effect_ledger recomputes the canonical effect_id and dispatch attempt_id; checks create-event contract_id/actor/permit_id/effect_type (and logical_operation_id when present); rejects identity-field substitution on any event; fails closed on mixed event versions. create_effect now records logical_operation_id in the create event. Older create events verify as VERIFIED_SEPARATE and are never backfilled.",
+      "fix_location": [
+        "core/effect_authority.py:1102",
+        "core/effect_authority.py:1139",
+        "core/effect_authority.py:1151",
+        "core/effect_authority.py:216"
+      ],
+      "fix_commit": "8223587953022ad7977e84bf632efb7c35f56c2c",
+      "classification": "VERIFIED",
+      "verification_evidence": "8 of 11 attack cases fail on d5013f6 (ordering_extra_dispatch, conflicting_outcome and forged_effect_id_event were already rejected); all 11 are CONFLICT after the fix.",
+      "remaining_uncertainty": "Legacy effects with no v2 create event stay UNKNOWN (LEGACY_UNVERIFIABLE) and need operator migration. VERIFIED_SEPARATE relies on the projection's logical_operation_id, which is authenticated only by the effect_id derivation (INFERRED to be sufficient: forging it requires a SHA-256 preimage)."
+    },
+    {
+      "id": "P2-A",
+      "severity": "P2",
+      "title": "verify_effect_ledger mutated the store (implicit journal recovery/quarantine)",
+      "location": {
+        "file": "core/effect_authority.py",
+        "line": 1079,
+        "base_commit": "d5013f6"
+      },
+      "root_cause": "verify_effect_ledger called recover_pending(), which rolls forward, deletes staging and quarantines batches. The docstring claimed 'Read-only: never repairs' (CONFLICT between doc and code).",
+      "reproduction": [
+        "tests/test_pr180_remediation.py::test_verification_is_byte_identical_and_deterministic",
+        "tests/test_pr180_remediation.py::test_corrupt_or_pending_journal_untouched_by_verification[*]",
+        "tests/test_pr180_remediation.py::test_unresolved_quarantine_is_unknown_not_verified"
+      ],
+      "fix": "New mutation.inspect_pending (read-only, no lock) and inspect_effect_ledger returning VERIFIED/VERIFIED_SEPARATE/UNKNOWN/CONFLICT. Pending journal or quarantine => UNKNOWN. verify_effect_ledger wraps it and raises only on CONFLICT. The orchestrator calls recover_pending explicitly before verifying.",
+      "fix_location": [
+        "core/mutation.py:440",
+        "core/effect_authority.py:1072",
+        "core/orchestrator.py:148"
+      ],
+      "fix_commit": "8223587953022ad7977e84bf632efb7c35f56c2c",
+      "classification": "VERIFIED",
+      "verification_evidence": "filesystem-integrity.json: byte/size/mtime-identical snapshots across 3 cases; mutating functions are monkeypatched to raise during verification.",
+      "remaining_uncertainty": "API change: callers that relied on verify_effect_ledger for implicit roll-forward must now call recover_pending. Only core/orchestrator.py did, and it was updated (FACT, grep of core/scripts/research)."
+    },
+    {
+      "id": "P2-B",
+      "severity": "P2",
+      "title": "_block bypassed canonical persistence and left a stale continue_contract projection",
+      "location": {
+        "file": "core/orchestrator.py",
+        "line": 114,
+        "base_commit": "d5013f6",
+        "also": [
+          "core/orchestrator.py:86-89 (binding mismatch raw save)"
+        ]
+      },
+      "root_cause": "_block and the binding-mismatch branch called store.save() directly, so the continue_contract projection kept the pre-block content and contradicted the BLOCKED canonical state.",
+      "reproduction": [
+        "tests/test_pr180_remediation.py::test_block_persists_projection_consistent_with_canonical_state",
+        "tests/test_pr180_remediation.py::test_crash_during_block_leaves_no_contradiction",
+        "tests/test_pr180_remediation.py::test_block_with_unbuildable_projection_drops_it_and_fails_closed"
+      ],
+      "fix": "_block persists via durable_loop._persist_state, which rebuilds the projection. If the builder fails, the projection is dropped and projection_error is recorded, so restart fails closed instead of reading a contradiction. The binding-mismatch path now uses _block.",
+      "fix_location": [
+        "core/orchestrator.py:106"
+      ],
+      "fix_commit": "8223587953022ad7977e84bf632efb7c35f56c2c",
+      "classification": "VERIFIED",
+      "verification_evidence": "3 blocked/restart tests fail on d5013f6 and pass on fix. Adapter call count stays 1 across restarts; status never returns to RUNNING.",
+      "remaining_uncertainty": "StateStore.save atomicity is backend-specific (MemoryStateStore in tests); file-backed store crash atomicity is not re-verified here (UNKNOWN)."
+    }
+  ],
+  "stack_findings": [
+    {
+      "id": "S-1",
+      "severity": "P3",
+      "title": "test-audit-gate blocks PR #180: changed tests lacked AIOS-* authoring metadata",
+      "evidence": "FACT",
+      "detail": "5 files (l3_identity.py, test_l3_l5_identity_binding.py, test_orchestrator_policy_binding.py, test_l5_journal_hardening.py, test_m15.py) plus test_l5_event_ledger.py. Metadata added; gate --base pr179 now PASS.",
+      "fix_commit": "8223587953022ad7977e84bf632efb7c35f56c2c"
+    },
+    {
+      "id": "S-2",
+      "severity": "P3",
+      "title": "architecture_boundary_check runs in report-only mode",
+      "evidence": "FACT",
+      "detail": "finding_count=0 on base and fix, but the mode is report-only, so a CI PASS does not enforce the six-layer boundary. Not changed (CI policy decision).",
+      "fix_commit": null
+    },
+    {
+      "id": "S-3",
+      "severity": "INFO",
+      "title": "Migration: RECEIPT_VALIDATED intents persisted before this fix have no recovery_binding",
+      "evidence": "INFERRED",
+      "detail": "These are rejected (BLOCKED, RECONCILIATION_REJECTED) on restart rather than trusted, and need operator reconciliation. This is fail-closed by design.",
+      "fix_commit": null
+    },
+    {
+      "id": "S-4",
+      "severity": "INFO",
+      "title": "Pre-existing failures tests/test_repair_reconcile.py (2)",
+      "evidence": "UNKNOWN",
+      "detail": "They fail identically on d5013f6 and on the fix in this environment; root cause not established (likely environment: git/subprocess).",
+      "fix_commit": null
+    },
+    {
+      "id": "S-5",
+      "severity": "INFO",
+      "title": "PRs #177/#178/#179 were not deep-audited line by line",
+      "evidence": "UNKNOWN",
+      "detail": "Reviewed only commit/diff scope and their interaction with the touched code (authorize() calls recover_pending, which still provides explicit recovery). No API break was found for #177-#179 consumers of the touched functions.",
+      "fix_commit": null
+    }
+  ]
+}

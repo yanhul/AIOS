@@ -1,0 +1,83 @@
+# PR #180 remediation — test results (local, Linux aarch64 proot, Python 3.13.5)
+# Captured 2026-11-26T07:13:37Z. Commands run by the agent; output is verbatim summary lines.
+
+## Baseline full suite @ d5013f6 (no PyYAML)
+$ python -m pytest -q -p no:cacheprovider
+=========================== short test summary info ============================
+FAILED tests/test_capability_catalog.py::test_catalog_loads_registered_capabilities_and_edges
+FAILED tests/test_capability_catalog.py::test_catalog_edges_have_registered_endpoints
+FAILED tests/test_capability_catalog.py::test_missing_aios_local_manifest_fails_closed
+FAILED tests/test_central_workload_runner.py::test_runner_rejects_undeclared_adapter
+FAILED tests/test_central_workload_runner.py::test_runner_rejects_non_json_adapter
+FAILED tests/test_central_workload_runner.py::test_runner_accepts_pretty_json_python_adapter
+FAILED tests/test_central_workload_runner.py::test_runner_accepts_declared_shell_adapter
+FAILED tests/test_repair_reconcile.py::test_repair_reconcile_accepts_verified_full_chain
+FAILED tests/test_repair_reconcile.py::test_repair_reconcile_rejects_tampered_test_evidence
+FAILED tests/test_v1_workload_orchestration.py::test_registered_workload_executes_through_central_aios[try.research-yanhul/try-research_workload]
+FAILED tests/test_v1_workload_orchestration.py::test_registered_workload_executes_through_central_aios[android.assistant-yanhul/android-ai-assistant-software_device_workload]
+FAILED tests/test_v1_workload_orchestration.py::test_registered_workload_executes_through_central_aios[rx50.engineering-yanhul/RX50-hardware_engineering_workload]
+FAILED tests/test_workload_receipt_durability.py::test_terminal_receipt_is_reused_without_reexecuting_adapter
+13 failed, 1000 passed, 25 skipped, 1 warning in 528.17s (0:08:48)
+
+## Remediated full suite (no PyYAML) — identical failure set to baseline
+$ python -m pytest -q -p no:cacheprovider
+FAILED tests/test_capability_catalog.py::test_catalog_loads_registered_capabilities_and_edges
+FAILED tests/test_capability_catalog.py::test_catalog_edges_have_registered_endpoints
+FAILED tests/test_capability_catalog.py::test_missing_aios_local_manifest_fails_closed
+FAILED tests/test_central_workload_runner.py::test_runner_rejects_undeclared_adapter
+FAILED tests/test_central_workload_runner.py::test_runner_rejects_non_json_adapter
+FAILED tests/test_central_workload_runner.py::test_runner_accepts_pretty_json_python_adapter
+FAILED tests/test_central_workload_runner.py::test_runner_accepts_declared_shell_adapter
+FAILED tests/test_repair_reconcile.py::test_repair_reconcile_accepts_verified_full_chain
+FAILED tests/test_repair_reconcile.py::test_repair_reconcile_rejects_tampered_test_evidence
+FAILED tests/test_v1_workload_orchestration.py::test_registered_workload_executes_through_central_aios[try.research-yanhul/try-research_workload]
+FAILED tests/test_v1_workload_orchestration.py::test_registered_workload_executes_through_central_aios[android.assistant-yanhul/android-ai-assistant-software_device_workload]
+FAILED tests/test_v1_workload_orchestration.py::test_registered_workload_executes_through_central_aios[rx50.engineering-yanhul/RX50-hardware_engineering_workload]
+FAILED tests/test_workload_receipt_durability.py::test_terminal_receipt_is_reused_without_reexecuting_adapter
+13 failed, 1038 passed, 25 skipped, 1 warning in 650.80s (0:10:50)
+
+## Pre-existing failures after installing PyYAML (same on base and fix)
+base: 2 failed, 14 passed; fix: 2 failed, 14 passed (tests/test_repair_reconcile.py x2)
+
+## New adversarial tests + ledger tests on remediated tree
+$ python -m pytest -q tests/test_pr180_remediation.py tests/test_l5_event_ledger.py
+62 passed
+
+## New adversarial tests run against ORIGINAL d5013f6 (compat shim for new API names)
+FAILED tests/test_pr180_remediation.py::test_crash_before_receipt_persistence_recovers_state_patch
+FAILED tests/test_pr180_remediation.py::test_crash_during_receipt_validated_save_recovers_from_l5
+FAILED tests/test_pr180_remediation.py::test_crash_after_validation_before_state_patch
+FAILED tests/test_pr180_remediation.py::test_tampered_or_partial_recovery_record_is_rejected[action_result]
+FAILED tests/test_pr180_remediation.py::test_tampered_or_partial_recovery_record_is_rejected[binding_garbage]
+FAILED tests/test_pr180_remediation.py::test_tampered_or_partial_recovery_record_is_rejected[missing_action]
+FAILED tests/test_pr180_remediation.py::test_tampered_or_partial_recovery_record_is_rejected[missing_binding]
+FAILED tests/test_pr180_remediation.py::test_tampered_or_partial_recovery_record_is_rejected[state_patch]
+FAILED tests/test_pr180_remediation.py::test_tampered_or_partial_recovery_record_is_rejected[state_patch_rebound]
+FAILED tests/test_pr180_remediation.py::test_tampered_or_partial_recovery_record_is_rejected[verification]
+FAILED tests/test_pr180_remediation.py::test_identity_attacks_are_conflict[altered_logical_operation]
+FAILED tests/test_pr180_remediation.py::test_identity_attacks_are_conflict[create_event_logical_operation_only]
+FAILED tests/test_pr180_remediation.py::test_identity_attacks_are_conflict[cross_actor]
+FAILED tests/test_pr180_remediation.py::test_identity_attacks_are_conflict[cross_contract]
+FAILED tests/test_pr180_remediation.py::test_identity_attacks_are_conflict[forged_attempt_id]
+FAILED tests/test_pr180_remediation.py::test_identity_attacks_are_conflict[forged_effect_id_projection]
+FAILED tests/test_pr180_remediation.py::test_identity_attacks_are_conflict[mixed_legacy_version]
+FAILED tests/test_pr180_remediation.py::test_identity_attacks_are_conflict[observe_attempt_substitution]
+FAILED tests/test_pr180_remediation.py::test_legacy_ledger_without_create_is_unknown_never_verified
+FAILED tests/test_pr180_remediation.py::test_pre_fix_create_event_is_verified_separately_not_backfilled
+FAILED tests/test_pr180_remediation.py::test_orchestrator_blocks_recovery_on_forged_ledger_identity
+FAILED tests/test_pr180_remediation.py::test_verification_is_byte_identical_and_deterministic
+FAILED tests/test_pr180_remediation.py::test_corrupt_or_pending_journal_untouched_by_verification[{garbage]
+FAILED tests/test_pr180_remediation.py::test_corrupt_or_pending_journal_untouched_by_verification[{"format": "x", "ops": []}]
+FAILED tests/test_pr180_remediation.py::test_corrupt_or_pending_journal_untouched_by_verification[None]
+FAILED tests/test_pr180_remediation.py::test_unresolved_quarantine_is_unknown_not_verified
+FAILED tests/test_pr180_remediation.py::test_block_persists_projection_consistent_with_canonical_state
+FAILED tests/test_pr180_remediation.py::test_crash_during_block_leaves_no_contradiction
+FAILED tests/test_pr180_remediation.py::test_block_with_unbuildable_projection_drops_it_and_fails_closed
+29 failed, 9 passed in 74.04s (0:01:14)
+
+## Architecture boundary check (report-only)
+base finding_count=0; fix finding_count=0
+
+## Test authoring gate
+base (HEAD^..HEAD): TEST_AUDIT: BLOCKED (3 authoring-gate failure(s))
+fix  (--base pr179): TEST_AUDIT: PASS (12 changed test file(s)); warnings=15
