@@ -1,3 +1,8 @@
+# AIOS-CONTRACT: M15 governed loop behaviour under receipt-mode operation identity.
+# AIOS-REGRESSION: Receipt-mode loops without explicit operation identity (Decision A).
+# AIOS-OWNER: AIOS control-plane durable execution (L3)
+# AIOS-COVERAGE-GAP: Existing M15 scenarios with canonical identity.
+# AIOS-BASELINE: Extends tests/test_durable_loop.py.
 """M1.5 test suite: writer-enforcement boundary (core.mutation).
 
 Covers requirements A–S of the M1.5 spec: entity contracts, transition

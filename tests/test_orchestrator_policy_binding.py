@@ -1,3 +1,8 @@
+# AIOS-CONTRACT: governed execution binds loop policy to the governing contract and permit.
+# AIOS-REGRESSION: Policy/contract drift (digest, budget, terminal states, acceptance predicates).
+# AIOS-OWNER: AIOS control-plane orchestrator
+# AIOS-COVERAGE-GAP: Authority-bound policy fields overridden from the contract.
+# AIOS-BASELINE: Extends tests/test_m6_runtime.py.
 """L3<-L6 binding: the orchestrator must forward every LoopPolicy gate and must
 bind acceptance predicates to the governing contract (D1/D2 regression tests)."""
 import dataclasses

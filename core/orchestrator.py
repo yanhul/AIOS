@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Callable, Mapping
 from .acceptance import AcceptancePredicate
 from .authority import authorize, load_contract
-from .durable_loop import Executor, LoopPolicy, StateStore, reconcile_in_flight_attempt, run_durable_loop
+from .durable_loop import Executor, LoopPolicy, StateStore, _persist_state, reconcile_in_flight_attempt, run_durable_loop
 from .effect_identity import verify_operation_identity
 from .runtime import ProviderAdapter, execute
 
@@ -84,10 +84,8 @@ def run_governed_execution(*, executor: GovernedRuntimeExecutor, store: StateSto
     else:
         state = deepcopy(dict(loaded))
         if state.get("contract_id") != executor.contract_id or state.get("permit_id") != executor.permit_id:
-            state["status"] = bound_policy.failure_state
-            state["block_reason"] = "persisted execution binding does not match current authority context"
-            store.save(state)
-            return state
+            return _block(store, state, bound_policy, "BINDING_MISMATCH",
+                          "persisted execution binding does not match current authority context")
         if bound_policy.require_execution_receipt and state.get("in_flight_attempt") is not None:
             reconciled = reconcile_with_ledger(executor=executor, store=store, policy=bound_policy)
             if reconciled.get("status") != "RUNNING":
@@ -111,7 +109,16 @@ def _block(store: StateStore, state: dict, policy: LoopPolicy, classification: s
     state["reconciliation"] = {"classification": classification, "detail": detail}
     state["terminal_evidence"] = {"step": state.get("step", 0), "status": policy.failure_state,
                                   "verification": {"reason": state["block_reason"]}}
-    store.save(deepcopy(state))  # the in-flight intent is preserved untouched
+    # Persist through the canonical path so the continue_contract projection is
+    # rebuilt from the BLOCKED state (never a stale RUNNING projection). If the
+    # projection cannot be built, drop it rather than persist a contradiction;
+    # restart then fails closed on the missing projection. In-flight intent is kept.
+    try:
+        _persist_state(state, store, policy)
+    except Exception as exc:  # noqa: BLE001
+        state.pop("continue_contract", None)
+        state["projection_error"] = f"{type(exc).__name__}: {exc}"
+        store.save(deepcopy(state))
     return state
 
 
@@ -122,7 +129,7 @@ def reconcile_with_ledger(*, executor: GovernedRuntimeExecutor, store: StateStor
     existing reconcile_in_flight_attempt (same validators). Everything else is
     BLOCKED with a classification; nothing is inferred or backfilled.
     """
-    from .effect_authority import _load, _path, verify_effect_ledger  # L5 read-only queries
+    from .effect_authority import _load, _path, recover_pending, verify_effect_ledger
     state = deepcopy(dict(store.load() or {}))
     intent = state.get("in_flight_attempt")
     if not isinstance(intent, Mapping) or "identity_version" not in intent:
@@ -137,6 +144,10 @@ def reconcile_with_ledger(*, executor: GovernedRuntimeExecutor, store: StateStor
             decision, Mapping) or decision.get("logical_operation_id") != intent["logical_operation_id"]:
         return _block(store, state, policy, "IDENTITY_MISMATCH",
                       "intent contract/actor/decision does not match the governed execution context")
+    try:  # explicit, separate L5 journal recovery; verification below is read-only
+        recover_pending(executor.aios_dir)
+    except Exception as exc:  # noqa: BLE001
+        return _block(store, state, policy, "LEDGER_RECOVERY_BLOCKED", f"{type(exc).__name__}: {exc}")
     effect_path = _path(executor.aios_dir, intent["effect_id"])
     if not os.path.exists(effect_path):
         return _block(store, state, policy, "LEDGER_MISSING_EFFECT",
@@ -150,8 +161,8 @@ def reconcile_with_ledger(*, executor: GovernedRuntimeExecutor, store: StateStor
         ledger = verify_effect_ledger(executor.aios_dir, intent["effect_id"])
     except Exception as exc:  # noqa: BLE001 - any ledger failure is fail-closed
         return _block(store, state, policy, "LEDGER_INCONSISTENT", f"{type(exc).__name__}: {exc}")
-    if ledger["status"] != "CONSISTENT":
-        return _block(store, state, policy, "LEDGER_UNVERIFIABLE", ledger["status"])
+    if ledger.get("verdict") not in ("VERIFIED", "VERIFIED_SEPARATE"):
+        return _block(store, state, policy, "LEDGER_UNVERIFIABLE", f"{ledger.get('verdict')}:{ledger.get('status')}")
     if effect.get("state") not in ("OBSERVED_SUCCESS", "OBSERVED_FAILURE"):
         return _block(store, state, policy, f"LEDGER_{effect.get('state')}",
                       "effect outcome is not observed; no automatic dispatch or promotion")
@@ -171,7 +182,8 @@ def reconcile_with_ledger(*, executor: GovernedRuntimeExecutor, store: StateStor
             if (validated.get("effect_id"), validated.get("attempt_id")) != (effect["effect_id"], effect["attempt_id"]):
                 raise PermissionError("receipt does not match the L5 ledger")
             authorize(executor.aios_dir, executor.contract_id, executor.permit_id)
-        return reconcile_in_flight_attempt(store, policy, dict(receipt), authorizer=ledger_authorizer)
+        return reconcile_in_flight_attempt(store, policy, dict(receipt), authorizer=ledger_authorizer,
+                                           verification=verification, action_result=action_result)
     except Exception as exc:  # noqa: BLE001
         return _block(store, deepcopy(dict(store.load() or state)), policy, "RECONCILIATION_REJECTED",
                       f"{type(exc).__name__}: {exc}")

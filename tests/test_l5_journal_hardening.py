@@ -1,3 +1,9 @@
+# AIOS-CONTRACT: L5 journal batches are classified COMMITTED/UNCOMMITTED/CORRUPT_COMMITTED/AMBIGUOUS_LEGACY;
+#   ambiguous or corrupt committed batches are quarantined and block the store.
+# AIOS-REGRESSION: Unparseable journals treated as uncommitted (silent loss of committed batches).
+# AIOS-OWNER: AIOS control-plane effect ledger (L5)
+# AIOS-COVERAGE-GAP: Torn/corrupt v2 and legacy journals, diverging staged files, quarantine resolution.
+# AIOS-BASELINE: Extends tests/test_l5_event_ledger.py.
 """Phase 4 part 1: journal commit-state classification, quarantine, fail-closed recovery."""
 import json
 import os

@@ -1,3 +1,8 @@
+# AIOS-CONTRACT: L3 owns logical operation identity; restart reconciles against the L5 ledger and never dispatches.
+# AIOS-REGRESSION: B-1 Decision A (random attempt IDs, replay after crash, legacy intent promotion).
+# AIOS-OWNER: AIOS control-plane durable execution (L3/L5)
+# AIOS-COVERAGE-GAP: Crash at every L3/L5 boundary, tampered intent identity, legacy random IDs.
+# AIOS-BASELINE: Extends tests/test_m6_runtime.py and tests/test_durable_loop_crash_recovery.py.
 """Phase 4 / B-1 Decision A: L3 owns logical operation identity; restart reconciles against L5.
 
 Real L5 (journaled effect ledger) and L6 (Ed25519-attested permit) are used; process

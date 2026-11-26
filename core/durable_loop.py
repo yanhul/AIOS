@@ -3,6 +3,8 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Protocol
+import hashlib
+import json
 
 from .fix_protocol import FixPlan, require_fix_plan, require_fix_proof, FixProof
 from .acceptance import AcceptancePredicate, evaluate_acceptance
@@ -275,6 +277,21 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
     if state.get("status") in policy.terminal_states:
         _validate_terminal_evidence(state)
 
+def _recovery_binding(intent: Mapping[str, Any], receipt: Any, patch: Any, verification: Any, action_result: Any) -> str:
+    """Digest binding receipt, verification, state patch and action result to one attempt identity."""
+    body = {"identity_version": intent.get("identity_version"), "contract_id": intent.get("contract_id"),
+            "actor": intent.get("actor"), "logical_operation_id": intent.get("logical_operation_id"),
+            "effect_id": intent.get("effect_id"), "attempt_id": intent.get("attempt_id"),
+            "receipt": receipt, "state_patch": patch, "verification": verification, "action_result": action_result}
+    encoded = json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+    return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _verification_patch(verification: Mapping[str, Any]) -> dict:
+    patch = verification.get("state_patch")
+    return {} if patch is None else dict(patch) if isinstance(patch, Mapping) else patch
+
+
 def _persist_state(state: dict[str, Any], store: StateStore, policy: LoopPolicy) -> None:
     """Persist a complete durable snapshot with its continuation projection."""
     candidate = deepcopy(state)
@@ -477,6 +494,9 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                     intent["validated_state_patch"] = deepcopy(dict(patch or {}))
                     intent["validated_verification"] = deepcopy(dict(verification))
                     intent["validated_action_result"] = deepcopy(action_result)
+                    intent["recovery_binding"] = _recovery_binding(
+                        intent, intent["validated_receipt"], intent["validated_state_patch"],
+                        intent["validated_verification"], intent["validated_action_result"])
                     state["in_flight_attempt"] = intent
                     if not _persist_or_fail_closed(state, store, policy):
                         return state
@@ -588,6 +608,8 @@ def reconcile_in_flight_attempt(
     receipt: Mapping[str, Any],
     *,
     authorizer: Callable[[Mapping[str, Any], Mapping[str, Any]], None],
+    verification: Mapping[str, Any] | None = None,
+    action_result: Any = None,
 ) -> Mapping[str, Any]:
     """Close an interrupted attempt only with an authorized, matching OBSERVED receipt.
 
@@ -625,6 +647,26 @@ def reconcile_in_flight_attempt(
             raise ValueError("reconciliation receipt does not match the durably validated receipt")
         if not isinstance(pending_patch, Mapping) or not isinstance(pending_verification, Mapping):
             raise ValueError("durable validated receipt record is incomplete")
+        if "validated_action_result" not in intent or not isinstance(intent.get("recovery_binding"), str):
+            raise ValueError("durable validated receipt record is incomplete (no recovery binding)")
+        try:
+            binding = _recovery_binding(intent, pending_receipt, pending_patch, pending_verification, pending_action)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"durable recovery record is not canonically encodable: {exc}") from exc
+        if binding != intent["recovery_binding"]:
+            raise ValueError("durable recovery record was altered: binding digest mismatch")
+        if (not isinstance(pending_verification.get("receipt"), Mapping)
+                or dict(pending_verification["receipt"]) != dict(validated)
+                or _verification_patch(pending_verification) != dict(pending_patch)):
+            raise ValueError("durable verification does not bind the validated receipt and state patch")
+    # The freshly recomputed verification (same verifier as normal execution)
+    # must agree with whatever is persisted; it is never silently discarded.
+    if verification is not None:
+        if not isinstance(verification, Mapping) or not isinstance(verification.get("receipt"), Mapping) \
+                or dict(verification["receipt"]) != dict(validated):
+            raise ValueError("recomputed verification does not bind the reconciliation receipt")
+        if intent.get("status") == "RECEIPT_VALIDATED" and _verification_patch(verification) != dict(pending_patch):
+            raise ValueError("recomputed verification state_patch differs from the durable recovery record")
 
     # Recovery must enforce the same provider/evidence validator as the normal
     # execution path. Shape and lineage alone do not prove the receipt is authentic.
@@ -648,6 +690,20 @@ def reconcile_in_flight_attempt(
         verification = deepcopy(dict(pending_verification))
         verification["receipt"] = deepcopy(dict(validated))
         verification["reconciled"] = True
+    elif verification is not None:
+        # Crash before the receipt boundary was persisted: the recomputed
+        # verification carries the state patch; validate it exactly as ACT would.
+        fresh_patch = verification.get("state_patch")
+        if fresh_patch is not None:
+            patch_result = policy.state_patch_validator(deepcopy(fresh_patch), deepcopy(validated), deepcopy(state))
+            if patch_result is not None:
+                raise ValueError("state_patch_validator must return None or raise to reject")
+            _apply_state_patch(state, fresh_patch)
+        verification = deepcopy(dict(verification))
+        verification["receipt"] = deepcopy(dict(validated))
+        verification["reconciled"] = True
+        if action_result is not None:
+            pending_action = deepcopy(action_result)
     else:
         verification = {"status": "OBSERVED", "receipt": deepcopy(dict(validated)), "reconciled": True}
     history = state.get("history")
@@ -669,7 +725,7 @@ def reconcile_in_flight_attempt(
             "step": state["step"],
             "observation": deepcopy(intent.get("observation", {"reconciled": True})),
             "decision": deepcopy(intent.get("decision", {})),
-            "action": deepcopy(pending_action) if intent.get("status") == "RECEIPT_VALIDATED" else {"effect_id": intent["effect_id"], "reconciled": True},
+            "action": deepcopy(pending_action) if pending_action is not None else {"effect_id": intent["effect_id"], "reconciled": True},
             "verification": deepcopy(verification),
         })
     state.pop("in_flight_attempt", None)

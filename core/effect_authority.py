@@ -27,7 +27,7 @@ from collections.abc import Mapping
 from .authority import authorize, load_contract, load_permit
 from .contract import verify_permit
 from .evidence import EvidenceRecord, verify_evidence
-from .mutation import TransitionError, canonical_json
+from .mutation import TransitionError, canonical_json, inspect_pending
 from .authority_store import commit_authority_batch as commit_batch, recover_authority_store as recover_pending
 from . import provider_ed25519 as _ed
 from .effect_identity import attempt_identity, effect_identity
@@ -212,7 +212,8 @@ def create_effect(aios_dir, contract_id, logical_operation_id, actor, permit_id,
             return existing
         raise TransitionError("external effect identity collision with different content")
     event_rel, event = _ledger_event(effect_id, 0, "create", "PLANNED", contract_id=contract_id,
-                                     permit_id=permit_id, effect_type=effect_type, actor=actor)
+                                     permit_id=permit_id, effect_type=effect_type, actor=actor,
+                                     logical_operation_id=logical_operation_id)
     try:
         commit_batch(aios_dir, [(_effect_rel(effect_id), rec), (event_rel, event)],
                      precondition=_all_of(_expect_unchanged(_effect_rel(effect_id), None),
@@ -1057,7 +1058,7 @@ def observe(aios_dir, effect_id, actor, outcome, provider_observation, *, provid
     return _commit_transition(aios_dir, current, actor, outcome, {"provider_observation": record})
 
 
-__all__ = ["STATES", "EVENT_VERSION", "verify_effect_ledger", "create_effect", "transition", "dispatch", "retry_dispatch", "unknown", "observe",
+__all__ = ["STATES", "EVENT_VERSION", "verify_effect_ledger", "inspect_effect_ledger", "create_effect", "transition", "dispatch", "retry_dispatch", "unknown", "observe",
            "issue_retry_authorization", "observation_digest", "mint_observation_evidence",
            "RetryIssuerKeyring", "ProviderKeyring", "ProviderAuthenticationError", "provider_receipt_body",
            "provider_receipt_signature", "PROVIDER_RECEIPT_SCOPE", "RETRY_AUTH_DIR", "RETRY_APPROVE_SCOPE", "RETRY_KEYRING_ENV",
@@ -1068,24 +1069,50 @@ _EVENT_RANK = {("create", "PLANNED"): 0, ("dispatch", "DISPATCHED"): 1, ("transi
                ("transition", "OBSERVED_SUCCESS"): 3, ("transition", "OBSERVED_FAILURE"): 3}
 
 
-def verify_effect_ledger(aios_dir, effect_id):
-    """Fold the v2 append-only event history and require it to match the projection.
+def inspect_effect_ledger(aios_dir, effect_id):
+    """Strictly read-only ledger verification returning a structured verdict.
 
-    Returns ``{"status": "CONSISTENT", ...}``; effects without a v2 create event
-    return ``LEGACY_UNVERIFIABLE`` (never a pass). Any gap, duplicate, reorder or
-    projection mismatch raises ``TransitionError``. Read-only: never repairs.
+    verdict:
+      VERIFIED          - v2 ledger folds to the projection and every identity field
+                          (effect_id, attempt_id, contract, actor, logical operation)
+                          matches its canonical derivation inside the event history.
+      VERIFIED_SEPARATE - as VERIFIED, but the create event predates in-ledger
+                          logical_operation_id binding; the logical operation is
+                          bound only by the projection's canonical effect_id.
+      UNKNOWN           - evidence insufficient (legacy ledger, pending journal
+                          batches, unresolved quarantine, missing projection).
+      CONFLICT          - any identity, ordering, duplicate or projection mismatch.
+    Never calls recovery, never takes the mutation lock, never writes.
     """
     _validate_strings(("effect_id", effect_id))
-    recover_pending(aios_dir)
-    record = _load(_path(aios_dir, effect_id))
+    base = {"effect_id": effect_id}
+    pending = inspect_pending(aios_dir)
+    if pending["pending"] or pending["quarantined"]:
+        return {**base, "verdict": "UNKNOWN", "status": "PENDING_RECOVERY", "reason": "journal recovery pending",
+                "pending": pending}
+    path = _path(aios_dir, effect_id)
+    if not os.path.exists(path):
+        return {**base, "verdict": "UNKNOWN", "status": "MISSING_EFFECT", "reason": "no effect projection"}
+    try:
+        return {**base, **_fold_effect_ledger(aios_dir, effect_id, _load(path))}
+    except (TransitionError, ValueError, KeyError, TypeError) as exc:
+        return {**base, "verdict": "CONFLICT", "status": "CONFLICT", "reason": f"{type(exc).__name__}: {exc}"}
+
+
+def _fold_effect_ledger(aios_dir, effect_id, record):
+    if not isinstance(record, dict):
+        raise TransitionError("effect projection is malformed")
     events_dir = os.path.join(aios_dir, "events")
     prefix = f"effect-{effect_id}-a"
-    events = []
+    events, foreign = [], 0
     for name in sorted(os.listdir(events_dir)) if os.path.isdir(events_dir) else []:
         if not (name.startswith(prefix) and name.endswith(".json")):
             continue
         ev = _load(os.path.join(events_dir, name))
+        if not isinstance(ev, dict):
+            raise TransitionError(f"ledger event is malformed: {name}")
         if ev.get("event_version") != EVENT_VERSION:
+            foreign += 1
             continue
         key = (ev.get("action"), ev.get("to_state"))
         rel, expected = _ledger_event(effect_id, ev.get("attempt"), *key)
@@ -1094,22 +1121,54 @@ def verify_effect_ledger(aios_dir, effect_id):
             raise TransitionError(f"ledger event identity mismatch: {name}")
         events.append(ev)
     if not any(ev["action"] == "create" for ev in events):
-        return {"status": "LEGACY_UNVERIFIABLE", "effect_id": effect_id, "events": len(events)}
+        return {"verdict": "UNKNOWN", "status": "LEGACY_UNVERIFIABLE", "events": len(events)}
+    if foreign:
+        raise TransitionError("ledger mixes v2 events with events of another version; history is ambiguous")
     events.sort(key=lambda ev: (ev["attempt"], _EVENT_RANK[(ev["action"], ev["to_state"])]))
-    if (events[0]["action"], events[0]["attempt"]) != ("create", 0) or sum(e["action"] == "create" for e in events) != 1:
+    create = events[0]
+    if (create["action"], create["attempt"]) != ("create", 0) or sum(e["action"] == "create" for e in events) != 1:
         raise TransitionError("ledger must start with exactly one create event at attempt 0")
+    # Canonical identity: recompute effect_id from the authoritative operation tuple.
+    for field in ("contract_id", "actor", "permit_id", "effect_type"):
+        if create.get(field) != record.get(field):
+            raise TransitionError(f"create event {field} differs from the effect projection")
+    lop = record.get("logical_operation_id")
+    if "logical_operation_id" in create and create["logical_operation_id"] != lop:
+        raise TransitionError("create event logical_operation_id differs from the effect projection")
+    if record.get("effect_id") != effect_id or _id(record.get("contract_id"), lop, record.get("actor")) != effect_id:
+        raise TransitionError("effect_id does not match its canonical (contract, logical operation, actor) derivation")
     state, attempt, attempt_id = "PLANNED", 0, None
     for ev in events[1:]:
         target = ev["to_state"]
+        for field in ("contract_id", "actor", "permit_id", "logical_operation_id"):
+            if field in ev and ev[field] != record.get(field):
+                raise TransitionError(f"ledger event {field} differs from the effect identity")
         if ev["action"] == "dispatch":
             if ev["attempt"] != attempt + 1 or state not in ("PLANNED", "UNKNOWN") or (state == "PLANNED") != (attempt == 0):
                 raise TransitionError(f"ledger dispatch out of order at attempt {ev['attempt']}")
             attempt, attempt_id = ev["attempt"], ev.get("attempt_id")
+            if attempt_id != _attempt_id(effect_id, attempt):
+                raise TransitionError(f"dispatch attempt_id is not the canonical identity for attempt {attempt}")
         elif ev["attempt"] != attempt or target not in _ALLOWED.get(state, ()):
             raise TransitionError(f"ledger transition {state}->{target} invalid at attempt {ev['attempt']}")
+        elif "attempt_id" in ev and ev["attempt_id"] != attempt_id:
+            raise TransitionError(f"ledger event attempt_id substituted at attempt {ev['attempt']}")
         state = target
     if (record.get("state"), record.get("attempt", 0)) != (state, attempt) or (
             attempt and record.get("attempt_id") != attempt_id):
         raise TransitionError("effect projection does not match its event ledger")
-    return {"status": "CONSISTENT", "effect_id": effect_id, "state": state, "attempt": attempt,
-            "events": len(events)}
+    verdict = "VERIFIED" if "logical_operation_id" in create else "VERIFIED_SEPARATE"
+    return {"verdict": verdict, "status": "CONSISTENT", "state": state, "attempt": attempt, "events": len(events)}
+
+
+def verify_effect_ledger(aios_dir, effect_id):
+    """Read-only. Raises TransitionError on CONFLICT; otherwise returns the structured verdict.
+
+    ``status`` stays ``CONSISTENT`` for VERIFIED/VERIFIED_SEPARATE and
+    ``LEGACY_UNVERIFIABLE``/``PENDING_RECOVERY``/``MISSING_EFFECT`` for UNKNOWN.
+    Recovery is a separate explicit operation (``recover_pending``).
+    """
+    result = inspect_effect_ledger(aios_dir, effect_id)
+    if result["verdict"] == "CONFLICT":
+        raise TransitionError(result["reason"])
+    return result

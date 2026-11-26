@@ -437,6 +437,22 @@ def _recover_pending_unlocked(aios_dir):
         shutil.rmtree(batch_dir, ignore_errors=True)
 
 
+def inspect_pending(aios_dir):
+    """Read-only: report staged batches and unresolved quarantine without touching anything.
+
+    Never takes the mutation lock, never moves, rewrites or deletes files.
+    """
+    staging = os.path.join(aios_dir, ".staging")
+    batches = []
+    if os.path.isdir(staging):
+        for entry in sorted(os.listdir(staging)):
+            batch_dir = os.path.join(staging, entry)
+            if os.path.isdir(batch_dir):
+                classification, _ = _classify_batch(batch_dir)
+                batches.append({"batch": entry, "classification": classification})
+    return {"pending": batches, "quarantined": unresolved_quarantine(aios_dir)}
+
+
 def recover_pending(aios_dir):
     """Recover pending journal batches under the shared mutation lock."""
     with _MutationLock(aios_dir):

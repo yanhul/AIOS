@@ -1,3 +1,8 @@
+# AIOS-CONTRACT: L5 event ledger is append-only, deterministic-identity, and folds to its projection.
+# AIOS-REGRESSION: Ledger gaps, duplicates, reorders, projection drift; structured read-only verdicts.
+# AIOS-OWNER: AIOS control-plane effect ledger (L5)
+# AIOS-COVERAGE-GAP: Event identity, append-only replay, crash during batch commit.
+# AIOS-BASELINE: Extends tests/test_m6_runtime.py.
 """Phase 3 — L5 durable event ledger: fault injection, restart/recovery, duplicate/replay.
 
 Maps to docs/L5_EVENT_LEDGER.md (contract 3.x, failure matrix F1..F6).
@@ -148,7 +153,8 @@ def test_ledger_consistent_and_append_only(tmp_path):
     result = execute(str(tmp_path), cid, pid, "op-1", "agent:test", GoodAdapter())
     eid = result["effect_id"]
     assert verify_effect_ledger(str(tmp_path), eid) == {
-        "status": "CONSISTENT", "effect_id": eid, "state": "OBSERVED_SUCCESS", "attempt": 1, "events": 3}
+        "status": "CONSISTENT", "verdict": "VERIFIED", "effect_id": eid, "state": "OBSERVED_SUCCESS",
+        "attempt": 1, "events": 3}
     # Replaying the same commit (duplicate event) is rejected, never an overwrite.
     from core.effect_authority import _ledger_event, _expect_unchanged
     rel, ev = _ledger_event(eid, 1, "transition", "OBSERVED_SUCCESS")
