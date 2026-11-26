@@ -60,7 +60,7 @@ jobs:
         run: |
           changes="$(git status --porcelain --untracked-files=all -- research/artifacts)"
           if [ -n "$changes" ]; then
-            printf '%s\\n' "$changes"
+            printf '%s\n' "$changes"
             echo "FAIL: tests modified or created persistent research artifacts"
             exit 1
           fi
