@@ -389,6 +389,15 @@ def unresolved_quarantine(aios_dir):
                   and not os.path.exists(os.path.join(qroot, d, "RESOLVED.json")))
 
 
+def _within(root, path):
+    """True only when ``path`` resolves inside ``root`` (symlinks resolved)."""
+    try:
+        root_r = os.path.realpath(root)
+        return os.path.commonpath([root_r, os.path.realpath(path)]) == root_r
+    except (TypeError, ValueError):
+        return False
+
+
 def _recover_pending_unlocked(aios_dir):
     """Roll forward committed batches; caller owns the mutation lock.
 
@@ -411,6 +420,14 @@ def _recover_pending_unlocked(aios_dir):
         if classification == "COMMITTED":
             # Validate every op before touching any destination.
             problems = []
+            # A journal names absolute paths and its digest is unkeyed, so a
+            # writer of .staging could otherwise roll forward attacker bytes to
+            # any path this process can write. Confine every op before I/O.
+            for op in journal["ops"]:
+                if not _within(batch_dir, op["tmp"]) or not _within(aios_dir, op["dest"]):
+                    problems.append(f"journal op escapes the L5 store: {op['dest']}")
+            if problems:
+                _quarantine(aios_dir, batch_dir, "UNRECOVERABLE_COMMITTED", "; ".join(problems))
             for op in journal["ops"]:
                 if os.path.exists(op["tmp"]):
                     with open(op["tmp"], "rb") as fh:
@@ -543,6 +560,8 @@ def commit_batch(aios_dir, payloads, precondition=None):
 
         ops = []
         for rel_dest, obj in payloads:
+            if os.path.isabs(rel_dest) or not _within(aios_dir, os.path.join(aios_dir, rel_dest)):
+                raise StateConflictError(f"commit destination escapes the L5 store: {rel_dest!r}")
             payload = (canonical_json(obj) + "\n").encode("utf-8")
             tmp = os.path.join(batch_dir, f"{uuid.uuid4().hex}.tmp")
             _write_staged(tmp, payload)
