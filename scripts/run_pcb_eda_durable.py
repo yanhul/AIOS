@@ -17,6 +17,15 @@ from core.blocked_continuation import classify_blockers, plan_blocked_continuati
 from core.wal_state_store import WalStateStore
 
 
+def _intent_identity(state: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Receipt lineage is the canonical L3 write-ahead intent identity (Decision A)."""
+    intent = state.get("in_flight_attempt")
+    if not isinstance(intent, Mapping) or not isinstance(intent.get("effect_id"), str) \
+            or not isinstance(intent.get("attempt_id"), str):
+        raise RuntimeError("PCB receipt requires a persisted canonical execution intent")
+    return intent
+
+
 class JsonStateStore(WalStateStore):
     """Compatibility name backed by the fsynced WAL, not a plain JSON overwrite."""
     pass
@@ -154,8 +163,8 @@ class PcbExecutor:
                 },
                 "blockers": [{"id": f"EVIDENCE:{x}", "status": "BLOCKED"} for x in result["unresolved_requirements"]],
                 "receipt": {
-                    "effect_id": f"{self.args.task_id}:effect:{state.get('step', 0)+1}",
-                    "attempt_id": f"{self.args.task_id}:attempt:{state.get('step', 0)+1}",
+                    "effect_id": _intent_identity(state)["effect_id"],
+                    "attempt_id": _intent_identity(state)["attempt_id"],
                     "status": "OBSERVED",
                     "evidence": {"provider": "aios-control-plane-evidence-discovery", "discovery_result": result},
                 },
@@ -179,8 +188,8 @@ class PcbExecutor:
             "blockers": blockers,
             "classified_blockers": kinds,
             "receipt": {
-                "effect_id": f"{self.args.task_id}:effect:{state.get('step', 0)+1}",
-                "attempt_id": f"{self.args.task_id}:attempt:{state.get('step', 0)+1}",
+                "effect_id": _intent_identity(state)["effect_id"],
+                "attempt_id": _intent_identity(state)["attempt_id"],
                 "status": "OBSERVED",
                 "evidence": {
                     "provider": "altium-audit-kit",

@@ -1,0 +1,280 @@
+{
+  "repository": "yanhul/aios",
+  "stack": [
+    "#177",
+    "#178",
+    "#179",
+    "#180"
+  ],
+  "audited_head": "140c0325258f8428ffb69f51080eae6055fce037",
+  "ci_run": "45784180164 (3/3 PASS; not evidence of production safety)",
+  "findings": [
+    {
+      "id": "F-01",
+      "severity": "P1",
+      "evidence_state": "VERIFIED",
+      "status": "FIXED_IN_REMEDIATION_PR",
+      "introduced_or_exposed_in": "#180",
+      "file": "scripts/run_pcb_eda_durable.py",
+      "symbol": "PcbExecutor.verify",
+      "lines_at_audited_head": [
+        157,
+        158,
+        182,
+        183
+      ],
+      "summary": "PCB durable runner mints receipt lineage '{task_id}:effect:N' while #180 changed the L3 intent identity to canonical 'EF-<sha256>'. core/durable_loop.py:465 rejects every receipt.",
+      "reproduction": "Run main() with stubbed run_kit, --max-steps 1 -> state BLOCKED: 'execution receipt lineage does not match persisted intent'. Test: tests/test_stack_audit_remediation.py::test_pcb_eda_receipt_lineage_matches_canonical_intent (fails on 140c032).",
+      "impact": "Every receipt-governed pcb.eda@1 / discover_evidence step BLOCKs; runner non-functional. Fail-closed (no unsafe PASS), but availability regression undetected by CI because no test drives main()."
+    },
+    {
+      "id": "F-02",
+      "severity": "P1",
+      "evidence_state": "VERIFIED",
+      "status": "FIXED_IN_REMEDIATION_PR",
+      "introduced_or_exposed_in": "#179/#180",
+      "file": "core/mutation.py",
+      "symbol": "_recover_pending_unlocked / commit_batch",
+      "lines_at_audited_head": [
+        414,
+        431,
+        545
+      ],
+      "summary": "Roll-forward trusts absolute 'tmp'/'dest' paths from journal.v2.json; body_digest is unkeyed SHA-256. No containment check.",
+      "reproduction": "Plant .staging/batch-x/journal.v2.json with dest=<outside store> and recomputed digest; recover_pending() writes attacker bytes outside the store. Tests: test_rollforward_quarantines_dest_outside_store, test_rollforward_quarantines_tmp_outside_batch, test_commit_batch_rejects_escaping_destination.",
+      "impact": "Write access to .aios/.staging escalates to arbitrary file overwrite with the AIOS process's privileges."
+    },
+    {
+      "id": "F-03",
+      "severity": "P1",
+      "evidence_state": "VERIFIED",
+      "status": "OPEN",
+      "introduced_or_exposed_in": "#180",
+      "file": "core/durable_loop.py",
+      "symbol": "_recovery_binding / reconcile_in_flight_attempt",
+      "lines_at_audited_head": [
+        280,
+        287,
+        645,
+        697
+      ],
+      "summary": "recovery_binding is an unkeyed SHA-256 integrity hash stored next to the data it covers. It detects accidental corruption only; it is not authenticated integrity.",
+      "reproduction": "artifacts/stack-audit-177-180/wal_attack_poc.py: crash after RECEIPT_VALIDATED, rewrite validated_state_patch, recompute binding -> reconcile_in_flight_attempt applies FORGED patch and reaches PASS.",
+      "impact": "A WAL/snapshot writer can forge recovered state_patch/verification/action_result. Residual protection = execution_receipt_validator + state_patch_validator re-run at recovery (lines 681-696); for PCB these read artifacts in the same writable output dir (INFERRED: same trust domain)."
+    },
+    {
+      "id": "F-04",
+      "severity": "P1",
+      "evidence_state": "VERIFIED",
+      "status": "OPEN",
+      "introduced_or_exposed_in": "#177-#180",
+      "file": "core/durable_loop.py + core/durable_wal.py",
+      "symbol": "run_durable_loop / DurableTransitionLog._replay_unlocked",
+      "lines_at_audited_head": [
+        400,
+        217
+      ],
+      "summary": "WAL records carry per-record unkeyed checksum + sequence, no hash chain, no signature, no external high-water mark. Deleting in_flight_attempt (append a recomputed record, or truncate tail to a pre-intent record) is undetectable.",
+      "reproduction": "wal_attack_poc.py F-04: drop in_flight_attempt after crash -> act() invoked twice for one logical operation.",
+      "impact": "Duplicate external side effect (replay) - the exact property the WAL intent exists to prevent. L5 effect ledger dedupe is not consulted by run_durable_loop before ACT (INFERRED from code path lines 436-453)."
+    },
+    {
+      "id": "F-05",
+      "severity": "P1",
+      "evidence_state": "FACT",
+      "status": "OPEN_DESIGN_GAP",
+      "introduced_or_exposed_in": "#178",
+      "file": "scripts/ci_repair_apply_attempt.py + .github/workflows/ci-autonomous-repair.yml",
+      "symbol": "authority()",
+      "lines_at_audited_head": [
+        43,
+        51,
+        76
+      ],
+      "summary": "Permit is created inside the job in an empty ephemeral AIOS_REPAIR_AUTHORITY_DIR (runner.temp) and authorized immediately. Contract binds run_id/base_sha, so permit_id is only known at run time; there is no channel for an external signer to attest it before authorize().",
+      "reproduction": "Code path: persist_permit(signer=None) -> no attestation -> authorize() -> 'permit issuer attestation is missing' -> SystemExit BLOCKED.",
+      "impact": "ci-autonomous-repair is structurally BLOCKED, not merely missing a secret. Adding a signer secret would not fix it without a permit request/attest lifecycle."
+    },
+    {
+      "id": "F-06",
+      "severity": "P2",
+      "evidence_state": "FACT",
+      "status": "OPEN",
+      "introduced_or_exposed_in": "#178",
+      "file": "core/attestation.py",
+      "symbol": "_claims",
+      "lines_at_audited_head": [
+        70,
+        80
+      ],
+      "summary": "Attestation claims = {type,version,algorithm,key_id,contract_id,permit_id,issuer}. No issued_at/expires_at, nonce, audience, or use counter.",
+      "reproduction": "Code inspection.",
+      "impact": "A captured attestation is valid forever for its permit; revocation granularity is per key only."
+    },
+    {
+      "id": "F-07",
+      "severity": "P2",
+      "evidence_state": "UNKNOWN",
+      "status": "OPEN",
+      "introduced_or_exposed_in": "#178",
+      "file": ".github/workflows/ci-autonomous-repair.yml",
+      "symbol": "env AIOS_AUTHORITY_TRUSTED_KEYS",
+      "lines_at_audited_head": [
+        183,
+        205,
+        312,
+        334,
+        435,
+        457,
+        539
+      ],
+      "summary": "Trust anchor sourced from repository 'vars', not an environment-protected secret/variable. Who can edit repo variables is a repo-settings fact not visible from source.",
+      "reproduction": "Not verifiable from code; requires repo settings audit.",
+      "impact": "Anyone able to edit the variable can substitute their own public key and self-attest."
+    },
+    {
+      "id": "F-08",
+      "severity": "P2",
+      "evidence_state": "FACT",
+      "status": "OPEN",
+      "introduced_or_exposed_in": "#178",
+      "file": "core/attestation.py",
+      "symbol": "signing_material_present",
+      "lines_at_audited_head": [
+        211,
+        213
+      ],
+      "summary": "Separation-of-duties check only inspects env AIOS_AUTHORITY_SIGNING_KEY_FILE; a key file present on disk or passed another way is not detected.",
+      "reproduction": "Code inspection.",
+      "impact": "Separation is advisory, not enforced; verifier and signer can co-reside."
+    },
+    {
+      "id": "F-09",
+      "severity": "P2",
+      "evidence_state": "FACT",
+      "status": "OPEN",
+      "introduced_or_exposed_in": "#178",
+      "file": "scripts/ci_repair_apply_attempt.py",
+      "symbol": "main",
+      "lines_at_audited_head": [
+        80,
+        81
+      ],
+      "summary": "Provider receipt signing keys (AIOS_PROVIDER_SIGNING_KEYS) and provider verifier keyring are both loaded in the same apply job.",
+      "reproduction": "Code inspection.",
+      "impact": "Provider receipts are self-signed by the job that verifies them; provider authenticity is not independent."
+    },
+    {
+      "id": "F-10",
+      "severity": "P2",
+      "evidence_state": "INFERRED",
+      "status": "OPEN",
+      "introduced_or_exposed_in": "#179",
+      "file": "core/mutation.py",
+      "symbol": "commit_batch",
+      "lines_at_audited_head": [
+        559,
+        581
+      ],
+      "summary": "batch_dir is created under .staging without fsync of .staging; only batch_dir is fsynced after journal publish. Under power loss the batch_dir entry may be lost while some dest renames are durable.",
+      "reproduction": "Not reproducible with process-crash tests; requires power-loss/dm-flakey harness.",
+      "impact": "Possible silent partial commit after power loss. Process-crash consistency is tested; power-loss durability is NOT proven."
+    },
+    {
+      "id": "F-11",
+      "severity": "P2",
+      "evidence_state": "FACT",
+      "status": "OPEN",
+      "introduced_or_exposed_in": "#179",
+      "file": "core/mutation.py",
+      "symbol": "_fsync_dir",
+      "lines_at_audited_head": [
+        231,
+        243
+      ],
+      "summary": "Directory fsync errors (including EIO) are swallowed; WalStateStore._fsync_parent_dir raises. Inconsistent durability contract.",
+      "reproduction": "Code inspection.",
+      "impact": "An fsync failure is reported as a successful commit."
+    },
+    {
+      "id": "F-12",
+      "severity": "P2",
+      "evidence_state": "FACT",
+      "status": "OPEN",
+      "introduced_or_exposed_in": "#180",
+      "file": "core/mutation.py",
+      "symbol": "unresolved_quarantine",
+      "lines_at_audited_head": [
+        382,
+        389
+      ],
+      "summary": "Quarantine is cleared by the mere existence of RESOLVED.json; no operator identity, signature, or content check.",
+      "reproduction": "touch .aios/.quarantine/<batch>/RESOLVED.json unblocks the store.",
+      "impact": "BLOCKED state is bypassable by any store writer."
+    },
+    {
+      "id": "F-13",
+      "severity": "P2",
+      "evidence_state": "FACT",
+      "status": "OPEN",
+      "introduced_or_exposed_in": "#179",
+      "file": "core/mutation.py",
+      "symbol": "commit_batch journal format",
+      "lines_at_audited_head": [
+        545,
+        560
+      ],
+      "summary": "Journal stores absolute paths; relocating/restoring the store elsewhere makes pending batches unrecoverable (now quarantined by F-02 fix rather than written to old path).",
+      "reproduction": "Code inspection.",
+      "impact": "Operational recovery hazard on backup/restore."
+    },
+    {
+      "id": "F-14",
+      "severity": "P2",
+      "evidence_state": "VERIFIED",
+      "status": "FIXED_IN_REMEDIATION_PR",
+      "introduced_or_exposed_in": "#177 base",
+      "file": "scripts/architecture_boundary_check.py",
+      "symbol": "_imports / inspect_file",
+      "lines_at_audited_head": [
+        32,
+        40
+      ],
+      "summary": "Relative imports ('from .effect_authority import x', 'from . import runtime') and dynamic imports (importlib/__import__) were not resolved -> false PASS.",
+      "reproduction": "test_boundary_check_flags_relative_and_dynamic_imports.",
+      "impact": "Report-only gate could not have detected the most likely violation form (core modules use relative imports)."
+    },
+    {
+      "id": "F-15",
+      "severity": "P2",
+      "evidence_state": "FACT",
+      "status": "OPEN",
+      "introduced_or_exposed_in": "#177 base",
+      "file": "core/wal_state_store.py",
+      "symbol": "load",
+      "lines_at_audited_head": [
+        194,
+        201
+      ],
+      "summary": "If WAL has no state record (file deleted/emptied) load() trusts the snapshot JSON, which is unauthenticated.",
+      "reproduction": "Code inspection.",
+      "impact": "WAL deletion downgrades recovery source to plain JSON."
+    },
+    {
+      "id": "F-16",
+      "severity": "P3",
+      "evidence_state": "FACT",
+      "status": "OPEN",
+      "introduced_or_exposed_in": "#180",
+      "file": "core/effect_identity.py",
+      "symbol": "operation_identity",
+      "lines_at_audited_head": [
+        38,
+        42
+      ],
+      "summary": "attempt defaults to 1 and run_durable_loop never passes another value; there is no governed retry-attempt path for one logical operation.",
+      "reproduction": "Code inspection.",
+      "impact": "Retry of the same logical op is impossible by design; callers must vary logical_operation_id (PCB uses ':step-N')."
+    }
+  ]
+}
