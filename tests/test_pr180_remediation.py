@@ -148,6 +148,21 @@ def test_repeated_recovery_is_idempotent(tmp_path, monkeypatch):
         assert again == first and adapter.calls == 1
 
 
+def test_recomputed_action_result_must_match_durable_recovery_record(tmp_path, monkeypatch):
+    executor, policy, cid, adapter, store = _leave_receipt_validated(tmp_path, monkeypatch)
+    intent = store.raw["in_flight_attempt"]
+    before = json.loads(json.dumps(store.raw))
+    with pytest.raises(ValueError, match="recomputed action result differs"):
+        durable_loop.reconcile_in_flight_attempt(
+            store, policy, intent["validated_receipt"],
+            authorizer=lambda pending, receipt: None,
+            verification=intent["validated_verification"],
+            action_result={"forged": "different-action"},
+        )
+    assert store.raw == before
+    assert adapter.calls == 1
+
+
 def _rebind(intent):
     intent["recovery_binding"] = _recovery_binding(
         intent, intent["validated_receipt"], intent["validated_state_patch"],
