@@ -34,10 +34,14 @@ pytestmark = pytest.mark.skipif(not m._FD_SAFE, reason="requires POSIX dir_fd/O_
 
 ATTACKER_UID = 65534
 _HAVE_SETPRIV = shutil.which("setpriv") is not None
+_IS_ROOT = hasattr(os, "geteuid") and os.geteuid() == 0
+# AIOS_L5_REQUIRE_PRIVILEGED=1 (privileged CI job): prerequisites are mandatory,
+# so these tests RUN and fail instead of being silently skipped.
+_REQUIRE = os.environ.get("AIOS_L5_REQUIRE_PRIVILEGED") == "1"
 needs_uid_switch = pytest.mark.skipif(
-    not (hasattr(os, "geteuid") and os.geteuid() == 0 and _HAVE_SETPRIV),
+    not (_IS_ROOT and _HAVE_SETPRIV) and not _REQUIRE,
     reason="real different-UID test needs root + setpriv to run commands as uid 65534")
-needs_root = pytest.mark.skipif(not (hasattr(os, "geteuid") and os.geteuid() == 0),
+needs_root = pytest.mark.skipif(not _IS_ROOT and not _REQUIRE,
                                 reason="needs root to chown objects to a foreign uid")
 
 
@@ -445,7 +449,7 @@ def test_B4_store_root_or_ancestor_altered_after_initialisation(tmp_path, which)
     elif which == "ancestor_mode":
         os.chmod(aios.parent, 0o777)                    # group/other-writable, no sticky bit
     else:
-        if os.geteuid() != 0:
+        if os.geteuid() != 0 and not _REQUIRE:
             pytest.skip("needs root to chown the store root to a foreign uid")
         os.chown(aios, ATTACKER_UID, ATTACKER_UID)
     with pytest.raises(m.L5UnsafeLayoutError):

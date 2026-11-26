@@ -32,6 +32,27 @@ ACLs and Linux capabilities are not inspected. Only owner and permission bits ar
 - **Legacy layouts**: a pre-existing euid-owned 0755 protected directory is tightened to 0700 explicitly. Group/other *write* bits are never tightened silently; they block.
 - **File opens**: regular files are type-checked with `lstat` before `open()` (FIFOs and devices are never opened). They are then opened `O_NOFOLLOW|O_NONBLOCK`, and the inode is compared with the `lstat` result.
 
+## 2a. Store path bootstrap (review fix F4a/F4b)
+
+- The caller's path is never passed to `realpath()` or `os.makedirs()`. It is resolved from `/` one component at a time, each directory opened `O_NOFOLLOW|O_DIRECTORY` relative to an already-validated FD and checked against the ancestor rule (the final one against the store-root rule).
+- A symlink is followed only if the directory containing it is already trusted and the link itself is owned by root or the euid (the `fs.protected_symlinks` rule). At most 40 hops. `..` is applied physically to the FD stack (kernel semantics), never lexically.
+- A missing component is created with `mkdirat` inside the validated parent, then re-checked: it must still be a euid-owned directory. It then gets mode 0755 via `fchmod`. The standard state directories are created the same way, relative to the root FD.
+- Consequence: an attacker-owned or attacker-writable component anywhere in the supplied path (including a symlink planted in such a directory) makes L5 refuse the store before anything is created or written.
+
+## 2b. ACLs and capabilities (review F11)
+
+| Mechanism | Behaviour | Evidence |
+|---|---|---|
+| Linux POSIX access ACL | For an inode with an ACL, the group permission bits report the ACL **mask**. So any *effective* named-user/group write grant shows as `g+w`, and the existing mode checks refuse it. A grant masked out (mask without `w`) is not effective. | VERIFIED (ext4, tests F11) |
+| Linux POSIX default ACL | Inherited entries on objects L5 creates are neutralised: every L5-created object gets an explicit mode (0700/0600/0755/0644), which sets the mask. | VERIFIED (real uid 65534 denied) |
+| NFSv4 ACLs, macOS/BSD extended ACLs (`chmod +a`), Windows ACLs, richacl | Not reflected in mode bits; not inspected | UNKNOWN |
+| SELinux/AppArmor labels, immutable/append-only attributes | Not inspected | UNKNOWN |
+| Processes with `CAP_DAC_OVERRIDE`, `CAP_DAC_READ_SEARCH`, `CAP_FOWNER`, `CAP_CHOWN`, `CAP_SYS_ADMIN`, `CAP_LINUX_IMMUTABLE` | Root-equivalent for the store | out of scope (same as root) |
+
+L5 itself needs no capabilities. A service running as root trusts root-owned ancestors and protects nothing against other root processes.
+
+**Known residual: the lock file lives in the store's parent directory.** When a store root sits directly in a shared sticky directory (e.g. `/tmp/<x>` created by `tempfile`), another user can pre-create `<parent>/.aios.mutation.lock`. L5 then refuses (foreign owner): denial of service, not bypass. Stores should not be placed directly in shared directories.
+
 ## 3. State machine
 
 Each transition atomically replaces `state.json` (new inode, then fsync of the file and of `.l5`).
@@ -48,6 +69,14 @@ Each transition atomically replaces `state.json` (new inode, then fsync of the f
 
 - **Crash between the journal rename and the batch-directory fsync**: still PREPARED, so recovery aborts. The commit point is the state file, not the journal.
 - **Failure after the COMMIT_POINT rename** (for example an fsync error): raises `RecoveryIncompleteError` (ambiguous outcome). Recovery decides from what is on disk.
+
+Crash testing (`scripts/l5_recovery_crash_sweep.py`) interrupts the k-th call of every persistence primitive in both `commit_batch()` and `recover_pending()`, using four modes:
+- in-process `OSError(EIO)`;
+- in-process `BaseException`;
+- child `os._exit(9)`: process death without Python cleanup, **not a signal**;
+- child self-delivered `SIGKILL`.
+
+After each interruption it runs recovery repeatedly and checks an exact oracle. None of these modes drops the page cache, so **real power loss remains UNKNOWN.**
 
 ## 4. Recovery CAS
 

@@ -596,36 +596,125 @@ class _Layout:
             _check_protected_dir(os.fstat(fd), name, self.root_dev, readonly=self.readonly)
 
 
-def _open_root(aios_dir):
-    """Walk the resolved store path from '/' with O_NOFOLLOW; return (parent_fd, root_fd, name)."""
-    real = os.path.realpath(aios_dir)
-    parts = [p for p in real.split(os.sep) if p]
-    if not parts:
-        raise L5UnsafeLayoutError("L5 BLOCKED: the filesystem root cannot be an L5 store")
-    fds = [os.open(os.sep, os.O_RDONLY | os.O_DIRECTORY | _CLOEXEC)]
+_MAX_SYMLINK_HOPS = 40
+
+
+def _path_components(path):
+    """Components of ``path`` as given (no realpath, no lexical '..' folding).
+
+    A relative path is anchored at the physical working directory.
+    """
+    path = os.fspath(path) if isinstance(path, os.PathLike) else path
+    if not isinstance(path, str) or not path or "\x00" in path:
+        raise L5UnsafeLayoutError("L5 BLOCKED: store path must be a non-empty string")
+    if not os.path.isabs(path):
+        path = os.getcwd() + os.sep + path
+    return [c for c in path.split(os.sep) if c not in ("", os.curdir)]
+
+
+def _open_root(aios_dir, create=False):
+    """Resolve the store path from '/' one component at a time; return (parent_fd, root_fd, name).
+
+    Nothing is resolved by pathname before it is validated (no realpath):
+      * every directory reached is opened O_NOFOLLOW|O_DIRECTORY relative to an
+        already-validated parent FD and must satisfy the ancestor rule (owner
+        root/euid; not group/other-writable unless sticky); the final one must
+        satisfy the store-root rule;
+      * a symlink is followed only when the directory containing it is already
+        trusted and the link itself is owned by root or the euid (the
+        fs.protected_symlinks rule), at most _MAX_SYMLINK_HOPS times; '..' is
+        applied physically to the FD stack;
+      * with ``create``, a missing component is created with mkdirat inside the
+        validated parent, re-opened O_NOFOLLOW, checked to be euid-owned and
+        given mode 0755 explicitly (no path-based os.makedirs).
+    """
+    euid = os.geteuid()
+    pending = _path_components(aios_dir)
+    stack = [os.open(os.sep, os.O_RDONLY | os.O_DIRECTORY | _CLOEXEC)]
+    names = [os.sep]
+    hops = 0
     try:
-        _check_ancestor(os.fstat(fds[0]), os.sep)
-        cur = ""
-        for i, comp in enumerate(parts):
-            cur = cur + os.sep + comp
+        _check_ancestor(os.fstat(stack[0]), os.sep)
+        while pending:
+            comp = pending.pop(0)
+            if comp == os.curdir:
+                continue
+            if comp == os.pardir:
+                if len(stack) > 1:
+                    os.close(stack.pop())
+                    names.pop()
+                continue
+            parent, label = stack[-1], os.path.join(*names, comp)
             try:
-                fds.append(os.open(comp, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | _CLOEXEC,
-                                   dir_fd=fds[-1]))
+                st = os.stat(comp, dir_fd=parent, follow_symlinks=False)
+            except FileNotFoundError:
+                if not create:
+                    raise
+                created = False
+                try:
+                    os.mkdir(comp, 0o700, dir_fd=parent)
+                    created = True
+                except FileExistsError:
+                    pass
+                st = os.stat(comp, dir_fd=parent, follow_symlinks=False)
+                if created and not (stat.S_ISDIR(st.st_mode) and st.st_uid == euid):
+                    raise L5UnsafeLayoutError(f"L5 BLOCKED: {label!r} was replaced right after creation")
+                if created:
+                    fd = os.open(comp, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | _CLOEXEC, dir_fd=parent)
+                    os.fchmod(fd, _DEST_NEW_DIR_MODE)
+                    os.close(fd)
+                    st = os.stat(comp, dir_fd=parent, follow_symlinks=False)
+            if stat.S_ISLNK(st.st_mode):
+                hops += 1
+                if hops > _MAX_SYMLINK_HOPS:
+                    raise L5UnsafeLayoutError(f"L5 BLOCKED: too many symlinks resolving {aios_dir!r}")
+                if st.st_uid not in (0, euid):
+                    raise L5UnsafeLayoutError(
+                        f"L5 BLOCKED: symlink {label!r} is owned by uid {st.st_uid}; not followed")
+                target = os.readlink(comp, dir_fd=parent)
+                if not target or "\x00" in target:
+                    raise L5UnsafeLayoutError(f"L5 BLOCKED: symlink {label!r} has an invalid target")
+                if os.path.isabs(target):
+                    _close_all(stack[1:])
+                    del stack[1:]
+                    del names[1:]
+                pending = [c for c in target.split(os.sep) if c not in ("", os.curdir)] + pending
+                continue
+            try:
+                fd = os.open(comp, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | _CLOEXEC, dir_fd=parent)
             except OSError as exc:
                 if exc.errno in _ESCAPE_ERRNOS:
-                    raise L5UnsafeLayoutError(f"L5 BLOCKED: {cur!r} changed into a symlink") from exc
+                    raise L5UnsafeLayoutError(f"L5 BLOCKED: {label!r} changed or is not a directory") from exc
                 raise
-            st = os.fstat(fds[-1])
-            if i == len(parts) - 1:
-                _check_store_root(st, cur)
-            else:
-                _check_ancestor(st, cur)
-        parent_fd, root_fd = fds[-2], fds[-1]
-        _close_all(fds[:-2])
-        return parent_fd, root_fd, parts[-1]
+            stack.append(fd)
+            names.append(comp)
+            fst = os.fstat(fd)
+            if (fst.st_dev, fst.st_ino) != (st.st_dev, st.st_ino):
+                raise L5UnsafeLayoutError(f"L5 BLOCKED: {label!r} changed between validation and open")
+            _check_ancestor(fst, label)
+        if len(stack) < 2:
+            raise L5UnsafeLayoutError("L5 BLOCKED: the filesystem root cannot be an L5 store")
+        _check_store_root(os.fstat(stack[-1]), os.path.join(*names))
+        parent_fd, root_fd = stack[-2], stack[-1]
+        _close_all(stack[:-2])
+        return parent_fd, root_fd, names[-1]
     except BaseException:
-        _close_all(fds)
+        _close_all(stack)
         raise
+
+
+def _ensure_state_dirs_at(root_fd):
+    """FD-relative replacement for state.ensure_state_dirs (create missing only)."""
+    for name in state_layout.STATE_DIRS:
+        try:
+            os.mkdir(name, 0o700, dir_fd=root_fd)
+        except FileExistsError:
+            continue          # existing entries are validated when used as destinations
+        fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | _CLOEXEC, dir_fd=root_fd)
+        try:
+            os.fchmod(fd, _DEST_NEW_DIR_MODE)
+        finally:
+            os.close(fd)
 
 
 def _open_protected(lay, create, tighten=None):
@@ -692,8 +781,7 @@ class _MutationLock:
     def __enter__(self):
         _require_fd_safe()
         import fcntl
-        os.makedirs(self.aios_dir, exist_ok=True)
-        parent_fd, root_fd, name = _open_root(self.aios_dir)
+        parent_fd, root_fd, name = _open_root(self.aios_dir, create=True)
         lay = _Layout()
         lay.aios_dir, lay.parent_fd, lay.root_fd, lay.root_name = self.aios_dir, parent_fd, root_fd, name
         try:
@@ -712,9 +800,9 @@ class _MutationLock:
             named = os.stat(_LOCK_NAME, dir_fd=parent_fd, follow_symlinks=False)
             if (named.st_dev, named.st_ino) != (st.st_dev, st.st_ino):
                 raise L5UnsafeLayoutError("L5 BLOCKED: lock file was replaced while acquiring it")
-            # Standard state directories are created only after the store root
-            # and ancestors are proven not to be attacker-writable.
-            state_layout.ensure_state_dirs(self.aios_dir)
+            # Standard state directories are created relative to the validated
+            # root FD, only after the root and ancestors are proven trusted.
+            _ensure_state_dirs_at(root_fd)
             _open_protected(lay, create=self.create, tighten=True)
             lay.verify()
             self.layout = lay

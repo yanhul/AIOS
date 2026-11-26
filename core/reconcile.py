@@ -28,7 +28,8 @@ import json
 import os
 
 from .importer import import_entities
-from .mutation import canonical_json, validate_entity
+from .mutation import (L5PlatformUnsupportedError, L5UnsafeLayoutError, canonical_json, inspect_pending,
+                       validate_entity)
 from .verification import (
     AUTHORITY as VERIFICATION_AUTHORITY,
     OUTCOME_UNSUPPORTED,
@@ -161,6 +162,64 @@ def _check_source_divergence(aios_dir, source_root, store, add):
             add("H.source_divergence.changed", "INCONSISTENT",
                 f"{etype} {eid}: kind=changed; source_digest={src}; "
                 f"store_digest={st}")
+
+
+def _read_untracked_journal(batch_dir):
+    """Classify an untracked batch's journal without following symlinks.
+
+    Returns (name, None) for a parseable journal, (name, error) for an
+    unreadable one, or (None, None) when the batch has no journal at all.
+    Untracked journals are reported, never executed.
+    """
+    for name in ("journal.v3.json", "journal.v2.json", "journal.json"):
+        path = os.path.join(batch_dir, name)
+        if not os.path.lexists(path):
+            continue
+        try:
+            fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        except OSError as exc:
+            return name, f"unreadable: {type(exc).__name__}"
+        try:
+            with os.fdopen(fd, "rb") as fh:
+                json.loads(fh.read().decode("utf-8"))
+        except (OSError, ValueError, UnicodeError) as exc:
+            return name, f"not valid JSON: {type(exc).__name__}"
+        return name, None
+    return None, None
+
+
+def _reconcile_l5(aios_dir, add):
+    """Report L5 commit state from the protected state (journal v3 aware)."""
+    try:
+        inv = inspect_pending(aios_dir)
+    except L5PlatformUnsupportedError as exc:
+        add("F.l5_unverifiable", "UNSUPPORTED", str(exc))
+        return
+    except L5UnsafeLayoutError as exc:
+        add("F.l5_unsafe_layout", "CORRUPTED", str(exc))
+        return
+    phase = inv["phase"]
+    if phase == "QUARANTINED":
+        add("F.quarantined_transaction", "CORRUPTED",
+            "an authorised L5 transaction is quarantined; operator resolution required")
+    elif phase not in (None, "IDLE"):
+        add("F.pending_transaction", "PENDING",
+            f"L5 transaction in phase {phase}; recover_pending() will resolve it")
+    for entry in inv["pending"]:
+        if entry["classification"] != "UNTRACKED":
+            continue  # the batch named by protected state (reported above)
+        name = entry["batch"]
+        jname, err = _read_untracked_journal(os.path.join(aios_dir, ".staging", name))
+        if jname is None:
+            add("F.orphan_staging", "INCONSISTENT",
+                f"staging entry not referenced by protected L5 state: {name}")
+        elif err is not None:
+            add("F.corrupt_journal", "CORRUPTED", f"{name}/{jname}: {err}")
+        else:
+            add("F.untracked_journal", "CORRUPTED",
+                f"{name}/{jname} is not authorised by protected L5 state; it will be quarantined, never executed")
+    for qid in inv["quarantined"]:
+        add("F.unresolved_quarantine", "CORRUPTED", f"unresolved L5 quarantine entry: {qid}")
 
 
 def reconcile(aios_dir, source_root=None):
@@ -354,39 +413,13 @@ def reconcile(aios_dir, source_root=None):
                         "INCONSISTENT",
                         f"{entry}: {key} snapshot_id differs from store")
 
-    # ---- F: staging / journals ----------------------------------------------
-    staging = os.path.join(aios_dir, ".staging")
-    if os.path.isdir(staging):
-        for entry in sorted(os.listdir(staging)):
-            bdir = os.path.join(staging, entry)
-            journal = os.path.join(bdir, "journal.json")
-            if not os.path.isfile(journal):
-                add("F.orphan_staging", "INCONSISTENT",
-                    f"staging batch without journal: {entry}")
-                continue
-            jdata, err = _read_json(journal)
-            if jdata is None:
-                add("F.corrupt_journal", "CORRUPTED", f"{journal}: {err}")
-                continue
-            ops = jdata.get("ops", [])
-            unresolved_ops = 0
-            for op in ops:
-                dest_exists = os.path.exists(op.get("dest", ""))
-                tmp_exists = os.path.exists(op.get("tmp", ""))
-                if dest_exists and tmp_exists:
-                    unresolved_ops += 1  # replace succeeded? temps linger: odd
-                elif not dest_exists and not tmp_exists:
-                    add("F.corrupt_journal", "CORRUPTED",
-                        f"journal op has neither temp nor dest: {op.get('dest')}")
-            if err is None:
-                add("F.pending_transaction", "PENDING",
-                    f"unresolved journaled batch: {entry} "
-                    f"({len(ops)} ops, {unresolved_ops} ambiguous)")
+    # ---- F: protected L5 state / staging / quarantine (read-only) ---------
+    _reconcile_l5(aios_dir, add)
 
     # ---- G: unexpected top-level entries ------------------------------------
     if os.path.isdir(aios_dir):
         for entry in sorted(os.listdir(aios_dir)):
-            if entry not in _MANAGED_DIRS and entry not in (".staging", ".l5"):
+            if entry not in _MANAGED_DIRS and entry not in (".staging", ".l5", ".quarantine"):
                 add("G.unexpected_entry", "UNSUPPORTED",
                     f"unrecognized entry under .aios/: {entry}")
 

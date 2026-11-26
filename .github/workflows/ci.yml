@@ -88,6 +88,33 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+  # Root-dependent L5 trust-boundary tests (real different UIDs, chown, ACL
+  # xattrs). Skips are failures here (AIOS_L5_REQUIRE_PRIVILEGED=1), the
+  # mutation gate must kill every mutant incl. M13/M14/M15, and the
+  # commit/recovery crash sweeps (eio/exc/os._exit/SIGKILL) must be clean.
+  # None of this is a power-loss test.
+  l5-privileged:
+    name: l5-privileged (root, Python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pytest PyYAML cryptography
+      - name: Privileged L5 tests, mutation gate and crash sweeps
+        run: sudo --preserve-env=GITHUB_SHA bash scripts/l5_privileged_ci.sh "$GITHUB_WORKSPACE" "$(command -v python)" /tmp/aios-l5-privileged-logs
+      - name: Upload L5 privileged evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: l5-privileged-${{ github.run_id }}
+          path: /tmp/aios-l5-privileged-logs/
+          if-no-files-found: error
+          retention-days: 30
+
   # Non-production readiness report: MiniMind capability BLOCKED/INCONCLUSIVE is reported, not hidden,
   # and does not make full-suite green or red. Dispatch with require_minimind_production=true to make it
   # a hard production gate. Do not add this check to branch protection as evidence of runtime readiness.
