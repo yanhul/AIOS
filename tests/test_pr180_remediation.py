@@ -362,16 +362,14 @@ def test_corrupt_or_pending_journal_untouched_by_verification(tmp_path, monkeypa
             result = ea.verify_effect_ledger(aios, eid)
             assert result["verdict"] == "UNKNOWN" and result["status"] == "PENDING_RECOVERY"
         assert _snapshot(aios) == before and batch.is_dir()
-    # Recovery happens only through the explicit recovery API.
-    if content is None:
+    # Recovery happens only through the explicit recovery API. F-03/F-04 P0:
+    # a batch not named by protected L5 state (even an empty one) is never
+    # executed or silently swept; it is quarantined as evidence.
+    with pytest.raises(mutation.LedgerBlockedError, match="untracked staging entries"):
         ea.recover_pending(aios)
-        assert not batch.exists()
-        assert ea.verify_effect_ledger(aios, eid)["verdict"] == "VERIFIED"
-    else:
-        with pytest.raises(mutation.LedgerBlockedError):
-            ea.recover_pending(aios)
-        assert (Path(aios) / mutation.QUARANTINE_DIR / "batch-adversarial").is_dir()
-        assert ea.verify_effect_ledger(aios, eid)["verdict"] == "UNKNOWN"
+    assert not batch.exists()
+    assert [q for q in os.listdir(Path(aios) / mutation.QUARANTINE_DIR) if q.startswith("batch-adversarial~")]
+    assert ea.verify_effect_ledger(aios, eid)["verdict"] == "UNKNOWN"
 
 
 def test_unresolved_quarantine_is_unknown_not_verified(tmp_path):

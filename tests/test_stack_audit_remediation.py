@@ -1,3 +1,8 @@
+# AIOS-CONTRACT: Mixed stack-audit regressions; L5 planted batches are quarantined, never executed.
+# AIOS-REGRESSION: Planted journal rolled forward outside the store (stack audit).
+# AIOS-OWNER: AIOS control-plane effect ledger (L5)
+# AIOS-COVERAGE-GAP: Only the two L5 tests changed (F-03/F-04 P0).
+# AIOS-BASELINE: audit baseline 74941fff2d28e1955c4b1ca263a2d866ac90d56d
 import json, sys
 import pytest
 from pathlib import Path
@@ -30,7 +35,8 @@ def _evil_batch(aios, tmp_dest, dest):
     payload = b"attacker-controlled\n"
     tmp_dest.write_bytes(payload)
     ops = [{"tmp": str(tmp_dest), "dest": str(dest), "digest": hashlib.sha256(payload).hexdigest()}]
-    j = {"format": 2, "batch_id": "evil", "ops": ops, "body_digest": m._journal_body_digest("evil", ops)}
+    body = hashlib.sha256(m.canonical_json({"batch_id": "evil", "ops": ops}).encode()).hexdigest()
+    j = {"format": 2, "batch_id": "evil", "ops": ops, "body_digest": body}  # attacker-computed, unkeyed
     (batch / "journal.v2.json").write_text(m.canonical_json(j))
     return batch
 
@@ -40,10 +46,11 @@ def test_rollforward_quarantines_dest_outside_store(tmp_path):
     victim = tmp_path / "outside.txt"
     (aios / ".staging" / "batch-evil").mkdir(parents=True)
     _evil_batch(aios, aios / ".staging" / "batch-evil" / "x.tmp", victim)
-    with pytest.raises(m.LedgerBlockedError):
-        m.recover_pending(str(aios))
+    with pytest.raises(m.LedgerBlockedError, match="untracked staging entries"):
+        m.recover_pending(str(aios))  # F-03/F-04 P0: planted batches are never executed
     assert not victim.exists()
-    assert m.unresolved_quarantine(str(aios)) == ["batch-evil"]
+    [qid] = m.unresolved_quarantine(str(aios))
+    assert qid.startswith("batch-evil~")
 
 
 def test_rollforward_quarantines_tmp_outside_batch(tmp_path):
@@ -51,7 +58,7 @@ def test_rollforward_quarantines_tmp_outside_batch(tmp_path):
     outside_tmp = tmp_path / "planted.tmp"
     dest = aios / "entities" / "x.json"
     _evil_batch(aios, outside_tmp, dest)
-    with pytest.raises(m.LedgerBlockedError):
+    with pytest.raises(m.LedgerBlockedError, match="untracked staging entries"):
         m.recover_pending(str(aios))
     assert not dest.exists() and outside_tmp.exists()
 

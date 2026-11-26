@@ -1,3 +1,8 @@
+# AIOS-CONTRACT: Staged payloads are installed only as new, digest-verified, service-owned inodes of an authorised txn.
+# AIOS-REGRESSION: Content TOCTOU, hard-link aliasing, fsync/copy failure reported as success (F-02 P1).
+# AIOS-OWNER: AIOS control-plane effect ledger (L5)
+# AIOS-COVERAGE-GAP: Attacks now target the residue of a real committed txn.
+# AIOS-BASELINE: audit baseline 74941fff2d28e1955c4b1ca263a2d866ac90d56d
 """F-02 staged-payload integrity: content TOCTOU, hard-link aliasing, I/O
 failure injection, cleanup safety and replay. Each test establishes the
 attack precondition and asserts the on-disk outcome."""
@@ -11,16 +16,18 @@ from pathlib import Path
 import pytest
 
 from core import mutation as m
+from tests.l5_helpers import assert_txn_quarantined, inflight, staged_files, state
 
 pytestmark = pytest.mark.skipif(not m._FD_SAFE, reason="requires dir_fd/O_NOFOLLOW (see test_fd_safe_on_linux)")
 
-GOOD = b'{"good": true}\n'
-EVIL = b'{"evil": true}\n'
+GOOD_OBJ, EVIL_OBJ = {"good": True}, {"evil": True}
+GOOD = b'{"good":true}\n'
+EVIL = b'{"evil":true}\n'
 _real_read, _real_fsync, _real_unlink = os.read, os.fsync, os.unlink
 
-
-def _sha(b):
-    return hashlib.sha256(b).hexdigest()
+# F-03/F-04 P0: every scenario attacks the residue of a REAL committed
+# transaction (crashed after its commit point), because planted batches are
+# never executed at all (tests/test_l5_p0_remediation.py).
 
 
 def _store(tmp_path):
@@ -32,18 +39,11 @@ def _store(tmp_path):
     return aios, outside
 
 
-def _batch(aios, name="batch-a", ops=None, write=True):
-    """ops: list of (tmp_name, rel_dest, bytes). Journal digest = sha(bytes)."""
-    batch = aios / ".staging" / name
-    batch.mkdir(parents=True, exist_ok=True)
-    jops = []
-    for tmp_name, rel, data in ops or [("x.tmp", "entities/x.json", GOOD)]:
-        if write:
-            (batch / tmp_name).write_bytes(data)
-        jops.append({"tmp": str(batch / tmp_name), "dest": str(aios / rel), "digest": _sha(data)})
-    j = {"format": 2, "batch_id": name, "ops": jops, "body_digest": m._journal_body_digest(name, jops)}
-    (batch / "journal.v2.json").write_text(m.canonical_json(j))
-    return batch
+def _batch(aios, monkeypatch, obj=None):
+    """In-flight committed txn for entities/x.json; returns (batch, staged path)."""
+    batch = inflight(aios, [("entities/x.json", GOOD_OBJ if obj is None else obj)], monkeypatch)
+    (staged,) = staged_files(batch)
+    return batch, staged
 
 
 def _tree(root):
@@ -60,12 +60,9 @@ def _l5tmps(root):
     return [p for p in _tree(root) if p.endswith(m._DEST_TMP_SUFFIX)]
 
 
-def _assert_quarantined(aios, name="batch-a"):
-    with pytest.raises(m.LedgerBlockedError) as ei:
-        m.recover_pending(str(aios))
-    assert not isinstance(ei.value, m.RecoveryIncompleteError)
-    assert name in m.unresolved_quarantine(str(aios))
-    return ei.value
+def _assert_quarantined(aios):
+    qid = assert_txn_quarantined(aios)
+    return Path(aios, m.QUARANTINE_DIR, qid, "evidence")
 
 
 def test_fd_safe_on_linux():
@@ -74,27 +71,27 @@ def test_fd_safe_on_linux():
         assert m._FD_SAFE
 
 
-# --- 1. pathname replaced after early digest check --------------------------
+# --- 1. pathname replaced after the CAS check ------------------------------
 
-def test_staged_path_replaced_after_digest_check_is_not_committed(tmp_path, monkeypatch):
+def test_staged_path_replaced_after_cas_check_is_not_committed(tmp_path, monkeypatch):
     aios, _ = _store(tmp_path)
-    (aios / "entities" / "x.json").write_bytes(b"committed-before\n")
-    batch = _batch(aios)
-    real, swapped = m._digest_staged_confined, {"v": False}
+    batch, staged = _batch(aios, monkeypatch)
+    real, swapped = m._dest_state_at, {"v": False}
 
     def hook(*args):
-        out = real(*args)  # descriptor-relative early check sees GOOD
+        out = real(*args)
         if not swapped["v"]:
             swapped["v"] = True
-            os.unlink(batch / "x.tmp")
-            (batch / "x.tmp").write_bytes(EVIL)  # different regular file
+            os.unlink(staged)
+            fd = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            os.write(fd, EVIL)  # different regular file, service-owned, 0600
+            os.close(fd)
         return out
-    monkeypatch.setattr(m, "_digest_staged_confined", hook)
-    _assert_quarantined(aios)
+    monkeypatch.setattr(m, "_dest_state_at", hook)
+    evidence = _assert_quarantined(aios)
     assert swapped["v"]
-    assert (aios / "entities" / "x.json").read_bytes() == b"committed-before\n"
-    q = aios / m.QUARANTINE_DIR / "batch-a" / "x.tmp"
-    assert q.read_bytes() == EVIL  # evidence: the swap really happened
+    assert not (aios / "entities" / "x.json").exists()
+    assert (evidence / staged.name).read_bytes() == EVIL  # evidence: the swap really happened
     assert _l5tmps(aios) == []
 
 
@@ -102,60 +99,63 @@ def test_staged_path_replaced_after_digest_check_is_not_committed(tmp_path, monk
 
 def test_inplace_write_to_open_staged_inode_during_copy_is_refused(tmp_path, monkeypatch):
     aios, _ = _store(tmp_path)
-    data = b"A" * 64
-    batch = _batch(aios, ops=[("x.tmp", "entities/x.json", data)])
+    batch, staged = _batch(aios, monkeypatch, {"a": "A" * 64})
     monkeypatch.setattr(m, "_COPY_CHUNK", 8)
-    staged = batch / "x.tmp"
-
     ino = staged.stat().st_ino
     real_apply = m._apply_op
     active, calls = {"value": False}, {"n": 0}
+
     def apply(*args, **kwargs):
         active["value"] = True
         return real_apply(*args, **kwargs)
+
     def read(fd, size):
         if active["value"] and os.fstat(fd).st_ino == ino:
             calls["n"] += 1
             if calls["n"] == 2:  # first chunk was already copied to the destination temp
                 with open(staged, "r+b") as fh:
-                    fh.seek(32)
+                    fh.seek(16)
                     fh.write(b"Z" * 8)
         return _real_read(fd, size)
     monkeypatch.setattr(m, "_apply_op", apply)
     monkeypatch.setattr(m.os, "read", read)
-    _assert_quarantined(aios)
+    evidence = _assert_quarantined(aios)
     assert calls["n"] >= 2
     assert not (aios / "entities" / "x.json").exists()
-    assert b"Z" in (aios / m.QUARANTINE_DIR / "batch-a" / "x.tmp").read_bytes()
+    assert b"Z" in (evidence / staged.name).read_bytes()
     assert _l5tmps(aios) == []
 
 
 # --- 3/4. hard-link aliasing --------------------------------------------------
 
-def test_staged_hard_link_to_outside_file_is_refused(tmp_path):
+def test_staged_hard_link_to_outside_file_is_refused(tmp_path, monkeypatch):
     aios, outside = _store(tmp_path)
+    batch, staged = _batch(aios, monkeypatch)
     src = outside / "src.json"
     src.write_bytes(GOOD)
-    batch = _batch(aios, write=False)
-    os.link(src, batch / "x.tmp")
-    assert (batch / "x.tmp").stat().st_ino == src.stat().st_ino  # precondition
+    os.chmod(src, 0o600)
+    staged.unlink()
+    os.link(src, staged)
+    assert staged.stat().st_ino == src.stat().st_ino  # precondition
     _assert_quarantined(aios)
     assert not (aios / "entities" / "x.json").exists()
     assert src.read_bytes() == GOOD
 
 
 def test_link_created_during_copy_does_not_alias_installed_file(tmp_path, monkeypatch):
+    """Copy-to-new-inode invariant: a link taken during the copy names the
+    staged inode, never the installed one."""
     aios, outside = _store(tmp_path)
-    batch = _batch(aios)
-    staged = batch / "x.tmp"
+    batch, staged = _batch(aios, monkeypatch)
     ino = staged.stat().st_ino
     alias = outside / "alias.json"
     real_apply = m._apply_op
-    active = {"value": False}
-    calls = {"n": 0}
+    active, calls = {"value": False}, {"n": 0}
+
     def apply(*args, **kwargs):
         active["value"] = True
         return real_apply(*args, **kwargs)
+
     def read(fd, size):
         if active["value"] and os.fstat(fd).st_ino == ino:
             calls["n"] += 1
@@ -183,26 +183,29 @@ def test_commit_batch_installs_independent_inode(tmp_path):
 
 # --- 5/6/7. failure injection ------------------------------------------------
 
-def _assert_retained_then_replays(aios, dest_bytes=GOOD):
-    assert (aios / ".staging" / "batch-a" / "journal.v2.json").exists()
+def _assert_retained_then_replays(aios, batch, dest_bytes=GOOD):
+    assert (batch / "journal.v3.json").exists()
+    assert state(aios)["phase"] == "APPLYING"
     assert m.unresolved_quarantine(str(aios)) == []
     assert _l5tmps(aios) == []
     m.recover_pending(str(aios))  # clean replay completes
     assert (aios / "entities" / "x.json").read_bytes() == dest_bytes
-    assert not (aios / ".staging" / "batch-a").exists()
+    assert not batch.exists() and state(aios)["phase"] == "IDLE"
 
 
 def test_failure_during_copy_leaves_nothing_committed(tmp_path, monkeypatch):
     aios, _ = _store(tmp_path)
-    batch = _batch(aios, ops=[("x.tmp", "entities/x.json", GOOD * 20)])
+    obj = {"g": "x" * 300}
+    batch, staged = _batch(aios, monkeypatch, obj)
     monkeypatch.setattr(m, "_COPY_CHUNK", 16)
-
-    ino = (batch / "x.tmp").stat().st_ino
+    ino = staged.stat().st_ino
     real_apply = m._apply_op
     active, calls = {"value": False}, {"n": 0}
+
     def apply(*args, **kwargs):
         active["value"] = True
         return real_apply(*args, **kwargs)
+
     def read(fd, size):
         if active["value"] and os.fstat(fd).st_ino == ino:
             calls["n"] += 1
@@ -215,12 +218,12 @@ def test_failure_during_copy_leaves_nothing_committed(tmp_path, monkeypatch):
         m.recover_pending(str(aios))
     assert not (aios / "entities" / "x.json").exists()
     monkeypatch.setattr(m.os, "read", _real_read)
-    _assert_retained_then_replays(aios, GOOD * 20)
+    _assert_retained_then_replays(aios, batch, (m.canonical_json(obj) + "\n").encode())
 
 
 def test_failure_during_digest_verification_is_not_success(tmp_path, monkeypatch):
     aios, _ = _store(tmp_path)
-    _batch(aios)
+    batch, _staged = _batch(aios, monkeypatch)
 
     class Broken:
         def update(self, _):
@@ -233,18 +236,24 @@ def test_failure_during_digest_verification_is_not_success(tmp_path, monkeypatch
         m.recover_pending(str(aios))
     assert not (aios / "entities" / "x.json").exists()
     monkeypatch.setattr(m, "_new_digest", hashlib.sha256)
-    _assert_retained_then_replays(aios)
+    _assert_retained_then_replays(aios, batch)
 
 
 @pytest.mark.parametrize("kind", ["file", "dir"])
 def test_fsync_failure_is_not_reported_as_success(tmp_path, monkeypatch, kind):
     aios, _ = _store(tmp_path)
-    _batch(aios)
+    batch, _staged = _batch(aios, monkeypatch)
     hit = {"v": False}
     want = stat.S_ISREG if kind == "file" else stat.S_ISDIR
+    entities_ino = (aios / "entities").stat().st_ino
 
     def fsync(fd):
-        if not hit["v"] and want(os.fstat(fd).st_mode):
+        st = os.fstat(fd)
+        # file: the new destination inode; dir: the destination parent after rename
+        target = (want(st.st_mode) and (kind == "file" and st.st_uid == os.geteuid()
+                                        and st.st_ino not in (batch.stat().st_ino,))
+                  or (kind == "dir" and st.st_ino == entities_ino))
+        if not hit["v"] and target and (kind == "dir" or stat.S_IMODE(st.st_mode) == 0o644):
             hit["v"] = True
             raise OSError(errno.EIO, f"injected {kind} fsync failure")
         return _real_fsync(fd)
@@ -255,22 +264,23 @@ def test_fsync_failure_is_not_reported_as_success(tmp_path, monkeypatch, kind):
     if kind == "file":  # failed before install
         assert not (aios / "entities" / "x.json").exists()
     monkeypatch.setattr(m.os, "fsync", _real_fsync)
-    _assert_retained_then_replays(aios)
+    _assert_retained_then_replays(aios, batch)
 
 
 # --- 8. cleanup never follows symlinks ---------------------------------------
 
 def test_cleanup_of_swapped_dest_temp_does_not_follow_symlink(tmp_path, monkeypatch):
     aios, outside = _store(tmp_path)
-    batch = _batch(aios)
+    batch, staged = _batch(aios, monkeypatch)
     victim = outside / "victim.json"
-
-    ino = (batch / "x.tmp").stat().st_ino
+    ino = staged.stat().st_ino
     real_apply = m._apply_op
     active = {"value": False}
+
     def apply(*args, **kwargs):
         active["value"] = True
         return real_apply(*args, **kwargs)
+
     def read(fd, size):
         if active["value"] and os.fstat(fd).st_ino == ino:
             [tmp] = _l5tmps(aios)
@@ -286,37 +296,46 @@ def test_cleanup_of_swapped_dest_temp_does_not_follow_symlink(tmp_path, monkeypa
     assert _l5tmps(aios) == []  # the planted link itself was removed
 
 
-def test_batch_cleanup_does_not_follow_symlinks_out_of_store(tmp_path):
+def test_finalized_cleanup_does_not_follow_symlinks_out_of_store(tmp_path, monkeypatch):
     aios, outside = _store(tmp_path)
-    batch = _batch(aios)
     keep = outside / "keepdir"
     keep.mkdir()
     (keep / "precious.txt").write_bytes(b"keep\n")
-    os.symlink(keep, batch / "linkdir")
-    os.symlink(outside / "victim.json", batch / "linkfile")
+    real = m._cleanup_finalized
+    planted = {"v": False}
+
+    def hook(lay, st):
+        batch = aios / ".staging" / st["txn"]["batch_name"]
+        if batch.is_dir() and not planted["v"]:
+            planted["v"] = True
+            os.symlink(keep, batch / "linkdir")
+            os.symlink(outside / "victim.json", batch / "linkfile")
+        return real(lay, st)
+    monkeypatch.setattr(m, "_cleanup_finalized", hook)
     before = _tree(outside)
-    m.recover_pending(str(aios))
+    m.commit_batch(str(aios), [("entities/x.json", GOOD_OBJ)])
+    assert planted["v"]
     assert _tree(outside) == before
-    assert not os.path.lexists(batch)
+    assert os.listdir(aios / ".staging") == []
 
 
-def test_stale_dest_temps_from_a_crash_are_swept_without_following_links(tmp_path):
+def test_stale_dest_temps_from_a_crash_are_swept_without_following_links(tmp_path, monkeypatch):
     aios, outside = _store(tmp_path)
     stale = aios / "entities" / f".x.json.dead{m._DEST_TMP_SUFFIX}"
     os.symlink(outside / "victim.json", stale)
-    _batch(aios)
+    _batch(aios, monkeypatch)
     m.recover_pending(str(aios))
     assert not os.path.lexists(stale)
     assert (outside / "victim.json").read_bytes() == b"original\n"
 
 
-# --- 9. crash between install and journal cleanup ---------------------------
+# --- 9. crash between install and finalization ------------------------------
 
 class Crash(BaseException):
     pass
 
 
-def test_crash_after_all_installs_before_journal_cleanup_replays(tmp_path, monkeypatch):
+def test_crash_after_all_installs_before_finalization_replays_with_cas(tmp_path, monkeypatch):
     aios, _ = _store(tmp_path)
     real, n = m._apply_op, {"v": 0}
 
@@ -330,42 +349,24 @@ def test_crash_after_all_installs_before_journal_cleanup_replays(tmp_path, monke
         m.commit_batch(str(aios), [("entities/a.json", {"a": 1}), ("entities/b.json", {"b": 2})])
     monkeypatch.setattr(m, "_apply_op", real)
     [batch] = os.listdir(aios / ".staging")
-    assert (aios / ".staging" / batch / "journal.v2.json").exists()
-    a_before = (aios / "entities" / "a.json").read_bytes()
+    assert (aios / ".staging" / batch / "journal.v3.json").exists()
+    assert state(aios)["phase"] == "APPLYING"
+    a_before = (aios / "entities" / "a.json").stat().st_ino
     m.recover_pending(str(aios))
-    assert (aios / "entities" / "a.json").read_bytes() == a_before
+    assert (aios / "entities" / "a.json").stat().st_ino == a_before  # CAS: already applied, not rewritten
     assert b'"b"' in (aios / "entities" / "b.json").read_bytes()
     assert os.listdir(aios / ".staging") == [] and m.unresolved_quarantine(str(aios)) == []
 
 
-def test_crash_after_install_before_staged_unlink_replays(tmp_path, monkeypatch):
-    aios, _ = _store(tmp_path)
-    batch = _batch(aios)
-
-    def unlink(path, *a, **k):
-        if path == "x.tmp" and k.get("dir_fd") is not None:
-            raise Crash()
-        return _real_unlink(path, *a, **k)
-    monkeypatch.setattr(m.os, "unlink", unlink)
-    with pytest.raises(Crash):
-        m.recover_pending(str(aios))
-    monkeypatch.setattr(m.os, "unlink", _real_unlink)
-    assert (aios / "entities" / "x.json").read_bytes() == GOOD
-    assert (batch / "x.tmp").exists() and (batch / "journal.v2.json").exists()
-    m.recover_pending(str(aios))
-    assert (aios / "entities" / "x.json").read_bytes() == GOOD
-    assert not batch.exists()
-
-
 # --- mismatched payload never overwrites committed content -------------------
 
-def test_mismatched_payload_never_overwrites_committed_destination(tmp_path):
+def test_mismatched_payload_never_overwrites_destination(tmp_path, monkeypatch):
     aios, _ = _store(tmp_path)
-    (aios / "entities" / "x.json").write_bytes(GOOD)
-    batch = _batch(aios)
-    (batch / "x.tmp").write_bytes(EVIL)  # journal still names GOOD's digest
+    batch, staged = _batch(aios, monkeypatch)
+    with open(staged, "wb") as fh:
+        fh.write(EVIL)  # journal still names GOOD's digest
     _assert_quarantined(aios)
-    assert (aios / "entities" / "x.json").read_bytes() == GOOD
+    assert not (aios / "entities" / "x.json").exists()
 
 
 # --- platforms without the primitives fail closed ---------------------------
@@ -382,10 +383,11 @@ def test_unsupported_platform_commit_fails_closed(tmp_path, monkeypatch):
 
 def test_unsupported_platform_recovery_fails_closed_and_retains_batch(tmp_path, monkeypatch):
     aios, _ = _store(tmp_path)
-    _batch(aios)
+    batch, _staged = _batch(aios, monkeypatch)
     monkeypatch.setattr(m, "_FD_SAFE", False)
     with pytest.raises(m.L5PlatformUnsupportedError):
         m.recover_pending(str(aios))
+    with pytest.raises(m.L5PlatformUnsupportedError):
+        m.unresolved_quarantine(str(aios))
     assert not (aios / "entities" / "x.json").exists()
-    assert m.unresolved_quarantine(str(aios)) == []
-    assert (aios / ".staging" / "batch-a" / "journal.v2.json").exists()
+    assert (batch / "journal.v3.json").exists()

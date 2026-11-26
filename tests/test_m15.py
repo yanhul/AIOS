@@ -347,15 +347,33 @@ class TestAtomicity(Base):
         self.assertEqual(self.event_files(), [])
         self.assertFalse(os.path.exists(os.path.join(self.aios, ".staging")))
 
-    def test_orphan_staging_without_journal_is_swept(self):
+    def test_pre_commit_point_crash_leftovers_are_discarded(self):
+        import core.mutation as _mut
+        from unittest import mock
+
+        def crash(*a, **k):
+            raise OSError(5, "injected crash at journal publication")
+        with mock.patch.object(_mut, "_replace", crash):
+            with self.assertRaises(OSError):
+                apply_mutations(self.aios, [make_entity()], ACTOR)
+        [orphan] = os.listdir(os.path.join(self.aios, ".staging"))  # PREPARED residue
+        apply_mutations(self.aios, [make_entity()], ACTOR)
+        self.assertFalse(os.path.exists(os.path.join(self.aios, ".staging", orphan)),
+                         "pre-journal crash leftovers must be discarded")
+        self.assert_paired_invariant({("DECISION", "D-99")})
+
+    def test_untracked_orphan_staging_entry_is_quarantined_not_swept(self):
+        """F-03/F-04 P0: residue not named by protected L5 state is evidence, not garbage."""
+        import core.mutation as _mut
+        _mut.commit_batch(self.aios, [("decisions/seed.json", {"seed": True})])
         orphan = os.path.join(self.aios, ".staging", "batch-deadbeef")
         os.makedirs(orphan)
         with open(os.path.join(orphan, "stray.tmp"), "w") as fh:
             fh.write("junk")
-        apply_mutations(self.aios, [make_entity()], ACTOR)
-        self.assertFalse(os.path.exists(orphan),
-                         "pre-journal crash leftovers must be discarded")
-        self.assert_paired_invariant({("DECISION", "D-99")})
+        with self.assertRaises(_mut.LedgerBlockedError):
+            apply_mutations(self.aios, [make_entity()], ACTOR)
+        self.assertFalse(os.path.exists(orphan))
+        self.assertTrue(any(q.startswith("batch-deadbeef~") for q in _mut.unresolved_quarantine(self.aios)))
 
 
 # ---------------------------------------------------------------------------
