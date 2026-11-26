@@ -1,0 +1,66 @@
+{
+  "evidence": "VERIFIED",
+  "file": "tests/test_pr180_remediation.py",
+  "rows": [
+    {
+      "scenario": "crash before receipt persistence (verifier dies; intent PREPARED, L5 OBSERVED)",
+      "test": "test_crash_before_receipt_persistence_recovers_state_patch",
+      "result_on_fix": "SUCCESS, patch applied, provider calls=1",
+      "result_on_d5013f6": "FAIL (patch lost)"
+    },
+    {
+      "scenario": "crash while saving RECEIPT_VALIDATED",
+      "test": "test_crash_during_receipt_validated_save_recovers_from_l5",
+      "result_on_fix": "SUCCESS, patch applied, calls=1",
+      "result_on_d5013f6": "FAIL (patch lost)"
+    },
+    {
+      "scenario": "crash after validation, before state patch",
+      "test": "test_crash_after_validation_before_state_patch",
+      "result_on_fix": "SUCCESS, binding verified, calls=1",
+      "result_on_d5013f6": "FAIL (no binding)"
+    },
+    {
+      "scenario": "crash after state patch, before checkpoint",
+      "test": "test_crash_after_state_patch_before_checkpoint",
+      "result_on_fix": "SUCCESS, calls=1",
+      "result_on_d5013f6": "PASS (already correct)"
+    },
+    {
+      "scenario": "repeated recovery x3",
+      "test": "test_repeated_recovery_is_idempotent",
+      "result_on_fix": "identical state, calls=1",
+      "result_on_d5013f6": "PASS"
+    },
+    {
+      "scenario": "tampered verification / patch / rebound patch / receipt-attempt / action / missing binding / missing action / malformed verification / malformed patch / garbage binding",
+      "test": "test_tampered_or_partial_recovery_record_is_rejected[10]",
+      "result_on_fix": "BLOCKED RECONCILIATION_REJECTED x2 restarts, calls=1, no patch",
+      "result_on_d5013f6": "7 FAIL, 3 PASS (receipt_attempt_mismatch, malformed_*)"
+    },
+    {
+      "scenario": "crash during _block save",
+      "test": "test_crash_during_block_leaves_no_contradiction",
+      "result_on_fix": "prior state intact; restart re-blocks consistently",
+      "result_on_d5013f6": "FAIL"
+    },
+    {
+      "scenario": "blocked restart x3",
+      "test": "test_block_persists_projection_consistent_with_canonical_state",
+      "result_on_fix": "FAILURE stable, projection consistent, calls=1",
+      "result_on_d5013f6": "FAIL (stale projection)"
+    },
+    {
+      "scenario": "projection unbuildable during block",
+      "test": "test_block_with_unbuildable_projection_drops_it_and_fails_closed",
+      "result_on_fix": "projection dropped, never RUNNING",
+      "result_on_d5013f6": "FAIL"
+    },
+    {
+      "scenario": "forged ledger identity during recovery",
+      "test": "test_orchestrator_blocks_recovery_on_forged_ledger_identity",
+      "result_on_fix": "BLOCKED LEDGER_INCONSISTENT, calls=1",
+      "result_on_d5013f6": "FAIL (accepted)"
+    }
+  ]
+}

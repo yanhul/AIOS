@@ -1,3 +1,8 @@
+# AIOS-CONTRACT: governed execution binds loop policy to the governing contract and permit.
+# AIOS-REGRESSION: Policy/contract drift (digest, budget, terminal states, acceptance predicates).
+# AIOS-OWNER: AIOS control-plane orchestrator
+# AIOS-COVERAGE-GAP: Authority-bound policy fields overridden from the contract.
+# AIOS-BASELINE: Extends tests/test_m6_runtime.py.
 """L3<-L6 binding: the orchestrator must forward every LoopPolicy gate and must
 bind acceptance predicates to the governing contract (D1/D2 regression tests)."""
 import dataclasses
@@ -51,12 +56,13 @@ def test_every_loop_policy_field_is_forwarded(authority, monkeypatch):
     patch_validator = lambda a, b, c: None
     continuation = lambda v, s: None
     builder = lambda s: {}
-    policy = _policy(require_execution_receipt=True, execution_receipt_validator=receipt_validator,
+    policy = _policy(require_execution_receipt=True, operation_identity=lambda d, s: {}, execution_receipt_validator=receipt_validator,
                      state_patch_validator=patch_validator, blocked_continuation=continuation,
                      continue_contract_builder=builder)
     run_governed_execution(executor=_executor(), store=MemoryStateStore(), policy=policy)
     bound = captured["p"]
-    overridden = {"resume_validator", "policy_digest", "terminal_states", "acceptance_predicates"}
+    overridden = {"resume_validator", "policy_digest", "terminal_states", "acceptance_predicates",
+                  "operation_identity"}
     for field in dataclasses.fields(LoopPolicy):
         if field.name not in overridden:
             assert getattr(bound, field.name) is getattr(policy, field.name), field.name

@@ -290,6 +290,9 @@ def main() -> int:
         terminal_evaluator=terminal_schematic,
         action_authorizer=authorize_schematic,
         require_execution_receipt=True,
+        # Canonical L3 operation identity (Decision A): phase op + persisted step.
+        operation_identity=lambda decision, state: {"contract_id": f"pcb.eda/{a.task_id}", "actor": "AIOS_CONTROL_PLANE",
+            "logical_operation_id": f"{decision['logical_operation_id']}:step-{state.get('step', 0)}"},
         execution_receipt_validator=validate_execution_receipt,
         state_patch_validator=validate_state_patch,
         resume_validator=lambda state: validate_resume_identity(state, identity),

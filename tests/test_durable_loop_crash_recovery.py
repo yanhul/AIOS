@@ -15,6 +15,7 @@ from pathlib import Path
 from core.continue_contract import build_continue_contract
 from core.durable_loop import LoopPolicy, MemoryStateStore, reconcile_in_flight_attempt, run_durable_loop
 from core.wal_state_store import WalStateStore
+from tests.l3_identity import TEST_OPERATION_IDENTITY
 
 
 def _initial_state():
@@ -44,7 +45,7 @@ def _policy():
         action_authorizer=lambda decision, state: None,
         policy_digest="state-continuity-policy-v1",
         continue_contract_builder=build_continue_contract,
-        require_execution_receipt=True,
+        require_execution_receipt=True, operation_identity=TEST_OPERATION_IDENTITY,
         execution_receipt_validator=lambda receipt, state: None,
         state_patch_validator=lambda patch, receipt, state: None,
     )
@@ -195,8 +196,9 @@ def test_process_death_after_provider_effect_never_replays_without_reconciliatio
     assert recovered["status"] == "RUNNING"
     intent = recovered["in_flight_attempt"]
     assert intent["status"] == "PREPARED"
-    assert intent["effect_id"].startswith("effect-")
-    assert intent["attempt_id"].startswith("attempt-")
+    from core.effect_identity import verify_operation_identity
+    canonical = verify_operation_identity(intent)  # canonical effect AND attempt identity, not random
+    assert (canonical["effect_id"], canonical["attempt_id"]) == (intent["effect_id"], intent["attempt_id"])
 
     result = run_durable_loop(_Executor(marker_path), store, _policy())
     assert result["status"] == "BLOCKED"
@@ -285,7 +287,7 @@ def test_authorized_observed_receipt_reconciles_unknown_without_replay(tmp_path)
         terminal_evaluator=lambda verification, state: "PASS",
         action_authorizer=base.action_authorizer,
         policy_digest=base.policy_digest,
-        require_execution_receipt=True,
+        require_execution_receipt=True, operation_identity=TEST_OPERATION_IDENTITY,
         execution_receipt_validator=lambda receipt, state: None,
         state_patch_validator=lambda patch, receipt, state: None,
         continue_contract_builder=build_continue_contract,
@@ -335,7 +337,7 @@ def test_reconciliation_rejects_wrong_attempt_identity(tmp_path):
         terminal_evaluator=lambda verification, state: "PASS",
         action_authorizer=base.action_authorizer,
         policy_digest=base.policy_digest,
-        require_execution_receipt=True,
+        require_execution_receipt=True, operation_identity=TEST_OPERATION_IDENTITY,
         execution_receipt_validator=lambda receipt, state: None,
         state_patch_validator=lambda patch, receipt, state: None,
         continue_contract_builder=build_continue_contract,
@@ -382,7 +384,7 @@ def test_unknown_receipt_blocks_and_never_retries_automatically(tmp_path):
         terminal_evaluator=lambda verification, state: "PASS",
         action_authorizer=base.action_authorizer,
         policy_digest=base.policy_digest,
-        require_execution_receipt=True,
+        require_execution_receipt=True, operation_identity=TEST_OPERATION_IDENTITY,
         execution_receipt_validator=lambda receipt, state: None,
         state_patch_validator=lambda patch, receipt, state: None,
         continue_contract_builder=build_continue_contract,

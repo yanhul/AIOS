@@ -8,6 +8,7 @@ import pytest
 
 from core.durable_loop import LoopPolicy, MemoryStateStore, run_durable_loop, reconcile_in_flight_attempt, _persist_state
 from core.continue_contract import build_continue_contract
+from tests.l3_identity import TEST_OPERATION_IDENTITY
 
 
 class FakeExecutor:
@@ -240,7 +241,7 @@ def test_receipt_required_policy_rejects_missing_provider_validator():
             max_steps=1,
             terminal_evaluator=lambda verification, state: "PASS",
             action_authorizer=lambda decision, state: None,
-            require_execution_receipt=True,
+            require_execution_receipt=True, operation_identity=TEST_OPERATION_IDENTITY,
         )
 
 
@@ -250,12 +251,12 @@ def test_receipt_required_policy_rejects_missing_state_patch_validator():
             max_steps=1,
             terminal_evaluator=lambda verification, state: "PASS",
             action_authorizer=lambda decision, state: None,
-            require_execution_receipt=True,
+            require_execution_receipt=True, operation_identity=TEST_OPERATION_IDENTITY,
             execution_receipt_validator=lambda receipt, state: None,
         )
 
 def test_receipt_lineage_is_required_before_terminal_evaluation():
-    policy = _policy(max_steps=1, require_execution_receipt=True, terminal_evaluator=lambda verification, state: "PASS")
+    policy = _policy(max_steps=1, require_execution_receipt=True, operation_identity=TEST_OPERATION_IDENTITY, terminal_evaluator=lambda verification, state: "PASS")
     result = run_durable_loop(FakeExecutor(), MemoryStateStore(), policy)
     assert result["status"] == "BLOCKED"
     assert "receipt" in result["block_reason"]
@@ -264,11 +265,13 @@ def test_receipt_lineage_is_required_before_terminal_evaluation():
 
 
 def test_valid_receipt_lineage_reaches_terminal_evaluation():
-    policy = _policy(max_steps=1, require_execution_receipt=True, terminal_evaluator=lambda verification, state: "PASS")
+    policy = _policy(max_steps=1, require_execution_receipt=True, operation_identity=TEST_OPERATION_IDENTITY, terminal_evaluator=lambda verification, state: "PASS")
     result = run_durable_loop(ReceiptExecutor(), MemoryStateStore(), policy)
     assert result["status"] == "PASS"
     assert result["step"] == 1
-    assert result["history"][0]["verification"]["receipt"]["attempt_id"].startswith("attempt-")
+    from core.effect_identity import operation_identity
+    expected = operation_identity("CT-test-loop", "op-step-0", "test-actor")
+    assert result["history"][0]["verification"]["receipt"]["attempt_id"] == expected["attempt_id"]
 
 
 def test_unknown_receipt_cannot_authorize_terminal_verdict():
@@ -278,7 +281,7 @@ def test_unknown_receipt_cannot_authorize_terminal_verdict():
             result["receipt"]["status"] = "UNKNOWN"
             return result
 
-    policy = _policy(max_steps=1, require_execution_receipt=True, terminal_evaluator=lambda verification, state: "PASS")
+    policy = _policy(max_steps=1, require_execution_receipt=True, operation_identity=TEST_OPERATION_IDENTITY, terminal_evaluator=lambda verification, state: "PASS")
     result = run_durable_loop(UnknownReceiptExecutor(), MemoryStateStore(), policy)
     assert result["status"] == "BLOCKED"
     assert "UNKNOWN execution receipt" in result["block_reason"]
@@ -459,7 +462,7 @@ def test_receipt_does_not_authorize_unbound_verifier_state_patch():
         store,
         _policy(
             max_steps=1,
-            require_execution_receipt=True,
+            require_execution_receipt=True, operation_identity=TEST_OPERATION_IDENTITY,
             execution_receipt_validator=lambda receipt, state: None,
             state_patch_validator=validate_patch,
             terminal_evaluator=lambda verification, state: None,
@@ -485,7 +488,7 @@ def test_state_patch_validator_false_return_fails_closed():
         store,
         _policy(
             max_steps=1,
-            require_execution_receipt=True,
+            require_execution_receipt=True, operation_identity=TEST_OPERATION_IDENTITY,
             execution_receipt_validator=lambda receipt, state: None,
             state_patch_validator=lambda patch, receipt, state: False,
             terminal_evaluator=lambda verification, state: None,
@@ -551,7 +554,7 @@ def test_rejected_receipt_cannot_persist_verifier_state_patch():
         max_steps=1,
         terminal_evaluator=lambda verification, state: None,
         action_authorizer=lambda decision, state: None,
-        require_execution_receipt=True,
+        require_execution_receipt=True, operation_identity=TEST_OPERATION_IDENTITY,
         execution_receipt_validator=lambda receipt, state: None,
         state_patch_validator=lambda patch, receipt, state: None,
     )
@@ -584,7 +587,7 @@ def test_unknown_receipt_cannot_persist_verifier_state_patch():
         store,
         _policy(
             max_steps=1,
-            require_execution_receipt=True,
+            require_execution_receipt=True, operation_identity=TEST_OPERATION_IDENTITY,
             terminal_evaluator=lambda verification, state: None,
         ),
     )
@@ -645,13 +648,14 @@ def test_resume_blocks_in_flight_attempt_until_explicit_observed_reconciliation(
     executor = NoReplayExecutor()
     policy = _policy(
         max_steps=2,
-        require_execution_receipt=True,
+        require_execution_receipt=True, operation_identity=TEST_OPERATION_IDENTITY,
         terminal_evaluator=lambda verification, state: "PASS",
     )
 
     resumed = run_durable_loop(executor, store, policy)
     assert resumed["status"] == "BLOCKED"
-    assert "explicit provider reconciliation required" in resumed["block_reason"]
+    assert ("explicit provider reconciliation required" in resumed["block_reason"]
+            or resumed["block_reason"].startswith("LEGACY_UNRECONCILED"))
     assert executor.act_calls == 0
     assert store.load()["in_flight_attempt"]["attempt_id"] == "attempt-crash-a1"
 
@@ -705,7 +709,7 @@ def test_reconciliation_runs_provider_receipt_validator_before_authorization():
 
     policy = _policy(
         max_steps=2,
-        require_execution_receipt=True,
+        require_execution_receipt=True, operation_identity=TEST_OPERATION_IDENTITY,
         execution_receipt_validator=reject_provider_receipt,
         terminal_evaluator=lambda verification, state: "PASS",
     )
@@ -753,7 +757,7 @@ def test_resume_revalidates_persisted_provider_receipts_before_any_action():
         store,
         _policy(
             max_steps=2,
-            require_execution_receipt=True,
+            require_execution_receipt=True, operation_identity=TEST_OPERATION_IDENTITY,
             execution_receipt_validator=reject_receipt,
             terminal_evaluator=lambda verification, state: None,
         ),

@@ -3,11 +3,13 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Protocol
-from uuid import uuid4
+import hashlib
+import json
 
 from .fix_protocol import FixPlan, require_fix_plan, require_fix_proof, FixProof
 from .acceptance import AcceptancePredicate, evaluate_acceptance
 from .continue_contract import validate_continue_contract
+from .effect_identity import operation_identity as _derive_operation_identity, verify_operation_identity
 
 TERMINAL = frozenset({"PASS", "BLOCKED", "INCONCLUSIVE"})
 
@@ -53,6 +55,10 @@ class LoopPolicy:
     continue_contract_builder: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None
     # Appended to preserve positional compatibility for earlier LoopPolicy fields.
     state_patch_validator: Callable[[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]], None] | None = None
+    # Decision A (B-1): returns {"contract_id", "actor", "logical_operation_id"} for a
+    # decision. The intent's effect/attempt identity is derived from it with the
+    # same canonical function L5 uses; L3 never mints random effect identities.
+    operation_identity: Callable[[Any, Mapping[str, Any]], Mapping[str, str]] | None = None
 
     def __post_init__(self) -> None:
         if self.max_steps < 1:
@@ -98,6 +104,13 @@ class LoopPolicy:
             raise ValueError("blocked_continuation must be callable")
         if self.continue_contract_builder is not None and not callable(self.continue_contract_builder):
             raise ValueError("continue_contract_builder must be callable")
+        if self.operation_identity is not None and not callable(self.operation_identity):
+            raise ValueError("operation_identity must be callable")
+        if self.require_execution_receipt and self.operation_identity is None:
+            raise ValueError(
+                "require_execution_receipt requires operation_identity; the write-ahead intent must "
+                "carry the canonical L5 effect/attempt identity, not a random one"
+            )
 
 def _validate_execution_receipt(verification: Any) -> Mapping[str, Any]:
     """Fail closed unless verification contains a complete execution receipt."""
@@ -212,6 +225,9 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
         attempt_id = in_flight.get("attempt_id")
         if not isinstance(effect_id, str) or not effect_id.strip() or not isinstance(attempt_id, str) or not attempt_id.strip():
             raise ValueError("persisted in-flight execution lineage is incomplete")
+        if "identity_version" in in_flight:
+            # Any edit to contract_id/actor/logical_operation_id/effect_id/attempt_id breaks derivation.
+            verify_operation_identity(in_flight)
         # An UNKNOWN receipt is intentionally retained in history while its
         # matching intent remains in-flight for explicit reconciliation. Permit
         # only that exact final-history pair; all other identity reuse blocks.
@@ -260,6 +276,21 @@ def _validate_loaded_state(state: Mapping[str, Any], policy: LoopPolicy) -> None
             raise ValueError("persisted continue contract does not match durable state")
     if state.get("status") in policy.terminal_states:
         _validate_terminal_evidence(state)
+
+def _recovery_binding(intent: Mapping[str, Any], receipt: Any, patch: Any, verification: Any, action_result: Any) -> str:
+    """Digest binding receipt, verification, state patch and action result to one attempt identity."""
+    body = {"identity_version": intent.get("identity_version"), "contract_id": intent.get("contract_id"),
+            "actor": intent.get("actor"), "logical_operation_id": intent.get("logical_operation_id"),
+            "effect_id": intent.get("effect_id"), "attempt_id": intent.get("attempt_id"),
+            "receipt": receipt, "state_patch": patch, "verification": verification, "action_result": action_result}
+    encoded = json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+    return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _verification_patch(verification: Mapping[str, Any]) -> dict:
+    patch = verification.get("state_patch")
+    return {} if patch is None else dict(patch) if isinstance(patch, Mapping) else patch
+
 
 def _persist_state(state: dict[str, Any], store: StateStore, policy: LoopPolicy) -> None:
     """Persist a complete durable snapshot with its continuation projection."""
@@ -368,7 +399,11 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
     # external side-effect boundary without committing its receipt. Never replay it.
     if policy.require_execution_receipt and state.get("in_flight_attempt") is not None:
         state["status"] = policy.failure_state
-        state["block_reason"] = "unresolved in-flight execution attempt; explicit provider reconciliation required"
+        if "identity_version" not in state["in_flight_attempt"]:
+            state["block_reason"] = ("LEGACY_UNRECONCILED: in-flight intent predates canonical operation identity "
+                                     "(random IDs); it is never promoted or backfilled")
+        else:
+            state["block_reason"] = "unresolved in-flight execution attempt; explicit provider reconciliation required"
         _persist_or_fail_closed(state, store, policy)
         return state
     # Preflight and durably commit the continuation projection before any side effect.
@@ -402,9 +437,12 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
             if policy.require_execution_receipt:
                 # Write-ahead intent: persist stable effect/attempt identity before
                 # invoking provider code. A crash after this point blocks replay.
+                identity = policy.operation_identity(deepcopy(decision), deepcopy(state))
+                if not isinstance(identity, Mapping):
+                    raise ValueError("operation_identity must return a mapping")
                 intent = {
-                    "effect_id": "effect-" + uuid4().hex,
-                    "attempt_id": "attempt-" + uuid4().hex,
+                    **_derive_operation_identity(identity.get("contract_id"), identity.get("logical_operation_id"),
+                                                 identity.get("actor")),
                     "decision": deepcopy(decision),
                     "observation": deepcopy(observation),
                     "status": "PREPARED",
@@ -456,6 +494,9 @@ def run_durable_loop(executor: Executor, store: StateStore, policy: LoopPolicy) 
                     intent["validated_state_patch"] = deepcopy(dict(patch or {}))
                     intent["validated_verification"] = deepcopy(dict(verification))
                     intent["validated_action_result"] = deepcopy(action_result)
+                    intent["recovery_binding"] = _recovery_binding(
+                        intent, intent["validated_receipt"], intent["validated_state_patch"],
+                        intent["validated_verification"], intent["validated_action_result"])
                     state["in_flight_attempt"] = intent
                     if not _persist_or_fail_closed(state, store, policy):
                         return state
@@ -567,6 +608,8 @@ def reconcile_in_flight_attempt(
     receipt: Mapping[str, Any],
     *,
     authorizer: Callable[[Mapping[str, Any], Mapping[str, Any]], None],
+    verification: Mapping[str, Any] | None = None,
+    action_result: Any = None,
 ) -> Mapping[str, Any]:
     """Close an interrupted attempt only with an authorized, matching OBSERVED receipt.
 
@@ -604,6 +647,34 @@ def reconcile_in_flight_attempt(
             raise ValueError("reconciliation receipt does not match the durably validated receipt")
         if not isinstance(pending_patch, Mapping) or not isinstance(pending_verification, Mapping):
             raise ValueError("durable validated receipt record is incomplete")
+        if "validated_action_result" not in intent or not isinstance(intent.get("recovery_binding"), str):
+            raise ValueError("durable validated receipt record is incomplete (no recovery binding)")
+        try:
+            binding = _recovery_binding(intent, pending_receipt, pending_patch, pending_verification, pending_action)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"durable recovery record is not canonically encodable: {exc}") from exc
+        if binding != intent["recovery_binding"]:
+            raise ValueError("durable recovery record was altered: binding digest mismatch")
+        # The durable action result is already covered by recovery_binding and
+        # is reused when recovery has no independently recomputed result. If a
+        # caller does supply one, reject any payload that differs from the
+        # exact result committed with the receipt.
+        if action_result is not None and (
+            not isinstance(action_result, Mapping) or dict(action_result) != dict(pending_action)
+        ):
+            raise ValueError("recomputed action result differs from the durable recovery record")
+        if (not isinstance(pending_verification.get("receipt"), Mapping)
+                or dict(pending_verification["receipt"]) != dict(validated)
+                or _verification_patch(pending_verification) != dict(pending_patch)):
+            raise ValueError("durable verification does not bind the validated receipt and state patch")
+    # The freshly recomputed verification (same verifier as normal execution)
+    # must agree with whatever is persisted; it is never silently discarded.
+    if verification is not None:
+        if not isinstance(verification, Mapping) or not isinstance(verification.get("receipt"), Mapping) \
+                or dict(verification["receipt"]) != dict(validated):
+            raise ValueError("recomputed verification does not bind the reconciliation receipt")
+        if intent.get("status") == "RECEIPT_VALIDATED" and _verification_patch(verification) != dict(pending_patch):
+            raise ValueError("recomputed verification state_patch differs from the durable recovery record")
 
     # Recovery must enforce the same provider/evidence validator as the normal
     # execution path. Shape and lineage alone do not prove the receipt is authentic.
@@ -627,6 +698,20 @@ def reconcile_in_flight_attempt(
         verification = deepcopy(dict(pending_verification))
         verification["receipt"] = deepcopy(dict(validated))
         verification["reconciled"] = True
+    elif verification is not None:
+        # Crash before the receipt boundary was persisted: the recomputed
+        # verification carries the state patch; validate it exactly as ACT would.
+        fresh_patch = verification.get("state_patch")
+        if fresh_patch is not None:
+            patch_result = policy.state_patch_validator(deepcopy(fresh_patch), deepcopy(validated), deepcopy(state))
+            if patch_result is not None:
+                raise ValueError("state_patch_validator must return None or raise to reject")
+            _apply_state_patch(state, fresh_patch)
+        verification = deepcopy(dict(verification))
+        verification["receipt"] = deepcopy(dict(validated))
+        verification["reconciled"] = True
+        if action_result is not None:
+            pending_action = deepcopy(action_result)
     else:
         verification = {"status": "OBSERVED", "receipt": deepcopy(dict(validated)), "reconciled": True}
     history = state.get("history")
@@ -648,7 +733,7 @@ def reconcile_in_flight_attempt(
             "step": state["step"],
             "observation": deepcopy(intent.get("observation", {"reconciled": True})),
             "decision": deepcopy(intent.get("decision", {})),
-            "action": deepcopy(pending_action) if intent.get("status") == "RECEIPT_VALIDATED" else {"effect_id": intent["effect_id"], "reconciled": True},
+            "action": deepcopy(pending_action) if pending_action is not None else {"effect_id": intent["effect_id"], "reconciled": True},
             "verification": deepcopy(verification),
         })
     state.pop("in_flight_attempt", None)

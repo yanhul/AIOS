@@ -6,6 +6,7 @@
 
 from core.blocked_continuation import classify_blockers, plan_blocked_continuation
 from core.durable_loop import LoopPolicy, MemoryStateStore, run_durable_loop
+from tests.l3_identity import TEST_OPERATION_IDENTITY
 
 def test_pcb_blockers_are_classified_without_inventing_values():
     verification = {"blockers": [
@@ -61,7 +62,7 @@ def test_durable_loop_can_redispatch_only_after_verified_evidence():
         max_steps=2,
         terminal_evaluator=lambda v, s: "BLOCKED" if v["status"] == "BLOCKED" else "PASS",
         action_authorizer=lambda d, s: None,
-        require_execution_receipt=True,
+        require_execution_receipt=True, operation_identity=TEST_OPERATION_IDENTITY,
         execution_receipt_validator=lambda receipt, state: None,
         state_patch_validator=lambda patch, receipt, state: None,
         blocked_continuation=continuation,

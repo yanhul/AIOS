@@ -1,3 +1,8 @@
+# AIOS-CONTRACT: L5 event ledger is append-only, deterministic-identity, and folds to its projection.
+# AIOS-REGRESSION: Ledger gaps, duplicates, reorders, projection drift; structured read-only verdicts.
+# AIOS-OWNER: AIOS control-plane effect ledger (L5)
+# AIOS-COVERAGE-GAP: Event identity, append-only replay, crash during batch commit.
+# AIOS-BASELINE: Extends tests/test_m6_runtime.py.
 """Phase 3 — L5 durable event ledger: fault injection, restart/recovery, duplicate/replay.
 
 Maps to docs/L5_EVENT_LEDGER.md (contract 3.x, failure matrix F1..F6).
@@ -74,15 +79,18 @@ def test_update_batch_is_all_or_nothing_at_every_crash_point(tmp_path, monkeypat
     assert not os.listdir(os.path.join(d, ".staging"))
 
 
-def test_torn_legacy_journal_is_discarded_not_wedged(tmp_path):
-    """D-L5-2."""
+def test_torn_legacy_journal_is_quarantined_not_guessed(tmp_path):
+    """D-L5-2 (hardened): an unreadable legacy journal is AMBIGUOUS -> quarantine + BLOCKED."""
+    from core.mutation import LedgerBlockedError
     d = str(tmp_path)
     commit_batch(d, [("effects/A.json", {"v": 1})])
     torn = os.path.join(d, ".staging", "batch-legacy")
     os.makedirs(torn)
     Path(torn, "journal.json").write_text('{"batch_id": "x", "ops": [{"tm', encoding="utf-8")
-    recover_pending(d)
-    assert _read(d, "effects/A.json") == {"v": 1} and not os.path.exists(torn)
+    with pytest.raises(LedgerBlockedError, match="AMBIGUOUS_LEGACY"):
+        recover_pending(d)
+    assert _read(d, "effects/A.json") == {"v": 1}
+    assert Path(d, ".quarantine", "batch-legacy", "journal.json").exists()  # evidence preserved
 
 
 def test_commit_recovers_pending_batch_before_precondition(tmp_path, monkeypatch):
@@ -100,6 +108,7 @@ def test_commit_recovers_pending_batch_before_precondition(tmp_path, monkeypatch
 
 
 def test_corrupted_staged_file_fails_closed(tmp_path, monkeypatch):
+    from core.mutation import LedgerBlockedError
     d = str(tmp_path)
     commit_batch(d, [("effects/A.json", {"v": 1})])
     restore = _crash_on_replace(monkeypatch, 2)
@@ -107,9 +116,9 @@ def test_corrupted_staged_file_fails_closed(tmp_path, monkeypatch):
         commit_batch(d, [("effects/A.json", {"v": 2})])
     restore()
     (batch,) = os.listdir(os.path.join(d, ".staging"))
-    journal = _read(d, os.path.join(".staging", batch, "journal.json"))
-    Path(journal["ops"][0]["tmp"]).write_bytes(b'{"v": 666}\n')
-    with pytest.raises(StateConflictError, match="staged file diverges"):
+    journal = _read(d, os.path.join(".staging", batch, "journal.v2.json"))
+    Path(journal["ops"][0]["tmp"]).write_bytes(b'{"v": 666}' + bytes([10]))
+    with pytest.raises(LedgerBlockedError, match="staged file diverges"):
         recover_pending(d)
     assert _read(d, "effects/A.json") == {"v": 1}  # never applied unverified content
 
@@ -144,7 +153,8 @@ def test_ledger_consistent_and_append_only(tmp_path):
     result = execute(str(tmp_path), cid, pid, "op-1", "agent:test", GoodAdapter())
     eid = result["effect_id"]
     assert verify_effect_ledger(str(tmp_path), eid) == {
-        "status": "CONSISTENT", "effect_id": eid, "state": "OBSERVED_SUCCESS", "attempt": 1, "events": 3}
+        "status": "CONSISTENT", "verdict": "VERIFIED", "effect_id": eid, "state": "OBSERVED_SUCCESS",
+        "attempt": 1, "events": 3}
     # Replaying the same commit (duplicate event) is rejected, never an overwrite.
     from core.effect_authority import _ledger_event, _expect_unchanged
     rel, ev = _ledger_event(eid, 1, "transition", "OBSERVED_SUCCESS")

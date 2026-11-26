@@ -41,6 +41,9 @@ def _durable_loop_probe():
 
     policy = LoopPolicy(max_steps=1, terminal_evaluator=lambda verification, state: verification["status"],
                         action_authorizer=lambda decision, state: None, require_execution_receipt=True,
+                        # Canonical L3 operation identity (Decision A): one logical op per persisted step.
+                        operation_identity=lambda decision, state: {"contract_id": "absorption-runtime-proof",
+                            "actor": "aios-absorption", "logical_operation_id": f"probe:step-{state.get('step', 0)}"},
                         execution_receipt_validator=validate_probe_receipt,
                         state_patch_validator=lambda patch, receipt, state: None)
     result = run_durable_loop(E(), MemoryStateStore(), policy)

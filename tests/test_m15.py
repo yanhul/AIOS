@@ -1,3 +1,8 @@
+# AIOS-CONTRACT: M15 governed loop behaviour under receipt-mode operation identity.
+# AIOS-REGRESSION: Receipt-mode loops without explicit operation identity (Decision A).
+# AIOS-OWNER: AIOS control-plane durable execution (L3)
+# AIOS-COVERAGE-GAP: Existing M15 scenarios with canonical identity.
+# AIOS-BASELINE: Extends tests/test_durable_loop.py.
 """M1.5 test suite: writer-enforcement boundary (core.mutation).
 
 Covers requirements A–S of the M1.5 spec: entity contracts, transition
@@ -307,7 +312,8 @@ class TestAtomicity(Base):
             with mock.patch.object(mutation, "_replace", self._flaky_replace(1)):
                 apply_mutations(aios, [dict(e) for e in ents], ACTOR)
         staged = self.pending_batches(aios)
-        self.assertFalse(any(os.path.exists(os.path.join(aios, ".staging", b, "journal.json")) for b in staged),
+        self.assertFalse(any(os.path.exists(os.path.join(aios, ".staging", b, j))
+                             for b in staged for j in ("journal.json", "journal.v2.json")),
                          "crash before the commit point must not publish a journal")
         recover_pending(aios)
         self.assertEqual(self.pending_batches(aios), [])

@@ -1,0 +1,28 @@
+{
+  "branch": "fix/pr180-p1p2-remediation",
+  "base": "d5013f63f8215b144842ecd9acd3e5d90244312e",
+  "local_commits": [
+    {
+      "sha": "8223587953022ad7977e84bf632efb7c35f56c2c",
+      "subject": "fix(L3/L5): PR #180 P1/P2 audit remediation",
+      "files": [
+        "core/durable_loop.py",
+        "core/orchestrator.py",
+        "core/effect_authority.py",
+        "core/mutation.py",
+        "tests/test_pr180_remediation.py",
+        "tests/test_l5_event_ledger.py",
+        "tests/test_l3_l5_identity_binding.py",
+        "tests/test_orchestrator_policy_binding.py",
+        "tests/l3_identity.py",
+        "tests/test_l5_journal_hardening.py",
+        "tests/test_m15.py"
+      ]
+    },
+    {
+      "sha": "(artifacts commit itself; SHA reported in delivery report)",
+      "subject": "docs(evidence): PR #180 remediation artifacts"
+    }
+  ],
+  "remote": "NOT PUSHED. LOCAL_ONLY / PUSH_BLOCKED: no local git credentials; github-aios MCP token rejected (HTTP 401) and its URL is read-only. Remote PR #180 head is unchanged at d5013f6."
+}

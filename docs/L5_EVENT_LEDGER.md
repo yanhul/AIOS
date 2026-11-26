@@ -96,3 +96,43 @@ sequenceDiagram
 - Existing stores: legacy event files remain as history; new events use v2 names, so no collision.
 - Legacy torn journals: discarded (see 3.3). Legacy valid journals: rolled forward by the new rule.
 - Semantics change (explicit): duplicate effect events now raise instead of overwriting.
+
+## 8. Phase 4 amendments
+
+### 8.1 Journal commit-state classification (supersedes 3.1/3.3)
+| On-disk state of a staging batch | Classification | Action |
+|---|---|---|
+| `journal.v2.json` present, format 2, body digest valid | COMMITTED | roll forward (all ops pre-validated before any replace) |
+| `journal.v2.json` present but unreadable / digest or format invalid | CORRUPT_COMMITTED (rename ⇒ it was committed) | quarantine + BLOCKED |
+| legacy `journal.json` parseable with valid ops | COMMITTED (legacy) | roll forward |
+| legacy `journal.json` unreadable | AMBIGUOUS_LEGACY (torn-before-commit vs corrupted-after-commit indistinguishable) | quarantine + BLOCKED |
+| no journal (only staged files / `journal.v2.json.tmp`) | UNCOMMITTED | discard |
+| committed, but a staged file is missing/diverges and the destination does not already match | UNRECOVERABLE_COMMITTED | quarantine + BLOCKED (no op applied) |
+
+Quarantine moves the batch to `.quarantine/<batch>/` with `QUARANTINE.json`; every later
+`commit_batch`/`recover_pending` raises `LedgerBlockedError` until an operator inspects the evidence,
+repairs the store, and writes `.quarantine/<batch>/RESOLVED.json`. Nothing is deleted automatically.
+
+### 8.2 B-1 resolved — Decision A (L3 owns logical operation identity)
+- `core/effect_identity.py` is the only identity function: `effect_id = "EF-" + sha256(canonical
+  {contract_id, logical_operation_id, actor})`, `attempt_id = effect_id + ":attempt:" + n`. L5
+  (`effect_authority._id/_attempt_id`) and L3 intents both use it.
+- Receipt-mode `LoopPolicy` requires `operation_identity`; the write-ahead intent persists
+  `identity_version, contract_id, actor, logical_operation_id, effect_id, attempt, attempt_id` before ACT.
+  Random IDs are no longer minted. On load, the derivation is recomputed (tamper ⇒ BLOCKED).
+- The orchestrator binds identity to the governed context (executor contract/actor + decision
+  `logical_operation_id`) and, on restart with an in-flight intent, calls `reconcile_with_ledger`:
+
+| L5 finding | Result |
+|---|---|
+| legacy intent (no `identity_version`) | BLOCKED `LEGACY_UNRECONCILED` (never backfilled) |
+| derivation broken / context mismatch | BLOCKED `IDENTITY_INVALID` / `IDENTITY_MISMATCH` |
+| effect missing | BLOCKED `LEDGER_MISSING_EFFECT` (no inference) |
+| effect identity ≠ intent | BLOCKED `LEDGER_IDENTITY_MISMATCH` |
+| ledger fold fails / legacy | BLOCKED `LEDGER_INCONSISTENT` / `LEDGER_UNVERIFIABLE` |
+| PLANNED / DISPATCHED / UNKNOWN | BLOCKED `LEDGER_<STATE>`; never dispatched |
+| OBSERVED_* on another attempt | BLOCKED `ATTEMPT_MISMATCH` |
+| OBSERVED_* matching | L6 authorize, verifier receipt must bind effect+attempt, then the existing `reconcile_in_flight_attempt` (same receipt/patch validators, terminal evaluation) |
+
+Decision recorded: PLANNED (provider provably not called) is also BLOCKED, not resumed — conservative
+choice; relaxing it is a separate decision.

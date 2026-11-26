@@ -310,66 +310,147 @@ def _event_relpath(event):
 # Roll-forward recovery
 # ---------------------------------------------------------------------------
 
-_JOURNAL_NAME = "journal.json"
+_JOURNAL_NAME = "journal.json"          # legacy: written in place (pre-v2 engines)
+_JOURNAL_V2_NAME = "journal.v2.json"    # v2: published by atomic rename = commit point
+_JOURNAL_FORMAT = 2
+QUARANTINE_DIR = ".quarantine"
 
 
-def _read_journal(journal_path):
-    """Return a committed journal, or None for an uncommitted/torn batch.
+class LedgerBlockedError(StateConflictError):
+    """L5 cannot establish commit state; store is BLOCKED pending operator action."""
 
-    New batches publish the journal by atomic rename, so a torn journal can
-    only be a legacy batch that crashed while writing it -- before any
-    destination was replaced (journal fsync precedes every replace).
+
+def _journal_body_digest(batch_id, ops):
+    return hashlib.sha256(canonical_json({"batch_id": batch_id, "ops": ops}).encode("utf-8")).hexdigest()
+
+
+def _valid_ops(ops):
+    return isinstance(ops, list) and all(
+        isinstance(op, dict) and all(isinstance(op.get(k), str) and op.get(k) for k in ("tmp", "dest", "digest"))
+        for op in ops)
+
+
+def _classify_batch(batch_dir):
+    """Return (classification, journal_or_reason).
+
+    COMMITTED          -> journal (v2 verified, or parseable legacy)
+    UNCOMMITTED        -> no journal was ever published: safe to discard
+    CORRUPT_COMMITTED  -> v2 journal published (so committed) but unreadable/altered
+    AMBIGUOUS_LEGACY   -> legacy journal unreadable: torn-before-commit and
+                          corrupted-after-commit cannot be told apart
     """
-    if not os.path.isfile(journal_path):
-        return None
-    try:
-        with open(journal_path, "r", encoding="utf-8") as fh:
-            journal = json.load(fh)
-    except (OSError, ValueError):
-        return None
-    if not isinstance(journal, dict) or not isinstance(journal.get("ops"), list):
-        return None
-    return journal
+    v2 = os.path.join(batch_dir, _JOURNAL_V2_NAME)
+    legacy = os.path.join(batch_dir, _JOURNAL_NAME)
+    if os.path.isfile(v2):
+        try:
+            with open(v2, "r", encoding="utf-8") as fh:
+                journal = json.load(fh)
+        except (OSError, ValueError) as exc:
+            return "CORRUPT_COMMITTED", f"v2 journal unreadable: {type(exc).__name__}"
+        if (not isinstance(journal, dict) or journal.get("format") != _JOURNAL_FORMAT
+                or not _valid_ops(journal.get("ops"))
+                or journal.get("body_digest") != _journal_body_digest(journal.get("batch_id"), journal.get("ops"))):
+            return "CORRUPT_COMMITTED", "v2 journal fails format/digest verification"
+        return "COMMITTED", journal
+    if os.path.isfile(legacy):
+        try:
+            with open(legacy, "r", encoding="utf-8") as fh:
+                journal = json.load(fh)
+        except (OSError, ValueError) as exc:
+            return "AMBIGUOUS_LEGACY", f"legacy journal unreadable: {type(exc).__name__}"
+        if not isinstance(journal, dict) or not _valid_ops(journal.get("ops")):
+            return "AMBIGUOUS_LEGACY", "legacy journal has no valid ops list"
+        return "COMMITTED", journal
+    return "UNCOMMITTED", None
+
+
+def _quarantine(aios_dir, batch_dir, classification, reason):
+    """Preserve the batch as evidence and block the store; never delete it."""
+    qroot = os.path.join(aios_dir, QUARANTINE_DIR)
+    os.makedirs(qroot, exist_ok=True)
+    target = os.path.join(qroot, os.path.basename(batch_dir))
+    os.replace(batch_dir, target)
+    with open(os.path.join(target, "QUARANTINE.json"), "w", encoding="utf-8") as fh:
+        fh.write(canonical_json({"classification": classification, "reason": reason,
+                                 "batch": os.path.basename(batch_dir), "quarantined_utc": _utc_iso()}))
+        _fsync_file(fh)
+    _fsync_dir(qroot)
+    raise LedgerBlockedError(f"L5 BLOCKED: batch {os.path.basename(batch_dir)} quarantined "
+                             f"({classification}: {reason}); operator resolution required")
+
+
+def unresolved_quarantine(aios_dir):
+    """Quarantined batches without an operator RESOLVED.json marker."""
+    qroot = os.path.join(aios_dir, QUARANTINE_DIR)
+    if not os.path.isdir(qroot):
+        return []
+    return sorted(d for d in os.listdir(qroot)
+                  if os.path.isdir(os.path.join(qroot, d))
+                  and not os.path.exists(os.path.join(qroot, d, "RESOLVED.json")))
 
 
 def _recover_pending_unlocked(aios_dir):
-    """Roll forward journaled batches; caller owns the mutation lock."""
+    """Roll forward committed batches; caller owns the mutation lock.
+
+    Fails closed (LedgerBlockedError) while any quarantined batch is unresolved,
+    because the store may then hold a partially applied commit.
+    """
+    blocked = unresolved_quarantine(aios_dir)
+    if blocked:
+        raise LedgerBlockedError(f"L5 BLOCKED: unresolved quarantined batches: {blocked}")
     staging = os.path.join(aios_dir, ".staging")
     if not os.path.isdir(staging):
         return
     for entry in sorted(os.listdir(staging)):
         batch_dir = os.path.join(staging, entry)
-        journal_path = os.path.join(batch_dir, _JOURNAL_NAME)
-        journal = _read_journal(journal_path)
-        if journal is not None:
-            # Committed batch (L5 contract 3.2): roll forward every op.
+        if not os.path.isdir(batch_dir):
+            continue
+        classification, journal = _classify_batch(batch_dir)
+        if classification in ("CORRUPT_COMMITTED", "AMBIGUOUS_LEGACY"):
+            _quarantine(aios_dir, batch_dir, classification, journal)
+        if classification == "COMMITTED":
+            # Validate every op before touching any destination.
+            problems = []
             for op in journal["ops"]:
-                dest = op["dest"]
-                tmp = op["tmp"]
-                if os.path.exists(tmp):
-                    # Not yet replaced. The staged file was fsynced before the
-                    # commit point; verify it is the journaled content.
-                    with open(tmp, "rb") as fh:
+                if os.path.exists(op["tmp"]):
+                    with open(op["tmp"], "rb") as fh:
                         if _digest_bytes(fh.read()) != op["digest"]:
-                            raise StateConflictError(f"staged file diverges from journal: {dest}")
-                    os.makedirs(os.path.dirname(dest), exist_ok=True)
-                    _replace(tmp, dest)
-                    _fsync_dir(os.path.dirname(dest))
-                elif os.path.exists(dest):
-                    with open(dest, "rb") as fh:
-                        actual = _digest_bytes(fh.read())
-                    if actual != op["digest"]:
-                        raise StateConflictError(
-                            f"committed file diverges from journal: {dest}"
-                        )
+                            problems.append(f"staged file diverges from journal: {op['dest']}")
+                elif os.path.exists(op["dest"]):
+                    with open(op["dest"], "rb") as fh:
+                        if _digest_bytes(fh.read()) != op["digest"]:
+                            problems.append(f"staged file missing and destination diverges: {op['dest']}")
                 else:
-                    raise StateConflictError(
-                        f"journal op unrecoverable (temp and dest both missing): {dest}"
-                    )
-            os.unlink(journal_path)
-        # No (parseable) journal => the batch never reached its commit point and
-        # nothing was replaced (contract 3.3): discard it.
+                    problems.append(f"staged file and destination both missing: {op['dest']}")
+            if problems:
+                _quarantine(aios_dir, batch_dir, "UNRECOVERABLE_COMMITTED", "; ".join(problems))
+            for op in journal["ops"]:
+                if os.path.exists(op["tmp"]):
+                    os.makedirs(os.path.dirname(op["dest"]), exist_ok=True)
+                    _replace(op["tmp"], op["dest"])
+                    _fsync_dir(os.path.dirname(op["dest"]))
+            for name in (_JOURNAL_V2_NAME, _JOURNAL_NAME):
+                path = os.path.join(batch_dir, name)
+                if os.path.exists(path):
+                    os.unlink(path)
+        # UNCOMMITTED (or now fully applied): discard staging.
         shutil.rmtree(batch_dir, ignore_errors=True)
+
+
+def inspect_pending(aios_dir):
+    """Read-only: report staged batches and unresolved quarantine without touching anything.
+
+    Never takes the mutation lock, never moves, rewrites or deletes files.
+    """
+    staging = os.path.join(aios_dir, ".staging")
+    batches = []
+    if os.path.isdir(staging):
+        for entry in sorted(os.listdir(staging)):
+            batch_dir = os.path.join(staging, entry)
+            if os.path.isdir(batch_dir):
+                classification, _ = _classify_batch(batch_dir)
+                batches.append({"batch": entry, "classification": classification})
+    return {"pending": batches, "quarantined": unresolved_quarantine(aios_dir)}
 
 
 def recover_pending(aios_dir):
@@ -471,11 +552,12 @@ def commit_batch(aios_dir, payloads, precondition=None):
                 "digest": _digest_bytes(payload),
             })
 
-        journal_path = os.path.join(batch_dir, _JOURNAL_NAME)
+        journal_path = os.path.join(batch_dir, _JOURNAL_V2_NAME)
         journal_tmp = journal_path + ".tmp"
         _write_staged(
             journal_tmp,
-            canonical_json({"batch_id": batch_id, "ops": ops}).encode("utf-8"),
+            canonical_json({"format": _JOURNAL_FORMAT, "batch_id": batch_id, "ops": ops,
+                            "body_digest": _journal_body_digest(batch_id, ops)}).encode("utf-8"),
         )
         _replace(journal_tmp, journal_path)  # commit point (contract 3.1)
         _fsync_dir(batch_dir)

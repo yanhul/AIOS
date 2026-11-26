@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [main, fix/security-f01-f11-f06-one-turn, security/absorption-policy-ed25519-tests]
+    branches: [main, feat/l5-event-ledger, fix/security-f01-f11-f06-one-turn, security/absorption-policy-ed25519-tests]
   push:
     branches: [main]
   workflow_dispatch:
