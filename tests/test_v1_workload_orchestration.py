@@ -58,7 +58,10 @@ def test_registered_workload_executes_through_central_aios(tmp_path, capability,
     assert registered.owner == owner
     assert registered.kind == kind
     registry.persist(tmp_path, "test:v1-conformance")
-    policy_digest = persist_policy(str(tmp_path), {"policy_type":"GOVERNING_POLICY","name":"v1-central-conformance"})
+    policy_digest = persist_policy(str(tmp_path), {
+        "policy_type": "GOVERNING_POLICY", "name": "v1-central-conformance",
+        "require_execution_receipt": False, "acceptance_predicates": [],
+    })
 
     contract = _contract(capability, policy_digest)
     persist_contract(tmp_path, contract)
