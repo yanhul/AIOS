@@ -11,6 +11,7 @@ from .authority import authorize, load_contract, load_permit
 from .durable_runtime import DurableRuntime, validate_submission
 from .effect_authority import (
     ProviderAuthenticationError, create_effect, dispatch, observation_digest, observe, retry_dispatch, unknown,
+    _load_owned_effect,
 )
 
 
@@ -103,19 +104,32 @@ def execute_attempt(aios_dir, contract, effect, actor, adapter, attempt_id, *, p
         raise ValueError("contract must be a non-empty dict")
     if not isinstance(effect, dict) or not effect:
         raise ValueError("effect must be a non-empty dict")
-    if effect.get("state") != "DISPATCHED":
-        raise RuntimeError("effect must be DISPATCHED before execute_attempt")
-    if effect.get("actor") != actor:
-        raise PermissionError("effect actor does not match execution actor")
+    # Caller-provided snapshots are hints only. Reload the committed effect and
+    # contract immediately before the provider side effect so stale/forged data
+    # cannot authorize an execution that the durable authority state forbids.
+    effect_id = _text(effect.get("effect_id"), "effect.effect_id")
+    persisted_effect, persisted_contract = _load_owned_effect(
+        aios_dir, effect_id, actor, "execution"
+    )
+    if persisted_effect.get("state") != "DISPATCHED":
+        raise RuntimeError("persisted effect must be DISPATCHED before execute_attempt")
+    if persisted_effect.get("attempt_id") != attempt_id:
+        raise RuntimeError("attempt_id does not match persisted dispatched effect")
     if effect.get("attempt_id") != attempt_id:
-        raise RuntimeError("attempt_id does not match dispatched effect")
+        raise RuntimeError("attempt_id does not match supplied effect snapshot")
+    if contract.get("contract_id") != persisted_contract.get("contract_id"):
+        raise PermissionError("supplied contract does not match persisted effect contract")
     if not hasattr(adapter, "name"):
         raise ValueError("adapter must expose a provider name")
     provider_name = _text(adapter.name, "adapter.name")
-    if not _provider_authorized(contract, provider_name):
-        raise PermissionError("provider capability is not authorized by contract")
-    if "external_effect" not in contract.get("allowed_effects", []):
-        raise PermissionError("external effect is not authorized by contract")
+    if persisted_effect.get("provider") != provider_name:
+        raise PermissionError("adapter provider does not match persisted dispatched provider")
+    if not _provider_authorized(persisted_contract, provider_name):
+        raise PermissionError("provider capability is not authorized by persisted contract")
+    if "external_effect" not in persisted_contract.get("allowed_effects", []):
+        raise PermissionError("external effect is not authorized by persisted contract")
+    effect = persisted_effect
+    contract = persisted_contract
 
     try:
         receipt = adapter.execute(contract=dict(contract), effect=dict(effect), attempt_id=attempt_id)
@@ -168,17 +182,28 @@ def resume_attempt(aios_dir, contract, effect, actor, adapter, durable_runtime: 
         raise ValueError("contract must be a non-empty dict")
     if not isinstance(effect, dict) or not effect:
         raise ValueError("effect must be a non-empty dict")
-    if effect.get("state") != "DISPATCHED":
-        raise RuntimeError("effect must be DISPATCHED before resume_attempt")
-    attempt_id = effect.get("attempt_id")
-    _text(attempt_id, "effect.attempt_id")
-    if effect.get("actor") != actor:
-        raise PermissionError("effect actor does not match execution actor")
+    # Never trust the caller's in-memory effect/contract snapshot during resume.
+    # A stale or forged snapshot must not trigger even a read-only provider query.
+    supplied_effect_id = _text(effect.get("effect_id"), "effect.effect_id")
+    persisted_effect, persisted_contract = _load_owned_effect(
+        aios_dir, supplied_effect_id, actor, "resume"
+    )
+    if persisted_effect.get("state") != "DISPATCHED":
+        raise RuntimeError("persisted effect must be DISPATCHED before resume_attempt")
+    attempt_id = _text(persisted_effect.get("attempt_id"), "persisted effect.attempt_id")
+    if effect.get("attempt_id") != attempt_id:
+        raise PermissionError("supplied effect attempt does not match persisted dispatched attempt")
+    if effect.get("contract_id") != persisted_effect.get("contract_id"):
+        raise PermissionError("supplied effect contract does not match persisted effect")
+    if contract.get("contract_id") != persisted_contract.get("contract_id"):
+        raise PermissionError("supplied contract does not match persisted effect contract")
+    contract = persisted_contract
+    effect = persisted_effect
     provider_name = _text(getattr(adapter, "name", None), "adapter.name")
     if not _provider_authorized(contract, provider_name):
-        raise PermissionError("provider capability is not authorized by contract")
+        raise PermissionError("provider capability is not authorized by persisted contract")
     if "external_effect" not in contract.get("allowed_effects", []):
-        raise PermissionError("external effect is not authorized by contract")
+        raise PermissionError("external effect is not authorized by persisted contract")
     _submit_runtime(durable_runtime, "resume", effect, attempt_id, provider_name)
 
     reconcile = getattr(adapter, "reconcile", None)
