@@ -655,6 +655,11 @@ def reconcile_in_flight_attempt(
             raise ValueError(f"durable recovery record is not canonically encodable: {exc}") from exc
         if binding != intent["recovery_binding"]:
             raise ValueError("durable recovery record was altered: binding digest mismatch")
+        # The L5 reconciliation path must reproduce the exact action result
+        # that was committed with the receipt. A matching receipt/patch alone
+        # is insufficient: history must not adopt a different action payload.
+        if not isinstance(action_result, Mapping) or dict(action_result) != dict(pending_action):
+            raise ValueError("recomputed action result differs from the durable recovery record")
         if (not isinstance(pending_verification.get("receipt"), Mapping)
                 or dict(pending_verification["receipt"]) != dict(validated)
                 or _verification_patch(pending_verification) != dict(pending_patch)):
