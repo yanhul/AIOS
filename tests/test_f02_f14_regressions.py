@@ -205,15 +205,16 @@ def test_commit_batch_rejects_symlinked_parent(tmp_path):
 def _swap_parent_on_digest(monkeypatch, aios, outside):
     """Swap entities/ for a symlink the first time a digest is computed,
     i.e. after path validation and before any rename."""
-    real, done = m._digest_bytes, {"v": False}
+    real, done = m._digest_staged_confined, {"v": False}
 
-    def hook(data):
+    def hook(*args):
+        out = real(*args)
         if not done["v"]:
             done["v"] = True
             os.replace(aios / "entities", aios / "entities.moved")
             os.symlink(outside, aios / "entities")
-        return real(data)
-    monkeypatch.setattr(m, "_digest_bytes", hook)
+        return out
+    monkeypatch.setattr(m, "_digest_staged_confined", hook)
     return done
 
 
@@ -234,7 +235,15 @@ def test_toctou_parent_swapped_after_check_during_rollforward(tmp_path, monkeypa
 def test_toctou_parent_swapped_after_check_during_commit(tmp_path, monkeypatch):
     aios, outside = _store(tmp_path)
     before = _tree(outside)
-    done = _swap_parent_on_digest(monkeypatch, aios, outside)
+    real, done = m._digest_bytes, {"v": False}
+    def hook(data):
+        out = real(data)
+        if not done["v"]:
+            done["v"] = True
+            os.replace(aios / "entities", aios / "entities.moved")
+            os.symlink(outside, aios / "entities")
+        return out
+    monkeypatch.setattr(m, "_digest_bytes", hook)
     with pytest.raises(m.LedgerBlockedError):
         m.commit_batch(str(aios), [("entities/x.json", {"a": 1})])
     assert done["v"]
@@ -247,15 +256,16 @@ def test_toctou_parent_swapped_after_check_during_commit(tmp_path, monkeypatch):
 def test_toctou_tmp_swapped_for_symlink_after_check(tmp_path, monkeypatch):
     aios, outside = _store(tmp_path)
     batch = _batch(aios, "batch-a", [("x.tmp", aios / "entities" / "x.json", PAYLOAD)])
-    real, done = m._digest_bytes, {"v": False}
+    real, done = m._digest_staged_confined, {"v": False}
 
-    def hook(data):
+    def hook(*args):
+        out = real(*args)
         if not done["v"]:
             done["v"] = True
             os.unlink(batch / "x.tmp")
             os.symlink(outside / "victim.json", batch / "x.tmp")
-        return real(data)
-    monkeypatch.setattr(m, "_digest_bytes", hook)
+        return out
+    monkeypatch.setattr(m, "_digest_staged_confined", hook)
     _assert_blocked(aios, "batch-a")
     assert done["v"]
     assert not os.path.lexists(aios / "entities" / "x.json")

@@ -68,19 +68,6 @@ def _assert_quarantined(aios, name="batch-a"):
     return ei.value
 
 
-def _hook_read(monkeypatch, staged_ino, on_call):
-    """Call on_call(n) on the n-th os.read of the staged inode (1-based)."""
-    calls = {"n": 0}
-
-    def read(fd, size):
-        if os.fstat(fd).st_ino == staged_ino:
-            calls["n"] += 1
-            on_call(calls["n"])
-        return _real_read(fd, size)
-    monkeypatch.setattr(m.os, "read", read)
-    return calls
-
-
 def test_fd_safe_on_linux():
     """Guards against the TOCTOU/integrity tests silently skipping on CI."""
     if sys.platform.startswith("linux"):
@@ -93,16 +80,16 @@ def test_staged_path_replaced_after_digest_check_is_not_committed(tmp_path, monk
     aios, _ = _store(tmp_path)
     (aios / "entities" / "x.json").write_bytes(b"committed-before\n")
     batch = _batch(aios)
-    real, swapped = m._digest_bytes, {"v": False}
+    real, swapped = m._digest_staged_confined, {"v": False}
 
-    def hook(data):
-        out = real(data)  # early check sees GOOD
+    def hook(*args):
+        out = real(*args)  # descriptor-relative early check sees GOOD
         if not swapped["v"]:
             swapped["v"] = True
             os.unlink(batch / "x.tmp")
             (batch / "x.tmp").write_bytes(EVIL)  # different regular file
         return out
-    monkeypatch.setattr(m, "_digest_bytes", hook)
+    monkeypatch.setattr(m, "_digest_staged_confined", hook)
     _assert_quarantined(aios)
     assert swapped["v"]
     assert (aios / "entities" / "x.json").read_bytes() == b"committed-before\n"
@@ -120,12 +107,22 @@ def test_inplace_write_to_open_staged_inode_during_copy_is_refused(tmp_path, mon
     monkeypatch.setattr(m, "_COPY_CHUNK", 8)
     staged = batch / "x.tmp"
 
-    def mutate(n):
-        if n == 2:  # first chunk already copied
-            with open(staged, "r+b") as fh:
-                fh.seek(32)
-                fh.write(b"Z" * 8)
-    calls = _hook_read(monkeypatch, staged.stat().st_ino, mutate)
+    ino = staged.stat().st_ino
+    real_apply = m._apply_op
+    active, calls = {"value": False}, {"n": 0}
+    def apply(*args, **kwargs):
+        active["value"] = True
+        return real_apply(*args, **kwargs)
+    def read(fd, size):
+        if active["value"] and os.fstat(fd).st_ino == ino:
+            calls["n"] += 1
+            if calls["n"] == 2:  # first chunk was already copied to the destination temp
+                with open(staged, "r+b") as fh:
+                    fh.seek(32)
+                    fh.write(b"Z" * 8)
+        return _real_read(fd, size)
+    monkeypatch.setattr(m, "_apply_op", apply)
+    monkeypatch.setattr(m.os, "read", read)
     _assert_quarantined(aios)
     assert calls["n"] >= 2
     assert not (aios / "entities" / "x.json").exists()
@@ -153,7 +150,20 @@ def test_link_created_during_copy_does_not_alias_installed_file(tmp_path, monkey
     staged = batch / "x.tmp"
     ino = staged.stat().st_ino
     alias = outside / "alias.json"
-    _hook_read(monkeypatch, ino, lambda n: n == 1 and os.link(staged, alias))
+    real_apply = m._apply_op
+    active = {"value": False}
+    calls = {"n": 0}
+    def apply(*args, **kwargs):
+        active["value"] = True
+        return real_apply(*args, **kwargs)
+    def read(fd, size):
+        if active["value"] and os.fstat(fd).st_ino == ino:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                os.link(staged, alias)
+        return _real_read(fd, size)
+    monkeypatch.setattr(m, "_apply_op", apply)
+    monkeypatch.setattr(m.os, "read", read)
     m.recover_pending(str(aios))
     dest = aios / "entities" / "x.json"
     assert alias.stat().st_ino == ino  # attacker holds a name for the staged inode
@@ -187,10 +197,20 @@ def test_failure_during_copy_leaves_nothing_committed(tmp_path, monkeypatch):
     batch = _batch(aios, ops=[("x.tmp", "entities/x.json", GOOD * 20)])
     monkeypatch.setattr(m, "_COPY_CHUNK", 16)
 
-    def fail(n):
-        if n == 3:
-            raise OSError(errno.EIO, "injected copy failure")
-    _hook_read(monkeypatch, (batch / "x.tmp").stat().st_ino, fail)
+    ino = (batch / "x.tmp").stat().st_ino
+    real_apply = m._apply_op
+    active, calls = {"value": False}, {"n": 0}
+    def apply(*args, **kwargs):
+        active["value"] = True
+        return real_apply(*args, **kwargs)
+    def read(fd, size):
+        if active["value"] and os.fstat(fd).st_ino == ino:
+            calls["n"] += 1
+            if calls["n"] == 3:
+                raise OSError(errno.EIO, "injected copy failure")
+        return _real_read(fd, size)
+    monkeypatch.setattr(m, "_apply_op", apply)
+    monkeypatch.setattr(m.os, "read", read)
     with pytest.raises(m.RecoveryIncompleteError):
         m.recover_pending(str(aios))
     assert not (aios / "entities" / "x.json").exists()
@@ -245,13 +265,21 @@ def test_cleanup_of_swapped_dest_temp_does_not_follow_symlink(tmp_path, monkeypa
     batch = _batch(aios)
     victim = outside / "victim.json"
 
-    def swap_then_fail(n):
-        if n == 1:
+    ino = (batch / "x.tmp").stat().st_ino
+    real_apply = m._apply_op
+    active = {"value": False}
+    def apply(*args, **kwargs):
+        active["value"] = True
+        return real_apply(*args, **kwargs)
+    def read(fd, size):
+        if active["value"] and os.fstat(fd).st_ino == ino:
             [tmp] = _l5tmps(aios)
             os.unlink(tmp)
             os.symlink(victim, tmp)
             raise OSError(errno.EIO, "injected failure after swap")
-    _hook_read(monkeypatch, (batch / "x.tmp").stat().st_ino, swap_then_fail)
+        return _real_read(fd, size)
+    monkeypatch.setattr(m, "_apply_op", apply)
+    monkeypatch.setattr(m.os, "read", read)
     with pytest.raises(m.RecoveryIncompleteError):
         m.recover_pending(str(aios))
     assert victim.read_bytes() == b"original\n"
