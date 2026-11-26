@@ -401,22 +401,43 @@ def _within(root, path):
 
 
 # ---------------------------------------------------------------------------
-# Store confinement (F-02)
+# Store confinement and staged-payload integrity (F-02)
 #
-# Threat model: a principal that can write ``.staging`` (or plant symlinks in
-# the store) but does not hold the mutation lock. Defences, in order:
-#   1. lexical: every destination is a store-relative path, never ``..``,
-#      never under a reserved L5 directory (.staging, .quarantine);
-#   2. check time: no component of the destination or staged path may be a
-#      symlink, and realpath() must stay inside the store;
-#   3. use time (POSIX with dir_fd support): directories are walked with
-#      O_NOFOLLOW from a descriptor on the store root and the rename is done
-#      relative to those descriptors, so a symlink swapped into a parent
-#      component after step 2 is refused instead of followed. After the
-#      rename the destination is re-checked to be a regular file.
-# Residual (documented, not claimed fixed): a principal that can rename real
-# directories of the store itself, or platforms without dir_fd support
-# (_FD_SAFE False, e.g. Windows), are only covered by checks 1-2.
+# Threat model. Actors considered:
+#   * STAGING WRITER (in scope): can create/replace/modify/link entries under
+#     ``.staging`` (including journals, whose digest is unkeyed - see F-03/F-04)
+#     and plant symlinks in the store, but does not hold the mutation lock and
+#     cannot write the destination directories or the store root.
+#   * DESTINATION-DIR / STORE-ROOT WRITER (out of scope): can rename or
+#     replace real directories and files of the store itself. Such an actor
+#     can corrupt the store directly; only best-effort identity checks apply.
+#   * Same-uid code running inside this process: out of scope.
+#
+# Separate properties, each with its own defence:
+#   1. Pathname confinement (check time): store-relative destinations only,
+#      no ``..``, no reserved L5 directory (.staging, .quarantine), no symlink
+#      component (lstat), realpath() inside the store.
+#   2. Pathname races (use time): directories are walked with O_NOFOLLOW from
+#      a descriptor on the store root; every open/create/rename/unlink is
+#      dir_fd-relative, so a symlink swapped into a path after step 1 is
+#      refused, never followed.
+#   3. Inode aliasing (hard links): a staged entry is never renamed into the
+#      store. Its bytes are copied into a NEW inode created O_EXCL in the
+#      destination directory, so no external name can share the installed
+#      inode. Staged entries with st_nlink != 1 are refused as a fail-closed
+#      signal (not relied on: a link created after fstat is harmless because
+#      of the copy).
+#   4. Content integrity / concurrent in-place writes: SHA-256 is computed
+#      over exactly the bytes written to the new inode and compared with the
+#      journal digest before installation. A staged file replaced after the
+#      early digest check, or modified while being copied, yields a mismatch
+#      and the batch is quarantined. This does NOT give a coherent snapshot
+#      of the staged source; it guarantees that the installed bytes are
+#      exactly bytes whose digest equals the journal digest.
+# Platforms without dir_fd/O_NOFOLLOW (_FD_SAFE False, e.g. Windows) cannot
+# provide property 2, so applying a staged payload there fails closed with
+# L5PlatformUnsupportedError (batch retained, nothing installed). There is no
+# path-based fallback.
 # ---------------------------------------------------------------------------
 
 _RESERVED_TOP = frozenset({".staging", QUARANTINE_DIR})
@@ -426,6 +447,7 @@ _RESERVED_STAGED_NAMES = frozenset({_JOURNAL_V2_NAME, _JOURNAL_NAME,
 _FD_SAFE = (os.rename in os.supports_dir_fd and os.unlink in os.supports_dir_fd
             and os.open in os.supports_dir_fd
             and os.mkdir in os.supports_dir_fd and os.stat in os.supports_dir_fd
+            and os.listdir in os.supports_fd and hasattr(os, "O_NONBLOCK")
             and hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"))
 _ESCAPE_ERRNOS = frozenset(e for e in (errno.ELOOP, errno.ENOTDIR, getattr(errno, "EMLINK", None))
                            if e is not None)
@@ -490,7 +512,9 @@ def _staged_name(batch_dir, tmp):
 
 
 def _read_nofollow(path):
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+    """Read a regular file without following a final symlink or blocking on a FIFO."""
+    flags = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+             | getattr(os, "O_BINARY", 0) | getattr(os, "O_CLOEXEC", 0))
     try:
         fd = os.open(path, flags)
     except OSError as exc:
@@ -498,6 +522,8 @@ def _read_nofollow(path):
             raise _PathEscape(f"symlink at {path}") from exc
         raise
     with os.fdopen(fd, "rb") as fh:
+        if not stat.S_ISREG(os.fstat(fh.fileno()).st_mode):
+            raise _PathEscape(f"not a regular file: {path}")
         return fh.read()
 
 
@@ -520,37 +546,122 @@ def _open_dir_at(dir_fd, name, create):
         raise
 
 
-def _apply_op(aios_dir, batch_dir, tmp_name, dest_parts):
-    """Move one staged payload into the store, refusing symlink redirection."""
+class _IntegrityError(Exception):
+    """Bytes copied from a staged payload do not match the journal digest."""
+
+
+class L5PlatformUnsupportedError(LedgerBlockedError):
+    """The platform lacks the primitives the F-02 contract requires; fail closed."""
+
+
+class RecoveryIncompleteError(LedgerBlockedError):
+    """An I/O failure interrupted installation; the batch is retained for replay."""
+
+
+_COPY_CHUNK = 1 << 16
+_DEST_TMP_SUFFIX = ".l5tmp"
+_new_digest = hashlib.sha256  # module-level so tests can inject digest failures
+
+
+def _require_fd_safe():
     if not _FD_SAFE:
-        dest = os.path.join(aios_dir, *dest_parts)
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        _replace(os.path.join(batch_dir, tmp_name), dest)
-        _fsync_dir(os.path.dirname(dest))
-        return
-    fds = [os.open(aios_dir, os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0))]
+        raise L5PlatformUnsupportedError(
+            "L5 BLOCKED: platform lacks dir_fd/O_NOFOLLOW; staged payloads cannot be "
+            "installed without pathname-race protection (fail closed)")
+
+
+def _write_all(fd, data):
+    view = memoryview(data)
+    while view:
+        view = view[os.write(fd, view):]
+
+
+def _sweep_stale_dest_tmps(parent_fd, dest_name):
+    """Remove leftovers of a crashed install of ``dest_name`` (caller holds the lock)."""
+    prefix = f".{dest_name}."
+    for name in os.listdir(parent_fd):
+        if name.startswith(prefix) and name.endswith(_DEST_TMP_SUFFIX):
+            try:
+                os.unlink(name, dir_fd=parent_fd)  # unlink never follows symlinks
+            except FileNotFoundError:
+                pass
+
+
+def _apply_op(aios_dir, batch_dir, tmp_name, dest_parts, expected_digest):
+    """Install one staged payload as a new, digest-verified inode in the store.
+
+    Raises _PathEscape (redirection), _IntegrityError (content mismatch) or
+    OSError (I/O failure; nothing new is installed unless the final rename
+    already happened, in which case the installed bytes are verified).
+    """
+    _require_fd_safe()
+    cloexec = getattr(os, "O_CLOEXEC", 0)
+    fds = [os.open(aios_dir, os.O_RDONLY | os.O_DIRECTORY | cloexec)]
+    src = dst = None
+    dest_name, tmp_dest = dest_parts[-1], None
+    parent = None
     try:
         fds.append(_open_dir_at(fds[0], ".staging", create=False))
-        src_fd = _open_dir_at(fds[-1], os.path.basename(batch_dir), create=False)
-        fds.append(src_fd)
+        src_dir = _open_dir_at(fds[-1], os.path.basename(batch_dir), create=False)
+        fds.append(src_dir)
+        try:
+            src = os.open(tmp_name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | cloexec,
+                          dir_fd=src_dir)
+        except OSError as exc:
+            if exc.errno in _ESCAPE_ERRNOS:
+                raise _PathEscape(f"staged entry {tmp_name!r} is a symlink") from exc
+            raise
+        st = os.fstat(src)  # identity of the opened object, not of the pathname
+        if not stat.S_ISREG(st.st_mode):
+            raise _PathEscape(f"staged entry {tmp_name!r} is not a regular file")
+        if st.st_nlink != 1:
+            raise _PathEscape(f"staged entry {tmp_name!r} has {st.st_nlink} hard links")
+
         parent = fds[0]
         for comp in dest_parts[:-1]:
             parent = _open_dir_at(parent, comp, create=True)
             fds.append(parent)
-        st = os.stat(tmp_name, dir_fd=src_fd, follow_symlinks=False)
-        if not stat.S_ISREG(st.st_mode):
-            raise _PathEscape(f"staged file {tmp_name!r} is not a regular file")
-        _replace(tmp_name, dest_parts[-1], src_dir_fd=src_fd, dst_dir_fd=parent)
-        st = os.stat(dest_parts[-1], dir_fd=parent, follow_symlinks=False)
-        if not stat.S_ISREG(st.st_mode):
-            # Lost a race on the staged entry: never leave a link in the store.
-            os.unlink(dest_parts[-1], dir_fd=parent)
-            raise _PathEscape(f"staged file swapped for a non-regular file: {tmp_name!r}")
+        _sweep_stale_dest_tmps(parent, dest_name)
+        tmp_dest = f".{dest_name}.{uuid.uuid4().hex}{_DEST_TMP_SUFFIX}"
+        dst = os.open(tmp_dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | cloexec,
+                      0o666, dir_fd=parent)
+
+        h = _new_digest()
+        while True:
+            chunk = os.read(src, _COPY_CHUNK)
+            if not chunk:
+                break
+            h.update(chunk)          # hash exactly the bytes written below
+            _write_all(dst, chunk)
+        if h.hexdigest() != expected_digest:
+            raise _IntegrityError(f"copied bytes of {tmp_name!r} do not match journal digest")
+        os.fsync(dst)
+
+        mine = os.fstat(dst)
+        named = os.stat(tmp_dest, dir_fd=parent, follow_symlinks=False)
+        if (named.st_dev, named.st_ino) != (mine.st_dev, mine.st_ino):
+            raise _PathEscape(f"destination temp {tmp_dest!r} was replaced before install")
+        _replace(tmp_dest, dest_name, src_dir_fd=parent, dst_dir_fd=parent)
+        tmp_dest = None  # consumed by the rename
+        installed = os.stat(dest_name, dir_fd=parent, follow_symlinks=False)
+        if (installed.st_dev, installed.st_ino) != (mine.st_dev, mine.st_ino):
+            raise _PathEscape(f"destination {dest_name!r} changed during install")
+        os.fsync(parent)  # durability of the rename is part of success
         try:
-            os.fsync(parent)
-        except OSError:
+            os.unlink(tmp_name, dir_fd=src_dir)  # marks the op applied for replay
+        except FileNotFoundError:
             pass
+    except BaseException:
+        if tmp_dest is not None and parent is not None:
+            try:
+                os.unlink(tmp_dest, dir_fd=parent)  # never follows a symlink
+            except OSError:
+                pass
+        raise
     finally:
+        for fd in (dst, src):
+            if fd is not None:
+                os.close(fd)
         for fd in reversed(fds):
             os.close(fd)
 
@@ -604,10 +715,14 @@ def _recover_pending_unlocked(aios_dir):
             try:
                 for op, tmp_name, parts in plan:
                     if os.path.lexists(op["tmp"]):
-                        _apply_op(aios_dir, batch_dir, tmp_name, parts)
-            except _PathEscape as exc:
+                        _apply_op(aios_dir, batch_dir, tmp_name, parts, op["digest"])
+            except (_PathEscape, _IntegrityError) as exc:
                 _quarantine(aios_dir, batch_dir, "UNRECOVERABLE_COMMITTED",
-                            f"store path changed during roll-forward: {exc}")
+                            f"staged payload rejected during roll-forward: {exc}")
+            except OSError as exc:
+                raise RecoveryIncompleteError(
+                    f"L5 BLOCKED: roll-forward of {entry} interrupted ({exc}); "
+                    "batch retained for replay") from exc
             for name in (_JOURNAL_V2_NAME, _JOURNAL_NAME):
                 path = os.path.join(batch_dir, name)
                 if os.path.exists(path):
@@ -715,6 +830,7 @@ def commit_batch(aios_dir, payloads, precondition=None):
         _recover_pending_unlocked(aios_dir)
         if precondition is not None:
             precondition(aios_dir)
+        _require_fd_safe()
         staging_root = os.path.join(aios_dir, ".staging")
         batch_id = uuid.uuid4().hex
         batch_dir = os.path.join(staging_root, f"batch-{batch_id}")
@@ -751,10 +867,14 @@ def commit_batch(aios_dir, payloads, precondition=None):
 
         try:
             for op, parts in zip(ops, plan):
-                _apply_op(aios_dir, batch_dir, os.path.basename(op["tmp"]), parts)
-        except _PathEscape as exc:
+                _apply_op(aios_dir, batch_dir, os.path.basename(op["tmp"]), parts, op["digest"])
+        except (_PathEscape, _IntegrityError) as exc:
             _quarantine(aios_dir, batch_dir, "UNRECOVERABLE_COMMITTED",
-                        f"store path changed during commit: {exc}")
+                        f"staged payload rejected during commit: {exc}")
+        except OSError as exc:
+            raise RecoveryIncompleteError(
+                f"L5 BLOCKED: commit of batch-{batch_id} interrupted ({exc}); "
+                "batch retained for replay") from exc
 
         os.unlink(journal_path)
         shutil.rmtree(batch_dir, ignore_errors=True)
