@@ -29,14 +29,38 @@ FORBIDDEN_EXACT = frozenset({
 })
 
 
-def _imports(tree: ast.AST) -> Iterable[tuple[str, int]]:
+DYNAMIC_IMPORTS = frozenset({"importlib", "__import__"})
+
+
+def _resolve_relative(relative: str, level: int, module: str | None) -> str:
+    """Resolve ``from .x import y`` against the module's package path."""
+    package = Path(relative).with_suffix("").parts[:-1]
+    base = package[: len(package) - (level - 1)] if level > 1 else package
+    return ".".join([*base, *([module] if module else [])])
+
+
+def _imports(tree: ast.AST, relative: str = "") -> Iterable[tuple[str, int]]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 yield alias.name, node.lineno
         elif isinstance(node, ast.ImportFrom):
-            if node.module:
+            if node.level:
+                base = _resolve_relative(relative, node.level, node.module)
+                if node.module:
+                    yield base, node.lineno
+                # ``from . import runtime`` imports submodules by name.
+                for alias in node.names:
+                    yield f"{base}.{alias.name}" if base else alias.name, node.lineno
+            elif node.module:
                 yield node.module, node.lineno
+                for alias in node.names:
+                    yield f"{node.module}.{alias.name}", node.lineno
+        elif isinstance(node, ast.Call):
+            func = node.func
+            name = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else None
+            if name in {"__import__", "import_module"}:
+                yield "__import__", node.lineno
 
 
 def inspect_file(root: Path, relative: str) -> list[dict[str, object]]:
@@ -48,9 +72,13 @@ def inspect_file(root: Path, relative: str) -> list[dict[str, object]]:
         return [{"rule": "L5-SOURCE-READ", "path": relative, "line": 0,
                  "detail": str(exc)}]
     findings = []
-    for module, line in _imports(tree):
+    flagged_lines: set[int] = set()  # one finding per import statement
+    for module, line in _imports(tree, relative):
+        if line in flagged_lines:
+            continue
         top = module.split(".", 1)[0]
-        if top in FORBIDDEN_ROOTS or module in FORBIDDEN_EXACT:
+        if top in FORBIDDEN_ROOTS or module in FORBIDDEN_EXACT or module in DYNAMIC_IMPORTS:
+            flagged_lines.add(line)
             findings.append({
                 "rule": "L5-NO-EXECUTION-DEPENDENCY",
                 "path": relative,
