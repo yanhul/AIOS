@@ -761,3 +761,41 @@ def test_valid_tmp_ordering_unchanged_after_guard(env):
     _crash_after_n_applies(aios, 1)                          # a NEW, b OLD
     _place(aios, _tmpname("decisions/b.json"), PAYLOAD["decisions/b.json"][:3], _created_mode())
     assert _probs(env, aios) == []
+
+
+
+# --------------------------------------------------------------------------
+# Plan destination validation must match core.mutation._valid_dest()
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("rel,valid", [
+    (".L5/state.json", False),
+    (".STAGING/batch.json", False),
+    (".QuArAnTiNe/evidence.json", False),
+    ("foo.l5tmp", False),
+    ("nested/foo.l5tmp", False),
+    ("/absolute/path.json", False),
+    ("decisions//a.json", False),
+    ("decisions/../a.json", False),
+    ("/".join(["x"] * 33), False),
+    ("/".join(["x"] * 32), True),
+    ("decisions/a.json", True),
+])
+def test_validate_plan_destination_matches_core_valid_dest(rel, valid):
+    core_accepts = m._valid_dest(rel.split(os.sep))
+    order, objs, problems = oracle.validate_plan([(rel, {"v": 1})])
+    assert core_accepts is valid, (rel, core_accepts)
+    assert (not problems) is valid, (rel, problems)
+    if valid:
+        assert order == [rel] and objs == {rel: {"v": 1}}
+    else:
+        assert order == [] and objs == {}
+
+
+def test_applying_oracle_rejects_core_invalid_destinations(env):
+    invalid = [".L5/state.json", "foo.l5tmp", "/".join(["x"] * 33)]
+    b = env["base"]
+    for rel in invalid:
+        plan = [(rel, {"v": 1})]
+        problems = oracle._applying_tree_problems(b["old"], b["old"], b["new"], plan)
+        assert any("declared plan rejected" in problem for problem in problems), (rel, problems)
