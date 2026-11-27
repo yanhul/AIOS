@@ -71,6 +71,11 @@ FAULTS = {
                 for op, _payload in plan:
                     _apply_op(lay, bfd, op)
 """),
+    # commit applies ops in REVERSE plan order (state transitions unchanged): a
+    # crash after the first install leaves the last op NEW and the first OLD with
+    # no temp, which the in-order engine can never produce (plan-order oracle)
+    "apply_out_of_plan_order": (_APPLY_BLOCK, _APPLY_BLOCK.replace(
+        "for op, _payload in plan:", "for op, _payload in reversed(plan):")),
     # install temp gets its final mode BEFORE the copy/digest check (temp lifecycle)
     "fchmod_before_copy": ("""        h = _new_digest()
         while True:
@@ -130,6 +135,7 @@ def main():
     ap.add_argument("--legacy", default="")
     ap.add_argument("--modes", default="eio,exc,exit,sigkill")
     ap.add_argument("--json", default="")
+    ap.add_argument("--only", default="", help="comma-separated fault names (control always runs)")
     ap.add_argument("--logs", default="")
     a = ap.parse_args()
     logs = a.logs or tempfile.mkdtemp(prefix="l5sens-logs-")
@@ -137,7 +143,11 @@ def main():
     sweep = os.path.join(a.repo, "scripts", "l5_recovery_crash_sweep.py")
     src = open(os.path.join(a.repo, "core", "mutation.py")).read()
     results, ok = {}, True
-    for name, patch in [("control", None)] + list(FAULTS.items()):
+    only = {x for x in a.only.split(",") if x}
+    if only - set(FAULTS):
+        print(f"unknown fault(s): {sorted(only - set(FAULTS))}")
+        return 2
+    for name, patch in [("control", None)] + [(k, v) for k, v in FAULTS.items() if not only or k in only]:
         work = tempfile.mkdtemp(prefix=f"l5sens-{name}-")
         repo = os.path.join(work, "repo")
         shutil.copytree(a.repo, repo, ignore=shutil.ignore_patterns(".git", "__pycache__"))

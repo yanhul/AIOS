@@ -64,7 +64,7 @@ def env(tmp_path):
     st = _state(old)
     base = {"N": st["next_seq"], "L": st["last_finalized_seq"], "store_id": st["store_id"],
             "old": oracle.snapshot(old), "new": oracle.snapshot(new),
-            "new_payloads": [r for r, _ in NEW]}
+            "new_payloads": [r for r, _ in NEW], "new_payload_objs": NEW}
     return {"old": old, "new": new, "base": base, "tmp": tmp_path,
             "legacy_old": legacy_snapshot(old), "legacy_new": legacy_snapshot(new)}
 
@@ -417,10 +417,11 @@ def test_tmp_for_second_op_after_first_applied_accepted(env, tmp_path):
     _crash_after_n_applies(aios, 1)                         # real: a NEW, b OLD, APPLYING
     _place(aios, _tmpname("decisions/b.json"), PAYLOAD["decisions/b.json"][:3], _created_mode())
     st, journal, staging = _pre(env, aios)
-    b = dict(env["base"], new_payload_objs=NEW)
+    b = env["base"]
     assert oracle.classify_pre(st, oracle.snapshot(aios), staging, b, journal) == ("APPLYING", [])
     # without the declared plan the same state is rejected (fail-closed)
-    assert oracle.classify_pre(st, oracle.snapshot(aios), staging, env["base"], journal)[1]
+    nob = {k: v for k, v in b.items() if k != "new_payload_objs"}
+    assert oracle.classify_pre(st, oracle.snapshot(aios), staging, nob, journal)[1]
 
 
 @pytest.mark.parametrize("data,mode,why", [
@@ -537,3 +538,142 @@ def test_tmp_created_mode_follows_umask():
         got = ("reg", mode, 0, 0, 1, len(data), hashlib.sha256(data).hexdigest(), data)
         why = oracle.tmp_problem(_tmpname("decisions/a.json"), got, snap, old, NEW, euid=0, egid=0, umask=umask)
         assert (why is None) == ok, (umask, mode, why)
+
+
+# --------------------------------------------------------------------------
+# Plan order: NEW prefix / OLD suffix (commit_batch applies ops in plan order
+# and stops on the first failure), with or without an install temp
+# --------------------------------------------------------------------------
+
+def _install(env, aios, rel):
+    """Install the real NEW bytes/metadata of `rel` exactly as _apply_op leaves
+    them (copy of the reference NEW store's file: mode 0644, nlink 1)."""
+    src = os.path.join(env["new"], rel)
+    dst = os.path.join(aios, rel)
+    tmp = dst + ".swap"
+    with open(src, "rb") as fh:
+        data = fh.read()
+    _place(aios, os.path.relpath(tmp, aios), data, stat.S_IMODE(os.lstat(src).st_mode))
+    os.rename(tmp, dst)
+
+
+@pytest.mark.parametrize("a,b,ok", [("OLD", "OLD", True), ("NEW", "OLD", True),
+                                    ("NEW", "NEW", True), ("OLD", "NEW", False)])
+def test_plan_order_without_tmp(env, a, b, ok):
+    aios = env["old"]
+    for rel, lab in (("decisions/a.json", a), ("decisions/b.json", b)):
+        if lab == "NEW":
+            _install(env, aios, rel)
+    snap = oracle.snapshot(aios)
+    assert snap["decisions/a.json"] == env["base"][a.lower()]["decisions/a.json"]
+    assert snap["decisions/b.json"] == env["base"][b.lower()]["decisions/b.json"]
+    probs = _probs(env, aios)
+    if ok:
+        assert probs == []
+    else:
+        assert any("op 1" in p and "earlier op 0" in p and "plan order" in p for p in probs), probs
+
+
+def test_plan_order_violation_rejected_by_classify_pre_but_legacy_accepts(env):
+    """Real APPLYING state, then b installed before a: impossible for the engine."""
+    aios = env["old"]
+    _crash_after_n_applies(aios, 0)                          # APPLYING, nothing applied
+    _install(env, aios, "decisions/b.json")
+    st, journal, staging = _pre(env, aios)
+    assert st["phase"] == "APPLYING"
+    cls, probs = oracle.classify_pre(st, oracle.snapshot(aios), staging, env["base"], journal)
+    assert cls == "APPLYING" and any("plan order" in p for p in probs), probs
+    # the pre-fix (061883e) no-temp branch checked each path independently
+    legacy = [k for k in env["base"]["new_payloads"]
+              if oracle.snapshot(aios)[k] not in (env["base"]["old"][k], env["base"]["new"][k])]
+    assert legacy == []
+
+
+def test_plan_order_reversed_plan_accepts_mirror_state(env):
+    """Same filesystem state is valid when the declared plan order is [b, a]."""
+    aios = env["old"]
+    _install(env, aios, "decisions/b.json")
+    b = env["base"]
+    assert oracle._applying_tree_problems(oracle.snapshot(aios), b["old"], b["new"], NEW[::-1]) == []
+    assert oracle._applying_tree_problems(oracle.snapshot(aios), b["old"], b["new"], NEW) != []
+
+
+def test_new_old_with_tmp_for_first_op_rejected(env):
+    aios = env["old"]
+    _crash_after_n_applies(aios, 1)                          # real: a NEW, b OLD
+    _place(aios, _tmpname("decisions/a.json"), PAYLOAD["decisions/a.json"][:2], _created_mode())
+    probs = _probs(env, aios)
+    assert any("no longer holds its prior state" in p for p in probs), probs
+
+
+def test_new_old_with_valid_tmp_for_second_op_accepted(env):
+    aios = env["old"]
+    _crash_after_n_applies(aios, 1)
+    _place(aios, _tmpname("decisions/b.json"), PAYLOAD["decisions/b.json"], 0o644)
+    assert _probs(env, aios) == []
+
+
+def test_tmp_for_second_op_with_first_old_rejected_even_complete(env):
+    aios = env["old"]
+    _place(aios, _tmpname("decisions/b.json"), PAYLOAD["decisions/b.json"], 0o644)
+    assert any("op 0" in p and "is not NEW" in p for p in _probs(env, aios))
+
+
+@pytest.mark.parametrize("plan", [
+    [("decisions/a.json", {"v": 1}), ("decisions/a.json", {"v": 2})],     # exact duplicate
+    [("decisions/a.json", {"v": 1}), ("decisions/A.JSON", {"v": 1})],     # case-folded duplicate
+])
+def test_duplicate_plan_destinations_rejected(env, plan):
+    aios = env["old"]
+    b = env["base"]
+    probs = oracle._applying_tree_problems(oracle.snapshot(aios), b["old"], b["new"], plan)
+    assert any("duplicate destination" in p for p in probs), probs
+    # and a temp is not accepted against a duplicate-bearing plan
+    _place(aios, _tmpname("decisions/a.json"), b"", _created_mode())
+    probs = oracle._applying_tree_problems(oracle.snapshot(aios), b["old"], b["new"], plan)
+    assert any("declared plan unusable" in p for p in probs), probs
+
+
+@pytest.mark.parametrize("plan", [
+    None, [], (), "decisions/a.json", {"decisions/a.json": {"v": 1}},
+    [("decisions/a.json",)], [("decisions/a.json", {"v": 1}, "x")], ["decisions/a.json"],
+    [(None, {"v": 1})], [("", {"v": 1})], [("/etc/passwd", {"v": 1})],
+    [("../x.json", {"v": 1})], [("decisions/../decisions/a.json", {"v": 1})],
+    [("./decisions/a.json", {"v": 1})], [("decisions//a.json", {"v": 1})],
+    [("decisions/a.json/", {"v": 1})], [(".l5/state.json", {"v": 1})],
+    [("decisions/a\0.json", {"v": 1})],
+    [("decisions/a.json", {"v": float("nan")})], [("decisions/a.json", {"v": object()})],
+])
+def test_missing_or_malformed_plan_fails_closed(env, plan):
+    aios = env["old"]
+    b = env["base"]
+    snap = oracle.snapshot(aios)
+    probs = oracle._applying_tree_problems(snap, b["old"], b["new"], plan)   # must not raise
+    assert probs and any("declared plan rejected" in p for p in probs), probs
+    _place(aios, _tmpname("decisions/a.json"), b"", _created_mode())
+    probs = oracle._applying_tree_problems(oracle.snapshot(aios), b["old"], b["new"], plan)
+    assert any("temp" in p and "rejected" in p for p in probs), probs
+
+
+def test_missing_plan_fails_closed_in_classify_pre(env):
+    aios = env["old"]
+    _crash_after_n_applies(aios, 1)
+    st, journal, staging = _pre(env, aios)
+    nob = {k: v for k, v in env["base"].items() if k != "new_payload_objs"}
+    cls, probs = oracle.classify_pre(st, oracle.snapshot(aios), staging, nob, journal)
+    assert cls == "APPLYING" and any("no declared plan" in p for p in probs), probs
+
+
+def test_plan_destination_missing_from_new_tree_rejected(env):
+    b = env["base"]
+    plan = NEW + [("decisions/c.json", {"v": 1})]
+    probs = oracle._applying_tree_problems(b["old"], b["old"], b["new"], plan)
+    assert any("absent from the NEW reference tree" in p for p in probs), probs
+
+
+def test_tmp_for_undeclared_destination_rejected_with_order_intact(env):
+    aios = env["old"]
+    _crash_after_n_applies(aios, 1)                          # valid NEW/OLD prefix
+    _place(aios, "decisions/.c.json." + HEX + ".l5tmp", b"", _created_mode())
+    probs = _probs(env, aios)
+    assert any("not a declared payload destination" in p for p in probs), probs

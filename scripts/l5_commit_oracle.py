@@ -25,7 +25,7 @@ Pre-recovery classes (state observed right after the injected fault):
   NOT_ALLOCATED  IDLE          N        L   -        OLD exactly; staging empty
   PREPARED       PREPARED      N+1      L   N        OLD exactly (never written)
   COMMIT_POINT   COMMIT_POINT  N+1      L   N        OLD exactly (APPLYING precedes writes)
-  APPLYING       APPLYING      N+1      L   N        each payload path OLD or NEW; at most
+  APPLYING       APPLYING      N+1      L   N        NEW prefix / OLD suffix in plan order; at most
                                                      one '.<dest>.<hex32>.l5tmp' for a declared
                                                      payload (see tmp_problem): created mode +
                                                      payload prefix, or final mode + exact payload
@@ -88,10 +88,18 @@ TMP_CAPTURE_MAX = 1 << 20   # temp bytes are captured for prefix checks up to th
 
 
 def _entry(path):
-    """lstat-first; only an lstat-regular file is opened (O_NOFOLLOW|O_NONBLOCK,
-    then re-checked by fstat), so symlinks, FIFOs, devices and sockets are never
-    opened or followed. Regular files named like an install temp additionally
-    carry their bytes (8th element; None if larger than TMP_CAPTURE_MAX)."""
+    """lstat-first; open() is attempted only for an lstat-regular file
+    (O_NOFOLLOW|O_NONBLOCK|O_NOCTTY) and the fd is re-checked by fstat against the
+    lstat dev/ino, so a symlink is never followed and a non-regular or swapped
+    object is never READ or hashed (reported as "raced").
+    LIMITATION: open-by-pathname is not atomic with lstat. If the path is
+    concurrently replaced between lstat() and open(), the replacement (FIFO,
+    device, socket) may itself be opened: O_NONBLOCK keeps a FIFO from blocking,
+    O_NOCTTY keeps a tty from becoming the controlling terminal, and the fd is
+    closed without reading, but a device open() side effect is not excluded. The
+    sweep's trees are private to the test process, so no such race is expected.
+    Regular files named like an install temp additionally carry their bytes
+    (8th element; None if larger than TMP_CAPTURE_MAX)."""
     st = os.lstat(path)
     perm = stat.S_IMODE(st.st_mode)
     if stat.S_ISLNK(st.st_mode):
@@ -99,7 +107,8 @@ def _entry(path):
     if stat.S_ISDIR(st.st_mode):
         return ("dir", perm, st.st_uid, st.st_gid)
     if stat.S_ISREG(st.st_mode):
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0))
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_NOCTTY", 0)
+                     | getattr(os, "O_CLOEXEC", 0))
         capture = bool(_TMP_RE.match(os.path.basename(path)))
         data = bytearray()
         try:
@@ -125,7 +134,8 @@ def _entry(path):
 
 def snapshot(aios):
     """{relpath: entry} for every object outside the protected L5 directories.
-    Never opens a non-regular file (a FIFO cannot block the oracle)."""
+    Only lstat-regular files are opened; a FIFO cannot block the oracle (see
+    _entry for the pathname-race limitation)."""
     snap = {".": _entry(aios)}
     for dp, dns, fns in os.walk(aios, followlinks=False):
         rel = os.path.relpath(dp, aios)
@@ -207,7 +217,9 @@ def tmp_problem(rel, got, snap, old, plan, euid=None, egid=None, umask=None):
     if not mt:
         return "not an install-temp name"
     dest = os.path.join(os.path.dirname(rel), mt.group("dest"))
-    objs = dict(plan or [])
+    order, objs, bad = validate_plan(plan)
+    if bad:
+        return f"declared plan unusable ({bad[0]})"
     if dest not in objs:
         return f"temp maps to {dest!r}, which is not a declared payload destination"
     if not got or got[0] != "reg":
@@ -243,13 +255,58 @@ def tmp_problem(rel, got, snap, old, plan, euid=None, egid=None, umask=None):
     return f"temp mode {oct(perm)} is neither created {oct(created)} nor final {oct(final)}"
 
 
+def validate_plan(plan):
+    """(order, {rel: obj}, problems) for the ordered declared NEW payloads.
+
+    Fail-closed: a missing/empty plan, a malformed entry, an unsafe or
+    non-normalized destination path, a non-serializable payload or a duplicate
+    destination (exact or case-folded, as commit_batch rejects) is a problem;
+    nothing is silently dropped or overwritten (no dict(plan))."""
+    if plan is None:
+        return [], {}, ["no declared plan"]
+    if not isinstance(plan, (list, tuple)) or not plan:
+        return [], {}, [f"plan is not a non-empty ordered sequence ({type(plan).__name__})"]
+    order, objs, folded, out = [], {}, set(), []
+    for n, ent in enumerate(plan):
+        if not isinstance(ent, (list, tuple)) or len(ent) != 2:
+            out.append(f"plan entry {n} is not a (rel, obj) pair: {ent!r}")
+            continue
+        rel, obj = ent
+        if (not isinstance(rel, str) or not rel or "\0" in rel or os.path.isabs(rel)
+                or os.path.normpath(rel) != rel or rel.split(os.sep)[0] in EXCLUDED_TOPS
+                or any(c in ("", ".", "..") for c in rel.split(os.sep))):
+            out.append(f"plan entry {n}: unsafe or ambiguous destination path {rel!r}")
+            continue
+        try:
+            canonical_bytes(obj)
+        except (TypeError, ValueError) as exc:
+            out.append(f"plan entry {n} ({rel!r}): payload not canonical JSON ({exc})")
+            continue
+        if rel in objs or rel.casefold() in folded:
+            out.append(f"plan entry {n}: duplicate destination {rel!r}")
+            continue
+        order.append(rel)
+        objs[rel] = obj
+        folded.add(rel.casefold())
+    return (order, objs, out) if not out else ([], {}, out)
+
+
 def _applying_tree_problems(snap, old, new, plan=None):
     """APPLYING (pre-recovery, one commit_batch attempt): each payload path OLD or
-    NEW; the only extra object allowed is AT MOST ONE install temp (ops run in plan
-    order, the first failure stops the loop and an in-process failure unlinks the
-    temp). With a temp for op i, ops before i must be NEW and ops after i OLD.
-    Without `plan` every temp is rejected (fail-closed)."""
+    NEW; the only extra object allowed is AT MOST ONE install temp.
+
+    Ops run strictly in plan order (commit_batch: `for op in plan: _apply_op`)
+    and the first failure stops the loop, so every snapshot is a NEW prefix
+    followed by an OLD suffix: an OLD op followed by a NEW op is impossible,
+    temp or not. With a temp for op i: ops before i NEW, op i OLD (checked by
+    tmp_problem), ops after i OLD. A missing or malformed plan is a problem
+    (fail-closed), and then every temp is rejected as well."""
     out, tmps = [], []
+    order, _objs, bad = validate_plan(plan)
+    out += [f"APPLYING: declared plan rejected: {b}" for b in bad]
+    for r in order:
+        if r not in new:
+            out.append(f"APPLYING: plan destination {r!r} is absent from the NEW reference tree")
     for k in sorted(set(snap) | set(old) | set(new)):
         got = snap.get(k)
         if got is not None and got in (old.get(k), new.get(k)):
@@ -265,12 +322,22 @@ def _applying_tree_problems(snap, old, new, plan=None):
     if len(tmps) > 1:
         out.append(f"APPLYING: {len(tmps)} install temps {tmps}; one commit attempt leaves at most one")
     elif tmps:
-        order = [r for r, _ in plan]
         i = order.index(os.path.join(os.path.dirname(tmps[0]), _TMP_RE.match(os.path.basename(tmps[0])).group("dest")))
         for j, r in enumerate(order):
             want, label = (new, "NEW") if j < i else (old, "OLD")
             if snap.get(r) != want.get(r):
                 out.append(f"APPLYING: temp for op {i} ({order[i]!r}) but op {j} ({r!r}) is not {label}")
+    elif order:
+        # no temp: NEW prefix / OLD suffix. An op whose OLD and NEW entries are
+        # identical is compatible with both and constrains nothing.
+        first_old = None
+        for j, r in enumerate(order):
+            is_old, is_new = snap.get(r) == old.get(r), snap.get(r) == new.get(r)
+            if is_old and not is_new and first_old is None:
+                first_old = j
+            elif is_new and not is_old and first_old is not None:
+                out.append(f"APPLYING: op {j} ({r!r}) is NEW but earlier op {first_old} "
+                           f"({order[first_old]!r}) is OLD; ops apply in plan order")
     return out
 
 
