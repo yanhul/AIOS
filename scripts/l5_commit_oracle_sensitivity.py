@@ -71,6 +71,28 @@ FAULTS = {
                 for op, _payload in plan:
                     _apply_op(lay, bfd, op)
 """),
+    # install temp gets its final mode BEFORE the copy/digest check (temp lifecycle)
+    "fchmod_before_copy": ("""        h = _new_digest()
+        while True:
+            chunk = os.read(src, _COPY_CHUNK)
+            if not chunk:
+                break
+            h.update(chunk)          # hash exactly the bytes written below
+            _write_all(dst, chunk)
+        if h.hexdigest() != op["new"]:
+            raise _IntegrityError(f"copied bytes of {op['src']!r} do not match journal digest")
+        os.fchmod(dst, _DEST_NEW_FILE_MODE if cur_mode is None else cur_mode & _DEST_MODE_MASK)
+""", """        os.fchmod(dst, _DEST_NEW_FILE_MODE if cur_mode is None else cur_mode & _DEST_MODE_MASK)
+        h = _new_digest()
+        while True:
+            chunk = os.read(src, _COPY_CHUNK)
+            if not chunk:
+                break
+            h.update(chunk)          # hash exactly the bytes written below
+            _write_all(dst, chunk)
+        if h.hexdigest() != op["new"]:
+            raise _IntegrityError(f"copied bytes of {op['src']!r} do not match journal digest")
+"""),
     # installed destinations get mode 0664 (content identical)
     "install_mode_0664": ("os.fchmod(dst, _DEST_NEW_FILE_MODE if cur_mode is None else cur_mode & _DEST_MODE_MASK)",
                           "os.fchmod(dst, 0o664)"),

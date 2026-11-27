@@ -350,13 +350,190 @@ def test_applying_residue_only_service_tmp_allowed(env):
     b = env["base"]
     good = dict(b["old"])
     good["decisions/a.json"] = b["new"]["decisions/a.json"]
-    good["decisions/.b.json." + "c" * 32 + ".l5tmp"] = ("reg", 0o600, 0, 0, 1, 0, "x")
-    assert oracle._applying_tree_problems(good, b["old"], b["new"]) == []
-    for name, entry in {"decisions/.b.json." + "c" * 32 + ".l5tmp": ("lnk", "/etc/passwd"),
-                        "decisions/.zz.json." + "c" * 32 + ".l5tmp": ("reg", 0o600, 0, 0, 1, 0, "x"),
-                        "decisions/evil.l5tmp": ("reg", 0o600, 0, 0, 1, 0, "x"),
-                        "decisions/.b.json." + "c" * 32 + ".l5tmp ": ("reg", 0o600, 0, 0, 1, 0, "x")}.items():
-        bad = dict(b["old"], **{name: entry})
-        assert oracle._applying_tree_problems(bad, b["old"], b["new"]), name
+    data = oracle.canonical_bytes({"v": 1})
+    tmp = "decisions/.b.json." + "c" * 32 + ".l5tmp"
+    good[tmp] = ("reg", 0o644, os.geteuid(), os.getegid(), 1, len(data),
+                 hashlib.sha256(data).hexdigest(), data)
+    assert oracle._applying_tree_problems(good, b["old"], b["new"], NEW) == []
+    for name, entry in {tmp: ("lnk", "/etc/passwd"),
+                        "decisions/.zz.json." + "c" * 32 + ".l5tmp": good[tmp],
+                        "decisions/evil.l5tmp": good[tmp],
+                        tmp + " ": good[tmp]}.items():
+        bad = dict(b["old"], **{"decisions/a.json": b["new"]["decisions/a.json"], name: entry})
+        assert oracle._applying_tree_problems(bad, b["old"], b["new"], NEW), name
     mixed = dict(b["old"], **{"decisions/a.json": ("reg", 0o644, 0, 0, 1, 8, "0" * 64)})
-    assert oracle._applying_tree_problems(mixed, b["old"], b["new"])
+    assert oracle._applying_tree_problems(mixed, b["old"], b["new"], NEW)
+    # no declared plan -> every temp rejected (fail-closed)
+    assert oracle._applying_tree_problems(good, b["old"], b["new"])
+
+
+# --------------------------------------------------------------------------
+# Install-temp lifecycle (core/mutation.py::_apply_op)
+# --------------------------------------------------------------------------
+
+HEX = "d" * 32
+PAYLOAD = {"decisions/a.json": oracle.canonical_bytes({"v": 1}),
+           "decisions/b.json": oracle.canonical_bytes({"v": 1})}
+
+
+def _tmpname(dest_rel, hx=HEX):
+    d, n = os.path.split(dest_rel)
+    return os.path.join(d, f".{n}.{hx}.l5tmp")
+
+
+def _place(aios, rel, data, mode):
+    p = os.path.join(aios, rel)
+    fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    os.write(fd, data)
+    os.fchmod(fd, mode)
+    os.close(fd)
+    return p
+
+
+def _probs(env, aios):
+    b = env["base"]
+    return oracle._applying_tree_problems(oracle.snapshot(aios), b["old"], b["new"], NEW)
+
+
+def _created_mode():
+    return 0o600 & ~oracle._current_umask()
+
+
+@pytest.mark.parametrize("n", [0, 1, 4, len(PAYLOAD["decisions/a.json"])])
+def test_tmp_valid_prefix_at_created_mode_accepted(env, n):
+    aios = env["old"]                                       # op 0 in progress: a and b still OLD
+    _place(aios, _tmpname("decisions/a.json"), PAYLOAD["decisions/a.json"][:n], _created_mode())
+    assert _probs(env, aios) == []
+
+
+def test_tmp_complete_payload_at_final_mode_accepted(env):
+    aios = env["old"]
+    _place(aios, _tmpname("decisions/a.json"), PAYLOAD["decisions/a.json"], 0o644)
+    assert _probs(env, aios) == []
+
+
+def test_tmp_for_second_op_after_first_applied_accepted(env, tmp_path):
+    aios = env["old"]
+    _crash_after_n_applies(aios, 1)                         # real: a NEW, b OLD, APPLYING
+    _place(aios, _tmpname("decisions/b.json"), PAYLOAD["decisions/b.json"][:3], _created_mode())
+    st, journal, staging = _pre(env, aios)
+    b = dict(env["base"], new_payload_objs=NEW)
+    assert oracle.classify_pre(st, oracle.snapshot(aios), staging, b, journal) == ("APPLYING", [])
+    # without the declared plan the same state is rejected (fail-closed)
+    assert oracle.classify_pre(st, oracle.snapshot(aios), staging, env["base"], journal)[1]
+
+
+@pytest.mark.parametrize("data,mode,why", [
+    (b"attacker bytes\n", "created", "not a prefix"),
+    (b'{"v":0}\n', "created", "not a prefix"),            # OLD payload, not NEW
+    (b'{"v":1}\nX', "created", "not a prefix"),           # longer than the payload
+    (b'{"v":1', 0o644, "not the complete payload"),        # truncated at final mode
+    (b"", 0o644, "not the complete payload"),
+    (b'{"v":2}\n', 0o644, "not the complete payload"),    # modified, same length
+    (b"attacker bytes\n", 0o644, "not the complete payload"),
+    (b'{"v":1}\n', 0o640, "neither created"),
+    (b'{"v":1}\n', 0o666, "neither created"),
+    (b'{"v":1}\n', 0o755, "neither created"),
+])
+def test_tmp_invalid_content_or_mode_rejected(env, data, mode, why):
+    aios = env["old"]
+    _place(aios, _tmpname("decisions/a.json"), data, _created_mode() if mode == "created" else mode)
+    probs = _probs(env, aios)
+    assert any(why in p for p in probs), probs
+
+
+def test_tmp_foreign_owner_rejected(env):
+    b = env["base"]
+    snap = dict(b["old"])
+    data = PAYLOAD["decisions/a.json"]
+    ok = ("reg", 0o644, os.geteuid(), os.getegid(), 1, len(data), hashlib.sha256(data).hexdigest(), data)
+    t = _tmpname("decisions/a.json")
+    assert oracle._applying_tree_problems(dict(snap, **{t: ok}), b["old"], b["new"], NEW) == []
+    for uid, gid in ((os.geteuid() + 1, os.getegid()), (os.geteuid(), os.getegid() + 1)):
+        bad = ok[:2] + (uid, gid) + ok[4:]
+        probs = oracle._applying_tree_problems(dict(snap, **{t: bad}), b["old"], b["new"], NEW)
+        assert any("temp owner" in p for p in probs), probs
+
+
+@pytest.mark.skipif(os.geteuid() != 0, reason="real chown to a foreign uid/gid needs root")
+def test_tmp_foreign_owner_real_chown_rejected(env):
+    aios = env["old"]
+    p = _place(aios, _tmpname("decisions/a.json"), PAYLOAD["decisions/a.json"], 0o644)
+    os.chown(p, 65534, -1)
+    assert any("temp owner" in x for x in _probs(env, aios))
+    os.chown(p, 0, 65534)
+    assert any("temp owner" in x for x in _probs(env, aios))
+
+
+def test_multiple_tmps_rejected(env):
+    aios = env["old"]
+    _place(aios, _tmpname("decisions/a.json", "1" * 32), b"", _created_mode())
+    _place(aios, _tmpname("decisions/a.json", "2" * 32), PAYLOAD["decisions/a.json"], 0o644)
+    assert any("2 install temps" in p for p in _probs(env, aios))
+
+
+def test_tmps_for_two_destinations_rejected(env):
+    aios = env["old"]
+    _place(aios, _tmpname("decisions/a.json"), b"", _created_mode())
+    _place(aios, _tmpname("decisions/b.json"), b"", _created_mode())
+    assert any("2 install temps" in p for p in _probs(env, aios))
+
+
+@pytest.mark.parametrize("rel", [".tasks." + HEX + ".l5tmp",          # directory in the tree
+                                 ".decisions." + HEX + ".l5tmp",      # payload parent directory
+                                 "decisions/.c.json." + HEX + ".l5tmp",  # undeclared file
+                                 "tasks/.a.json." + HEX + ".l5tmp"])     # payload name, wrong dir
+def test_tmp_for_non_payload_destination_rejected(env, rel):
+    aios = env["old"]
+    _place(aios, rel, PAYLOAD["decisions/a.json"], 0o644)
+    probs = _probs(env, aios)
+    assert any("not a declared payload destination" in p for p in probs), probs
+
+
+def test_tmp_symlink_rejected_and_not_followed(env):
+    aios = env["old"]
+    target = str(env["tmp"] / "outside-tmp-target")
+    with open(target, "wb") as fh:
+        fh.write(PAYLOAD["decisions/a.json"])
+    os.symlink(target, os.path.join(aios, _tmpname("decisions/a.json")))
+    snap = oracle.snapshot(aios)
+    assert snap[_tmpname("decisions/a.json")] == ("lnk", target)
+    assert any("not a regular file (lnk)" in p for p in _probs(env, aios))
+
+
+def test_tmp_fifo_rejected_without_blocking(env):
+    aios = env["old"]
+    os.mkfifo(os.path.join(aios, _tmpname("decisions/a.json")), 0o600)
+    assert any("not a regular file (other)" in p for p in _probs(env, aios))
+
+
+def test_tmp_hardlinked_rejected(env):
+    aios = env["old"]
+    p = _place(aios, _tmpname("decisions/a.json"), PAYLOAD["decisions/a.json"], 0o644)
+    os.link(p, str(env["tmp"] / "outside-tmp-link"))
+    assert any("nlink 2" in x for x in _probs(env, aios))
+
+
+def test_tmp_with_destination_already_installed_rejected(env):
+    aios = env["old"]
+    _crash_after_n_applies(aios, 1)                         # a NEW
+    _place(aios, _tmpname("decisions/a.json"), PAYLOAD["decisions/a.json"], 0o644)
+    assert any("no longer holds its prior state" in p for p in _probs(env, aios))
+
+
+def test_tmp_out_of_plan_order_rejected(env):
+    aios = env["old"]                                       # a still OLD, temp for op 1 (b)
+    _place(aios, _tmpname("decisions/b.json"), b"", _created_mode())
+    assert any("op 0" in p and "is not NEW" in p for p in _probs(env, aios))
+
+
+def test_tmp_created_mode_follows_umask():
+    data = PAYLOAD["decisions/a.json"][:2]
+    snap = {".": ("dir", 0o755, 0, 0), "decisions": ("dir", 0o755, 0, 0),
+            "decisions/a.json": ("reg", 0o644, 0, 0, 1, 8, "0" * 64)}
+    old = dict(snap)
+    for umask, mode, ok in ((0o022, 0o600, True), (0o077, 0o600, True), (0o277, 0o400, True),
+                            (0o277, 0o600, False)):
+        got = ("reg", mode, 0, 0, 1, len(data), hashlib.sha256(data).hexdigest(), data)
+        why = oracle.tmp_problem(_tmpname("decisions/a.json"), got, snap, old, NEW, euid=0, egid=0, umask=umask)
+        assert (why is None) == ok, (umask, mode, why)

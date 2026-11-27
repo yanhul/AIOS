@@ -350,15 +350,22 @@ def _state_or_none(aios):
 
 def commit_base(before):
     return {"N": before["next_seq"], "L": before["last_finalized_seq"], "store_id": before["store_id"],
-            "old": SNAP_OLD, "new": SNAP_NEW, "new_payloads": [r for r, _ in NEW]}
+            "old": SNAP_OLD, "new": SNAP_NEW, "new_payloads": [r for r, _ in NEW],
+            "new_payload_objs": NEW}
+
+
+TMP_SEEN = []   # install temps present right after the last commit fault (evidence)
 
 
 def check_commit(aios, before):
     """F-NEW-01 oracle: classify the post-fault state, then bind the result to it."""
     base = commit_base(before)
     st = _state_or_none(aios)
+    pre = snapshot(aios)
+    TMP_SEEN[:] = [(k, oct(e[1]), e[5]) for k, e in sorted(pre.items())
+                   if oracle._TMP_RE.match(os.path.basename(k)) and e[0] == "reg"]
     try:
-        cls, problems = oracle.classify_pre(st, snapshot(aios), _staging(aios), base, _journal(aios, st))
+        cls, problems = oracle.classify_pre(st, pre, _staging(aios), base, _journal(aios, st))
         if cls is None:
             return "IMPOSSIBLE", None, problems
         outs = recover_n(aios, args.repeat)
@@ -436,7 +443,7 @@ def _seq(aios):
 
 
 total = bad = unknown = 0
-classes, records = {}, []
+classes, records, tmp_states = {}, [], {}
 for name, build in SCENARIOS.items():
     ref = reference(name)
     print(f"REFERENCE {name}: {'PASS' if not ref else 'FAIL ' + '; '.join(ref)}")
@@ -459,12 +466,16 @@ for name, build in SCENARIOS.items():
                 elif args.target == "commit":
                     cls, result, probs = check_commit(aios, before)
                     classes[f"{cls}->{result}"] = classes.get(f"{cls}->{result}", 0) + 1
+                    for _rel, tmode, tsize in TMP_SEEN:
+                        key = f"{cls}:mode={tmode}:size={tsize}:{'FAIL' if probs else 'ok'}"
+                        tmp_states[key] = tmp_states.get(key, 0) + 1
                     unknown += cls == "UNKNOWN"
                 else:
                     probs = check(aios, exp, before)
                 bad += bool(probs)
                 records.append({"scenario": name, "mode": mode, "prim": prim, "k": k,
-                                "class": cls, "result": result, "problems": probs})
+                                "class": cls, "result": result, "problems": probs,
+                                "pre_tmps": list(TMP_SEEN) if args.target == "commit" else []})
                 if probs:
                     print(f"FAIL {args.target} {name} {mode} {prim}#{k}: {'; '.join(probs)}")
                 shutil.rmtree(os.path.dirname(aios))
@@ -472,10 +483,11 @@ for name, build in SCENARIOS.items():
     print(f"DONE {name}", flush=True)
 if classes:
     print("CLASSES " + " ".join(f"{k}={v}" for k, v in sorted(classes.items())))
+    print("TMP_STATES " + (" ".join(f"{k}={v}" for k, v in sorted(tmp_states.items())) or "none"))
 print(f"SUMMARY target={args.target} modes={args.modes} injections={total} failures={bad} unknown={unknown}")
 if args.json:
     with open(args.json, "w") as fh:
         json.dump({"target": args.target, "modes": args.modes.split(","), "repeat": args.repeat,
-                   "injections": total, "failures": bad, "unknown": unknown, "classes": classes,
+                   "injections": total, "failures": bad, "unknown": unknown, "classes": classes, "tmp_states": tmp_states,
                    "records": records}, fh, indent=1, sort_keys=True)
 sys.exit(1 if bad else 0)

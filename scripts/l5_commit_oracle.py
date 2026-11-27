@@ -25,9 +25,10 @@ Pre-recovery classes (state observed right after the injected fault):
   NOT_ALLOCATED  IDLE          N        L   -        OLD exactly; staging empty
   PREPARED       PREPARED      N+1      L   N        OLD exactly (never written)
   COMMIT_POINT   COMMIT_POINT  N+1      L   N        OLD exactly (APPLYING precedes writes)
-  APPLYING       APPLYING      N+1      L   N        each payload path OLD or NEW;
-                                                     only '.<dest>.<hex32>.l5tmp' residue
-                                                     (reg, nlink 1, 0600 or 0644)
+  APPLYING       APPLYING      N+1      L   N        each payload path OLD or NEW; at most
+                                                     one '.<dest>.<hex32>.l5tmp' for a declared
+                                                     payload (see tmp_problem): created mode +
+                                                     payload prefix, or final mode + exact payload
   FINALIZED      FINALIZED     N+1      N   N        NEW exactly
   CLEANUP        CLEANUP       N+1      N   N        NEW exactly (cleanup interrupted)
   COMPLETED      IDLE          N+1      N   -        NEW exactly; staging empty
@@ -82,7 +83,15 @@ def canonical_bytes(obj):
                        allow_nan=False) + "\n").encode("utf-8")
 
 
+_TMP_RE = re.compile(r"\.(?P<dest>.+)\.[0-9a-f]{32}" + re.escape(TMP_SUFFIX) + r"\Z")
+TMP_CAPTURE_MAX = 1 << 20   # temp bytes are captured for prefix checks up to this size
+
+
 def _entry(path):
+    """lstat-first; only an lstat-regular file is opened (O_NOFOLLOW|O_NONBLOCK,
+    then re-checked by fstat), so symlinks, FIFOs, devices and sockets are never
+    opened or followed. Regular files named like an install temp additionally
+    carry their bytes (8th element; None if larger than TMP_CAPTURE_MAX)."""
     st = os.lstat(path)
     perm = stat.S_IMODE(st.st_mode)
     if stat.S_ISLNK(st.st_mode):
@@ -90,10 +99,12 @@ def _entry(path):
     if stat.S_ISDIR(st.st_mode):
         return ("dir", perm, st.st_uid, st.st_gid)
     if stat.S_ISREG(st.st_mode):
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0))
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0))
+        capture = bool(_TMP_RE.match(os.path.basename(path)))
+        data = bytearray()
         try:
             fst = os.fstat(fd)
-            if (fst.st_dev, fst.st_ino) != (st.st_dev, st.st_ino):
+            if not stat.S_ISREG(fst.st_mode) or (fst.st_dev, fst.st_ino) != (st.st_dev, st.st_ino):
                 return ("raced",)
             h = hashlib.sha256()
             while True:
@@ -101,9 +112,14 @@ def _entry(path):
                 if not chunk:
                     break
                 h.update(chunk)
+                if capture and data is not None:
+                    data += chunk
+                    if len(data) > TMP_CAPTURE_MAX:
+                        data = None
         finally:
             os.close(fd)
-        return ("reg", perm, st.st_uid, st.st_gid, st.st_nlink, st.st_size, h.hexdigest())
+        entry = ("reg", perm, st.st_uid, st.st_gid, st.st_nlink, st.st_size, h.hexdigest())
+        return entry + ((bytes(data) if data is not None else None),) if capture else entry
     return ("other", stat.S_IFMT(st.st_mode), perm)
 
 
@@ -162,29 +178,99 @@ def tree_problems(snap, want, label):
     return [f"destination tree != {label} at {[(k, snap.get(k), want.get(k)) for k in diff[:4]]}"]
 
 
-_TMP_RE = re.compile(r"\.(?P<dest>.+)\.[0-9a-f]{32}" + re.escape(TMP_SUFFIX) + r"\Z")
+def _current_umask():
+    mask = os.umask(0o022)
+    os.umask(mask)
+    return mask
 
 
-def _is_dest_tmp(rel, new, got):
-    """Service-owned install temp of _apply_op: '.<dest>.<32hex>.l5tmp' next to a
-    payload destination, regular, nlink 1, mode 0600 (created) or 0644 (after
-    fchmod, before rename)."""
+def tmp_problem(rel, got, snap, old, plan, euid=None, egid=None, umask=None):
+    """None if `got` is a state _apply_op() can leave for temp `rel`, else a reason.
+
+    Lifecycle derived from core/mutation.py::_apply_op (one op, under the lock):
+      1. _sweep_stale_dest_tmps removes earlier '.<dest>.*.l5tmp' of this dest;
+      2. os.open(tmp, O_CREAT|O_EXCL|O_NOFOLLOW, 0o600): mode 0o600 & ~umask,
+         owner euid, group egid (parent's group if the parent is setgid);
+      3. copy loop: the bytes are a PREFIX (possibly empty) of the payload;
+      4. digest of exactly the copied bytes verified == journal 'new';
+      5. fchmod(dst, 0o644 if dest absent else prior_mode & 0o755): only now,
+         and only with the COMPLETE payload;
+      6. fsync, identity checks, rename tmp -> dest (consumes the name).
+    So a temp exists only while its destination still holds the prior bytes.
+    `plan`: ordered declared NEW payloads [(rel, obj)]; bytes are derived from it
+    with canonical_bytes(), never from the engine's output.
+    """
+    euid = os.geteuid() if euid is None else euid
+    egid = os.getegid() if egid is None else egid
+    umask = _current_umask() if umask is None else umask
     mt = _TMP_RE.match(os.path.basename(rel))
-    if not mt or os.path.join(os.path.dirname(rel), mt.group("dest")) not in new:
-        return False
-    return got[0] == "reg" and got[1] in (0o600, DEST_FILE_MODE) and got[4] == 1
+    if not mt:
+        return "not an install-temp name"
+    dest = os.path.join(os.path.dirname(rel), mt.group("dest"))
+    objs = dict(plan or [])
+    if dest not in objs:
+        return f"temp maps to {dest!r}, which is not a declared payload destination"
+    if not got or got[0] != "reg":
+        return f"temp is not a regular file ({got and got[0]})"
+    if len(got) != 8 or got[7] is None:
+        return "temp content not captured (oversized or not snapshotted)"
+    _t, perm, uid, gid, nlink, size, digest, data = got
+    if len(data) != size or hashlib.sha256(data).hexdigest() != digest:
+        return "temp content changed while snapshotting"
+    if nlink != 1:
+        return f"temp nlink {nlink} != 1"
+    parent = snap.get(os.path.dirname(rel) or ".")
+    want_gid = parent[3] if parent and parent[0] == "dir" and parent[1] & stat.S_ISGID else egid
+    if (uid, gid) != (euid, want_gid):
+        return f"temp owner {uid}:{gid} != {euid}:{want_gid}"
+    prior = old.get(dest)
+    if prior is not None and prior[0] != "reg":
+        return f"temp for {dest!r} whose prior object is {prior[0]}"
+    if snap.get(dest) != prior:
+        return f"temp present but {dest!r} no longer holds its prior state (rename consumes the temp)"
+    payload = canonical_bytes(objs[dest])
+    created = 0o600 & ~umask
+    final = DEST_FILE_MODE if prior is None else prior[1] & 0o755
+    if perm == final and data == payload:
+        return None
+    if perm == created and payload.startswith(data):
+        return None
+    if perm == final:
+        return (f"temp mode {oct(perm)} (set only after the full digest-verified copy) "
+                f"but content is not the complete payload ({len(data)}/{len(payload)} bytes)")
+    if perm == created:
+        return f"temp mode {oct(perm)} with bytes that are not a prefix of the payload for {dest!r}"
+    return f"temp mode {oct(perm)} is neither created {oct(created)} nor final {oct(final)}"
 
 
-def _applying_tree_problems(snap, old, new):
-    """APPLYING: each payload path individually OLD or NEW; only service tmp residue extra."""
-    out = []
+def _applying_tree_problems(snap, old, new, plan=None):
+    """APPLYING (pre-recovery, one commit_batch attempt): each payload path OLD or
+    NEW; the only extra object allowed is AT MOST ONE install temp (ops run in plan
+    order, the first failure stops the loop and an in-process failure unlinks the
+    temp). With a temp for op i, ops before i must be NEW and ops after i OLD.
+    Without `plan` every temp is rejected (fail-closed)."""
+    out, tmps = [], []
     for k in sorted(set(snap) | set(old) | set(new)):
         got = snap.get(k)
         if got is not None and got in (old.get(k), new.get(k)):
             continue
-        if got is not None and k not in old and k not in new and _is_dest_tmp(k, new, got):
+        if got is not None and k not in old and k not in new and _TMP_RE.match(os.path.basename(k)):
+            why = tmp_problem(k, got, snap, old, plan)
+            if why is None:
+                tmps.append(k)
+                continue
+            out.append(f"APPLYING temp {k!r} rejected: {why}")
             continue
         out.append(f"APPLYING destination {k!r} is {got} (neither OLD {old.get(k)} nor NEW {new.get(k)})")
+    if len(tmps) > 1:
+        out.append(f"APPLYING: {len(tmps)} install temps {tmps}; one commit attempt leaves at most one")
+    elif tmps:
+        order = [r for r, _ in plan]
+        i = order.index(os.path.join(os.path.dirname(tmps[0]), _TMP_RE.match(os.path.basename(tmps[0])).group("dest")))
+        for j, r in enumerate(order):
+            want, label = (new, "NEW") if j < i else (old, "OLD")
+            if snap.get(r) != want.get(r):
+                out.append(f"APPLYING: temp for op {i} ({order[i]!r}) but op {j} ({r!r}) is not {label}")
     return out
 
 
@@ -255,7 +341,7 @@ def classify_pre(st, snap, staging, base, journal=None):
     if cls in ("NOT_ALLOCATED", "PREPARED", "COMMIT_POINT"):
         probs += tree_problems(snap, base["old"], f"OLD ({cls}: destinations must be untouched)")
     elif cls == "APPLYING":
-        probs += _applying_tree_problems(snap, base["old"], base["new"])
+        probs += _applying_tree_problems(snap, base["old"], base["new"], base.get("new_payload_objs"))
     else:
         probs += tree_problems(snap, base["new"], f"NEW ({cls})")
     return cls, probs
