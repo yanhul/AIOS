@@ -64,6 +64,7 @@ import re
 import stat
 
 EXCLUDED_TOPS = (".staging", ".quarantine", ".l5")
+EXCLUDED_TOPS_FOLDED = frozenset(name.casefold() for name in EXCLUDED_TOPS)
 DEST_FILE_MODE = 0o644
 DEST_DIR_MODE = 0o755
 TMP_SUFFIX = ".l5tmp"
@@ -272,10 +273,17 @@ def validate_plan(plan):
             out.append(f"plan entry {n} is not a (rel, obj) pair: {ent!r}")
             continue
         rel, obj = ent
+        parts = rel.split(os.sep) if isinstance(rel, str) else []
+        # Mirror core.mutation._valid_dest(parts), while also requiring the
+        # string representation to be canonical for this host. The oracle must
+        # not accept a plan the commit engine itself rejects.
         if (not isinstance(rel, str) or not rel or "\0" in rel or os.path.isabs(rel)
-                or os.path.normpath(rel) != rel or rel.split(os.sep)[0] in EXCLUDED_TOPS
-                or any(c in ("", ".", "..") for c in rel.split(os.sep))):
-            out.append(f"plan entry {n}: unsafe or ambiguous destination path {rel!r}")
+                or os.path.normpath(rel) != rel or not 1 <= len(parts) <= 32
+                or any(c in ("", ".", "..") or (os.altsep is not None and os.altsep in c)
+                       for c in parts)
+                or parts[0].casefold() in EXCLUDED_TOPS_FOLDED
+                or parts[-1].endswith(TMP_SUFFIX)):
+            out.append(f"plan entry {n}: unsafe, reserved, or non-installable destination path {rel!r}")
             continue
         try:
             canonical_bytes(obj)
