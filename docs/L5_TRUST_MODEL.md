@@ -78,6 +78,20 @@ Crash testing (`scripts/l5_recovery_crash_sweep.py`) interrupts the k-th call of
 
 After each interruption it runs recovery repeatedly and checks an exact oracle. None of these modes drops the page cache, so **real power loss remains UNKNOWN.**
 
+Commit-sweep oracle (`scripts/l5_commit_oracle.py`, finding F-NEW-01). The state observed right after the fault is classified against the protocol. With the store IDLE at `next_seq = N`, `last_finalized_seq = L` before the commit:
+
+| class (pre-recovery) | phase | next_seq | lf | destination before recovery | after recovery |
+|---|---|---|---|---|---|
+| NOT_ALLOCATED | IDLE | N | L | OLD | OLD, next_seq N, lf L |
+| PREPARED (commit point not reached) | PREPARED | N+1 | L | OLD | OLD, next_seq N+1, lf L |
+| COMMIT_POINT (commit point reached) | COMMIT_POINT | N+1 | L | OLD | NEW, next_seq N+1, lf N |
+| APPLYING | APPLYING | N+1 | L | each path OLD or NEW; only `.<dest>.<hex32>.l5tmp` residue | NEW, next_seq N+1, lf N |
+| FINALIZED | FINALIZED | N+1 | N | NEW | NEW, next_seq N+1, lf N |
+| CLEANUP (cleanup interrupted) | CLEANUP | N+1 | N | NEW | NEW, next_seq N+1, lf N |
+| COMPLETED | IDLE | N+1 | N | NEW | NEW, next_seq N+1, lf N |
+
+Non-IDLE classes also require `txn.seq == N`, no quarantine id, journal binding exactly when past PREPARED, and for COMMIT_POINT/APPLYING a staged journal whose sha256 equals the bound digest and whose seq/ops describe this commit. Any other combination fails; a QUARANTINED pre-recovery state is UNKNOWN for this sweep and counts as a failure. Independently of the class, a final OLD tree requires `lf == L` and a final NEW tree requires `lf == N`. Snapshots use `lstat` (symlinks are never followed) and record object type, permission bits, uid/gid and, for regular files, nlink, size and sha256, including directories; they intentionally exclude timestamps, inode/device numbers (new inodes by design), directory size/nlink, xattrs/ACLs/SELinux labels and inode flags. Payload files must also satisfy an engine-independent policy (regular, 0644, nlink 1, canonical content; directories 0755). `scripts/l5_commit_oracle_sensitivity.py` patches deliberate protocol faults into throw-away copies of the engine and requires the sweep to detect every one.
+
 ## 4. Recovery CAS
 
 Each op carries `prior` (digest, or `null` = absent) and `new`. During replay:

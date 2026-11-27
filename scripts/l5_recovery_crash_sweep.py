@@ -16,9 +16,10 @@ of them is a power-loss test):
           real asynchronous kill by the kernel at that call
 
 Exact oracle after the repeated recoveries:
-  * destination tree (every file outside .staging/.quarantine/.l5) matches the
-    expected snapshot byte-for-byte (sha256 per path; no extra/missing files,
-    no leftover *.l5tmp);
+  * destination tree (every object outside .staging/.quarantine/.l5, incl.
+    directories) matches the expected snapshot: object type (lstat, symlinks
+    never followed), permission bits, uid/gid and, for regular files, nlink,
+    size and sha256 (see scripts/l5_commit_oracle.py for excluded metadata);
   * protected state: phase IDLE (or QUARANTINED where the scenario requires it),
     txn None for IDLE, next_seq unchanged by recovery (recovery never allocates),
     last_finalized_seq equals the expected value and is < next_seq;
@@ -27,8 +28,15 @@ Exact oracle after the repeated recoveries:
     of the original batch evidence is still present (staging or quarantine);
   * the outcome is identical to an uninterrupted recovery of the same scenario.
 
+--target commit uses scripts/l5_commit_oracle.py (F-NEW-01): the state observed
+right after the fault is classified against the protocol (phase, next_seq,
+last_finalized_seq, txn seq/binding, journal, destination before recovery) and
+the post-recovery OLD/NEW tree is bound to the sequence counters that class
+requires. Impossible combinations fail; undefined ones are UNKNOWN (fail-closed).
+
 Usage: l5_recovery_crash_sweep.py --repo DIR [--target recover|commit] [--modes eio,exc,exit,sigkill]
-Exit status 1 if any injection violates the oracle.
+                                  [--json FILE]
+Exit status 1 if any injection violates the oracle (UNKNOWN counts as failure).
 """
 import argparse
 import hashlib
@@ -47,9 +55,12 @@ ap.add_argument("--target", choices=["recover", "commit"], default="recover")
 ap.add_argument("--modes", default="eio,exc,exit,sigkill")
 ap.add_argument("--repeat", type=int, default=3, help="recoveries after each interruption")
 ap.add_argument("--scenarios", default="")
+ap.add_argument("--json", default="", help="write machine-readable results here")
 args = ap.parse_args()
 sys.path.insert(0, args.repo)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from core import mutation as m  # noqa: E402
+import l5_commit_oracle as oracle  # noqa: E402
 
 PRIMS = ["fsync", "open", "write", "fchmod", "mkdir", "unlink", "rmdir", "rename", "state_replace", "replace"]
 OLD = [("decisions/a.json", {"v": 0}), ("decisions/b.json", {"v": 0})]
@@ -77,16 +88,7 @@ def patched(mods, fn):
 
 
 def snapshot(aios):
-    snap = {}
-    for dp, dns, fns in os.walk(aios):
-        rel = os.path.relpath(dp, aios)
-        if rel.split(os.sep)[0] in (".staging", ".quarantine", ".l5"):
-            dns[:] = []
-            continue
-        for f in fns:
-            p = os.path.join(dp, f)
-            snap[os.path.relpath(p, aios)] = hashlib.sha256(open(p, "rb").read()).hexdigest()
-    return snap
+    return oracle.snapshot(aios)
 
 
 def evidence(aios):
@@ -324,6 +326,50 @@ def recover_n(aios, n):
     return outcomes
 
 
+def _staging(aios):
+    return sorted(os.listdir(os.path.join(aios, ".staging")))
+
+
+def _journal(aios, st):
+    txn = st.get("txn") if st else None
+    if not txn:
+        return None
+    try:
+        with open(os.path.join(aios, ".staging", txn["batch_name"], oracle.JOURNAL_NAME), "rb") as fh:
+            return fh.read()
+    except OSError:
+        return None
+
+
+def _state_or_none(aios):
+    try:
+        return state(aios)
+    except FileNotFoundError:
+        return None
+
+
+def commit_base(before):
+    return {"N": before["next_seq"], "L": before["last_finalized_seq"], "store_id": before["store_id"],
+            "old": SNAP_OLD, "new": SNAP_NEW, "new_payloads": [r for r, _ in NEW]}
+
+
+def check_commit(aios, before):
+    """F-NEW-01 oracle: classify the post-fault state, then bind the result to it."""
+    base = commit_base(before)
+    st = _state_or_none(aios)
+    try:
+        cls, problems = oracle.classify_pre(st, snapshot(aios), _staging(aios), base, _journal(aios, st))
+        if cls is None:
+            return "IMPOSSIBLE", None, problems
+        outs = recover_n(aios, args.repeat)
+        result, post = oracle.check_post(cls, state(aios), snapshot(aios), _staging(aios),
+                                         m.unresolved_quarantine(aios), outs, base,
+                                         {"OLD": OLD, "NEW": NEW})
+        return cls, result, problems + post
+    except oracle.Unknown as exc:
+        return "UNKNOWN", None, [f"UNKNOWN: {exc}"]
+
+
 def check(aios, exp, before):
     problems = []
     outs = recover_n(aios, args.repeat)
@@ -370,7 +416,15 @@ def check(aios, exp, before):
 def reference(name):
     aios, exp = SCENARIOS[name]()
     before = {"snap": snapshot(aios), "evidence": evidence(aios), **_seq(aios)}
-    probs = check(aios, exp, before)
+    if args.target == "commit":
+        # engine-built references must satisfy the independent policy
+        probs = [f"SNAP_OLD: {p}" for p in oracle.policy_problems(SNAP_OLD, OLD)]
+        probs += [f"SNAP_NEW: {p}" for p in oracle.policy_problems(SNAP_NEW, NEW)]
+        patched([], lambda: m.commit_batch(aios, NEW))
+        cls, _res, more = check_commit(aios, before)
+        probs += more + ([] if cls == "COMPLETED" else [f"uninterrupted commit classified {cls}"])
+    else:
+        probs = check(aios, exp, before)
     shutil.rmtree(os.path.dirname(aios))
     return probs
 
@@ -378,14 +432,16 @@ def reference(name):
 def _seq(aios):
     st = state(aios)
     return {"next_seq": st["next_seq"], "last_finalized_seq": st["last_finalized_seq"],
-            "txn_seq": st["txn"]["seq"] if st["txn"] else None}
+            "txn_seq": st["txn"]["seq"] if st["txn"] else None, "store_id": st["store_id"]}
 
 
-total = bad = 0
+total = bad = unknown = 0
+classes, records = {}, []
 for name, build in SCENARIOS.items():
     ref = reference(name)
     print(f"REFERENCE {name}: {'PASS' if not ref else 'FAIL ' + '; '.join(ref)}")
     bad += bool(ref)
+    records.append({"scenario": name, "reference": True, "problems": ref})
     for mode in args.modes.split(","):
         for prim in PRIMS:
             k = 1
@@ -397,12 +453,29 @@ for name, build in SCENARIOS.items():
                     shutil.rmtree(os.path.dirname(aios))
                     break
                 total += 1
-                probs = [outcome] if outcome != "triggered" else check(aios, exp, before)
+                cls = result = None
+                if outcome != "triggered":
+                    probs = [outcome]
+                elif args.target == "commit":
+                    cls, result, probs = check_commit(aios, before)
+                    classes[f"{cls}->{result}"] = classes.get(f"{cls}->{result}", 0) + 1
+                    unknown += cls == "UNKNOWN"
+                else:
+                    probs = check(aios, exp, before)
                 bad += bool(probs)
+                records.append({"scenario": name, "mode": mode, "prim": prim, "k": k,
+                                "class": cls, "result": result, "problems": probs})
                 if probs:
                     print(f"FAIL {args.target} {name} {mode} {prim}#{k}: {'; '.join(probs)}")
                 shutil.rmtree(os.path.dirname(aios))
                 k += 1
     print(f"DONE {name}", flush=True)
-print(f"SUMMARY target={args.target} modes={args.modes} injections={total} failures={bad}")
+if classes:
+    print("CLASSES " + " ".join(f"{k}={v}" for k, v in sorted(classes.items())))
+print(f"SUMMARY target={args.target} modes={args.modes} injections={total} failures={bad} unknown={unknown}")
+if args.json:
+    with open(args.json, "w") as fh:
+        json.dump({"target": args.target, "modes": args.modes.split(","), "repeat": args.repeat,
+                   "injections": total, "failures": bad, "unknown": unknown, "classes": classes,
+                   "records": records}, fh, indent=1, sort_keys=True)
 sys.exit(1 if bad else 0)
