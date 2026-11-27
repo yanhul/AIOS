@@ -677,3 +677,87 @@ def test_tmp_for_undeclared_destination_rejected_with_order_intact(env):
     _place(aios, "decisions/.c.json." + HEX + ".l5tmp", b"", _created_mode())
     probs = _probs(env, aios)
     assert any("not a declared payload destination" in p for p in probs), probs
+
+
+# --------------------------------------------------------------------------
+# No exception for any plan/temp combination (order.index guard)
+# --------------------------------------------------------------------------
+
+_BAD_PLANS = [None, [], (), "decisions/a.json", {"decisions/a.json": {"v": 1}},
+              [("decisions/a.json",)], [("decisions/a.json", {"v": 1}, 1)], ["decisions/a.json"],
+              [(None, {"v": 1})], [("../a.json", {"v": 1})], [("decisions/a.json", {"v": float("nan")})],
+              [("decisions/a.json", {"v": 1}), ("decisions/a.json", {"v": 1})],
+              [("decisions/a.json", {"v": 1}), ("decisions/A.json", {"v": 1})]]
+
+
+@pytest.mark.parametrize("plan", _BAD_PLANS)
+@pytest.mark.parametrize("dest", ["decisions/a.json", "decisions/b.json", "decisions/c.json"])
+def test_tmp_with_invalid_plan_returns_problems_not_exception(env, plan, dest):
+    aios = env["old"]
+    _place(aios, _tmpname(dest), b"", _created_mode())
+    b = env["base"]
+    probs = oracle._applying_tree_problems(oracle.snapshot(aios), b["old"], b["new"], plan)
+    assert any("declared plan rejected" in p for p in probs), probs
+    assert any(_tmpname(dest) in p and "rejected" in p for p in probs), probs
+
+
+@pytest.mark.parametrize("dest", ["decisions/c.json", "tasks/a.json", "a.json"])
+def test_tmp_undeclared_dest_with_valid_plan_returns_problems(env, dest):
+    aios = env["old"]
+    os.makedirs(os.path.dirname(os.path.join(aios, dest)), exist_ok=True)
+    _place(aios, _tmpname(dest), b"", _created_mode())
+    probs = _probs(env, aios)
+    assert any("not a declared payload destination" in p for p in probs), probs
+
+
+def test_tmp_declared_only_in_new_tree_but_not_in_plan_rejected(env):
+    aios = env["old"]                                       # plan [a]; temp for b
+    _place(aios, _tmpname("decisions/b.json"), b"", _created_mode())
+    b = env["base"]
+    probs = oracle._applying_tree_problems(oracle.snapshot(aios), b["old"], b["new"], NEW[:1])
+    assert any("not a declared payload destination" in p for p in probs), probs
+
+
+@pytest.mark.parametrize("plan", [NEW, None, [], [("decisions/a.json",)]])
+def test_order_guard_independent_of_tmp_problem(env, plan, monkeypatch):
+    """Even if tmp_problem() regressed and accepted everything, indexing the
+    plan order must not raise for an undeclared temp or an invalid plan."""
+    aios = env["old"]
+    _place(aios, _tmpname("decisions/c.json"), b"", _created_mode())
+    monkeypatch.setattr(oracle, "tmp_problem", lambda *a, **k: None)
+    b = env["base"]
+    probs = oracle._applying_tree_problems(oracle.snapshot(aios), b["old"], b["new"], plan)
+    assert any("rejected" in p and _tmpname("decisions/c.json") in p for p in probs), probs
+
+
+@pytest.mark.parametrize("plan", [NEW, None, [("decisions/a.json",)]])
+def test_multiple_tmps_with_any_plan_no_exception(env, plan):
+    aios = env["old"]
+    _place(aios, _tmpname("decisions/a.json", "1" * 32), b"", _created_mode())
+    _place(aios, _tmpname("decisions/b.json", "2" * 32), b"", _created_mode())
+    _place(aios, _tmpname("decisions/c.json", "3" * 32), b"", _created_mode())
+    b = env["base"]
+    probs = oracle._applying_tree_problems(oracle.snapshot(aios), b["old"], b["new"], plan)
+    assert probs, probs
+    if plan is NEW:
+        assert any("2 install temps" in p for p in probs), probs
+
+
+@pytest.mark.parametrize("name", [".a.json." + "d" * 31 + ".l5tmp",        # short hex
+                                  ".a.json." + "D" * 32 + ".l5tmp",        # upper-case hex
+                                  ".a.json." + "d" * 32 + ".l5tmp~",       # trailing junk
+                                  "a.json." + "d" * 32 + ".l5tmp",         # no leading dot
+                                  "." + "d" * 32 + ".l5tmp",               # empty dest
+                                  ".a.json." + "d" * 32 + ".tmp"])         # wrong suffix
+def test_malformed_tmp_name_rejected_as_extra_object(env, name):
+    aios = env["old"]
+    _place(aios, os.path.join("decisions", name), b"", _created_mode())
+    probs = _probs(env, aios)
+    assert any(f"decisions/{name}" in p and "neither OLD" in p for p in probs), probs
+
+
+def test_valid_tmp_ordering_unchanged_after_guard(env):
+    aios = env["old"]
+    _crash_after_n_applies(aios, 1)                          # a NEW, b OLD
+    _place(aios, _tmpname("decisions/b.json"), PAYLOAD["decisions/b.json"][:3], _created_mode())
+    assert _probs(env, aios) == []

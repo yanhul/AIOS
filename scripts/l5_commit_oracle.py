@@ -322,11 +322,20 @@ def _applying_tree_problems(snap, old, new, plan=None):
     if len(tmps) > 1:
         out.append(f"APPLYING: {len(tmps)} install temps {tmps}; one commit attempt leaves at most one")
     elif tmps:
-        i = order.index(os.path.join(os.path.dirname(tmps[0]), _TMP_RE.match(os.path.basename(tmps[0])).group("dest")))
-        for j, r in enumerate(order):
-            want, label = (new, "NEW") if j < i else (old, "OLD")
-            if snap.get(r) != want.get(r):
-                out.append(f"APPLYING: temp for op {i} ({order[i]!r}) but op {j} ({r!r}) is not {label}")
+        # Self-contained guard: do not rely on tmp_problem() having rejected an
+        # invalid plan or an undeclared destination before indexing the order.
+        mt = _TMP_RE.match(os.path.basename(tmps[0]))
+        dest = os.path.join(os.path.dirname(tmps[0]), mt.group("dest")) if mt else None
+        if bad or not order:
+            out.append(f"APPLYING temp {tmps[0]!r} rejected: no valid declared plan")
+        elif dest is None or dest not in order:
+            out.append(f"APPLYING temp {tmps[0]!r} rejected: maps to {dest!r}, not in the declared plan")
+        else:
+            i = order.index(dest)
+            for j, r in enumerate(order):
+                want, label = (new, "NEW") if j < i else (old, "OLD")
+                if snap.get(r) != want.get(r):
+                    out.append(f"APPLYING: temp for op {i} ({order[i]!r}) but op {j} ({r!r}) is not {label}")
     elif order:
         # no temp: NEW prefix / OLD suffix. An op whose OLD and NEW entries are
         # identical is compatible with both and constrains nothing.
