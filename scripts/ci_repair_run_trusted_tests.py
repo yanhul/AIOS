@@ -167,9 +167,10 @@ def main() -> int:
                                check=True, capture_output=True, text=True)
 
     result = {
-        "status": "PASS" if returncode == 0 else "FAIL", "run_id": run_id,
+        "status": "UNKNOWN", "run_id": run_id,
         "repository": repository, "base_sha": base,
         "patch_digest": expected_patch,
+        "completion": {"status": "UNVERIFIED", "reason": "No independent test-completion oracle exists; process exit and JUnit are insufficient."},
         "isolation": {
             "environment": "ALLOWLIST_ONLY",
             "source_checkout_git_metadata": "NOT_EXPOSED",
