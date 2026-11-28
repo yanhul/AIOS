@@ -98,15 +98,11 @@ def reconcile_repair(
             'observation': raw,
             'authentication': auth,
         }
-        # Receipt freshness was checked by AIOS observe() before the effect was
-        # committed OBSERVED_SUCCESS. Reconciliation may run in a later job,
-        # after the short receipt TTL; re-check the signature at its signed
-        # issuance instant while relying on the persisted terminal effect as
-        # proof that the live validity window was accepted at execution time.
-        issued_at = auth.get('issued_at')
-        if not isinstance(issued_at, (int, float)) or isinstance(issued_at, bool):
-            raise TransitionError(f'effect {effect_id} receipt issuance time is malformed')
-        _verify_provider_receipt(effect, 'OBSERVED_SUCCESS', verifier_input, provider_keyring, float(issued_at))
+        # Reconciliation is an authority decision, not a historical signature
+        # check. Verify against the current clock: replaying a once-valid receipt
+        # after its signed validity window must fail closed, even if the stored
+        # effect claims OBSERVED_SUCCESS.
+        _verify_provider_receipt(effect, 'OBSERVED_SUCCESS', verifier_input, provider_keyring, None)
         ev = observed.get('evidence')
         if not isinstance(ev, dict) or not verify_evidence(ev):
             raise TransitionError(f'effect {effect_id} AIOS-minted evidence is invalid')
