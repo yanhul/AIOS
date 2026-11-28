@@ -117,6 +117,19 @@ def test_repair_reconcile_rejects_unknown_effect_even_if_tests_pass(tmp_path, mo
         reconcile_repair(aios, **kwargs)
 
 
+def test_load_effects_rejects_direct_unsigned_observed_state(tmp_path, monkeypatch):
+    from core.external_effect import load_effects
+    from core.mutation import commit_batch
+    aios, kwargs, effect = _case(tmp_path, monkeypatch)
+    path = aios / _effect_rel(effect["effect_id"])
+    forged = json.loads(path.read_text(encoding="utf-8"))
+    forged["state"] = "OBSERVED_SUCCESS"
+    forged.pop("provider_observation", None)
+    commit_batch(str(aios), [(_effect_rel(effect["effect_id"]), forged)])
+    with pytest.raises(TransitionError, match="persisted observed effect has no provider receipt"):
+        load_effects(str(aios))
+
+
 def test_repair_reconcile_rejects_expired_provider_receipt(tmp_path, monkeypatch):
     aios, kwargs, effect = _case(tmp_path, monkeypatch)
     observed = json.loads((aios / _effect_rel(effect["effect_id"])).read_text(encoding="utf-8"))
