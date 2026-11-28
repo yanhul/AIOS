@@ -468,10 +468,6 @@ jobs:
   publish:
     if: false
     needs: [apply1, apply2, apply3]
-      ${{ always() && !cancelled() &&
-          (needs.apply1.outputs.status == 'PASS' ||
-           needs.apply2.outputs.status == 'PASS' ||
-           needs.apply3.outputs.status == 'PASS') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
