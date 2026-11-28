@@ -266,7 +266,7 @@ def _assert_regular_file(path, label):
         raise StateConflictError(f"{label} is unavailable: {exc}") from exc
     if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
         raise StateConflictError(f"{label} is not a single-link regular file")
-    if os.name != "nt" and (info.st_uid != os.geteuid() or info.st_mode & 0o077):
+    if os.name != "nt" and (info.st_uid != os.geteuid() or info.st_mode & 0o022):
         raise StateConflictError(f"{label} ownership or permissions are unsafe")
 
 
@@ -360,7 +360,11 @@ class _MutationLock:
 
 
 def _write_staged(path, payload_bytes):
-    with open(path, "wb") as fh:
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(path, flags, 0o600)
+    with os.fdopen(fd, "wb") as fh:
         fh.write(payload_bytes)
         _fsync_file(fh)
 
@@ -443,6 +447,7 @@ def _recover_pending_unlocked(aios_dir):
             seen_destinations.add(dest)
             if not isinstance(op["digest"], str) or not _DIGEST_RE.fullmatch(op["digest"]):
                 raise StateConflictError("authority journal digest is malformed")
+            _ensure_safe_parent(aios_dir, os.path.dirname(dest))
 
             if os.path.lexists(tmp):
                 _assert_regular_file(tmp, "authority staged payload")
