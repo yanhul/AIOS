@@ -83,7 +83,8 @@ def test_trusted_tests_run_in_network_and_pid_sandbox_without_git_metadata(tmp_p
 
     assert trusted_tests.main() == 0
     result = json.loads((tmp_path / "repair-test-result.json").read_text(encoding="utf-8"))
-    assert result["status"] == "PASS"
+    assert result["status"] == "UNKNOWN"
+    assert result["completion"]["status"] == "UNVERIFIED"
     assert result["results"][0]["returncode"] == 0
     assert result["isolation"]["source_checkout_git_metadata"] == "NOT_EXPOSED"
     assert result["isolation"]["environment"] == "ALLOWLIST_ONLY"
