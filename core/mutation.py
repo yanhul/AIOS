@@ -301,64 +301,73 @@ def _ensure_safe_parent(aios_dir, parent):
 
 
 class _MutationLock:
-    """Cross-platform exclusive lock on an owner-controlled state-root inode."""
+    """Exclusive lock without adding metadata files to the audited state tree."""
     def __init__(self, aios_dir):
         self.aios_dir = os.path.abspath(os.fspath(aios_dir))
-        self.fh = None
+        self.fd = None
 
     def __enter__(self):
         if os.path.lexists(self.aios_dir) and os.path.islink(self.aios_dir):
             raise StateConflictError("authority store root must not be a symlink")
         state_layout.ensure_state_dirs(self.aios_dir)
         _assert_safe_directory(self.aios_dir, "authority store root")
-        lock_parent = os.path.dirname(self.aios_dir)
-        _assert_safe_directory(lock_parent, "authority lock parent")
-        path = _mutation_lock_path(self.aios_dir)
-        flags = os.O_CREAT | os.O_RDWR
-        if hasattr(os, "O_NOFOLLOW"):
-            flags |= os.O_NOFOLLOW
-        try:
-            fd = os.open(path, flags, 0o600)
-            info = os.fstat(fd)
-            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
-                    or (os.name != "nt" and
-                        (info.st_uid != os.geteuid() or info.st_mode & 0o077))):
-                os.close(fd)
-                raise StateConflictError("authority mutation lock inode is unsafe")
-            self.fh = os.fdopen(fd, "r+b")
-        except OSError as exc:
-            raise StateConflictError(f"cannot safely open authority mutation lock: {exc}") from exc
-        self.fh.seek(0, os.SEEK_END)
-        if self.fh.tell() == 0:
-            self.fh.write(b"\0")
-            self.fh.flush()
-            os.fsync(self.fh.fileno())
-        self.fh.seek(0)
         if os.name == "nt":
-            import msvcrt
-            while True:
-                try:
-                    msvcrt.locking(self.fh.fileno(), msvcrt.LK_LOCK, 1)
-                    break
-                except OSError:
-                    continue
+            path = _mutation_lock_path(self.aios_dir)
+            flags = os.O_CREAT | os.O_RDWR
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            try:
+                self.fd = os.open(path, flags, 0o600)
+                info = os.fstat(self.fd)
+                if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                        or (info.st_uid != os.geteuid() or info.st_mode & 0o077)):
+                    raise StateConflictError("authority mutation lock inode is unsafe")
+                if info.st_size == 0:
+                    os.write(self.fd, b"\\0")
+                    os.fsync(self.fd)
+                import msvcrt
+                os.lseek(self.fd, 0, os.SEEK_SET)
+                msvcrt.locking(self.fd, msvcrt.LK_LOCK, 1)
+            except OSError as exc:
+                if self.fd is not None:
+                    os.close(self.fd)
+                    self.fd = None
+                raise StateConflictError(f"cannot safely open authority mutation lock: {exc}") from exc
         else:
-            import fcntl
-            fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX)
+            flags = os.O_RDONLY
+            if hasattr(os, "O_DIRECTORY"):
+                flags |= os.O_DIRECTORY
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            try:
+                self.fd = os.open(self.aios_dir, flags)
+                info = os.fstat(self.fd)
+                if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid()
+                        or info.st_mode & 0o022):
+                    raise StateConflictError("authority store lock directory inode is unsafe")
+                import fcntl
+                fcntl.flock(self.fd, fcntl.LOCK_EX)
+            except OSError as exc:
+                if self.fd is not None:
+                    os.close(self.fd)
+                    self.fd = None
+                raise StateConflictError(f"cannot safely lock authority store directory: {exc}") from exc
         return self
 
     def __exit__(self, exc_type, exc, tb):
         try:
             if os.name == "nt":
                 import msvcrt
-                self.fh.seek(0)
-                msvcrt.locking(self.fh.fileno(), msvcrt.LK_UNLCK, 1)
+                os.lseek(self.fd, 0, os.SEEK_SET)
+                msvcrt.locking(self.fd, msvcrt.LK_UNLCK, 1)
             else:
                 import fcntl
-                fcntl.flock(self.fh.fileno(), fcntl.LOCK_UN)
+                fcntl.flock(self.fd, fcntl.LOCK_UN)
         finally:
-            self.fh.close()
+            os.close(self.fd)
+            self.fd = None
         return False
+
 
 
 def _write_staged(path, payload_bytes):
