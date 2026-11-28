@@ -68,9 +68,7 @@ def test_l5_mutation_lock_rejects_symlink(tmp_path):
     root.mkdir()
     target = tmp_path / "attacker-controlled-lock"
     target.write_bytes(b"")
-    staging = root / ".staging"
-    staging.mkdir()
-    (staging / ".mutation.lock").symlink_to(target)
+    (tmp_path / ".aios.mutation.lock").symlink_to(target)
 
     with pytest.raises(StateConflictError, match="safely open"):
         recover_pending(str(root))
