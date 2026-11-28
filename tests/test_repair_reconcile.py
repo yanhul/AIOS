@@ -117,6 +117,32 @@ def test_repair_reconcile_rejects_unknown_effect_even_if_tests_pass(tmp_path, mo
         reconcile_repair(aios, **kwargs)
 
 
+def test_load_effects_rejects_direct_unsigned_observed_state(tmp_path, monkeypatch):
+    from core.external_effect import load_effects
+    from core.mutation import commit_batch
+    aios, kwargs, effect = _case(tmp_path, monkeypatch)
+    path = aios / _effect_rel(effect["effect_id"])
+    forged = json.loads(path.read_text(encoding="utf-8"))
+    forged["state"] = "OBSERVED_SUCCESS"
+    forged.pop("provider_observation", None)
+    commit_batch(str(aios), [(_effect_rel(effect["effect_id"]), forged)])
+    with pytest.raises(TransitionError, match="persisted observed effect has no provider receipt"):
+        load_effects(str(aios))
+    from core.gateway_effect_adapter import _load_persisted_effect
+    with pytest.raises(TransitionError, match="persisted observed effect has no provider receipt"):
+        _load_persisted_effect(str(aios), effect["effect_id"])
+
+
+def test_repair_reconcile_rejects_expired_provider_receipt(tmp_path, monkeypatch):
+    aios, kwargs, effect = _case(tmp_path, monkeypatch)
+    observed = json.loads((aios / _effect_rel(effect["effect_id"])).read_text(encoding="utf-8"))
+    expires_at = observed["provider_observation"]["provider_authentication"]["expires_at"]
+    import core.effect_authority as effect_authority
+    monkeypatch.setattr(effect_authority.time, "time", lambda: float(expires_at) + 1.0)
+    with pytest.raises(TransitionError, match="provider receipt has expired"):
+        reconcile_repair(aios, **kwargs)
+
+
 def test_repair_reconcile_rejects_changed_proposal_after_receipt(tmp_path, monkeypatch):
     aios, kwargs, _ = _case(tmp_path, monkeypatch)
     kwargs["proposals"][0]["files"][0]["content"] = "VALUE = 999\n"

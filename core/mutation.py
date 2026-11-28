@@ -33,6 +33,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import uuid
 
 from . import state as state_layout
@@ -247,46 +248,134 @@ def _mutation_lock_path(aios_dir):
     return os.path.join(os.path.dirname(aios_dir), ".aios.mutation.lock")
 
 
+def _assert_safe_directory(path, label):
+    try:
+        info = os.lstat(path)
+    except OSError as exc:
+        raise StateConflictError(f"{label} is unavailable: {exc}") from exc
+    if not stat.S_ISDIR(info.st_mode):
+        raise StateConflictError(f"{label} is not a real directory")
+    if os.name != "nt" and (info.st_uid != os.geteuid() or info.st_mode & 0o022):
+        raise StateConflictError(f"{label} ownership or write permissions are unsafe")
+
+
+def _assert_regular_file(path, label):
+    try:
+        info = os.lstat(path)
+    except OSError as exc:
+        raise StateConflictError(f"{label} is unavailable: {exc}") from exc
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        raise StateConflictError(f"{label} is not a single-link regular file")
+    if os.name != "nt" and (info.st_uid != os.geteuid() or info.st_mode & 0o022):
+        raise StateConflictError(f"{label} ownership or permissions are unsafe")
+
+
+def _safe_destination(aios_dir, rel_dest):
+    if not isinstance(rel_dest, str) or not rel_dest or os.path.isabs(rel_dest):
+        raise StateConflictError("mutation destination must be a non-empty relative path")
+    normalized = os.path.normpath(rel_dest)
+    if normalized in (".", "..") or normalized.startswith(".." + os.sep):
+        raise StateConflictError("mutation destination escapes the authority store")
+    root = os.path.realpath(aios_dir)
+    dest = os.path.abspath(os.path.join(aios_dir, normalized))
+    if os.path.commonpath((root, dest)) != root or dest == root:
+        raise StateConflictError("mutation destination escapes the authority store")
+    return dest
+
+
+def _ensure_safe_parent(aios_dir, parent):
+    root = os.path.abspath(aios_dir)
+    relative = os.path.relpath(parent, root)
+    current = root
+    if relative == ".":
+        return
+    for component in relative.split(os.sep):
+        if component in ("", ".", ".."):
+            raise StateConflictError("mutation destination parent is unsafe")
+        current = os.path.join(current, component)
+        if os.path.lexists(current):
+            _assert_safe_directory(current, "mutation destination parent")
+        else:
+            os.mkdir(current, 0o700)
+            _assert_safe_directory(current, "new mutation destination parent")
+
+
 class _MutationLock:
-    """Cross-platform exclusive lock for one AIOS state tree."""
+    """Exclusive lock without adding metadata files to the audited state tree."""
     def __init__(self, aios_dir):
-        self.aios_dir = aios_dir
-        self.fh = None
+        self.aios_dir = os.path.abspath(os.fspath(aios_dir))
+        self.fd = None
 
     def __enter__(self):
+        if os.path.lexists(self.aios_dir) and os.path.islink(self.aios_dir):
+            raise StateConflictError("authority store root must not be a symlink")
         state_layout.ensure_state_dirs(self.aios_dir)
-        os.makedirs(os.path.dirname(_mutation_lock_path(self.aios_dir)), exist_ok=True)
-        self.fh = open(_mutation_lock_path(self.aios_dir), "a+b")
-        self.fh.seek(0)
+        _assert_safe_directory(self.aios_dir, "authority store root")
         if os.name == "nt":
-            import msvcrt
-            while True:
-                try:
-                    msvcrt.locking(self.fh.fileno(), msvcrt.LK_LOCK, 1)
-                    break
-                except OSError:
-                    continue
+            path = _mutation_lock_path(self.aios_dir)
+            flags = os.O_CREAT | os.O_RDWR
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            try:
+                self.fd = os.open(path, flags, 0o600)
+                info = os.fstat(self.fd)
+                if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                        or (info.st_uid != os.geteuid() or info.st_mode & 0o077)):
+                    raise StateConflictError("authority mutation lock inode is unsafe")
+                if info.st_size == 0:
+                    os.write(self.fd, b"\\0")
+                    os.fsync(self.fd)
+                import msvcrt
+                os.lseek(self.fd, 0, os.SEEK_SET)
+                msvcrt.locking(self.fd, msvcrt.LK_LOCK, 1)
+            except OSError as exc:
+                if self.fd is not None:
+                    os.close(self.fd)
+                    self.fd = None
+                raise StateConflictError(f"cannot safely open authority mutation lock: {exc}") from exc
         else:
-            import fcntl
-            fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX)
+            flags = os.O_RDONLY
+            if hasattr(os, "O_DIRECTORY"):
+                flags |= os.O_DIRECTORY
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            try:
+                self.fd = os.open(self.aios_dir, flags)
+                info = os.fstat(self.fd)
+                if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid()
+                        or info.st_mode & 0o022):
+                    raise StateConflictError("authority store lock directory inode is unsafe")
+                import fcntl
+                fcntl.flock(self.fd, fcntl.LOCK_EX)
+            except OSError as exc:
+                if self.fd is not None:
+                    os.close(self.fd)
+                    self.fd = None
+                raise StateConflictError(f"cannot safely lock authority store directory: {exc}") from exc
         return self
 
     def __exit__(self, exc_type, exc, tb):
         try:
             if os.name == "nt":
                 import msvcrt
-                self.fh.seek(0)
-                msvcrt.locking(self.fh.fileno(), msvcrt.LK_UNLCK, 1)
+                os.lseek(self.fd, 0, os.SEEK_SET)
+                msvcrt.locking(self.fd, msvcrt.LK_UNLCK, 1)
             else:
                 import fcntl
-                fcntl.flock(self.fh.fileno(), fcntl.LOCK_UN)
+                fcntl.flock(self.fd, fcntl.LOCK_UN)
         finally:
-            self.fh.close()
+            os.close(self.fd)
+            self.fd = None
         return False
 
 
+
 def _write_staged(path, payload_bytes):
-    with open(path, "wb") as fh:
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(path, flags, 0o600)
+    with os.fdopen(fd, "wb") as fh:
         fh.write(payload_bytes)
         _fsync_file(fh)
 
@@ -311,39 +400,90 @@ def _event_relpath(event):
 # ---------------------------------------------------------------------------
 
 _JOURNAL_NAME = "journal.json"
+_BATCH_ID_RE = re.compile(r"batch-([0-9a-f]{32})\Z")
+_DIGEST_RE = re.compile(r"[0-9a-f]{64}\Z")
+_TEMP_RE = re.compile(r"[0-9a-f]{32}\.tmp\Z")
 
 
 def _recover_pending_unlocked(aios_dir):
-    """Roll forward journaled batches; caller owns the mutation lock."""
+    """Roll forward only a complete, confined, structurally valid journal.
+
+    Orphan staging directories are ambiguous transaction evidence. Preserve
+    them and stop; never silently delete them as if recovery succeeded.
+    """
     staging = os.path.join(aios_dir, ".staging")
-    if not os.path.isdir(staging):
+    if not os.path.lexists(staging):
         return
+    _assert_safe_directory(staging, "authority staging directory")
     for entry in sorted(os.listdir(staging)):
+        match = _BATCH_ID_RE.fullmatch(entry)
+        if match is None:
+            raise StateConflictError(f"unexpected authority staging entry: {entry!r}")
+        batch_id = match.group(1)
         batch_dir = os.path.join(staging, entry)
+        _assert_safe_directory(batch_dir, "authority journal batch")
         journal_path = os.path.join(batch_dir, _JOURNAL_NAME)
-        if os.path.isfile(journal_path):
+        if not os.path.lexists(journal_path):
+            raise StateConflictError(f"orphan authority batch has no journal: {entry}")
+        _assert_regular_file(journal_path, "authority journal")
+        try:
             with open(journal_path, "r", encoding="utf-8") as fh:
                 journal = json.load(fh)
-            for op in journal["ops"]:
-                dest = op["dest"]
-                tmp = op["tmp"]
-                if os.path.exists(dest):
-                    with open(dest, "rb") as fh:
-                        actual = _digest_bytes(fh.read())
-                    if actual != op["digest"]:
-                        raise StateConflictError(
-                            f"committed file diverges from journal: {dest}"
-                        )
-                elif os.path.exists(tmp):
-                    os.makedirs(os.path.dirname(dest), exist_ok=True)
-                    _replace(tmp, dest)
-                    _fsync_dir(os.path.dirname(dest))
-                else:
-                    raise StateConflictError(
-                        f"journal op unrecoverable (temp and dest both missing): {dest}"
-                    )
-            os.unlink(journal_path)
-        shutil.rmtree(batch_dir, ignore_errors=True)
+        except (OSError, ValueError) as exc:
+            raise StateConflictError(f"authority journal is unreadable: {exc}") from exc
+        if (not isinstance(journal, dict) or set(journal) != {"batch_id", "ops"}
+                or journal.get("batch_id") != batch_id
+                or not isinstance(journal.get("ops"), list) or not journal["ops"]):
+            raise StateConflictError("authority journal schema or batch identity is invalid")
+
+        seen_destinations = set()
+        for op in journal["ops"]:
+            if not isinstance(op, dict) or set(op) != {"tmp", "dest", "digest"}:
+                raise StateConflictError("authority journal operation schema is invalid")
+            tmp_name = os.path.basename(op["tmp"]) if isinstance(op["tmp"], str) else ""
+            if not _TEMP_RE.fullmatch(tmp_name):
+                raise StateConflictError("authority journal temporary name is invalid")
+            tmp = os.path.join(batch_dir, tmp_name)
+            if os.path.abspath(op["tmp"]) != os.path.abspath(tmp):
+                raise StateConflictError("authority journal temporary path escapes its batch")
+            dest = op["dest"]
+            if not isinstance(dest, str) or not os.path.isabs(dest):
+                raise StateConflictError("authority journal destination is not absolute")
+            root = os.path.realpath(aios_dir)
+            dest = os.path.abspath(dest)
+            if os.path.commonpath((root, dest)) != root or dest == root:
+                raise StateConflictError("authority journal destination escapes the store")
+            if dest in seen_destinations:
+                raise StateConflictError("authority journal contains duplicate destinations")
+            seen_destinations.add(dest)
+            if not isinstance(op["digest"], str) or not _DIGEST_RE.fullmatch(op["digest"]):
+                raise StateConflictError("authority journal digest is malformed")
+            _ensure_safe_parent(aios_dir, os.path.dirname(dest))
+
+            if os.path.lexists(tmp):
+                _assert_regular_file(tmp, "authority staged payload")
+                with open(tmp, "rb") as fh:
+                    if _digest_bytes(fh.read()) != op["digest"]:
+                        raise StateConflictError("authority staged payload digest mismatch")
+            if os.path.lexists(dest):
+                _assert_regular_file(dest, "authority committed payload")
+                with open(dest, "rb") as fh:
+                    actual = _digest_bytes(fh.read())
+                if actual != op["digest"]:
+                    raise StateConflictError(f"committed file diverges from journal: {dest}")
+            elif os.path.lexists(tmp):
+                parent = os.path.dirname(dest)
+                _ensure_safe_parent(aios_dir, parent)
+                _replace(tmp, dest)
+                _fsync_dir(parent)
+            else:
+                raise StateConflictError(
+                    f"journal op unrecoverable (temp and dest both missing): {dest}"
+                )
+        os.unlink(journal_path)
+        _fsync_dir(batch_dir)
+        shutil.rmtree(batch_dir)
+
 
 
 def recover_pending(aios_dir):
@@ -423,23 +563,44 @@ def commit_batch(aios_dir, payloads, precondition=None):
     no writes, which gives callers compare-and-swap semantics for the full
     read -> validate -> write sequence.
     """
+    if not isinstance(payloads, (list, tuple)) or not payloads:
+        raise ValueError("mutation batch must be a non-empty list or tuple")
     with _MutationLock(aios_dir):
         state_layout.ensure_state_dirs(aios_dir)
         if precondition is not None:
             precondition(aios_dir)
+        prepared = []
+        destinations = set()
+        for rel_dest, obj in payloads:
+            dest = _safe_destination(aios_dir, rel_dest)
+            if dest in destinations:
+                raise StateConflictError("mutation batch contains duplicate destinations")
+            destinations.add(dest)
+            payload = (canonical_json(obj) + "\n").encode("utf-8")
+            prepared.append((dest, payload))
+        for dest, _payload in prepared:
+            _ensure_safe_parent(aios_dir, os.path.dirname(dest))
+            if os.path.lexists(dest):
+                _assert_regular_file(dest, "existing mutation destination")
+
         staging_root = os.path.join(aios_dir, ".staging")
+        if os.path.lexists(staging_root):
+            _assert_safe_directory(staging_root, "authority staging directory")
+        else:
+            os.mkdir(staging_root, 0o700)
+            _assert_safe_directory(staging_root, "new authority staging directory")
         batch_id = uuid.uuid4().hex
         batch_dir = os.path.join(staging_root, f"batch-{batch_id}")
-        os.makedirs(batch_dir, exist_ok=True)
+        os.mkdir(batch_dir, 0o700)
+        _assert_safe_directory(batch_dir, "new authority journal batch")
 
         ops = []
-        for rel_dest, obj in payloads:
-            payload = (canonical_json(obj) + "\n").encode("utf-8")
+        for dest, payload in prepared:
             tmp = os.path.join(batch_dir, f"{uuid.uuid4().hex}.tmp")
             _write_staged(tmp, payload)
             ops.append({
                 "tmp": tmp,
-                "dest": os.path.join(aios_dir, rel_dest),
+                "dest": dest,
                 "digest": _digest_bytes(payload),
             })
 

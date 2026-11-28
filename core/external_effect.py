@@ -12,6 +12,7 @@ from .effect_authority import create_effect as _create_effect
 from .effect_authority import dispatch as _dispatch
 from .effect_authority import observe as _observe
 from .effect_authority import unknown as _unknown
+from .effect_authority import _validate_persisted_effect
 from .mutation import MutationError, TransitionError
 
 
@@ -37,6 +38,8 @@ def load_effects(aios_dir):
             with open(os.path.join(d, fn), "r", encoding="utf-8") as fh:
                 rec = json.load(fh)
             if rec.get("record_type") == "EXTERNAL_EFFECT":
+                if rec.get("state") in {"OBSERVED_SUCCESS", "OBSERVED_FAILURE"}:
+                    _validate_persisted_effect(aios_dir, rec)
                 out[rec["effect_id"]] = rec
     return out
 
