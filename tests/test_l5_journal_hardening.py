@@ -63,17 +63,16 @@ def test_l5_recovery_rejects_batch_id_mismatch(tmp_path):
     assert journal_path.exists()
 
 
-def test_l5_mutation_lock_rejects_symlink(tmp_path):
+def test_l5_mutation_lock_rejects_symlinked_store_root(tmp_path):
     root = tmp_path / ".aios"
     root.mkdir()
-    target = tmp_path / "attacker-controlled-lock"
-    target.write_bytes(b"")
-    (tmp_path / ".aios.mutation.lock").symlink_to(target)
+    alias = tmp_path / "aios-alias"
+    alias.symlink_to(root, target_is_directory=True)
 
-    with pytest.raises(StateConflictError, match="safely open"):
-        recover_pending(str(root))
+    with pytest.raises(StateConflictError, match="root must not be a symlink"):
+        recover_pending(str(alias))
 
-    assert target.read_bytes() == b""
+    assert root.is_dir()
 
 
 def test_l5_commit_rejects_destination_path_escape(tmp_path):
