@@ -245,7 +245,7 @@ def _fsync_dir(path):
 
 
 def _mutation_lock_path(aios_dir):
-    return os.path.join(aios_dir, ".staging", ".mutation.lock")
+    return os.path.join(os.path.dirname(aios_dir), ".aios.mutation.lock")
 
 
 def _assert_safe_directory(path, label):
@@ -311,12 +311,8 @@ class _MutationLock:
             raise StateConflictError("authority store root must not be a symlink")
         state_layout.ensure_state_dirs(self.aios_dir)
         _assert_safe_directory(self.aios_dir, "authority store root")
-        staging = os.path.join(self.aios_dir, ".staging")
-        if os.path.lexists(staging):
-            _assert_safe_directory(staging, "authority staging directory")
-        else:
-            os.mkdir(staging, 0o700)
-            _assert_safe_directory(staging, "new authority staging directory")
+        lock_parent = os.path.dirname(self.aios_dir)
+        _assert_safe_directory(lock_parent, "authority lock parent")
         path = _mutation_lock_path(self.aios_dir)
         flags = os.O_CREAT | os.O_RDWR
         if hasattr(os, "O_NOFOLLOW"):
@@ -411,9 +407,6 @@ def _recover_pending_unlocked(aios_dir):
         return
     _assert_safe_directory(staging, "authority staging directory")
     for entry in sorted(os.listdir(staging)):
-        if entry == ".mutation.lock":
-            _assert_regular_file(os.path.join(staging, entry), "authority mutation lock")
-            continue
         match = _BATCH_ID_RE.fullmatch(entry)
         if match is None:
             raise StateConflictError(f"unexpected authority staging entry: {entry!r}")
