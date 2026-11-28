@@ -33,7 +33,12 @@ def main() -> int:
         "attempts": apply_result["attempts"], "effects": apply_result["effects"],
         "applied": apply_result["applied"], "test": test, "reconciliation": None,
     }
-    if test.get("status") != "PASS":
+    if test.get("status") == "UNKNOWN":
+        result["status"] = "REPAIR_ATTEMPT_TEST_UNKNOWN"
+        Path("repair-result.json").write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
+        print(json.dumps({"status": result["status"], "trusted_tests": "UNKNOWN"}))
+        status = "UNKNOWN"
+    elif test.get("status") != "PASS":
         result["status"] = "REPAIR_ATTEMPT_TEST_FAIL"
         Path("repair-result.json").write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
         print(json.dumps({"status": result["status"], "trusted_tests": test.get("status")}))
