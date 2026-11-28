@@ -328,15 +328,16 @@ class TestAtomicity(Base):
         self.assertEqual(self.event_files(), [])
         self.assertFalse(os.path.exists(os.path.join(self.aios, ".staging")))
 
-    def test_orphan_staging_without_journal_is_swept(self):
-        orphan = os.path.join(self.aios, ".staging", "batch-deadbeef")
+    def test_orphan_staging_without_journal_fails_closed_and_is_preserved(self):
+        orphan = os.path.join(self.aios, ".staging", "batch-" + ("d" * 32))
         os.makedirs(orphan)
         with open(os.path.join(orphan, "stray.tmp"), "w") as fh:
             fh.write("junk")
-        apply_mutations(self.aios, [make_entity()], ACTOR)
-        self.assertFalse(os.path.exists(orphan),
-                         "pre-journal crash leftovers must be discarded")
-        self.assert_paired_invariant({("DECISION", "D-99")})
+        with self.assertRaisesRegex(StateConflictError, "no journal"):
+            apply_mutations(self.aios, [make_entity()], ACTOR)
+        self.assertTrue(os.path.isdir(orphan),
+                        "ambiguous pre-journal crash evidence must be preserved")
+        self.assertEqual(self.collect_state()[0], {})
 
 
 # ---------------------------------------------------------------------------
