@@ -328,7 +328,7 @@ class _MutationLock:
             raise StateConflictError(f"cannot safely open authority mutation lock: {exc}") from exc
         self.fh.seek(0, os.SEEK_END)
         if self.fh.tell() == 0:
-            self.fh.write(b"\\0")
+            self.fh.write(b"\0")
             self.fh.flush()
             os.fsync(self.fh.fileno())
         self.fh.seek(0)
@@ -389,9 +389,9 @@ def _event_relpath(event):
 # ---------------------------------------------------------------------------
 
 _JOURNAL_NAME = "journal.json"
-_BATCH_ID_RE = re.compile(r"batch-([0-9a-f]{32})\\Z")
-_DIGEST_RE = re.compile(r"[0-9a-f]{64}\\Z")
-_TEMP_RE = re.compile(r"[0-9a-f]{32}\\.tmp\\Z")
+_BATCH_ID_RE = re.compile(r"batch-([0-9a-f]{32})\Z")
+_DIGEST_RE = re.compile(r"[0-9a-f]{64}\Z")
+_TEMP_RE = re.compile(r"[0-9a-f]{32}\.tmp\Z")
 
 
 def _recover_pending_unlocked(aios_dir):
