@@ -24,7 +24,7 @@ from .contract import verify_permit
 from .effect_authority import (
     dispatch as dispatch_aios_effect, observe as observe_aios_effect,
     unknown as mark_aios_unknown, issue_retry_authorization,
-    gateway_retry_dispatch as map_gateway_retry_dispatch,
+    gateway_retry_dispatch as map_gateway_retry_dispatch, _validate_persisted_effect,
 )
 from .authority_store import recover_authority_store, commit_authority_batch
 from .mutation import canonical_json
@@ -75,6 +75,8 @@ def _load_persisted_effect(aios_dir: str, effect_id: str) -> dict[str, object]:
         raise ValueError("persisted effect record must be an object")
     if effect.get("effect_id") != effect_id:
         raise ValueError("persisted effect identity does not match requested effect")
+    if effect.get("state") in {"OBSERVED_SUCCESS", "OBSERVED_FAILURE"}:
+        _validate_persisted_effect(aios_dir, effect)
     return effect
 
 
