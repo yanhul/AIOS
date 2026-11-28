@@ -35,14 +35,7 @@ env:
 
 jobs:
   propose1:
-    if: >-
-      ${{ (github.event_name == 'workflow_dispatch' ||
-           (github.event_name == 'push' && github.ref_name == 'aios/autorepair/g4a-live') ||
-           (github.event.workflow_run.conclusion == 'failure' &&
-            github.event.workflow_run.head_repository.full_name == github.repository) ||
-           (github.event_name == 'pull_request_target' &&
-            github.event.pull_request.head.repo.full_name == github.repository &&
-            startsWith(github.event.pull_request.head.ref, 'aios/autorepair/'))) }}
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -145,6 +138,7 @@ jobs:
           retention-days: 7
 
   apply1:
+    if: false
     needs: propose1
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -228,6 +222,7 @@ jobs:
           retention-days: 7
 
   propose2:
+    if: false
     needs: apply1
     if: ${{ needs.apply1.outputs.status == 'FAIL' }}
     runs-on: ubuntu-latest
@@ -270,6 +265,7 @@ jobs:
           retention-days: 7
 
   apply2:
+    if: false
     needs: propose2
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -347,6 +343,7 @@ jobs:
           retention-days: 7
 
   propose3:
+    if: false
     needs: apply2
     if: ${{ needs.apply2.outputs.status == 'FAIL' }}
     runs-on: ubuntu-latest
@@ -389,6 +386,7 @@ jobs:
           retention-days: 7
 
   apply3:
+    if: false
     needs: propose3
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -470,6 +468,7 @@ jobs:
           retention-days: 7
 
   publish:
+    if: false
     needs: [apply1, apply2, apply3]
     if: >-
       ${{ always() && !cancelled() &&
