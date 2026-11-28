@@ -31,7 +31,12 @@ def atomic_write(target: Path, content: str) -> None:
             os.unlink(tmp_name)
 
 
+PUBLISH_AUTHORITY_ENABLED = False  # Re-enable only after F3/F4/F6/F7 independent verification.
+
+
 def main() -> int:
+    if not PUBLISH_AUTHORITY_ENABLED:
+        raise SystemExit("BLOCKED: autonomous repair publish authority is disabled pending F3/F4/F6/F7 closure")
     base = os.environ["AIOS_REPAIR_SHA"]
     run_id = int(os.environ["AIOS_REPAIR_RUN_ID"])
     repository = os.environ["GITHUB_REPOSITORY"]
