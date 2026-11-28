@@ -579,7 +579,7 @@ def commit_batch(aios_dir, payloads, precondition=None):
             _ensure_safe_parent(aios_dir, os.path.dirname(dest))
             if os.path.lexists(dest):
                 _assert_regular_file(dest, "existing mutation destination")
-            payload = (canonical_json(obj) + "\\n").encode("utf-8")
+            payload = (canonical_json(obj) + "\n").encode("utf-8")
             tmp = os.path.join(batch_dir, f"{uuid.uuid4().hex}.tmp")
             _write_staged(tmp, payload)
             ops.append({
