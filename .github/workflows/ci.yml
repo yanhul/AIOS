@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, fix/security-f01-f11-f06-one-turn, security/absorption-policy-ed25519-tests]
   push:
-    branches: [main]
+    branches: [main, security/f3-f4-f6-f7-remediation-rebuild-20261128]
   workflow_dispatch:
     inputs:
       require_minimind_production:
