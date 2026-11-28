@@ -128,6 +128,9 @@ def test_load_effects_rejects_direct_unsigned_observed_state(tmp_path, monkeypat
     commit_batch(str(aios), [(_effect_rel(effect["effect_id"]), forged)])
     with pytest.raises(TransitionError, match="persisted observed effect has no provider receipt"):
         load_effects(str(aios))
+    from core.gateway_effect_adapter import _load_persisted_effect
+    with pytest.raises(TransitionError, match="persisted observed effect has no provider receipt"):
+        _load_persisted_effect(str(aios), effect["effect_id"])
 
 
 def test_repair_reconcile_rejects_expired_provider_receipt(tmp_path, monkeypatch):
