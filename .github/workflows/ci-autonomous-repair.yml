@@ -224,7 +224,6 @@ jobs:
   propose2:
     if: false
     needs: apply1
-    if: ${{ needs.apply1.outputs.status == 'FAIL' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -345,7 +344,6 @@ jobs:
   propose3:
     if: false
     needs: apply2
-    if: ${{ needs.apply2.outputs.status == 'FAIL' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -470,7 +468,6 @@ jobs:
   publish:
     if: false
     needs: [apply1, apply2, apply3]
-    if: >-
       ${{ always() && !cancelled() &&
           (needs.apply1.outputs.status == 'PASS' ||
            needs.apply2.outputs.status == 'PASS' ||
