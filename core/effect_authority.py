@@ -116,6 +116,30 @@ def _validate_persisted_effect(aios_dir, effect):
             raise TransitionError("persisted TRY operation binding does not match current attempt")
     if not isinstance(effect["attempt"], int) or isinstance(effect["attempt"], bool) or effect["attempt"] < 0:
         raise TransitionError("persisted effect attempt is invalid")
+    if effect.get("state") in _OBSERVED:
+        observed = effect.get("provider_observation")
+        if not isinstance(observed, dict):
+            raise TransitionError("persisted observed effect has no provider receipt")
+        raw = observed.get("observation")
+        auth = observed.get("provider_authentication")
+        if (observed.get("effect_id") != effect.get("effect_id")
+                or observed.get("attempt_id") != effect.get("attempt_id")
+                or observed.get("provider") != effect.get("provider")
+                or not isinstance(raw, dict) or not isinstance(auth, dict)):
+            raise TransitionError("persisted observed effect receipt binding is incomplete")
+        verifier_input = {
+            "provider": observed["provider"],
+            "provider_operation_id": observed.get("provider_operation_id"),
+            "observation": raw,
+            "authentication": auth,
+        }
+        _verify_provider_receipt(effect, effect["state"], verifier_input, None, None)
+        expected_evidence = mint_observation_evidence(
+            effect["effect_id"], effect["attempt_id"], effect["provider"],
+            observed["provider_operation_id"], raw,
+        )
+        if canonical_json(observed.get("evidence")) != canonical_json(expected_evidence):
+            raise TransitionError("persisted observed effect evidence is not AIOS-minted")
     return contract, permit
 
 
