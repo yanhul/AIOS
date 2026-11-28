@@ -35,7 +35,7 @@ env:
 
 jobs:
   propose1:
-    if: false
+    if: ${{ false && github.event.workflow_run.head_repository.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
