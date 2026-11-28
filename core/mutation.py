@@ -558,6 +558,20 @@ def commit_batch(aios_dir, payloads, precondition=None):
         state_layout.ensure_state_dirs(aios_dir)
         if precondition is not None:
             precondition(aios_dir)
+        prepared = []
+        destinations = set()
+        for rel_dest, obj in payloads:
+            dest = _safe_destination(aios_dir, rel_dest)
+            if dest in destinations:
+                raise StateConflictError("mutation batch contains duplicate destinations")
+            destinations.add(dest)
+            payload = (canonical_json(obj) + "\n").encode("utf-8")
+            prepared.append((dest, payload))
+        for dest, _payload in prepared:
+            _ensure_safe_parent(aios_dir, os.path.dirname(dest))
+            if os.path.lexists(dest):
+                _assert_regular_file(dest, "existing mutation destination")
+
         staging_root = os.path.join(aios_dir, ".staging")
         if os.path.lexists(staging_root):
             _assert_safe_directory(staging_root, "authority staging directory")
@@ -570,16 +584,7 @@ def commit_batch(aios_dir, payloads, precondition=None):
         _assert_safe_directory(batch_dir, "new authority journal batch")
 
         ops = []
-        destinations = set()
-        for rel_dest, obj in payloads:
-            dest = _safe_destination(aios_dir, rel_dest)
-            if dest in destinations:
-                raise StateConflictError("mutation batch contains duplicate destinations")
-            destinations.add(dest)
-            _ensure_safe_parent(aios_dir, os.path.dirname(dest))
-            if os.path.lexists(dest):
-                _assert_regular_file(dest, "existing mutation destination")
-            payload = (canonical_json(obj) + "\n").encode("utf-8")
+        for dest, payload in prepared:
             tmp = os.path.join(batch_dir, f"{uuid.uuid4().hex}.tmp")
             _write_staged(tmp, payload)
             ops.append({
