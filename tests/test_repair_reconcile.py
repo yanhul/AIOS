@@ -117,6 +117,16 @@ def test_repair_reconcile_rejects_unknown_effect_even_if_tests_pass(tmp_path, mo
         reconcile_repair(aios, **kwargs)
 
 
+def test_repair_reconcile_rejects_expired_provider_receipt(tmp_path, monkeypatch):
+    aios, kwargs, effect = _case(tmp_path, monkeypatch)
+    observed = json.loads((aios / _effect_rel(effect["effect_id"])).read_text(encoding="utf-8"))
+    expires_at = observed["provider_observation"]["provider_authentication"]["expires_at"]
+    import core.effect_authority as effect_authority
+    monkeypatch.setattr(effect_authority.time, "time", lambda: float(expires_at) + 1.0)
+    with pytest.raises(TransitionError, match="provider receipt has expired"):
+        reconcile_repair(aios, **kwargs)
+
+
 def test_repair_reconcile_rejects_changed_proposal_after_receipt(tmp_path, monkeypatch):
     aios, kwargs, _ = _case(tmp_path, monkeypatch)
     kwargs["proposals"][0]["files"][0]["content"] = "VALUE = 999\n"
